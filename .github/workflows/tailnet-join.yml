@@ -1,0 +1,39 @@
+# A thirty-second test of the tailnet join alone, with the same action,
+# variables and tag the agent job uses, to iterate on the tailnet's
+# federated credential without a full agent run.
+name: tailnet-join
+on:
+  workflow_dispatch:
+    inputs:
+      tags:
+        type: string
+        default: tag:bootc-dev-sandbox
+permissions: {}
+jobs:
+  join:
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      # Ask Tailscale directly, to see its own error text. Prints the
+      # response's error or, on success, only its non-secret fields.
+      - env:
+          AUDIENCE: ${{ vars.TS_AUDIENCE }}
+          CLIENT_ID: ${{ vars.TS_OAUTH_CLIENT_ID }}
+        run: |
+          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$AUDIENCE" | jq -r .value)
+          curl -sS -w '\nHTTP %{http_code}\n' -X POST https://api.tailscale.com/api/v2/oauth/token-exchange \
+            --data-urlencode "client_id=$CLIENT_ID" --data-urlencode "jwt=$token" \
+            | jq -R 'fromjson? // . | if type == "object" and has("access_token") then {exchange: "ok", scope, expires_in, token_type} else . end'
+      - uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ vars.TS_AUDIENCE }}
+          tags: ${{ inputs.tags }}
+          hostname: tailnet-join-${{ github.run_id }}
+          args: --accept-dns=false
+      - env:
+          URL: ${{ vars.INFERENCE_URL || vars.PRAXIS_BASE_URL }}
+        run: |
+          tailscale status | head -5
+          curl -sS -o /dev/null -w 'POST /v1/runs without a token: %{http_code}\n' -m 10 -X POST "${URL%/v1}/v1/runs"
