@@ -1,6 +1,6 @@
 # The dispatch caller that `bot-runs dispatch --backend agentic-job --caller
 # cgwalters-forge/tracker` starts, composed from the pieces of
-# cgwalters-forge/agentic-job at 0e4911fd6ed6310a381f24420863ae8f083fa829
+# cgwalters-forge/agentic-job at 3ee1ab1fd20c3d6c914f85effa479290c3eccd3d
 # (its docs/workflow.md, "The pieces, and an agent job of your own"): the
 # policy, check and apply workflows are called at that commit, and the agent
 # job is this file's, so that our tailnet join can be a step of it. The
@@ -28,7 +28,7 @@ on:
       kind:
         description: Fixed profile (review takes a pull request number)
         type: choice
-        options: [triage, research, review]
+        options: [implement, triage, research, review]
         required: true
 
 permissions: {}
@@ -69,9 +69,6 @@ jobs:
             if (!['implement', 'triage', 'research', 'review'].includes(profile)) {
               throw new Error('Unknown dispatch profile');
             }
-            if (profile === 'implement') {
-              throw new Error('implement is disabled in this caller until cgwalters-forge/agentic-job#340 is fixed (pull requests opened by apply run privileged CI on agent-written code)');
-            }
             const agent = process.env.AGENT;
             if (!['fake', 'opencode', 'claude'].includes(agent)) throw new Error('AGENT must be fake, opencode or claude');
             const missing = agent === 'fake' ? [] :
@@ -107,7 +104,7 @@ jobs:
   # on no event here.
   policy:
     needs: target
-    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@0e4911fd6ed6310a381f24420863ae8f083fa829
+    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@3ee1ab1fd20c3d6c914f85effa479290c3eccd3d
     permissions:
       contents: read
     with:
@@ -132,7 +129,6 @@ jobs:
       output-repo: ${{ inputs.repo }}
       comment-target: ${{ inputs.item }}
       apply-environment: ${{ vars.APPLY_ENVIRONMENT }}
-      refused-pull-request: branch
       apply-partial: false
       notify: none
       artifact-prefix: dispatch-${{ inputs.kind }}-
@@ -169,7 +165,7 @@ jobs:
           SOURCE_REPOSITORY: ${{ needs.policy.outputs.source-repository }}
           SOURCE_SHA: ${{ needs.policy.outputs.source-sha }}
           PINNED_REPOSITORY: cgwalters-forge/agentic-job
-          PINNED_SHA: 0e4911fd6ed6310a381f24420863ae8f083fa829
+          PINNED_SHA: 3ee1ab1fd20c3d6c914f85effa479290c3eccd3d
         run: |
           echo "$SOURCE_REPOSITORY at $SOURCE_SHA"
           [[ "$SOURCE_REPOSITORY" == "$PINNED_REPOSITORY" && "$SOURCE_SHA" == "$PINNED_SHA" ]] ||
@@ -213,7 +209,7 @@ jobs:
     permissions:
       contents: read
     # No secret crosses this boundary.
-    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@0e4911fd6ed6310a381f24420863ae8f083fa829
+    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@3ee1ab1fd20c3d6c914f85effa479290c3eccd3d
     with:
       policy: ${{ toJSON(needs.policy.outputs) }}
       safe-outputs-artifact-id: ${{ needs.agent.outputs.safe-outputs-artifact-id }}
@@ -221,7 +217,7 @@ jobs:
   apply:
     needs: [policy, agent, check]
     if: ${{ always() && needs.policy.result == 'success' }}
-    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@0e4911fd6ed6310a381f24420863ae8f083fa829
+    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@3ee1ab1fd20c3d6c914f85effa479290c3eccd3d
     # The bot's token, an organization secret, under the generic name the
     # workflow declares: only its apply job reads it, in the environment
     # APPLY_ENVIRONMENT names. Named, never inherited. No secret reaches
@@ -229,8 +225,9 @@ jobs:
     secrets:
       SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
     # For the scripted agent's comment and a refusal's, which use the job
-    # token. Comments only: implement is refused above, and would need
-    # `contents: write`. Neither job executes agent-produced code.
+    # token. Comments only: an implement run's branch goes to the bot's
+    # fork of the target with the environment's token, so the job token
+    # pushes nothing. Neither job executes agent-produced code.
     # `actions: read` lets apply confirm the checked outputs are this
     # run's check's.
     permissions:
