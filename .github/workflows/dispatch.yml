@@ -1,6 +1,6 @@
 # The dispatch caller that `bot-runs dispatch --backend agentic-job --caller
 # cgwalters-forge/tracker` starts, composed from the pieces of
-# cgwalters-forge/agentic-job at 7b9de721d21a95d297e027690e39f132d7a7477a
+# cgwalters-forge/agentic-job at 0e4911fd6ed6310a381f24420863ae8f083fa829
 # (its docs/workflow.md, "The pieces, and an agent job of your own"): the
 # policy, check and apply workflows are called at that commit, and the agent
 # job is this file's, so that our tailnet join can be a step of it. The
@@ -107,7 +107,7 @@ jobs:
   # on no event here.
   policy:
     needs: target
-    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@7b9de721d21a95d297e027690e39f132d7a7477a
+    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@0e4911fd6ed6310a381f24420863ae8f083fa829
     permissions:
       contents: read
     with:
@@ -169,7 +169,7 @@ jobs:
           SOURCE_REPOSITORY: ${{ needs.policy.outputs.source-repository }}
           SOURCE_SHA: ${{ needs.policy.outputs.source-sha }}
           PINNED_REPOSITORY: cgwalters-forge/agentic-job
-          PINNED_SHA: 7b9de721d21a95d297e027690e39f132d7a7477a
+          PINNED_SHA: 0e4911fd6ed6310a381f24420863ae8f083fa829
         run: |
           echo "$SOURCE_REPOSITORY at $SOURCE_SHA"
           [[ "$SOURCE_REPOSITORY" == "$PINNED_REPOSITORY" && "$SOURCE_SHA" == "$PINNED_SHA" ]] ||
@@ -213,7 +213,7 @@ jobs:
     permissions:
       contents: read
     # No secret crosses this boundary.
-    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@7b9de721d21a95d297e027690e39f132d7a7477a
+    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@0e4911fd6ed6310a381f24420863ae8f083fa829
     with:
       policy: ${{ toJSON(needs.policy.outputs) }}
       safe-outputs-artifact-id: ${{ needs.agent.outputs.safe-outputs-artifact-id }}
@@ -221,7 +221,7 @@ jobs:
   apply:
     needs: [policy, agent, check]
     if: ${{ always() && needs.policy.result == 'success' }}
-    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@7b9de721d21a95d297e027690e39f132d7a7477a
+    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@0e4911fd6ed6310a381f24420863ae8f083fa829
     # The bot's token, an organization secret, under the generic name the
     # workflow declares: only its apply job reads it, in the environment
     # APPLY_ENVIRONMENT names. Named, never inherited. No secret reaches
@@ -231,10 +231,13 @@ jobs:
     # For the scripted agent's comment and a refusal's, which use the job
     # token. Comments only: implement is refused above, and would need
     # `contents: write`. Neither job executes agent-produced code.
+    # `actions: read` lets apply confirm the checked outputs are this
+    # run's check's.
     permissions:
       contents: read
       issues: write
       pull-requests: write
+      actions: read
     with:
       policy: ${{ toJSON(needs.policy.outputs) }}
       agent: ${{ toJSON(needs.agent) }}
