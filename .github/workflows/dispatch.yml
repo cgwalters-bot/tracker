@@ -26,7 +26,7 @@ on:
       kind:
         description: Fixed profile (review takes a pull request number)
         type: choice
-        options: [implement, triage, research, review]
+        options: [triage, research, review]
         required: true
 
 permissions: {}
@@ -67,6 +67,9 @@ jobs:
             if (!['implement', 'triage', 'research', 'review'].includes(profile)) {
               throw new Error('Unknown dispatch profile');
             }
+            if (profile === 'implement') {
+              throw new Error('implement is disabled in this caller until cgwalters-forge/agentic-job#340 is fixed (pull requests opened by apply run privileged CI on agent-written code)');
+            }
             const agent = process.env.AGENT;
             if (!['fake', 'opencode', 'claude'].includes(agent)) throw new Error('AGENT must be fake, opencode or claude');
             const missing = agent === 'fake' ? [] :
@@ -79,7 +82,7 @@ jobs:
                 !/^[1-9][0-9]*$/.test(item) || !Number.isSafeInteger(Number(item))) {
               throw new Error('Expected OWNER/NAME and a positive safe issue number');
             }
-            if (repo !== context.repo.owner + '/' + context.repo.repo &&
+            if (agent !== 'fake' &&
                 !process.env.APPLY_ENVIRONMENT?.trim()) missing.push('APPLY_ENVIRONMENT');
             if (missing.length) throw new Error('Missing repository variables: ' + missing.join(', '));
             core.setOutput('agent', agent);
