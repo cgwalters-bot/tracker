@@ -1,10 +1,12 @@
-# The dispatch caller of cgwalters-forge/agentic-job at
-# 649466e8f8b07c0395ad5bff420834e876f55944 (its docs/dispatch.md), which
-# `bot-runs dispatch --backend agentic-job --caller cgwalters-forge/tracker`
-# starts. Different from the source: no workflow_call (nothing here calls
-# it, so its trusted-CI switch is gone too), the run is our copy of the
-# reusable workflow beside this file, which says why it is a copy, and the
-# apply credential is named.
+# The dispatch caller that `bot-runs dispatch --backend agentic-job --caller
+# cgwalters-forge/tracker` starts, composed from the pieces of
+# cgwalters-forge/agentic-job at 7b9de721d21a95d297e027690e39f132d7a7477a
+# (its docs/workflow.md, "The pieces, and an agent job of your own"): the
+# policy, check and apply workflows are called at that commit, and the agent
+# job is this file's, so that our tailnet join can be a step of it. The
+# profiles follow that commit's dispatch.yml (docs/dispatch.md). To move the
+# pin, change the commit in the three calls and in the agent job's source
+# check together: check, apply, prepare and run refuse a mismatch.
 name: dispatch
 run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}
 
@@ -101,24 +103,13 @@ jobs:
             if (Buffer.byteLength(task, 'utf8') > 65536) throw new Error('Dispatch task including issue text exceeds 64 KiB');
             core.setOutput('task', task);
 
-  run:
+  # Every setting of the run. Its policy job reads; activate and notify act
+  # on no event here.
+  policy:
     needs: target
-    # Our copy of agentic-job's reusable workflow, pinned inside to its source
-    # commit.
-    uses: ./.github/workflows/agentic-job.yml
-    # The bot's token, an organization secret, under the generic name the
-    # workflow declares: only its apply job reads it, in the environment
-    # APPLY_ENVIRONMENT names. Named, never inherited. No secret reaches
-    # target, the agent process or the nested checker.
-    secrets:
-      SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
+    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@7b9de721d21a95d297e027690e39f132d7a7477a
     permissions:
-      # Agent/policy/check downscope to read. Apply and refusal reporting
-      # use these writes; neither executes agent-produced code.
-      contents: write
-      issues: write
-      pull-requests: write
-      id-token: write # Only the runner, not the agent, registers with the proxy.
+      contents: read
     with:
       id: ${{ inputs.repo }}#${{ inputs.item }}
       repo: ${{ inputs.repo }}
@@ -131,7 +122,6 @@ jobs:
       model: ${{ needs.target.outputs.agent != 'fake' && vars.AGENT_MODEL || '' }}
       agent-config-repo: ${{ needs.target.outputs.agent == 'opencode' && vars.AGENT_CONFIG_REPO || '' }}
       agent-config-path: ${{ needs.target.outputs.agent == 'opencode' && vars.AGENT_CONFIG_PATH || '' }}
-      agent-runner: ${{ vars.AGENT_RUNNER || '"ubuntu-26.04"' }}
       config: ${{ vars.AGENT_CONFIG || '.github/agentic-job/hosted.toml' }}
       fake-profile: ${{ needs.target.outputs.agent == 'fake' && ((inputs.kind == 'triage' || inputs.kind == 'research') && 'comment' || inputs.kind) || '' }}
       max-requests: ${{ needs.target.outputs.agent == 'fake' && '0' || '150' }}
@@ -147,3 +137,105 @@ jobs:
       notify: none
       artifact-prefix: dispatch-${{ inputs.kind }}-
       branch-prefix: dispatch/${{ inputs.kind }}/
+
+  agent:
+    needs: [target, policy]
+    if: ${{ needs.policy.outputs.admitted == 'true' }}
+    runs-on: ${{ fromJSON(vars.AGENT_RUNNER || '"ubuntu-26.04"') }}
+    timeout-minutes: 360
+    # Read only, and nothing more: `run` hands this job's token to the agent
+    # for GitHub reads, and no check sees what it was granted. The identity
+    # token is for the tailnet join and the run's registration at the
+    # inference proxy; `sandbox setup` keeps it from the agent's user.
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+      actions: read
+      id-token: write
+    outputs:
+      exit: ${{ steps.run.outputs.exit }}
+      safe-outputs-artifact-id: ${{ steps.run.outputs.safe-outputs-artifact-id }}
+    steps:
+      # This repository at the policy job's commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.policy.outputs.ref }}
+          persist-credentials: false
+      # The actions come from the policy call's own source, which must be
+      # the commit this file names.
+      - name: The policy call's source repository and commit
+        env:
+          SOURCE_REPOSITORY: ${{ needs.policy.outputs.source-repository }}
+          SOURCE_SHA: ${{ needs.policy.outputs.source-sha }}
+          PINNED_REPOSITORY: cgwalters-forge/agentic-job
+          PINNED_SHA: 7b9de721d21a95d297e027690e39f132d7a7477a
+        run: |
+          echo "$SOURCE_REPOSITORY at $SOURCE_SHA"
+          [[ "$SOURCE_REPOSITORY" == "$PINNED_REPOSITORY" && "$SOURCE_SHA" == "$PINNED_SHA" ]] ||
+            { echo "::error::the policy call is not $PINNED_REPOSITORY at $PINNED_SHA"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ needs.policy.outputs.source-repository }}
+          ref: ${{ needs.policy.outputs.source-sha }}
+          path: .agentic-job-source
+          persist-credentials: false
+      - uses: ./.agentic-job-source/prepare
+        with:
+          binary-artifact-id: ${{ needs.policy.outputs.binary-artifact-id }}
+          policy-artifact-id: ${{ needs.policy.outputs.policy-artifact-id }}
+      # Our one privileged step, before anything of the agent's is on the
+      # machine. The action picks the client id and tags by organization,
+      # joins with --accept-dns=false and makes tailscaled's socket root's
+      # only. Only for a real agent: the scripted one needs no proxy.
+      - name: Join the tailnet
+        if: ${{ needs.target.outputs.agent != 'fake' }}
+        uses: cgwalters-forge/actions/tailscale@d7bfa158217182d8c0b0b775189dcf91a6afcdde
+        with:
+          hostname: agentic-job-${{ github.run_id }}-${{ github.run_attempt }}
+      # The last step with root.
+      - uses: ./.agentic-job-source/secure-host
+        with:
+          binary: /usr/local/bin/agentic-job
+          config: .agentic-job/config.toml
+      # The agent's GH_TOKEN is this job's read-only token. No step follows:
+      # nothing here touches what the agent left.
+      - id: run
+        timeout-minutes: 340
+        uses: ./.agentic-job-source/run
+        with:
+          github-token: ${{ github.token }}
+
+  check:
+    needs: [policy, agent]
+    # Also for a run that failed and still handed something back.
+    if: ${{ !cancelled() && needs.policy.result == 'success' && needs.agent.outputs.safe-outputs-artifact-id != '' }}
+    permissions:
+      contents: read
+    # No secret crosses this boundary.
+    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@7b9de721d21a95d297e027690e39f132d7a7477a
+    with:
+      policy: ${{ toJSON(needs.policy.outputs) }}
+      safe-outputs-artifact-id: ${{ needs.agent.outputs.safe-outputs-artifact-id }}
+
+  apply:
+    needs: [policy, agent, check]
+    if: ${{ always() && needs.policy.result == 'success' }}
+    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@7b9de721d21a95d297e027690e39f132d7a7477a
+    # The bot's token, an organization secret, under the generic name the
+    # workflow declares: only its apply job reads it, in the environment
+    # APPLY_ENVIRONMENT names. Named, never inherited. No secret reaches
+    # target, policy, the agent job or check.
+    secrets:
+      SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
+    # For the scripted agent's comment and a refusal's, which use the job
+    # token. Comments only: implement is refused above, and would need
+    # `contents: write`. Neither job executes agent-produced code.
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    with:
+      policy: ${{ toJSON(needs.policy.outputs) }}
+      agent: ${{ toJSON(needs.agent) }}
+      check: ${{ toJSON(needs.check) }}
