@@ -1,0 +1,17 @@
+# Bounds for dispatch.yml's `fix` kind, which pushes one commit to the
+# branch of a pull request that apply itself opened from the bot's fork
+# (cgwalters-forge/agentic-job#435). A separate file from dispatch.toml
+# because the push type has no per-repository list of its own: the
+# repositories named here are the only ones a fix may target.
+hosts = ["github.com"]
+repos = ["cgwalters-forge-stage/board-test"]
+bases = ["main"]
+max_outputs = 3
+max_patch_bytes = 1048576
+max_patch_files = 50
+
+[outputs]
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**"] }
+noop = { max = 1 }
+missing_tool = { max = 1 }
+missing_data = { max = 1 }
