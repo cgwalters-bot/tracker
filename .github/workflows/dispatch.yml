@@ -1,6 +1,6 @@
 # The dispatch caller that `bot-runs dispatch --backend agentic-job --caller
 # cgwalters-forge/tracker` starts, composed from the pieces of
-# cgwalters-forge/agentic-job at bee607abfb8f5135ce74d8212c1a571316310dc8
+# cgwalters-forge/agentic-job at 7c37fe0d5a9a717729b6ae66a1764e0de38f9517
 # (its docs/workflow.md, "The pieces, and an agent job of your own"): the
 # policy, check and apply workflows are called at that commit, and the agent
 # job is this file's, so that our tailnet join can be a step of it. The
@@ -106,7 +106,7 @@ jobs:
   # on no event here.
   policy:
     needs: target
-    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@bee607abfb8f5135ce74d8212c1a571316310dc8
+    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@7c37fe0d5a9a717729b6ae66a1764e0de38f9517
     permissions:
       contents: read
     with:
@@ -145,9 +145,8 @@ jobs:
     if: ${{ needs.policy.outputs.admitted == 'true' }}
     runs-on: ${{ fromJSON(vars.AGENT_RUNNER || '"ubuntu-26.04"') }}
     timeout-minutes: 360
-    # Read only, and nothing more. The agent gets no GitHub token: `run`
-    # refuses this job's own, as it cannot see what a caller's job was
-    # granted, and no read-only secret is passed in its place. The identity
+    # Read only, and nothing more: `run` hands this job's token to the agent
+    # for GitHub reads, and no check sees what it was granted. The identity
     # token is for the tailnet join and the run's registration at the
     # inference proxy; `sandbox setup` keeps it from the agent's user.
     permissions:
@@ -172,7 +171,7 @@ jobs:
           SOURCE_REPOSITORY: ${{ needs.policy.outputs.source-repository }}
           SOURCE_SHA: ${{ needs.policy.outputs.source-sha }}
           PINNED_REPOSITORY: cgwalters-forge/agentic-job
-          PINNED_SHA: bee607abfb8f5135ce74d8212c1a571316310dc8
+          PINNED_SHA: 7c37fe0d5a9a717729b6ae66a1764e0de38f9517
         run: |
           echo "$SOURCE_REPOSITORY at $SOURCE_SHA"
           [[ "$SOURCE_REPOSITORY" == "$PINNED_REPOSITORY" && "$SOURCE_SHA" == "$PINNED_SHA" ]] ||
@@ -201,11 +200,13 @@ jobs:
         with:
           binary: /usr/local/bin/agentic-job
           config: .agentic-job/config.toml
-      # No `github-token`: the agent reads the public target without one.
-      # No step follows: nothing here touches what the agent left.
+      # The agent's GH_TOKEN is this job's read-only token. No step follows:
+      # nothing here touches what the agent left.
       - id: run
         timeout-minutes: 340
         uses: ./.agentic-job-source/run
+        with:
+          github-token: ${{ github.token }}
 
   check:
     needs: [policy, agent]
@@ -214,7 +215,7 @@ jobs:
     permissions:
       contents: read
     # No secret crosses this boundary.
-    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@bee607abfb8f5135ce74d8212c1a571316310dc8
+    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@7c37fe0d5a9a717729b6ae66a1764e0de38f9517
     with:
       policy: ${{ toJSON(needs.policy.outputs) }}
       safe-outputs-artifact-id: ${{ needs.agent.outputs.safe-outputs-artifact-id }}
@@ -222,7 +223,7 @@ jobs:
   apply:
     needs: [policy, agent, check]
     if: ${{ always() && needs.policy.result == 'success' }}
-    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@bee607abfb8f5135ce74d8212c1a571316310dc8
+    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@7c37fe0d5a9a717729b6ae66a1764e0de38f9517
     # The bot's token, an organization secret, under the generic name the
     # workflow declares: only its apply job reads it, in the environment
     # APPLY_ENVIRONMENT names. Named, never inherited. No secret reaches
