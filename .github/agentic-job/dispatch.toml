@@ -14,7 +14,10 @@ noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
 
-# To deliberately permit protected documentation:
-# [unprotected_files]
-# repos = ["OWNER/REPO"]
-# files = ["README.md"]
+# Pull requests (implement) may edit `.github/` in these two repositories
+# and no other; a fix's push never may. Exact names, no globs. The
+# prerequisites are in agentic-job's docs/safe-outputs.md. To also permit
+# protected documentation there, add files = ["README.md"].
+[unprotected_files]
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board"]
+dot_folders = [".github"]
