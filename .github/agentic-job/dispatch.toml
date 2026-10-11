@@ -1,7 +1,7 @@
 # Bounds for dispatch.yml: the repositories a dispatched run may target.
 # Exact names, no globs; add a repository here before dispatching to it.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge-stage/board-test"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576

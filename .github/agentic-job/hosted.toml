@@ -65,6 +65,7 @@ packages = ["python3-venv", "nftables", "podman", "uidmap"]
 #   github.com        git dependencies (git fetch is already allowed)
 # Their build scripts and proc macros run as the sandbox user.
 "cgwalters-forge/agentic-job" = ["cargo"]
+"cgwalters-forge/agent-board" = ["cargo"]
 
 [commit]
 author = "agentic-job <agentic-job@users.noreply.github.com>"
