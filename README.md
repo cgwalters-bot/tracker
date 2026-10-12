@@ -27,6 +27,11 @@ The bot runs from [cgwalters-bot/homegit](https://github.com/cgwalters-bot/homeg
 `bin/bot-board question` opens these issues. The
 [review app](https://github.com/cgwalters-forge/review) is a UI over the same queue.
 
+[docs/bring-up.md](docs/bring-up.md) says how to start a coordinator on a
+fresh machine from credentials alone, how to dispatch a run and where its
+state is. [docs/operator-notes.md](docs/operator-notes.md) is the log of
+cgwalters' instructions.
+
 ## The pull request poll
 
 `.github/workflows/poll.yml` runs one pass of `.github/poll/poll.cjs`. A pass
