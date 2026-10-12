@@ -1,0 +1,550 @@
+# Operator notes
+
+The log of the operator's (cgwalters') instructions to the bot's coordinator, each with the coordinator's reading of it; briefs and decisions are checked against it.
+Entries are appended at the end, verbatim, with their date; an earlier entry is never edited, a later one corrects it.
+
+Relayed by the coordinator from the operator's chat, verbatim, newest last. These are his intent.
+
+## 2026-10-06, interactive use
+
+> Another use case I have btw is interactive chats this is why ACP. We just mix in Tailscale or equiv. Should be a clean mode flag to wait for a connection. Or start from a prompt but accept dynamic connections.
+
+Coordinator's reading: a second first-class use of agentic-job besides the unattended task run. The same hardened host, sandbox user, proxy and safe-outputs, but a human (or another client) attaches to the agent's ACP session over a private network such as Tailscale. Two modes behind a clear flag: wait for a connection before doing anything; or start from a prompt and accept connections that join the running session. The README should name this use case, and the design needs to say how the ACP endpoint is exposed (ACP is stdio today: what bridges it to a network client), who may connect and how that is authenticated, what a connected client may do that the task brief could not (it is a new source of instructions, so trust and safe-outputs limits matter), and how budgets and timeouts apply to an idle interactive session.
+
+## 2026-10-06, his answers to the six stage-1 questions
+
+1. Interface: the Rust binary is the interface (sandbox, run, check); the GitHub reusable workflow is a thin wrapper. (He picked the recommendation.)
+2. Who applies safe outputs, in his words: "I like what GH AW does requiring a separate job VM that does the apply and only that VM has the write secrets." So: apply is a separate job on its own VM, and only that job holds write credentials. The agent's VM never does.
+3. Compiler: none for now. Archive workflow-compiler and move its requirements document into agentic-job. Revisit if a caller needs privileged steps inside the agent job, or if gh-aw upstream takes a host-user runtime.
+4. How the code moves: "Rewrite first". Rewrite in Rust and cut over at parity. (He did NOT pick the recommended move-then-rewrite.) So the plan must make the rewrite small and staged enough to reach parity quickly, define parity concretely (which behaviours, tested how, against the tree in daily use), and say how the old tree keeps running untouched until cutover.
+5. Where runs happen, in his words: "It must be configurable. What do you mean broker accepts? Accept what?" So nothing in agentic-job may assume a repository, an organization or a runner label: where a run happens is the caller's configuration. And the stage-1 wording about the broker was unclear to him: explain it plainly wherever it appears (the inference proxy gives a run its per-run token only if the job proves which workflow it is, with the CI system's OIDC identity token, and the proxy's policy file lists which repository, workflow file, ref and trigger are allowed; today that list has one entry). Which workflows a proxy admits is that deployment's configuration, not something agentic-job fixes.
+6. Interactive sessions: after the rewrite; first bridge is a Unix socket on the runner reached by an `attach` command over Tailscale SSH. (Since the rewrite comes first, the Rust harness should still be shaped so that a session clients can attach to is natural, with the task run as the case of no client; do not build the bridge yet.)
+
+## 2026-10-06, on which workflows the inference proxy admits
+
+After the coordinator explained that the broker hands out a per-run token only to a workflow its OIDC policy lists, he said:
+
+> Nah it should just be if it's on the tailnet it's authorized by default for now.
+
+Coordinator's reading: the default authorization for the inference proxy is network reachability. A client that can reach the proxy on the tailnet (or its equivalent private network) is authorized; no OIDC workflow policy is required by default, for now. The OIDC policy becomes an optional stricter mode, not the baseline. The same default plausibly applies to attaching to an interactive session (on the tailnet means allowed), but he said it in the context of the proxy; mark that extension as the coordinator's inference.
+
+What the plan must still work out and state plainly, because it follows from this: the agent's sandbox user is allowed through the egress proxy to the inference proxy, so under "on the tailnet is authorized" the agent itself is an authorized client. Per-run spending caps and metering then depend on the job choosing to identify the run (a run id the job supplies), not on the proxy refusing unidentified requests. Say what is kept (identification for metering and caps), what is given up (the proxy can no longer tell an admitted workflow from any other tailnet peer), and that this is his chosen default for now.
+
+## 2026-10-06, his answers to the stage-2 questions
+
+1. Where his caller workflow lives at cutover: bootc-dev/cgwalters-devspace-sandbox on main (the recommendation).
+2. Egress proxy: "Rewrite in Rust first". Not the recommendation. The mitmproxy-plus-Python policy is replaced by a Rust egress proxy before cutover, so the plan gains that work as its own step or steps with a parity test against the existing policy tests (test_policy.py cases become the corpus), and nothing Python remains at cutover. Say honestly what a TLS-intercepting proxy in Rust involves (which crates, what is hard) and size it.
+3. Who opens the pull request, in his words: "We can do bot account too - safe outputs model should support that right? Let's try that instead of going to apps just yet". So the apply job uses the bot account's token, not a GitHub App, for now. Verify against gh-aw's handlers that a supplied token works (its github-token setting) and say so. The App (tracker#403) is no longer a prerequisite of the plan; re-point #403 as deferred, not closed.
+4. Which token: "Same token as Xenon". The bot's existing token becomes the secret of the apply job's environment in the calling repository. The bot never copies or prints credential values, so storing that secret is a step for him: name it as a prerequisite of the step that first needs it, with exactly what to create (the environment's name, the secret's name, which repository), and note plainly in the docs what that token can do, since all of it is then reachable from that one job.
+5. A checked partial hand-back: applied as a draft marked partial when the caller turns it on, and we turn it on (the recommendation).
+6. How long the old tree stays after cutover: 14 days and 100 successful runs on the new path, then delete (the recommendation).
+7. Stage 3 closures: "Yes, as proposed". Close and re-point as stage 2's draft list proposed, each with a one-line reason and a link to the plan; anything he opened or commented on is listed for him instead; repositories are archived only later, at the plan's steps.
+8. Merging agentic-job#1: after he reviews. Leave it open; his approval merges it.
+
+## 2026-10-06, the egress proxy answer is under question: HOLD it
+
+When told that "Rewrite in Rust first" for the egress proxy means writing a TLS-intercepting proxy in Rust, he said:
+
+> Wait sorry a new TLS interception proxy?
+
+So treat answer 2 of the stage-2 list (rewrite the egress proxy in Rust before cutover) as NOT decided. Do not write a Rust TLS-intercepting proxy into the plan as settled. In the plan, describe the egress proxy step as open, with what today's proxy actually does (mitmproxy intercepting TLS so the policy can see method, host and path: reads anywhere off the threat feed, writes only by rule, Host and TLS name must agree) and the options (keep mitmproxy through cutover; a Rust proxy that does not intercept and allows by CONNECT host and SNI only, which loses the method-level rules; a Rust intercepting proxy). The coordinator is asking him and will append his answer here.
+
+## 2026-10-06, the egress proxy: DECIDED, keep mitmproxy
+
+Asked again with the options spelled out, he chose: keep mitmproxy and its Python policy, launched by the Rust binary. On writing a new TLS-intercepting proxy he said: "That doesn't sound like a good idea".
+
+So: no Rust egress proxy in the plan, before or after cutover. mitmproxy with the existing policy files stays, moved into agentic-job and launched by the binary, as stage 2's plan already had it (step 5). This replaces answer 2 of the stage-2 list and lifts the hold above. The docs should say plainly that the egress proxy is the one piece that is not Rust and why (it is mature, security-critical code we should not reimplement).
+
+## 2026-10-06 evening, going to sleep until 07:00 EDT
+
+> I'm going to be sleeping until 7am keep iterating on this get a viable working version review it as if a new user evaluating vs GHAW and similar should have a solid rationale and implementation
+
+Coordinator's reading: implementation starts tonight without waiting for his review of the docs PR. The goal by morning is a viable working version of agentic-job (the binary and the workflow running end to end), and an evaluation of it as a new user would make comparing it with gh-aw and similar projects: the rationale must be solid and the implementation real. The docs PR (agentic-job#1) still waits for his approval to merge, as he said earlier; implementation lands on main through reviewed pull requests. He cannot answer questions overnight: decide, record the decision and why, and keep going.
+
+## 2026-10-07, about 04:05 EDT, after the new-user evaluation
+
+> Let's have fable help with impl. Though of course ensure it and you delegate to sonnet for mundane work.
+>
+> Validate this design vs GHAW. We should be as flexible including event triggers etc.
+
+Coordinator's reading: (1) implementation work may now run on the Fable model, and both Fable and Opus jobs hand mundane, mechanical work (boilerplate, renames, test tables from a spec, lint fixes, log triage, scanning) to Sonnet subagents; judgment, design, security decisions and merge-gating review stay off Sonnet, as he said earlier. (2) agentic-job's design must be checked feature by feature against gh-aw, and it must be as flexible as gh-aw is for a workflow author: any event can trigger an agent run (issues, comments and slash commands, pull requests, schedules, dispatch, and the rest), not only workflow_dispatch and workflow_call, and likewise for the other things gh-aw lets an author do. Gaps are to be closed, not just listed.
+
+## 2026-10-07, about 06:15 EDT: a key principle, on securing every step
+
+Discussing how to replace the slow world-writable walk (he asked about a BPF LSM that denies non-root writes to paths owned by another uid, and AppArmor on Ubuntu), the coordinator suggested confining only the agent's unit with a read-only mount namespace. He answered:
+
+> But a key principle here is we secure all ci steps not just agents so we have to either fix the host or run all steps sandboxed as no root or container post setup like the compiler was trying to do right
+
+So, as a principle of the design: after setup, EVERY step of the job is secured, not only the agent. Either the host itself is fixed so that any later step is safe (no root, nothing writable that should not be), or every step after setup runs sandboxed as a non-root user or in a container, as the workflow-compiler proof of concept was trying to do (its runtime took root away from the runner's user before the sandbox opened).
+
+Consequences the coordinator draws (his to correct):
+- The coordinator's overnight decision 2 (drop the root lock, so the runner's user keeps sudo for the whole job, as in the old tree) goes against this principle and is reversed. The review's objection to the first design still stands (do not make the whole supervisor root), so the answer is neither "runner keeps sudo" nor "supervisor runs as root": setup ends by taking root away from the runner's user, and the few privileged operations the run still needs (enter the sandbox as the agent's user, kill that user's processes, read the egress log, end-of-run cleanup) go through a narrow, root-owned helper with a fixed interface.
+- Protections must be host-wide, not per-agent-unit: a mount namespace or AppArmor profile on the agent alone does not satisfy the principle. The world-writable walk is host-wide; a replacement must be too (a system-wide BPF LSM rule where the kernel has bpf in its LSM list, or keeping the walk).
+- With the reusable workflow, every step of the agent job is agentic-job's own (a caller cannot add steps to it; the caller's setup script runs as the sandbox user), so "all steps" can hold without a compiler. A caller who writes their own job around the binary gets no such guarantee: that is the case a compiler exists for, and the docs must say so.
+
+## 2026-10-07, about 06:25 EDT: the core principle, and host security as a setup step
+
+> This "agent security is just ci security" is a core principle of this project. Perhaps argues for rename but if we can have host security be a setup step that seems viable
+
+So, as THE core principle of the project, to be stated first in the README and held to in the design: agent security is just CI security. An agent is one more untrusted step. The project secures the CI job (the host, and every step after setup), and an agent run is the main use of that, not a special case with its own protections.
+
+Coordinator's reading of the second sentence (his to correct): he is weighing a rename of the project because the principle is wider than "agentic job", but is content to keep the name if host security is a setup step in its own right. So the host hardening must be usable on its own: one step (the binary's setup command, and a thin action wrapping it) that any CI job can run first to get a hardened host with no root for what follows, whether or not an agent runs afterwards. The agent run then builds on that step rather than owning it. No rename is to be done now; it stays an open question for him.
+
+For the jobs working on this: design `sandbox setup` and its lock so they stand alone (its own action, its own docs page, usable by a job that never calls `run`), name things for what they are (securing the CI host and its steps) rather than for agents where that is what they do, and write the README's opening around the principle.
+
+## 2026-10-07, about 08:55 EDT: spike the BPF LSM anyway
+
+Told that Ubuntu's hosted kernel does not list bpf among its LSMs (RHEL 10.2 does), so a BPF LSM would secure RHEL only and the recommendation was to keep the world-writable walk, he said:
+
+> let's do a spike on the BPF LSM anyways (could we write it in rust?) research that. And for Ubuntu we only care about 26.04 since that iwll be the new defualt
+
+So: a spike and research, not a commitment. Targets are RHEL 10 and Ubuntu 26.04 only (older Ubuntu releases do not matter). The question "could we write it in Rust?" is to be answered with evidence.
+
+## 2026-10-07, about 09:05 EDT: pace Fable, mix in OpenAI Astra for design, delegate grunt work
+
+> let's pace our use of fable, we can mix in some openai astra for high level design too. but again w/both be sure to delegate to smaller models for "grunt work" (scraping build logs, just running software builds at all) etc
+
+So: Fable is to be used sparingly, for what needs it. High-level design work can also go to OpenAI's Astra model. Whichever large model leads, grunt work goes to smaller models: reading and scraping build and CI logs, starting and waiting on builds and test runs at all, mechanical edits. The large model should not spend its own turns watching a build.
+
+## 2026-10-07, 10:46 EDT: his review comment on agentic-job#1 (README.md, on why a second unprivileged user), verbatim
+
+> Actually though, we should create a reusable model where this works for generic CI jobs as well!
+> 
+> A common pattern here is again:
+> 
+> - Provision host as root (e.g. install global firewall rules, change system packages etc)
+> - Further jobs cut over to second unprivileged user - and this is where we'll need serious ergonomics around things like ensuring using stock GHA invocations like the `checkout` action Just Work
+> 
+> I am actually thinking we try *really hard* to back away from the separate unprivileged user - if the BPF-LSM spike works out, that sounds like it will be secure enough.
+> 
+> I can't emphasize enough that we are trying to thread a complex problem domain: Secure, but compatible with the existing GHA ecosystem, but also with first class agent support.
+> 
+> The *ideal* is that we get first class support for this model from GHA, which will require work on their side. Most obvious implementation path here is someting like a `uses: actions/drop-privileges@v1` provided by GitHub that causes the hosted runner agent to re-execute itself with no-new-privileges or so. We'd drop the sudo rules for good measure.
+> 
+> And we *really* need to make the files/dirs that GHA makes globally writable opt-in, that's a disastrous default.
+> 
+> They could probably introduce a new runner like `github-ubuntu-26.04` that changes some of the defaults...
+> 
+> Anyways let's keep working on this but if the spike fails then maybe we fall back to https://github.com/cgwalters-forge/workflow-compiler/
+
+Coordinator's reading (his to correct):
+- The model must be reusable for generic CI jobs, not only agent runs: provision the host as root, then every later step runs unprivileged, and stock GitHub Actions usage (the checkout action and the rest of the ecosystem) must just work after that. Ergonomics there are a first-class requirement, not a nicety.
+- He wants to try very hard to get rid of the separate unprivileged user altogether. If the BPF LSM spike works out, the target is ONE user: the runner's own user, with root taken away (sudo rules dropped, no-new-privileges) and the LSM enforcing what the second user and the world-writable walk enforce today. The agent would then be just another step run by that same user.
+- The ideal end state is first-class support from GitHub: something like `uses: actions/drop-privileges@v1` that makes the hosted runner agent re-execute itself with no-new-privileges, world-writable files and directories on the runner image made opt-in, perhaps a new runner image with safer defaults. That needs work on GitHub's side; our job is to show the model and make the case.
+- If the spike fails, the fallback may be cgwalters-forge/workflow-compiler (a compiler that wraps every step). Its issues and pull requests were closed last night as superseded, with his approval at the time; the repository is not archived and they can be reopened.
+
+What this changes for work in flight: the two-user sandbox on main is no longer assumed to be the end state. The single-user model raises one hard question that the second user answers today and an LSM would have to answer instead: a step running as the same uid as the runner's worker can read that worker's secrets (its environment and memory through /proc and ptrace, the job token the checkout action persists in .git/config, files under the runner's temp and work directories). Whatever replaces the second user must keep an untrusted step, including an agent, away from those.
+
+## 2026-10-07, about 12:55 EDT, on the BPF spike's result
+
+> why do we need the aya thing? can we just use bpftool to load and be done? don't need an observabaility api. That said...maybe we go deeper on https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/run-jobs-in-a-container?versionId=free-pro-team%40latest&productId=actions but with options sufficient to run nested containers *without* allowing escape to the host? That way we avoid needing to think about world writable files on the host
+
+Coordinator's reading: (1) if a BPF program is used at all, load it with bpftool from a prebuilt object and nothing else: no Rust loader, no aya fork, no ring buffer or denial API. (2) A new direction to investigate seriously, possibly replacing the host-hardening approach: GitHub's own job containers (`jobs.<id>.container`), with options that let steps run nested containers (rootless podman, and whatever else the workloads need) without any way out to the host. Every step then runs inside the container by GitHub's own mechanism, and the host's world-writable files stop mattering.
+
+> i mean it's obviously good too todo the host hardening
+
+(Said right after the previous entry: the job-container direction is in addition to host hardening, not a replacement for it. Host hardening continues.)
+
+## 2026-10-07, about 13:20 EDT, on the job-container probe (the container starts before any step, so there is no root provisioning step inside the job; the host docker socket is mounted into every job container)
+
+> ah yes the provisioning step...ugh. this is just hard to fix without a compilation phase or fixing GHA...
+
+## 2026-10-07, about 14:10 EDT, after the job-container probes
+
+> hmm i guess...maybe what we do is encourage people to use custom runner images... https://docs.github.com/en/actions/how-tos/manage-runners/larger-runners/use-custom-images ?
+
+## 2026-10-07, about 14:20 EDT, on custom runner images
+
+> hm to join tailnet we'd still need early privileged ops, so custom agents can only be an optimization
+
+Coordinator's reading ("custom agents" taken as custom runner images): a baked image cannot replace the early privileged step, because per-job privileged operations such as joining a tailnet still have to happen at job time. So the base model stays "a privileged setup step, then the cut"; custom images are an optimization on top (faster, and hardened earlier), not the design.
+
+## 2026-10-07, about 17:40 EDT: a new from-scratch project, agent-board; homegit stays as v1
+
+> I think a key thing here is still that deeper dive vs Paperclip - it has skills and an api for agents to interact with its internal board.
+> 
+> How about we leave homegit alone as v1 and create a new from scratch agent-board project? Then we can iterate on it safely. I think from the start let's have it run as an agentic job where safe outputs allows just edits to a project, opening and closing issues. Even closing PRs would need to dispatch to another job that can do that for example. We should have this have a CI from the start that eg operates on a randomly named test project it creates in GH .
+> Ensure the CLI makes sense like have it feel
+> Like extensions to the `GH ` cli for this?
+
+Coordinator's reading: homegit's tools are left as they are (v1) and keep running. The board/scheduler rewrite does not happen inside homegit (the `crates/sched` plan in homegit#170 is superseded as the place); it becomes a new repository, agent-board, built from scratch so it can be iterated on safely. From the start it runs as an agentic job: the agent holds no write credential and its only effects are safe outputs limited to edits of a project board and opening and closing issues; anything else (closing a pull request, for example) is not done by it but dispatched to another job that is allowed to. It has CI from day one that works against a randomly named test project it creates on GitHub and removes. Its CLI should feel like extensions to the `gh` CLI. The Paperclip comparison goes deeper, specifically on what Paperclip gives agents: skills, and an API to its internal board.
+
+> Maybe we end up with a whole GitHub.com/cgwalters-forge-staging org
+
+(Said right after the agent-board entry: a separate staging organization as the place the new project's CI creates and destroys its test projects, and where it is iterated on, so the real board and repositories are never touched by tests.)
+
+## 2026-10-07, about 18:00 EDT: the staging organization exists
+
+> You are an now an owner on Cgwalters-forge-stage
+
+The organization is github.com/cgwalters-forge-stage (free plan, empty). The bot account is an admin there. Verified: the bot's token can create and delete an organization Project v2 in it. This is where agent-board's CI creates its randomly named test projects and scratch issues; tests never touch cgwalters-forge.
+
+## Operator decisions (cgwalters, 2026-10-07)
+
+- **A, distribution:** decide later. Build the binary as `agent-board`, usable as a gh extension locally; pick how it is distributed when there is something to install.
+- **B, authority:** the strict four mutation types: project field edits, creating issues, closing issues, and typed requests to other jobs. Whose turn it is lives in a project field. No comments, assignees or sub-issue links from the agent yet.
+- **C, test credential:** a fine-grained token for the bot account that reaches only the staging organization, https://github.com/cgwalters-forge-stage, stored by cgwalters as an Actions environment secret. That organization exists and the bot is an owner; creating and deleting a Project v2 there with the bot's token was verified by hand. Tests never touch cgwalters-forge.
+- **D, autonomy:** one worker slot, finite per-run and per-period ceilings, missing usage data blocks new work, and his approval before each run starts and before any destructive downstream request.
+
+Earlier, on this project: homegit stays as v1 and is not migrated; this runs as an agentic job from the start; anything beyond board edits and opening and closing issues, even closing a pull request, is dispatched to another job; the CLI should feel like extensions to `gh`.
+
+## 2026-10-07, about 19:00 EDT: where the test credential lives
+
+> OK, that's done. I created an environment called Maine and the secret is called PAT.
+> Main
+
+The test credential is in place, in a different spot from the one first proposed: cgwalters created environment `Main` with secret `PAT` on **cgwalters-forge-stage/board-test** (the scratch repository in the staging organization), not on agent-board. The coordinator restricted that environment to the `main` branch and removed the unused `stage-live` environment on agent-board.
+
+So the live test workflow lives in cgwalters-forge-stage/board-test: it checks out cgwalters-forge/agent-board at `main` (never a pull request ref), builds it, and runs the test-project lifecycle with `secrets.PAT` from environment `Main`. agent-board's own CI holds no credential at all, and code on an agent-board pull request never runs with the token. Step 1's `live` workflow is adjusted to this when its patch is applied.
+
+## 2026-10-07, about 21:30 EDT: going to sleep; the goal for the morning
+
+> Sleep again here I definitely want to wake up in the morning feeling like we have two clean new projects in agent board and agent job and someone would have a reason to choose them over say Paperclip.ing - including good readme.md justification that doesn't feel like AI slop. Easy to understand and use.
+
+Earlier the same evening: "Yes don't block on me overall use best judgement on crit security/arch issues", and "Lets only focus on harness for now".
+
+Coordinator's reading: by morning both repositories (cgwalters-forge/agent-board and cgwalters-forge/agentic-job) should be clean (main green, no pile of half-finished pull requests, issues that say what is left), each with a README on main that a stranger can read in two minutes and that argues honestly, in plain prose, why someone would pick this over Paperclip (and gh-aw): what it is, who it is for, what it does that the alternatives do not, what it does not do, and a quickstart that works. Not marketing, not lists of features, not hedged filler. Easy to understand and to use means the first command a reader tries works.
+
+## 2026-10-07, about 21:50 EDT: on Astra
+
+> Let's be careful with Astra I think use only for key architecture style stuff
+
+So Astra is for key architecture and design work only. Code review of pull requests, fix passes and implementation go to Sol (gpt-6.1-sol), with grunt work on smaller models.
+
+## 2026-10-07, about 22:10 EDT: workflow edits by runs
+
+> Nah you can loosen that restriction re .github there's a safe outputs option for workflow edits
+
+Done on the old runner (cgwalters-devspace-sandbox ce41b42): runs for cgwalters-forge/agentic-job and cgwalters-forge/agent-board may change .github/ and .gitignore, and README.md there. Other repositories are unchanged.
+
+## 2026-10-08, about 03:50 EDT: agent identity and access control
+
+> And yes on implementing agents I think we basically do need to add custom access control on top that is a value add like tickets should be able to have metadata assigning them to a names bot identity GitHub app or just a out of band identity string
+
+Coordinator's reading: when agents are implemented in agent-board, it adds its own access control on top of the forge, as part of what the project is worth: an item can carry metadata that assigns it to a named agent identity, which may be a GitHub App or simply an identity string agreed out of band, and what an agent may do follows from that assignment.
+
+## 2026-10-08, about 03:40 EDT: where the board restrictions are enforced
+
+> I guess custom safe outputs on agentic job could handle the restrictions on board update
+
+Coordinator's reading: the access control for board updates (which identity may change which item or field) need not be a separate mechanism in agent-board; it can be a custom safe-output type or handler in agentic-job, so the check and apply jobs that already exist enforce it.
+
+## 2026-10-08, about 10:30 EDT: the controller should not be a catch-all chat
+
+> Yeah, I definitely think part of the problem is right now you have like a 1 million token context window and we keep reusing this chat for like basically a catch all if the harness coordination was a skill that was like even a solid thing that ran as a dispatch like I don’t think you should be going out and looking at the output of a PR right that should be agents that run in the context of the repo. You definitely shouldn’t be loading diffs and patches right
+
+Coordinator's reading: coordination becomes a skill run as a short dispatch with a fresh context each time; the controller never loads diffs, patches or run output; reading and judging a change belongs to agents running in that repository's context, which return a verdict and a link.
+
+## 2026-10-08, about 11:15 EDT: broker admission by workflow
+
+Asked what the called-workflow admission protects against, then:
+
+> Yes, for now drop this hardening and will add it as a to-do later.
+
+Coordinator's reading: do not restrict which workflow may register a run at the broker for now; keep the job identity token itself (so the agent cannot register its own runs), drop the list of admitted workflows; restoring the list is a to-do.
+
+## 2026-10-08, about 18:00 EDT: do not over-rotate on review isolation; opencode 2.x
+
+> let's not over rotate on stuff like the agent not editng its own instructions. we aren't creating persistent state! and the agents can already execute arbitarry code so overwirintg instructions it not some kind of fatal problem. btw opencode 2.x is out we should probably use that why are you pijnning it.
+
+Coordinator's reading: an agent that can rewrite its own instructions during a run is not a threat, since the run is ephemeral and the agent already executes arbitrary code; what bounds it is the sandbox and the checked outputs. Stop requiring immutable instruction sources; admit real agents for review. Do not pin opencode to an exact old version with a fail-closed check; move to 2.x.
+
+## 2026-10-08, about 18:10 EDT: keep it simple (standing)
+
+> in general don't make stuff more complicated than it needs to be. We want a system that fits the "secure" gut check but like KISS too
+
+Coordinator's reading: a standing rule for the harness projects. A control earns its place only if it answers a threat that survives the question "the run is ephemeral, sandboxed and holds no credential: so what?". Prefer the simple mechanism that passes the gut check over a complete one. Goes in every brief and in each repository's AGENTS.md.
+
+## 2026-10-08, about 19:30 EDT: new-user end to end on the staging org; positioning
+
+> Keep iterating on both board and scheduler I think we should have an agent trying both fresh as a new user e2e schedule a few tasks on stage forge board and run tasks there etc. make it all feel like a compelling “GH aw but more flexible and supporting containers and helping secure rest of CI”
+
+Coordinator's reading: an agent acts as a fresh user of both projects in cgwalters-forge-stage: sets them up from their docs, schedules a few tasks on the staging board and runs them, end to end, and we fix what it trips on. The pitch both projects should make good on: gh-aw, but more flexible, supporting containers, and helping secure the rest of CI.
+
+## 2026-10-08, about 20:00 EDT: GitHub access for agents
+
+> Why wouldn’t remote sol have `GH` isn’t that just a matter of setting GH token env var from the GITHUB_TOKEN or so
+
+> Ensure that all works we probably want to reuse the “proxy” mode for GH that GHAW supports (not just their mcp)
+
+Coordinator's reading: agents should be able to use gh for reads. In agentic-job, do it by reusing gh-aw's proxy mode for the gh CLI (the proxy holds the token; the agent does not), not only its MCP server; make sure it actually works end to end.
+
+## 2026-10-08, about 20:15 EDT: agents post through safe outputs, directly
+
+> Hold up we do want jobs to have instructions to be able to post through safe outputs like this is key an agent doing issue triage writes to the issue and does not go back to you or a coordinator
+
+Coordinator's reading: a run's results reach the forge through its own safe outputs, applied by the run's apply job: a triage agent comments on the issue it triaged, a reviewer posts its review, an implementer's pull request is opened by the run. Nothing is routed back through the controller to be posted. The old runner does not do this (the controller applies and posts); agentic-job's workflow does. So the fix is moving our runs onto agentic-job.
+
+## 2026-10-08, about 21:15 EDT: hosted runner capacity
+
+> An we are hitting runner capacity now https://github.com/organizations/cgwalters-forge/settings/actions/hosted-runners something to bear in mind. Perhaps batching PRs would help
+
+Coordinator's reading: stop running a full end-to-end CI per change and per rebase in agentic-job; land reviewed changes in batches with one CI run, and make CI itself cheaper.
+
+## 2026-10-09, about 08:20 EDT: cut over this week
+
+> yes iterate go let's see if we can cut ourselves over to the new harness this week!
+
+Coordinator's reading: the goal for this week is that our own runs go through agentic-job (dispatch caller, runs posting their own results) instead of the old runner; keep iterating with new-user passes, now with a real model.
+
+## 2026-10-09, about 09:00 EDT: tailnet setup belongs in our own action; agentic-job composes external privileged setup
+
+On agentic-job#200 (comment 6081238239): "Yes though on a different tangent what I think we should do is move the tailscale stuff custom to us over to cgwalters-forge/actions (actually one already exists). agentic-job should not hardcode tailscale. Instead make it easy and clear how to intermix *external* privileged setup actions. We want clearly distinct pieces that fit together well."
+
+In chat:
+
+> actually though honestly this is ~public data right? what we should be doing cc https://github.com/cgwalters-forge/agentic-job/issues/200#issuecomment-6081238239 is probably just putting all of this stuff in our tailscale action instead - like we determine the GH org in the action and use the right variables there from a lookside json
+
+> our tailscale action is just a wrapper for the upstream one of course
+
+Coordinator's reading: the tailnet client ids, audiences, tag and proxy address are not secrets; they go in a lookaside JSON inside cgwalters-forge/actions/tailscale, keyed by GitHub organization, and that action (a wrapper of the upstream one) picks the entry for the organization it runs in, so no repository or organization variables are needed. agentic-job drops its tailscale inputs and instead documents and supports a caller running its own privileged setup actions before the host is locked down.
+
+## 2026-10-09, about 09:40 EDT: asks belong on the board and the review page
+
+> we need to keep https://cgwalters-forge.github.io/review/# updated too with what you actually need and yes this is a mess because the "live chat" here is more ergonomic than working async, evnetually we should move coordinator chat there (whole other topic but important to keep in mind). But basically do keep the board up to date with critical asks right there at the top so I can see that too
+
+Coordinator's reading: standing rule. Whatever I need from him goes on the board as a question (so the review page shows it at the top) at the moment I ask it in chat, and is resolved there when answered. Longer term the coordinator chat itself should live in the review page.
+
+## 2026-10-09, about 11:15 EDT: the apply token is gh-aw's cross-repository token; PATs versus Apps
+
+> so this is basically matching https://github.github.com/gh-aw/reference/cross-repository/#cross-repository-safe-outputs right
+
+> ensure our docs cross-link to GH-AW for this as the same thing. hmm that said the need to "manually" maintain a PAT here kind of stinks...we can't automate creating and rotating htem right? kind of drives us towards github apps
+
+Coordinator's reading: document AGENTIC_JOB_APPLY_TOKEN as the same thing as gh-aw's safe-outputs github-token for cross-repository outputs, with a link. He is leaning towards a GitHub App for the apply credential because a PAT cannot be created or rotated by automation; not yet a decision.
+
+## 2026-10-09, about 11:30 EDT: bootc-dev is external
+
+> no let's treat bootc-dev as a canonical "external" it should behave the same.
+
+Coordinator's reading: for credentials and writes, bootc-dev is treated exactly like any other upstream organization. No App of ours installed there is assumed; writes there go through the same approved promote path as any upstream, with the user credential. Only cgwalters-forge and cgwalters-forge-stage are "ours".
+
+## 2026-10-09, about 11:20 EDT: answers on the board questions
+
+tracker#464 (agent-board identity): "A".
+
+tracker#463 (apply credential): "A core principle again of some of what we're doing is that it should *not* be specific to agents. The safe outputs stuff is still a good idea even for deterministic flows! That said of course, many use cases are fine with a GitHub App or equivalent, which avoids a long lived token. Anyways, let's call this secret `CGWALTERS_BOT_PAT` or so to make clear what it is."
+
+tracker#461 (GitHub reads): on "does not itself stop REST writes": "Is that really true? That sounds like a critical bug if so. Cite sources." On git transport: "Yeah but agents should just clone over `https` here by default. I don't see the need for git transport." On GraphQL POST: "This one is messy. See e.g. https://github.com/NVIDIA/OpenShell/pull/1083 which added stuff for this... Are you sure though about the `POST`?"
+
+Coordinator's reading: 464 decided (A). 463: the apply credential is not an agent thing; in our deployment the stored secret is named CGWALTERS_BOT_PAT so it is obvious what it is; an App stays a supported alternative. 461: not decided; he wants the claims verified with sources first.
+
+## 2026-10-09, about 11:35 EDT: composition decided; fast poller
+
+tracker#462: "I think A - we need to make it ergonomic to reuse the pieces of an agent flow in an existing CI pipeline, with deterministic external steps both before and after."
+
+In chat:
+
+> i updated 462 we should have a relatively fast event poller for active issues
+
+Coordinator's reading: 462 is decided, A, with a requirement the design must meet: the pieces of an agent flow drop into an existing CI pipeline with deterministic external steps both before and after the agent. And he should not have to tell me in chat that he answered: his comments on active issues must reach the controller within about a minute.
+
+## 2026-10-09, about 12:35 EDT: the apply secret gets a generic name
+
+> Write that personal access token name should not show up in the reusable workflow however maybe what we do want to have. There is a generic now let’s the more I think about it the more it should be it should have a generic name like safe_outputs_PAT that we default to if present?
+
+Coordinator's reading: the personal name (CGWALTERS_BOT_PAT) must not appear in the reusable workflow. The workflow's credential for applying safe outputs has a generic name, SAFE_OUTPUTS_PAT, and is used by default when present, falling back to the job token otherwise.
+
+## 2026-10-09, about 13:35 EDT: the read credential
+
+> ok i set CGWALTERS_BOT_PAT_READONLY as an org secret on cgwalters-forge i think simplest for agentic-job is to encourage using that OR actually can't we use a github app which should allow readonly across the board? yeah that's simpler? i just create a github app on cgwalters-forge that is marked read-only for thigns and it can still do reads on other orgs?
+
+Coordinator's reading: he has stored a read-only PAT as an organization secret and is asking whether a read-only GitHub App would be simpler for reads, including reads of other organizations. My answer: for public data neither is needed, the job's own token reads public repositories anywhere; a stored token only adds rate limit and private access.
+
+## 2026-10-09, about 13:45 EDT: GitHub reads decided
+
+> actually though can't default GHA invocation via `permissions:` mint a readonly token anyways?
+
+> yes let's encourage passing down a readonly token via actions minting directly in agent-job
+
+Coordinator's reading: decided. The agent job mints its own read-only token through the workflow's permissions (the built-in job token) and that is what reads GitHub; no stored PAT or App is needed for public data. I am implementing "passing down" as the egress proxy injecting that token, so the agent still holds no credential; a stored read token stays an optional override under a generic name.
+
+## 2026-10-09, about 13:55 EDT: the read token goes straight to the agent
+
+> it feels like it makes the architecture a whole lot simpler to just say we'll pass directly in a readonly time bound token (that yes, could be leaked, but if that happens it's not so bad) instead of forcing all writes through the proxy.
+
+Coordinator's reading: decided, and it overrules my choice of proxy injection. The agent gets a read-only, time-bound token directly (GH_TOKEN in its environment). If it leaks, the damage is small: it can only read, and it dies with the job. No token handling in the egress proxy. The principle that survives is that the agent holds nothing that can write.
+
+## 2026-10-09, about 14:25 EDT: gh-aw work queues
+
+> hmmmm i just discovered https://github.github.com/gh-aw/reference/work-queue/ are we reinventing this a bit?
+
+Coordinator's reading: he suspects agent-board overlaps gh-aw's native work queue (a Git-backed ledger with Claims, Policy, Pools, fair scheduling, dependency graphs, and optional backing Issues). Wants an honest comparison before we build more scheduler.
+
+## 2026-10-09, about 14:35 EDT: formal verification
+
+> BTW! We should have some formal verification in our work too...let's add that to a best practices tracker i'd love to understand better what they're doing for that stuff
+
+Coordinator's reading: he wants (1) a best-practices tracker item for adding formal verification to our own harness work, and (2) an explanation of what gh-aw does for its work queue's formal verification, so he understands it.
+
+## 2026-10-09, about 14:20 EDT: after the OpenAI reset
+
+> reset is done!
+
+> now we have a WHOLE LOT MORE quota but pace it to the reset
+
+Coordinator's reading: the run-it-down instruction is over. From here OpenAI is paced to reach about 95% at the next weekly reset, as the pacer computes; dispatch when it says runs fit.
+
+## 2026-10-09, about 14:30 EDT: leaning towards gh-aw's work queue
+
+> hmmmm i am definitely thinking though we may want to try piling on to what GH-AW is working on here...
+
+Coordinator's reading: a lean, not yet a decision: try building on gh-aw's work queue rather than growing our own scheduler in agent-board. Hold further dispatch and capacity work in agent-board; when the sourced comparison is in, propose a concrete trial in the staging organization.
+
+## 2026-10-09, about 14:40 EDT: resume other epics
+
+> yeah but now that we did the reset we can resume dispatch on other epics a bit too like composefs-rs and bootc let's portion that up reprioritize epics
+
+Coordinator's reading: the harness-only rule of 2026-10-07 is lifted in part. Split agent capacity between the harness and the upstream epics (composefs-rs, bootc), and reprioritise the epics on the board so the right upstream items get dispatched first.
+
+## 2026-10-09 TLA+ (on tracker#469)
+
+Operator, verbatim: "we should try to copy some of their usage of TLA+ though i would LOVE to dip my toes into that. I don't know much about this."
+
+Coordinator reading: wants a small, real TLA+ spec in our work modelled on what gh-aw does, and wants to learn it himself, so the first one should be small and explained, not a big generated artefact.
+
+## 2026-10-09 gh-aw markdown specifications
+
+Operator, verbatim: "I also like the GH-AW markdown specifications, we should try to match some of that for what we do as well"
+
+Coordinator reading: the normative specification documents gh-aw keeps in markdown (numbered requirements, MUST/SHOULD, conformance), not the markdown workflow format. Start with one spec for our own contract.
+
+## 2026-10-09 specs and TLA+: agentic-job first
+
+Operator, verbatim: "I'm more interested in the specs and TLA+ for agentic-job actually but the board will obviously become very important later"
+
+Coordinator reading: the TLA+ model he wants to learn from should be of agentic-job; agent-board#22 is lower priority (left running, P3).
+
+## 2026-10-09 work queue decision (tracker#446 comment 6089335499)
+
+Operator, verbatim:
+
+This looks like a good thing to have in `docs/github-workqueue-comparison.md` or so?
+
+Yes let's do B - at this moment...what I am mainly interested in though is getting the project to "somewhat hardened functional PoC". agentic-job is actually more important of a primitive.
+
+But we should for sure watch what gh-aw is doing - that's a key overall principle; we should share ideas and code where we can (and iwth other projects too of course).
+
+Coordinator reading: option (b) of the comparison (keep agent-board, borrow ideas not the native scheduler). Near-term goal is agentic-job as a somewhat hardened functional PoC; agent-board work is second. Standing principle: watch gh-aw and share ideas and code with it and other projects.
+
+## 2026-10-09 setup time (tracker#473)
+
+Operator, verbatim (chat): "I’m not worried about unknown SETUID binary probably all we need is a thing that just allow lists the UBUNTU 26.04 and r HEL 10 and checks those binary against and allow list"
+
+Coordinator reading: no filesystem search for setuid files. Ship a list of the setuid binaries expected on Ubuntu 26.04 and RHEL 10 and check those paths against it. The second review blocker (later runner steps lose write hardening in view mode) he did not address; I chose to document it as a limit.
+
+## 2026-10-09 daily efficiency review
+
+Operator, verbatim (chat): "At this point, we must have quite a lot of accumulated data in the previous GitHub action runs. We should definitely have a schedule thing at least once a day where you know a cheap agent say Luna is going over them and looking for inefficient patterns and bugs and then you know, we have an efficiency tracker."
+
+Coordinator reading: a scheduled job, at least daily, in which a cheap model (Luna) reads the records of earlier agent runs and reports inefficient patterns and bugs to a standing efficiency tracker issue.
+
+## 2026-10-09 retro batching (tracker#474)
+
+Operator, verbatim (chat): "I think we need to batch it right? This is a good work queue tracker hmm like mag e the process adds a agent/retro label when it reviewed one. Then we batch 5 at a time say?"
+
+Coordinator reading: the review is a work queue, not one big pass. The unit is a finished pull request (runs cannot carry labels); the process reviews five at a time and adds the label agent/retro to each one it has reviewed, so the queue is "finished, not yet labelled". Labels only on our own repos.
+
+## 2026-10-09 back to cutover
+
+Operator, verbatim (chat): "Sorry, maybe that was a distraction and we should just continue to prioritize cutting over to our new harness, especially agentic job"
+
+Coordinator reading: efficiency tracker stays open at P2 with the two cheap runs already dispatched; no more work on it. Slots go to the cutover critical path.
+
+## 2026-10-09 apply credential name (tracker#463)
+
+Operator, verbatim (chat): "Yeah, let’s not block on that variable name. We have the bot token with the CG Walters name. Let’s just use that for now."
+
+Coordinator reading: do not wait for an environment holding SAFE_OUTPUTS_PAT; use the existing org secret named after cgwalters-bot for apply now.
+
+## 2026-10-09 ~20:45 EDT overnight
+
+Operator, verbatim (chat): "Ok I’ll be sleeping until 7am work to keep pace on both Claude and OpenAI now stay on task we can do this!"
+
+Coordinator reading: work unattended until 07:00 on the cutover (agentic-job first), using both pools up to their pace, not below and not far over. No questions can be answered until then: anything that is his to decide goes on the board and I work around it.
+
+## 2026-10-10 07:36 EDT, tracker#444 (may the bot close issues he opened or commented on)
+Operator, verbatim: "A"
+Option A as asked: "Yes, as a standing rule: the bot closes them with a one-line reason and a link, starting with the eight below".
+Coordinator's reading: standing rule for issues that are Done or superseded on the board. Does not extend to upstream repos (no unsummoned bot text there). Eight closed 07:40.
+
+## 2026-10-10 07:37-07:38 EDT, three board answers
+tracker#479 (PAT as environment secret?). Operator, verbatim: "B" = "Leave it as an org secret for now; only the bot and you can push to tracker". Reading: accepted risk; do not ask again until push access widens.
+tracker#478 (agent PRs and privileged CI). Operator, verbatim: "A" = "Apply opens pull requests from a bot-owned fork, so CI gets a read-only token and no OIDC". Reading: implement in agentic-job#340; our caller keeps refusing implement until merged.
+tracker#481 (bootc#2559 fix). Operator, verbatim: "A" = guarded mount of old /var as implemented in forge bootc#45. Reading: design settled; upstream still needs his review and /promote.
+
+## 2026-10-10 ~07:45 EDT, chat: review page usage section and reporting overlap
+Operator, verbatim: "Make this prettier like just need a relatively thin progress bar for each with a detail expander or so?"
+Operator, verbatim: "Also status should go right after and we have triplicate overlap between what you say here, status board and questions on tracker. Should try hard for rational split between last 2. Like just say “3 new questions on tracker” in board status. Only say here what is out of band?"
+Coordinator's reading (standing rule): (1) on the review page the latest board status goes directly after the usage bars. (2) Questions live only as tracker questions; the board status update does not restate them, it says "N new questions on tracker" and carries progress/results. (3) Chat carries only what is out of band: things not on the board or tracker (direct answers to what he asked in chat, acknowledgements, blockers that cannot be written there). No recaps of board content in chat.
+
+## 2026-10-10 12:19 EDT, tracker#483 (how to validate agentic-job#414 live)
+Operator, verbatim: "A" = "Merge #414 now, bump tracker's caller to it with implement enabled, and validate from main (two tiny implement runs against the staging repo plus an apply re-run) ... I fix forward".
+
+## 2026-10-10 15:31 EDT, tracker#484 (composed callers and the agent's job token)
+Operator, verbatim: "A" = "Take the refusal back out: a composed caller may pass its job token, and keeping it read-only is the caller's documented obligation (its own permissions block). Restores your original design".
+Coordinator's reading: RC-017 goes back to a documented caller obligation; do not add probes or refusals for it again.
+
+## 2026-10-10 17:25 EDT, chat with screenshot of the review page's Decisions cards
+Operator, verbatim: "The question process on the review app could use a lot of improvement - I don’t have an easy way to answer from there, the text is a bit hard to read.  And I’d expect a quick A/B radio etc."
+Operator, verbatim: "Prioritiy filter seems lacking too"
+Coordinator's reading: answer from the card (radio per option + send, posts the letter comment as him), more readable cards on phone, priority filter chips with P0 first. Also noted from the screenshot: 15 open questions, several P2 and two weeks old; worth a cleanup pass of stale questions separately.
+
+## 2026-10-11 chat: agentic-job ergonomics / compiler second thoughts
+Recorded verbatim with my reading on https://github.com/cgwalters-forge/agentic-job/issues/446
+
+## 2026-10-11 chat: secrets scoped to a step, 'env' leak threat (verbatim on agentic-job#446, second comment)
+
+## 2026-10-11 chat: hidepid
+Operator, verbatim: "Let’s change secure host to set the Linux proc variable that hides processes of other users by default" -> https://github.com/cgwalters-forge/agentic-job/issues/449
+
+## 2026-10-11 chat: workers should be agentic jobs
+Operator, verbatim: "“A worker” is a subagent of you? I think that should be an agentic job right?" -> https://github.com/cgwalters-forge/tracker/issues/486
+Coordinator's reading (standing): default every piece of work to an agentic-job run via the tracker caller; a local subagent only where the harness cannot do it yet, and each such case gets named as a gap.
+
+## 2026-10-11 chat, tracker#487
+Operator, verbatim: "Yes we should self host development in general allow workflow edits in general from our outputs. We should catch bad workflow edits on PR ingress not output"
+Reading (standing): self-host development on the new harness; outputs may edit workflows; the control point for bad workflow edits is PR ingress (a check on the PR), not the output check.
+Operator, 2026-10-11 (dictated; verbatim):
+
+> Yeah, it feels like this isn't really working now. Are we overthinking things? How close are we to actually using the new harness? The way that I'm thinking about this is code. Review should ideally again be a job that is determinist dispatched on Paul request changes. Let's look at best practices for doing that with say get how big Work flows and then compare that with what we do here.
+>
+> For actual code implementation, I think we should discontinue to use manually dispatched jobs from you the coordinator, but perhaps at some point eventually we might change it over to schedule jobs per repository, for example
+
+Coordinator's reading (mine, not his words): "get how big Work flows" is GitHub Agentic Workflows (gh-aw). "discontinue" is a transcription of "continue": implementation stays coordinator-dispatched for now, scheduled per-repository jobs maybe later. Code review should be started deterministically by pull request events, not dispatched by the coordinator.
+
+Operator, 2026-10-11, on the "discontinue" reading (verbatim): "Yes I mean continue"
+
+Operator, 2026-10-11 (verbatim): "Yea but it's very important that we get away from you a handling all the details we want the remote workers to do 95% of the work"
+Reading (mine): the coordinator should only pick work from the board and dispatch it; review, fix rounds, CI follow-up, landing and issue closing must happen in the repos by event-driven jobs.
+
+Operator, 2026-10-11 (verbatim): "“Land job” don’t we just need GitHub automerge plus required checks? BTW we should use merge queues."
+
+Operator, 2026-10-11 (verbatim): "Look at some of what we did in bootc-dev/bootc for that"
+
+Operator, 2026-10-11 (chat, verbatim): "A on 490"
+Operator, 2026-10-11 (verbatim):
+
+> Here's how I think we manage dispatch- tasks which are assigned to you should have active agentic runs. For repos where you are not a collaborator we have a tracker issue on our board that is a pointer. There should be a single comment (edited to update as needed) that links to the GHA run with the agentic job
+
+Coordinator's reading (mine, not his words):
+
+Operator, 2026-10-11 (verbatim): "Or can we do that via in progress on our board? Can the board have in progress state for foreign issues/PRs where we are not a collaborator?"
+
+Operator, 2026-10-11 (verbatim): "Why can’t remote runs rebase or see CI?" then: "Right the triggering for CI failures is very complex. I think it’s hard to avoid a polling job"
+Operator, same thread (verbatim): "Especially when we are working on external repos"
+
+Operator, 2026-10-11 (verbatim): "We’d need secrets for Tailscale and inference right?" then: "So we should actually have cgwalters-agentic-job which inherits from agentic job and sets up Tailscale etc"
+
+Operator, 2026-10-11, on questions #496/#497 (verbatim): "No don’t block like that your goal is to get this system up yiiu can force push to AGENTSMD or whatever is needed to help subagents"
+Reading (mine): do not turn build decisions into questions; pick the recommended option and go; AGENTS.md and design docs in our repos may be rewritten when they stop runs from doing the work. Standing.
+
+Operator, 2026-10-11 late (verbatim): "I’ll be asleep until 7am let’s get this working better tomorrow esp agentic job!"
+
+## 2026-10-12 ~17:50 UTC (after power loss)
+> a key goal here is to be "reprovisionable" - all state should be stored remotely on the forge including our scripts. Where are we on the agentic-job cutover? btw also what about the deployment of the BPF-LSM module to deny writes vs the chmod?
+My reading: nothing the system needs may live only on the coordinator machine (scripts, briefs, notes, config backups); a fresh machine with credentials should be able to resume from the forge alone. BPF-LSM: he expects the LSM write-deny to replace the chmod walk; it is parked (#136/#143).
+
+## 2026-10-12 ~18:00 UTC
+> yes let's aim for LSM by default, i think thsi should be part of the secure-host action right?
+My reading: the BPF-LSM write-deny becomes the default mode of the secure-host action (loaded by it, object shipped with it), replacing the chmod walk; the walk remains only as fallback where the LSM cannot load.
