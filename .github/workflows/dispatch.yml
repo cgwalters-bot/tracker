@@ -7,6 +7,10 @@
 # environment that gates apply and which secret is the apply token; the
 # bounds are in .github/agentic-job (dispatch.toml, fix.toml for `fix`) and
 # the runner configuration in hosted.toml there, the wrapper's default paths.
+# Ours too is the standing brief of each kind, profiles/KIND.md there: the
+# `profile` job puts it before the task, so a dispatch carries only what is
+# particular to its item. The wrapper adds its own line on top, which says
+# what the kind may hand back.
 # To take a newer agentic-job or wrapper, move the commit in `uses`.
 name: dispatch
 run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}
@@ -15,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       task:
-        description: Public task for the agent
+        description: Public task for the agent, after the kind's profile (.github/agentic-job/profiles)
         type: string
         required: true
       repo:
@@ -38,7 +42,40 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The task the agent gets: this kind's profile, then what was dispatched.
+  # Read from the commit the run is on, which the wrapper requires to be
+  # the default branch's, so a profile changes only by a merge here.
+  profile:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      task: ${{ steps.compose.outputs.task }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/agentic-job/profiles
+      - name: Put the profile before the task
+        id: compose
+        env:
+          KIND: ${{ inputs.kind }}
+          TASK: ${{ inputs.task }}
+        run: |
+          profile=".github/agentic-job/profiles/${KIND}.md"
+          [[ "$KIND" =~ ^[a-z]+$ && -s "$profile" ]] ||
+            { echo "::error::no profile for kind '${KIND}' (${profile})"; exit 1; }
+          # A delimiter neither text can contain.
+          delimiter="task-$(openssl rand -hex 16)"
+          {
+            echo "task<<${delimiter}"
+            cat "$profile"
+            printf '\n%s\n' "$TASK"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
   run:
+    needs: profile
     uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@baa486b64ff3bb79cb63a4d2069206d837fad958
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
@@ -49,7 +86,7 @@ jobs:
       actions: read
       id-token: write
     with:
-      task: ${{ inputs.task }}
+      task: ${{ needs.profile.outputs.task }}
       repo: ${{ inputs.repo }}
       item: ${{ inputs.item }}
       kind: ${{ inputs.kind }}
