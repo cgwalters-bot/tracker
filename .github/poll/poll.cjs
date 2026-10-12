@@ -8,6 +8,8 @@
 // poll.test.cjs covers.
 'use strict';
 
+const fs = require('node:fs');
+
 const CONFIG = Object.freeze({
   repos: ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board'],
   author: 'cgwalters-bot',
@@ -125,6 +127,20 @@ function fixTask({ repo, pull, checks, review, round }) {
 
 const short = sha => sha.slice(0, 12);
 
+// What a dispatch run opened: a fix can push nowhere else, and a draft on
+// any other branch is its author's to mark ready.
+const isHarness = pull => Boolean(pull.isCrossRepository) && pull.headRepositoryOwner?.login === CONFIG.author &&
+  pull.headRefName.startsWith(CONFIG.fixBranchPrefix);
+
+// Whether a pull request is still ours to follow after this pass took
+// `action` for it, which is what makes the workflow start another pass
+// itself: an open dispatch pull request that is not (and was not just)
+// handed to a human. One with auto-merge on counts until it has merged.
+function inFlight(pull, action) {
+  return isHarness(pull) && action !== 'needs-human' &&
+    !pull.labels.nodes.some(l => l.name === CONFIG.label);
+}
+
 // What to do for one pull request. Returns { action, reason } where action is
 // skip, wait, ready, fix, merge or needs-human. `fixRun` is the recorded fix
 // run's state when the marker names one for this head.
@@ -133,10 +149,7 @@ function decide({ pull, checks, marker, fixRun = null, now = Date.now() }) {
   if (pull.labels.nodes.some(l => l.name === CONFIG.label)) {
     return { action: 'skip', reason: `labelled ${CONFIG.label}` };
   }
-  // Only what a dispatch run opened: a fix can push nowhere else, and a
-  // draft on any other branch is its author's to mark ready.
-  const harness = pull.isCrossRepository && pull.headRepositoryOwner?.login === CONFIG.author &&
-    pull.headRefName.startsWith(CONFIG.fixBranchPrefix);
+  const harness = isHarness(pull);
   const failing = [
     ...(checks.review?.state === 'failure' ? ['review did not approve'] : []),
     ...checks.failed.map(c => `check ${c.name} failed`),
@@ -274,7 +287,7 @@ async function pollRepo({ repo, token, dispatchToken, login, dryRun, log }) {
   const [owner, name] = repo.split('/');
   const open = (await paged(token, `/repos/${repo}/pulls?state=open`)).filter(p => p.user?.login === CONFIG.author);
   const required = new Map();
-  let errors = 0;
+  const result = { errors: 0, inFlight: 0 };
   for (const { number } of open) {
     try {
       const pull = (await graphql(token, PULL_QUERY, { owner, name, number })).repository.pullRequest;
@@ -302,13 +315,23 @@ async function pollRepo({ repo, token, dispatchToken, login, dryRun, log }) {
           await needsHuman(token, repo, number, marker, reason);
         }
       }
+      if (inFlight(pull, action)) result.inFlight++;
       log(`${repo}#${number} ${short(pull.headRefOid)} ${action}: ${reason}${done ? ` -> ${done}` : ''}`);
     } catch (err) {
-      errors++;
+      result.errors++;
       log(`${repo}#${number} error: ${err.message}`);
     }
   }
-  return errors;
+  return result;
+}
+
+// The job's `in-flight` output, which decides whether it starts the next
+// pass. What could not be read counts: an API error must not end the chain
+// while a pull request may be waiting on it.
+function writeOutput({ errors, inFlight }) {
+  const again = inFlight > 0 || errors > 0;
+  if (process.env.GITHUB_OUTPUT) fs.appendFileSync(process.env.GITHUB_OUTPUT, `in-flight=${again}\n`);
+  return again;
 }
 
 async function main(argv) {
@@ -321,14 +344,19 @@ async function main(argv) {
   const login = (await request(token, 'GET', '/user')).login;
   const log = line => console.log(dryRun ? `[dry-run] ${line}` : line);
   let errors = 0;
+  let following = 0;
   for (const repo of CONFIG.repos) {
-    errors += await pollRepo({ repo, token, dispatchToken, login, dryRun, log })
-      .catch(err => { log(`${repo} error: ${err.message}`); return 1; });
+    const result = await pollRepo({ repo, token, dispatchToken, login, dryRun, log })
+      .catch(err => { log(`${repo} error: ${err.message}`); return { errors: 1, inFlight: 0 }; });
+    errors += result.errors;
+    following += result.inFlight;
   }
+  const again = writeOutput({ errors, inFlight: following });
+  log(`${following} pull request(s) in flight${again ? '' : '; no further pass needed'}`);
   if (errors) throw new Error(`${errors} pull request(s) or repositories could not be handled`);
 }
 
-module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, markerBody, reviewText };
+module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, reviewText, writeOutput };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`poll: ${err.message}`); process.exit(1); });

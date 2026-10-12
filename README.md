@@ -29,9 +29,18 @@ The bot runs from [cgwalters-bot/homegit](https://github.com/cgwalters-bot/homeg
 
 ## The pull request poll
 
-`.github/workflows/poll.yml` runs `.github/poll/poll.cjs` every ten minutes
-(and on `workflow_dispatch`, with a `dry-run` input that only prints). Each
-pass looks at the open pull requests `cgwalters-bot` authored in
+`.github/workflows/poll.yml` runs one pass of `.github/poll/poll.cjs`. A pass
+is started by the end of every `dispatch.yml` run here (`workflow_run`), by
+the pass before it, and by a ten minute schedule that GitHub may delay or
+drop, so nothing outside GitHub has to keep it going: while a `dispatch/`
+pull request of the bot is open and not labelled `needs-human`, or a pass
+could not read one, the job waits five minutes and starts the next pass
+itself (`gh workflow run` with the job token). With nothing in flight the
+chain ends, and the next dispatch run or the schedule starts it again. The
+passes share one concurrency group, which keeps one run and one pending
+successor, so the triggers cannot add up to parallel chains; a pass that an
+event asks for during the wait runs when the wait is over. To start one by
+hand, `gh workflow run poll.yml`; its `dry-run` input only prints. Each pass looks at the open pull requests `cgwalters-bot` authored in
 cgwalters-forge/agentic-job and cgwalters-forge/agent-board and takes at most
 one step for each:
 
@@ -58,5 +67,4 @@ pull requests are only merged once approved and green. The required checks
 are the base branch's ruleset's (every check, where it requires none). It
 does not read the board, start work for an item that has no pull request, or
 follow pull requests in repositories we cannot write to. A pass that fails
-part way is repeated ten minutes later; GitHub may delay or drop scheduled
-runs. Test with `node --test .github/poll/poll.test.cjs`.
+part way is repeated five minutes later. Test with `node --test .github/poll/poll.test.cjs`.

@@ -4,8 +4,11 @@
 // draft on a branch of the repository itself whose `ci` failed.
 'use strict';
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { test } = require('node:test');
-const { CONFIG, classifyChecks, decide, findMarker, fixTask, markerBody, reviewText } = require('./poll.cjs');
+const { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, reviewText, writeOutput } = require('./poll.cjs');
 
 const load = name => structuredClone(require(`./testdata/${name}.json`));
 const required = load('rules-agentic-job').flatMap(r => r.parameters.required_status_checks.map(c => c.context));
@@ -70,6 +73,42 @@ for (const [name, fixture, change, { marker = { rounds: 0 }, fixRun = null }, ac
     assert.equal(got.round, round);
   });
 }
+
+// Which pull requests keep the passes coming: [name, fixture, change, the
+// pass's action, in flight].
+const flights = [
+  ['a dispatch pull request that waits', 'pull-470', {}, 'wait', true],
+  ['one a fix was just started for', 'pull-470', { contexts: changes }, 'fix', true],
+  ['one with auto-merge on, until it has merged', 'pull-470', { autoMergeRequest: { enabledAt: 'x' } }, 'skip', true],
+  ['one this pass handed to a human', 'pull-470', { contexts: changes }, 'needs-human', false],
+  ['one labelled needs-human', 'pull-470', label, 'skip', false],
+  ['another fork\'s dispatch/ branch', 'pull-470', { headRepositoryOwner: { login: 'someone' } }, 'skip', false],
+  ['a branch of the repository itself', 'pull-143', {}, 'skip', false],
+  ['the bot\'s own pull request being merged', 'pull-143', { isDraft: false }, 'merge', false],
+];
+
+for (const [name, fixture, change, action, expected] of flights) {
+  test(`in flight: ${name}`, () => assert.equal(inFlight(pull(fixture, change), action), expected));
+}
+
+test('the in-flight output asks for another pass while anything is followed or unread', t => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'poll-test-')), 'output');
+  const saved = process.env.GITHUB_OUTPUT;
+  process.env.GITHUB_OUTPUT = file;
+  t.after(() => {
+    if (saved === undefined) delete process.env.GITHUB_OUTPUT; else process.env.GITHUB_OUTPUT = saved;
+    fs.rmSync(path.dirname(file), { recursive: true });
+  });
+  for (const [counts, expected] of [
+    [{ errors: 0, inFlight: 0 }, false],
+    [{ errors: 0, inFlight: 2 }, true],
+    [{ errors: 1, inFlight: 0 }, true],
+  ]) {
+    fs.writeFileSync(file, '');
+    assert.equal(writeOutput(counts), expected);
+    assert.equal(fs.readFileSync(file, 'utf8'), `in-flight=${expected}\n`);
+  }
+});
 
 test('required checks come from the rules as well as isRequired', () => {
   // Recorded: GitHub reports isRequired false for `ci` on this draft.
