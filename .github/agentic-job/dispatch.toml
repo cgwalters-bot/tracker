@@ -16,8 +16,9 @@ missing_data = { max = 1 }
 
 # Pull requests (implement) may edit `.github/` in these two repositories
 # and no other; a fix's push may too, where fix.toml lists them. Exact names, no globs. The
-# prerequisites are in agentic-job's docs/safe-outputs.md. To also permit
-# protected documentation there, add files = ["README.md"].
+# prerequisites are in agentic-job's docs/safe-outputs.md. `files` also lets them
+# edit AGENTS.md, a protected file by default, there.
 [unprotected_files]
 repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board"]
+files = ["AGENTS.md"]
 dot_folders = [".github"]
