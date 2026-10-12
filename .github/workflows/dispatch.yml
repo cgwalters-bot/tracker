@@ -1,6 +1,6 @@
 # The dispatch caller that `bot-runs dispatch --backend agentic-job --caller
 # cgwalters-forge/tracker` starts, composed from the pieces of
-# cgwalters-forge/agentic-job at aa7e6c32d061ea28af1c2a289563dd037c1a8138
+# cgwalters-forge/agentic-job at cb9e3ce3591c6d6f0eb1ca771c229fceb829c8d9
 # (its docs/workflow.md, "The pieces, and an agent job of your own"): the
 # policy, check and apply workflows are called at that commit, and the agent
 # job is this file's, so that our tailnet join can be a step of it. The
@@ -106,10 +106,13 @@ jobs:
   # on no event here.
   policy:
     needs: target
-    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@aa7e6c32d061ea28af1c2a289563dd037c1a8138
+    uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@cb9e3ce3591c6d6f0eb1ca771c229fceb829c8d9
     # The write scopes are for the notify job alone, which posts the one
-    # status comment on an item of this repository; the policy job itself
-    # downscopes to read.
+    # status comment; the policy job itself downscopes to read. The apply
+    # PAT, named and never inherited, lets notify post it on an item of
+    # another repository, which the job token cannot write to.
+    secrets:
+      SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
     permissions:
       contents: read
       issues: write
@@ -142,7 +145,7 @@ jobs:
       apply-environment: ${{ vars.APPLY_ENVIRONMENT }}
       apply-partial: false
       # One status comment, edited as the run goes, on non-review items in
-      # this repository (a review stays silent, as in agentic-job's dispatch).
+      # the target repository (a review stays silent, as in agentic-job's dispatch).
       notify: ${{ inputs.kind == 'review' && 'none' || 'comment' }}
       artifact-prefix: dispatch-${{ inputs.kind }}-
       branch-prefix: dispatch/${{ inputs.kind }}/
@@ -178,7 +181,7 @@ jobs:
           SOURCE_REPOSITORY: ${{ needs.policy.outputs.source-repository }}
           SOURCE_SHA: ${{ needs.policy.outputs.source-sha }}
           PINNED_REPOSITORY: cgwalters-forge/agentic-job
-          PINNED_SHA: aa7e6c32d061ea28af1c2a289563dd037c1a8138
+          PINNED_SHA: cb9e3ce3591c6d6f0eb1ca771c229fceb829c8d9
         run: |
           echo "$SOURCE_REPOSITORY at $SOURCE_SHA"
           [[ "$SOURCE_REPOSITORY" == "$PINNED_REPOSITORY" && "$SOURCE_SHA" == "$PINNED_SHA" ]] ||
@@ -222,7 +225,7 @@ jobs:
     permissions:
       contents: read
     # No secret crosses this boundary.
-    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@aa7e6c32d061ea28af1c2a289563dd037c1a8138
+    uses: cgwalters-forge/agentic-job/.github/workflows/check.yml@cb9e3ce3591c6d6f0eb1ca771c229fceb829c8d9
     with:
       policy: ${{ toJSON(needs.policy.outputs) }}
       safe-outputs-artifact-id: ${{ needs.agent.outputs.safe-outputs-artifact-id }}
@@ -230,7 +233,7 @@ jobs:
   apply:
     needs: [policy, agent, check]
     if: ${{ always() && needs.policy.result == 'success' }}
-    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@aa7e6c32d061ea28af1c2a289563dd037c1a8138
+    uses: cgwalters-forge/agentic-job/.github/workflows/apply.yml@cb9e3ce3591c6d6f0eb1ca771c229fceb829c8d9
     # The bot's token, an organization secret, under the generic name the
     # workflow declares: only its apply job reads it, in the environment
     # APPLY_ENVIRONMENT names. Named, never inherited. No secret reaches

@@ -22,3 +22,11 @@ push_to_pull_request_branch = { max = 1, branches = ["dispatch/**"], replacement
 noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
+
+# A fix's push may edit `.github/` (workflows included) in these two
+# repositories and no other, as a pull request may (dispatch.toml); the
+# push goes to the bot's fork, which has Actions off. Needed so a fix or
+# a replacement series can carry a pull request's `.github` changes.
+[unprotected_files]
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board"]
+dot_folders = [".github"]

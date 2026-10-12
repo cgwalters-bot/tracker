@@ -15,7 +15,7 @@ missing_tool = { max = 1 }
 missing_data = { max = 1 }
 
 # Pull requests (implement) may edit `.github/` in these two repositories
-# and no other; a fix's push never may. Exact names, no globs. The
+# and no other; a fix's push may too, where fix.toml lists them. Exact names, no globs. The
 # prerequisites are in agentic-job's docs/safe-outputs.md. To also permit
 # protected documentation there, add files = ["README.md"].
 [unprotected_files]
