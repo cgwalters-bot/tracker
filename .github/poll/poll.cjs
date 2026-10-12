@@ -18,6 +18,8 @@ const CONFIG = Object.freeze({
   dispatchWorkflow: 'dispatch.yml',
   fixBranchPrefix: 'dispatch/',
   maxFixRounds: 2,
+  // fix.toml's replacement_max_commits: the series a fix may hand back.
+  fixSeriesMaxCommits: 5,
   reviewContext: 'review',
   reviewAuthors: ['github-actions[bot]'],
   reviewTextLimit: 6000,
@@ -110,6 +112,7 @@ function fixTask({ repo, pull, checks, review, round }) {
   const lines = [
     `Pull request ${repo}#${pull.number} at head ${pull.headRefOid} did not pass. Make the smallest change to its branch that addresses what follows, and nothing else. This is fix round ${round} of ${CONFIG.maxFixRounds}.`,
   ];
+  lines.push('', `Fold the change into the commit it corrects, as \`git commit --fixup\` and \`git rebase --autosquash\` would, and hand back the whole series as the replacement your brief describes (at most ${CONFIG.fixSeriesMaxCommits} commits, on the base it names). Do not add a commit on top that only addresses the review or a check; a change that belongs to no existing commit, or a series too long to replace, is the case for one commit of its own.`);
   if (checks.failed.length) {
     lines.push('', 'Failed checks (name, job log):', ...checks.failed.map(c => `- ${c.name}: ${c.url ?? 'no log URL'}`));
   }

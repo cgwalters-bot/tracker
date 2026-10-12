@@ -49,7 +49,9 @@ one step for each:
 - a head whose `review` status is a failure, or with a failed required check,
   gets one `fix` run of `dispatch.yml`, its task carrying the review comment
   and the failed job's name and log link, at most once per head and twice per
-  pull request;
+  pull request. The task asks for the fix folded into the commit it corrects,
+  which `replacement_max_commits` in `.github/agentic-job/fix.toml` lets the
+  run push as a rewrite of the branch;
 - a head with `review` success and its required checks green gets auto-merge
   (or the merge queue; a plain rebase merge where the repository has neither);
 - when the rounds are used up, a fix run ends without pushing, or an approved

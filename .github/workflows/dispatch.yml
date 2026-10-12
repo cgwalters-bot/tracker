@@ -94,7 +94,7 @@ jobs:
             const instructions = profile === 'review'
               ? 'Review the pinned head supplied by the runner. Return one add_comment with VERDICT: APPROVE, CHANGES or REJECT on its first line and REASON: on its second line (at most 200 characters), or noop. A verdict is not merge authority.'
               : profile === 'fix'
-              ? "Fix works in a checkout of the pull request's branch at its pinned head; the change is pushed to that branch as one commit. Use noop, missing_tool or missing_data when needed."
+              ? "Fix works in a checkout of the pull request's branch at its pinned head; the change is pushed to that branch as one commit, or as the whole series again when the brief offers a replacement. Use noop, missing_tool or missing_data when needed."
               : 'Implement proposes one draft pull request. Triage and research leave the tree clean and return one add_comment. Use noop, missing_tool or missing_data when needed.';
             const text = JSON.stringify({ repository: repo, number: data.number, title: data.title, body: data.body })
               .replaceAll('<', '\\u003c').replaceAll('>', '\\u003e');

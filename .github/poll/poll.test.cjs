@@ -110,6 +110,12 @@ test('the in-flight output asks for another pass while anything is followed or u
   }
 });
 
+test('the fix task names the series bound fix.toml sets', () => {
+  const toml = fs.readFileSync(path.join(__dirname, '../agentic-job/fix.toml'), 'utf8');
+  const bound = /^push_to_pull_request_branch = .*\breplacement_max_commits = (\d+)/m.exec(toml);
+  assert.equal(Number(bound?.[1]), CONFIG.fixSeriesMaxCommits);
+});
+
 test('required checks come from the rules as well as isRequired', () => {
   // Recorded: GitHub reports isRequired false for `ci` on this draft.
   const p = pull('pull-143');
@@ -142,6 +148,8 @@ test('the fix task carries the newest review and the failed job', () => {
   const task = fixTask({ repo: 'cgwalters-forge/agentic-job', pull: p, checks: classifyChecks(p, required), review, round: 2 });
   assert.match(task, /cgwalters-forge\/agentic-job#470 at head 488f45e/);
   assert.match(task, /fix round 2 of 2/);
+  assert.match(task, /Fold the change into the commit it corrects/);
+  assert.ok(task.includes(`at most ${CONFIG.fixSeriesMaxCommits} commits`));
   assert.match(task, /- ci: https:\/\/github\.com\/cgwalters-forge\/agentic-job\/actions\/runs\/\d+\/job\/\d+/);
   assert.ok(task.includes(review));
 

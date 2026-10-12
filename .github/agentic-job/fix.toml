@@ -1,6 +1,7 @@
-# Bounds for dispatch.yml's `fix` kind, which pushes one commit to the
-# branch of a pull request that apply itself opened from the bot's fork
-# (cgwalters-forge/agentic-job#435). A separate file from dispatch.toml
+# Bounds for dispatch.yml's `fix` kind, which pushes to the branch of a
+# pull request that apply itself opened from the bot's fork
+# (cgwalters-forge/agentic-job#435): one commit on top, or the whole
+# series again with the fix folded in. A separate file from dispatch.toml
 # because the push type has no per-repository list of its own: the
 # repositories named here are the only ones a fix may target.
 hosts = ["github.com"]
@@ -11,7 +12,13 @@ max_patch_bytes = 1048576
 max_patch_files = 50
 
 [outputs]
-push_to_pull_request_branch = { max = 1, branches = ["dispatch/**"] }
+# `replacement_max_commits` is what lets a fix rewrite the branch
+# (agentic-job's docs/safe-outputs.md, "Replacing the complete series"):
+# review feedback is folded into the commit it corrects, never a commit of
+# its own. Each commit of the series is checked like a patch, and the push
+# is a force with a lease on the head the run was pinned to. A pull
+# request here is one to three commits.
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**"], replacement_max_commits = 5 }
 noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
