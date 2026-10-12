@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# wait-run RUN: wait for a run of this repository's workflows (a dispatch
+# that `bot-runs dispatch --backend agentic-job` started, or a poll pass)
+# to complete, then print its conclusion and the names of its failed jobs.
+# Exits 0 for a successful run, 1 for any other conclusion and 2 when the
+# run is still going after WAIT_RUN_MINUTES (default 120). Needs gh with a
+# token that can read Actions here.
+set -euo pipefail
+
+readonly REPO=${WAIT_RUN_REPO:-cgwalters-forge/tracker}
+readonly MINUTES=${WAIT_RUN_MINUTES:-120}
+readonly INTERVAL_SECONDS=60
+
+if [[ $# -ne 1 || $1 == -* ]]; then
+    echo "Usage: ${0##*/} RUN (a run id or URL of ${REPO})" >&2
+    exit 64
+fi
+readonly RUN=${1##*/}
+
+status=
+for ((minute = 0; minute <= MINUTES; minute++)); do
+    # A failed read (rate limit, network) is tried again a minute later.
+    status=$(gh run view "$RUN" -R "$REPO" --json status -q .status 2>/dev/null) || status=
+    [[ $status == completed ]] && break
+    ((minute < MINUTES)) && sleep "$INTERVAL_SECONDS"
+done
+if [[ $status != completed ]]; then
+    echo "run ${RUN} of ${REPO} is not complete after ${MINUTES} minutes (status: ${status:-unknown})" >&2
+    exit 2
+fi
+
+gh run view "$RUN" -R "$REPO" --json conclusion,jobs \
+    -q '"run \(.conclusion); failed: \([.jobs[] | select(.conclusion == "failure") | .name] | join(","))"'
+[[ $(gh run view "$RUN" -R "$REPO" --json conclusion -q .conclusion) == success ]]
