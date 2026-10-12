@@ -35,6 +35,8 @@ const MARKER_RE = new RegExp(`<!-- ${MARKER}: (\\{.*?\\}) -->`);
 const FOOTER = 'Generated-by: https://github.com/cgwalters/#llms';
 const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 'STARTUP_FAILURE', 'ERROR']);
 const PASSED = new Set(['SUCCESS', 'SKIPPED', 'NEUTRAL']);
+// A pull request's `mergeable` when its branch conflicts with its base.
+const CONFLICTING = 'CONFLICTING';
 
 const PULL_QUERY = `
 query($owner: String!, $name: String!, $number: Int!) {
@@ -110,9 +112,13 @@ function reviewText(comments, login) {
 
 function fixTask({ repo, pull, checks, review, round }) {
   const lines = [
-    `Pull request ${repo}#${pull.number} at head ${pull.headRefOid} did not pass. Make the smallest change to its branch that addresses what follows, and nothing else. This is fix round ${round} of ${CONFIG.maxFixRounds}.`,
+    `Pull request ${repo}#${pull.number} at head ${pull.headRefOid} cannot merge as it is. Make the smallest change to its branch that addresses what follows, and nothing else. This is fix round ${round} of ${CONFIG.maxFixRounds}.`,
   ];
-  lines.push('', `Fold the change into the commit it corrects, as \`git commit --fixup\` and \`git rebase --autosquash\` would, and hand back the whole series as the replacement your brief describes (at most ${CONFIG.fixSeriesMaxCommits} commits, on the base it names). Do not add a commit on top that only addresses the review or a check; a change that belongs to no existing commit, or a series too long to replace, is the case for one commit of its own.`);
+  const rejected = checks.failed.length > 0 || checks.review?.state === 'failure';
+  if (pull.mergeable === CONFLICTING) {
+    lines.push('', `Its branch conflicts with ${pull.baseRefName}. Rebase its commits onto current ${pull.baseRefName}, resolve the conflicts keeping the intent of both sides, and rerun the tests the change touches. Hand back the rebased commits as the replacement your brief describes (at most ${CONFIG.fixSeriesMaxCommits} commits), which replaces the branch. Add no commit on top: only the rebased series resolves a conflict.`);
+  }
+  if (rejected) lines.push('', `Fold the change into the commit it corrects, as \`git commit --fixup\` and \`git rebase --autosquash\` would, and hand back the whole series as the replacement your brief describes (at most ${CONFIG.fixSeriesMaxCommits} commits, on the base it names). Do not add a commit on top that only addresses the review or a check; a change that belongs to no existing commit, or a series too long to replace, is the case for one commit of its own.`);
   if (checks.failed.length) {
     lines.push('', 'Failed checks (name, job log):', ...checks.failed.map(c => `- ${c.name}: ${c.url ?? 'no log URL'}`));
   }
@@ -156,6 +162,8 @@ function decide({ pull, checks, marker, fixRun = null, now = Date.now() }) {
   const failing = [
     ...(checks.review?.state === 'failure' ? ['review did not approve'] : []),
     ...checks.failed.map(c => `check ${c.name} failed`),
+    // Work for a fix run, which may replace the branch with a rebased one.
+    ...(pull.mergeable === CONFLICTING ? [`conflicts with ${pull.baseRefName}`] : []),
   ];
   if (failing.length) {
     const why = failing.join(', ');
@@ -181,11 +189,9 @@ function decide({ pull, checks, marker, fixRun = null, now = Date.now() }) {
   if (checks.review?.state !== 'success') return { action: 'wait', reason: 'no review verdict on the head yet' };
   if (checks.pending.length) return { action: 'wait', reason: `checks pending: ${checks.pending.join(', ')}` };
   if (pull.autoMergeRequest || pull.mergeQueueEntry) return { action: 'skip', reason: 'auto-merge already on or queued' };
-  if (pull.mergeable === 'CONFLICTING') {
-    return harness
-      ? { action: 'needs-human', reason: `${short(head)} is approved but conflicts with ${pull.baseRefName}` }
-      : { action: 'skip', reason: 'approved but conflicts with its base, left to its author' };
-  }
+  // GitHub works mergeability out again after every push to either side; an
+  // answer that is not in yet is neither a conflict nor a go-ahead.
+  if (pull.mergeable !== 'MERGEABLE') return { action: 'wait', reason: `mergeability with ${pull.baseRefName} not known yet` };
   return { action: 'merge', reason: 'review approved and checks green' };
 }
 

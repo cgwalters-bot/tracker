@@ -52,10 +52,15 @@ one step for each:
   pull request. The task asks for the fix folded into the commit it corrects,
   which `replacement_max_commits` in `.github/agentic-job/fix.toml` lets the
   run push as a rewrite of the branch;
+- a head that conflicts with its base, approved or not, gets the same `fix`
+  run, counted in the same rounds, its task asking for the commits rebased
+  onto the current base and pushed as that rewrite, with no commit on top;
 - a head with `review` success and its required checks green gets auto-merge
-  (or the merge queue; a plain rebase merge where the repository has neither);
-- when the rounds are used up, a fix run ends without pushing, or an approved
-  head conflicts with its base, the pull request is labelled `needs-human`.
+  (or the merge queue; a plain rebase merge where the repository has neither),
+  once GitHub says it is mergeable: while that is unknown, as it is for a
+  while after a push, the pass does nothing and the next one looks again;
+- when the rounds are used up or a fix run ends without pushing, the pull
+  request is labelled `needs-human`.
 
 The rounds live in one comment on the pull request that the poll edits in
 place. A pull request labelled `needs-human` is not touched again: remove the

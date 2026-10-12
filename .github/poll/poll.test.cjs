@@ -16,8 +16,10 @@ const BOT = CONFIG.author;
 const NOW = Date.parse('2026-10-12T02:00:00Z');
 
 // A recorded pull request with some of its head's contexts replaced.
+// Mergeable unless a case says otherwise: pull-470 was recorded while GitHub
+// had no answer yet, and both before the query asked for the base.
 function pull(name, { contexts = {}, ...fields } = {}) {
-  const p = Object.assign(load(name), fields);
+  const p = Object.assign(load(name), { mergeable: 'MERGEABLE', baseRefName: 'main' }, fields);
   const nodes = p.commits.nodes[0].commit.statusCheckRollup.contexts.nodes;
   for (const [key, change] of Object.entries(contexts)) {
     const index = nodes.findIndex(n => (n.name ?? n.context) === key);
@@ -31,13 +33,22 @@ function pull(name, { contexts = {}, ...fields } = {}) {
 const HEAD = load('pull-470').headRefOid;
 const ciFailed = { ci: { conclusion: 'FAILURE' } };
 const changes = { review: { state: 'FAILURE' } };
+const conflict = { mergeable: 'CONFLICTING' };
 const label = { labels: { nodes: [{ name: CONFIG.label }] } };
 
 const cases = [
   ['approved and green merges', 'pull-470', {}, {}, 'merge'],
   ['approved with auto-merge on is left alone', 'pull-470', { autoMergeRequest: { enabledAt: 'x' } }, {}, 'skip'],
   ['approved and queued is left alone', 'pull-470', { mergeQueueEntry: { state: 'QUEUED' } }, {}, 'skip'],
-  ['approved but conflicting goes to a human', 'pull-470', { mergeable: 'CONFLICTING' }, {}, 'needs-human'],
+  ['approved but conflicting gets a fix', 'pull-470', conflict, {}, 'fix', 1],
+  ['conflicting with no verdict yet gets a fix', 'pull-470', { ...conflict, contexts: { review: null } }, {}, 'fix', 1],
+  ['a conflict with a fix running for this head waits', 'pull-470', conflict,
+    { marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: { status: 'in_progress', updated_at: '2026-10-12T01:00:00Z' } }, 'wait'],
+  ['a conflict with the rounds exhausted goes to a human', 'pull-470', conflict,
+    { marker: { rounds: 2, sha: 'older' } }, 'needs-human'],
+  ['another fork\'s conflicting branch gets no fix', 'pull-470',
+    { ...conflict, headRepositoryOwner: { login: 'someone' } }, {}, 'skip'],
+  ['approved with mergeability unknown waits', 'pull-470', { mergeable: 'UNKNOWN' }, {}, 'wait'],
   ['approved with ci running waits', 'pull-470', { contexts: { ci: { status: 'IN_PROGRESS', conclusion: null } } }, {}, 'wait'],
   ['approved with ci not reported waits', 'pull-470', { contexts: { ci: null } }, {}, 'wait'],
   ['no review status waits', 'pull-470', { contexts: { review: null } }, {}, 'wait'],
@@ -152,6 +163,15 @@ test('the fix task carries the newest review and the failed job', () => {
   assert.ok(task.includes(`at most ${CONFIG.fixSeriesMaxCommits} commits`));
   assert.match(task, /- ci: https:\/\/github\.com\/cgwalters-forge\/agentic-job\/actions\/runs\/\d+\/job\/\d+/);
   assert.ok(task.includes(review));
+  assert.doesNotMatch(task, /Rebase/);
+
+  // A conflict alone asks for the rebased series and nothing folded or added.
+  const c = pull('pull-470', conflict);
+  const rebase = fixTask({ repo: 'cgwalters-forge/agentic-job', pull: c, checks: classifyChecks(c, required), review: null, round: 1 });
+  for (const want of [/fix round 1 of 2/, /Rebase its commits onto current main/, /keeping the intent of both sides/,
+    /rerun the tests the change touches/, /replaces the branch/, /Add no commit on top/]) assert.match(rebase, want);
+  assert.ok(rebase.includes(`at most ${CONFIG.fixSeriesMaxCommits} commits`));
+  assert.doesNotMatch(rebase, /Fold the change/);
 
   const long = reviewText([{ user: { login: BOT }, body: `VERDICT: CHANGES\n${'x'.repeat(3 * CONFIG.reviewTextLimit)}` }], BOT);
   assert.ok(long.length < CONFIG.reviewTextLimit + 20 && long.endsWith('[cut]'));
