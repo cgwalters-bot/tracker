@@ -1,0 +1,57 @@
+# dispatch.yml's interface, run through our wrapper
+# (cgwalters-forge/actions' cgwalters-agentic-job.yml) instead of composing
+# the agent job here: the wrapper carries the agentic-job pin, the tailnet
+# join and the deployment defaults, and this file keeps the trigger, the run
+# name, the concurrency and, in .github/agentic-job, the bounds. Beside
+# dispatch.yml until the wrapper is proven and admitted by commit in the
+# inference broker and the tailnet; then dispatch.yml becomes this.
+name: dispatch-wrapper
+run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }} (wrapper)
+
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Public task for the agent
+        type: string
+        required: true
+      repo:
+        description: Public target repository, OWNER/NAME, allowed by the bounds
+        type: string
+        required: true
+      item:
+        description: Positive issue number in the target repository (a pull request's for review and fix)
+        type: string
+        required: true
+      kind:
+        description: Fixed profile (review and fix take a pull request number; fix only where fix.toml allows it)
+        type: choice
+        options: [implement, triage, research, review, fix]
+        required: true
+
+permissions: {}
+# dispatch.yml's group: a run here and one there for the same item queue.
+concurrency:
+  group: dispatch-${{ inputs.kind }}-${{ inputs.repo }}-${{ inputs.item }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@2ca552f1477a07a1495c1088c95ea0a9556059c8
+    # The most any job of the wrapper has: its agent job takes the reads and
+    # the identity token, its apply call the writes.
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read
+      id-token: write
+    with:
+      task: ${{ inputs.task }}
+      repo: ${{ inputs.repo }}
+      item: ${{ inputs.item }}
+      kind: ${{ inputs.kind }}
+    # The bot's token, an organization secret, named and never inherited;
+    # the wrapper hands it to apply alone.
+    secrets:
+      SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
