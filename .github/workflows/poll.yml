@@ -1,0 +1,48 @@
+# Follows the bot's open pull requests to a fix, a merge or a human
+# (cgwalters-forge/agent-board#27). Polling because no event reaches us for
+# a fork pull request's failed check; .github/poll/poll.cjs is the whole job
+# and the README says what it does and does not do.
+name: poll
+run-name: poll${{ inputs.dry-run && ' (dry run)' || '' }}
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Print what a pass would do and change nothing
+        type: boolean
+        default: false
+
+permissions: {}
+# One pass at a time; a pass that is due while one runs waits for it.
+concurrency:
+  group: poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    # The bot's token is only for this file as the default branch has it.
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # `actions: write` is what lets the job token start dispatch.yml here.
+    # Everything in the target repositories is done with the bot's token.
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: One pass
+        env:
+          # The organization secret dispatch.yml hands to apply: the bot
+          # authored these pull requests, so it can mark them ready, enable
+          # auto-merge, label and comment. Marking ready with it (not the
+          # job token) is also what lets the event review start.
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          DISPATCH_TOKEN: ${{ github.token }}
+          DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
+        run: node .github/poll/poll.cjs $DRY_RUN

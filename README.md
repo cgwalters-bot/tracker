@@ -26,3 +26,37 @@ instructions.
 The bot runs from [cgwalters-bot/homegit](https://github.com/cgwalters-bot/homegit);
 `bin/bot-board question` opens these issues. The
 [review app](https://github.com/cgwalters-forge/review) is a UI over the same queue.
+
+## The pull request poll
+
+`.github/workflows/poll.yml` runs `.github/poll/poll.cjs` every ten minutes
+(and on `workflow_dispatch`, with a `dry-run` input that only prints). Each
+pass looks at the open pull requests `cgwalters-bot` authored in
+cgwalters-forge/agentic-job and cgwalters-forge/agent-board and takes at most
+one step for each:
+
+- a draft with no failed check is marked ready for review, which is what
+  starts the event review;
+- a head whose `review` status is a failure, or with a failed required check,
+  gets one `fix` run of `dispatch.yml`, its task carrying the review comment
+  and the failed job's name and log link, at most once per head and twice per
+  pull request;
+- a head with `review` success and its required checks green gets auto-merge
+  (or the merge queue; a plain rebase merge where the repository has neither);
+- when the rounds are used up, a fix run ends without pushing, or an approved
+  head conflicts with its base, the pull request is labelled `needs-human`.
+
+The rounds live in one comment on the pull request that the poll edits in
+place. A pull request labelled `needs-human` is not touched again: remove the
+label to have the poll look once more, and delete its comment to give it
+fresh rounds.
+
+Its limits. Marking ready, fixing and `needs-human` apply only to what a
+dispatch run opened, a `dispatch/` branch of the bot's fork, since
+`.github/agentic-job/fix.toml` lets a fix push nowhere else; the bot's other
+pull requests are only merged once approved and green. The required checks
+are the base branch's ruleset's (every check, where it requires none). It
+does not read the board, start work for an item that has no pull request, or
+follow pull requests in repositories we cannot write to. A pass that fails
+part way is repeated ten minutes later; GitHub may delay or drop scheduled
+runs. Test with `node --test .github/poll/poll.test.cjs`.
