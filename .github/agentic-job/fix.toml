@@ -30,5 +30,6 @@ missing_data = { max = 1 }
 # also lets them edit AGENTS.md there.
 [unprotected_files]
 repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board"]
-files = ["AGENTS.md"]
+# README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
+files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]
