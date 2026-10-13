@@ -14,12 +14,13 @@ noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
 
-# Pull requests (implement) may edit `.github/` in these two repositories
+# Pull requests (implement) may edit `.github/` in these repositories
 # and no other; a fix's push may too, where fix.toml lists them. Exact names, no globs. The
 # prerequisites are in agentic-job's docs/safe-outputs.md. `files` also lets them
 # edit AGENTS.md, a protected file by default, there.
 [unprotected_files]
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board"]
+# This repository by the operator's decision: docs/operator-notes.md, "2026-10-13, the harness evolving itself".
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]

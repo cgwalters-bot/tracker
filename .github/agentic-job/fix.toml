@@ -23,13 +23,14 @@ noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
 
-# A fix's push may edit `.github/` (workflows included) in these two
+# A fix's push may edit `.github/` (workflows included) in these
 # repositories and no other, as a pull request may (dispatch.toml); the
 # push goes to the bot's fork, which has Actions off. Needed so a fix or
 # a replacement series can carry a pull request's `.github` changes. `files`
 # also lets them edit AGENTS.md there.
 [unprotected_files]
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board"]
+# This repository as in dispatch.toml; it has no effect until `repos` above lists it.
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]
