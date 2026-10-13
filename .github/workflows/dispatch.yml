@@ -59,6 +59,7 @@ jobs:
       task: ${{ steps.compose.outputs.task }}
       agent: ${{ steps.pool.outputs.agent }}
       model: ${{ steps.pool.outputs.model }}
+      budget: ${{ steps.pool.outputs.budget }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -83,21 +84,22 @@ jobs:
             printf '\n%s\n' "$TASK"
             echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
-      # The pool's agent and model, both empty without a pool so that the
-      # wrapper falls back to the variables. A name outside pools.json stops
-      # the run here rather than reaching the wrapper.
+      # The pool's agent, model and budget, all empty without a pool so that
+      # the wrapper falls back to the variables and its default budget. A
+      # name outside pools.json stops the run here rather than reaching the
+      # wrapper.
       - name: Resolve the pool
         id: pool
         env:
           POOL: ${{ inputs.pool }}
         run: |
-          [[ -z "$POOL" ]] && { echo "agent=" >> "$GITHUB_OUTPUT"; echo "model=" >> "$GITHUB_OUTPUT"; exit 0; }
+          [[ -z "$POOL" ]] && { printf "agent=\nmodel=\nbudget=\n" >> "$GITHUB_OUTPUT"; exit 0; }
           pools=.github/agentic-job/pools.json
           if ! jq -e --arg pool "$POOL" 'has($pool)' "$pools" > /dev/null; then
             echo "::error::unknown pool '${POOL}'; expected one of: $(jq -r 'keys | join(", ")' "$pools")"
             exit 1
           fi
-          jq -r --arg pool "$POOL" '.[$pool] | "agent=\(.agent)\nmodel=\(.model)"' "$pools" >> "$GITHUB_OUTPUT"
+          jq -r --arg pool "$POOL" '.[$pool] | "agent=\(.agent)\nmodel=\(.model)\nbudget=\(.budget)"' "$pools" >> "$GITHUB_OUTPUT"
 
   run:
     needs: profile
@@ -117,6 +119,7 @@ jobs:
       kind: ${{ inputs.kind }}
       agent: ${{ needs.profile.outputs.agent }}
       model: ${{ needs.profile.outputs.model }}
+      budget: ${{ needs.profile.outputs.budget || '500' }}
       apply-environment: agent-apply
     # The bot's token, an organization secret, named and never inherited.
     # The wrapper hands it to apply, in the environment above, and to the
