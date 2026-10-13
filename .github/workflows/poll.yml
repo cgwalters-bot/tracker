@@ -60,7 +60,8 @@ jobs:
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           DISPATCH_TOKEN: ${{ github.token }}
           DRY_RUN: ${{ inputs.dry-run && '--dry-run' || '' }}
-        run: node .github/poll/poll.cjs $DRY_RUN
+        # Empty unless a dry run: no argument then, rather than an empty one.
+        run: node .github/poll/poll.cjs ${DRY_RUN:+"$DRY_RUN"}
       # The last step, so the run it starts is pending behind this one for
       # moments only, and each run starts at most one. Nothing in flight
       # ends the chain; the schedule and the next dispatch run restart it.
