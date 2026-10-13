@@ -548,3 +548,12 @@ My reading: nothing the system needs may live only on the coordinator machine (s
 ## 2026-10-12 ~18:00 UTC
 > yes let's aim for LSM by default, i think thsi should be part of the secure-host action right?
 My reading: the BPF-LSM write-deny becomes the default mode of the secure-host action (loaded by it, object shipped with it), replacing the chmod walk; the walk remains only as fallback where the LSM cannot load.
+
+## 2026-10-13, the harness evolving itself
+> Overall we are trusting LLMs here to safely evolve their own harness only route real big questions to me
+
+Asked whether the tracker's control plane (its `.github/`: the dispatch bounds, the workflows that carry the bot's token, the poll) should stay human-approved:
+
+> Yes we trust our own harness to evolve itself for now. With adversarial review of course
+
+My reading: an approving event review (a real review by github-actions, required by the ruleset on main, stale approvals dismissed on push) is sufficient for harness changes, the tracker's `.github/` included; changes to the review gate's own files still wait for a person; "for now" means this is revisited, see cgwalters-forge/tracker#528.
