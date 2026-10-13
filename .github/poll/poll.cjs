@@ -21,6 +21,9 @@ const CONFIG = Object.freeze({
   // dispatch.yml's `pool` input, one per fix round in turn, so the rounds of
   // one pull request do not both land on one inference pool.
   fixPools: ['claude', 'openai'],
+  // The pool of a kind of run that is toil, whatever the round; a kind not
+  // named here leaves `pool` empty, which is dispatch.yml's own default.
+  kindPools: { triage: 'mistral' },
   // fix.toml's replacement_max_commits: the series a fix may hand back.
   fixSeriesMaxCommits: 5,
   reviewContext: 'review',
@@ -165,6 +168,10 @@ function fixTask({ repo, pull, checks, review, round }) {
 }
 
 const poolForRound = round => CONFIG.fixPools[(round - 1) % CONFIG.fixPools.length];
+
+// The poll starts only fix runs today, which keep poolForRound; this is for
+// the day it starts another kind.
+const poolForKind = kind => (Object.hasOwn(CONFIG.kindPools, kind) ? CONFIG.kindPools[kind] : '');
 
 const short = sha => sha.slice(0, 12);
 
@@ -426,7 +433,7 @@ async function main(argv) {
   if (errors) throw new Error(`${errors} pull request(s) or repositories could not be handled`);
 }
 
-module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, poolForRound, reviewText, writeOutput };
+module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, poolForKind, poolForRound, reviewText, writeOutput };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`poll: ${err.message}`); process.exit(1); });

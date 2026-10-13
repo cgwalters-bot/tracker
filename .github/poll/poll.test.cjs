@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, poolForRound, reviewText, writeOutput } = require('./poll.cjs');
+const { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, poolForKind, poolForRound, reviewText, writeOutput } = require('./poll.cjs');
 
 const load = name => structuredClone(require(`./testdata/${name}.json`));
 const required = load('rules-agentic-job').flatMap(r => r.parameters.required_status_checks.map(c => c.context));
@@ -248,4 +248,12 @@ test('fix rounds alternate over the pools dispatch.yml and pools.json name', () 
   const description = /^ {6}pool:\n(?:.*\n)*? {8}description: "([^"]*)"/m.exec(dispatch)?.[1];
   for (const name of Object.keys(pools)) assert.match(description, new RegExp(`\\b${name}\\b`));
   for (let round = 1; round <= CONFIG.maxFixRounds; round++) assert.ok(poolForRound(round) in pools);
+});
+
+test('triage goes to the mistral pool, and no other kind is given one', () => {
+  const pools = JSON.parse(fs.readFileSync(path.join(__dirname, '../agentic-job/pools.json'), 'utf8'));
+  for (const [kind, pool] of [['triage', 'mistral'], ['fix', ''], ['implement', ''], ['review', ''], ['toString', ''], [undefined, '']]) {
+    assert.equal(poolForKind(kind), pool, `kind ${kind}`);
+  }
+  assert.ok(poolForKind('triage') in pools);
 });

@@ -1,4 +1,5 @@
 {
   "claude": { "agent": "claude", "model": "claude-opus-5-5", "budget": "1500" },
-  "openai": { "agent": "opencode", "model": "praxis/gpt-6.1-sol", "budget": "500" }
+  "openai": { "agent": "opencode", "model": "praxis/gpt-6.1-sol", "budget": "500" },
+  "mistral": { "agent": "vibe", "model": "devstral-small-latest", "budget": "300" }
 }
