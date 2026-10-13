@@ -31,6 +31,7 @@ function pull(name, { contexts = {}, ...fields } = {}) {
 }
 
 const HEAD = load('pull-470').headRefOid;
+const failedRun = { status: 'completed', conclusion: 'failure', updated_at: '2026-10-12T01:59:30Z' };
 const ciFailed = { ci: { conclusion: 'FAILURE' } };
 const changes = { review: { state: 'FAILURE' } };
 const conflict = { mergeable: 'CONFLICTING' };
@@ -63,10 +64,16 @@ const cases = [
   ['a failed check that is not required is ignored', 'pull-470', { contexts: { rust: { conclusion: 'FAILURE' } } }, {}, 'merge'],
   ['a fix already started for this head waits', 'pull-470', { contexts: changes },
     { marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: { status: 'in_progress', updated_at: '2026-10-12T01:00:00Z' } }, 'wait'],
-  ['a fix that just finished gets time to show its push', 'pull-470', { contexts: changes },
-    { marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: { status: 'completed', updated_at: '2026-10-12T01:58:00Z' } }, 'wait'],
-  ['a fix that ended without a push goes to a human', 'pull-470', { contexts: changes },
-    { marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: { status: 'completed', updated_at: '2026-10-12T01:00:00Z' } }, 'needs-human'],
+  ['a fix that just succeeded gets time to show its push', 'pull-470', { contexts: changes },
+    { marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: { status: 'completed', conclusion: 'success', updated_at: '2026-10-12T01:58:00Z' } }, 'wait'],
+  ['a fix that succeeded without a push goes to a human', 'pull-470', { contexts: changes },
+    { marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: { status: 'completed', conclusion: 'success', updated_at: '2026-10-12T01:00:00Z' } }, 'needs-human'],
+  ['a fix run that just failed is blocked at once, with a round left', 'pull-470', { contexts: changes },
+    { marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: failedRun }, 'needs-human'],
+  ['a cancelled fix run for a conflict is blocked at once', 'pull-470', conflict,
+    { marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: { ...failedRun, conclusion: 'cancelled' } }, 'needs-human'],
+  ['a failed fix run whose push shows is the next head\'s business', 'pull-470', { contexts: changes },
+    { marker: { rounds: 1, sha: 'older', run: 7 }, fixRun: failedRun }, 'fix', 2],
   ['a fix with no run id times out to a human', 'pull-470', { contexts: changes },
     { marker: { rounds: 1, sha: HEAD, at: '2026-10-11T12:00:00Z' } }, 'needs-human'],
   ['rounds exhausted goes to a human', 'pull-470', { contexts: changes }, { marker: { rounds: 2, sha: 'older' } }, 'needs-human'],
@@ -188,6 +195,15 @@ test('the fix task carries the newest review and the failed job', () => {
 
   const long = reviewText([{ user: { login: BOT }, body: `VERDICT: CHANGES\n${'x'.repeat(3 * CONFIG.reviewTextLimit)}` }], BOT);
   assert.ok(long.length < CONFIG.reviewTextLimit + 20 && long.endsWith('[cut]'));
+});
+
+test('a blocked fix run is named in the reason the stop comment carries', () => {
+  const p = pull('pull-470', { contexts: changes });
+  const { action, reason } = decide({ pull: p, checks: classifyChecks(p, required),
+    marker: { rounds: 1, sha: HEAD, run: 7 }, fixRun: failedRun, now: NOW });
+  assert.equal(action, 'needs-human');
+  assert.match(reason, /^fix round 1 is blocked: /);
+  assert.ok(reason.includes(`https://github.com/${CONFIG.dispatchRepo}/actions/runs/7 ended (failure)`), reason);
 });
 
 test('fix rounds alternate over the pools dispatch.yml and pools.json name', () => {

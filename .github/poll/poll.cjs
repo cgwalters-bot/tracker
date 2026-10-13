@@ -141,6 +141,8 @@ const poolForRound = round => CONFIG.fixPools[(round - 1) % CONFIG.fixPools.leng
 
 const short = sha => sha.slice(0, 12);
 
+const runUrl = id => `https://github.com/${CONFIG.dispatchRepo}/actions/runs/${id}`;
+
 // What a dispatch run opened: a fix can push nowhere else, and a draft on
 // any other branch is its author's to mark ready.
 const isHarness = pull => Boolean(pull.isCrossRepository) && pull.headRepositoryOwner?.login === CONFIG.author &&
@@ -182,9 +184,19 @@ function decide({ pull, checks, marker, fixRun = null, now = Date.now() }) {
     const why = failing.join(', ');
     if (!harness) return { action: 'skip', reason: `${why}; not a ${CONFIG.fixBranchPrefix} branch of the bot's fork, left to its author` };
     if (marker.sha === head) {
-      const finished = fixRun?.status === 'completed' && now - Date.parse(fixRun.updated_at) > CONFIG.fixRunGraceMs;
-      const lost = !marker.run && now - Date.parse(marker.at) > CONFIG.fixRunTimeoutMs;
-      if (finished || lost) {
+      // A fix run that is over and left the head as it was is blocked: the
+      // agent made no change (its run then fails in check, which finds no
+      // patch for the push; why is in the run's log) or the run broke. The
+      // same brief would end the same way, so it goes to a person with the
+      // run. Only a run that succeeded gets the grace for its push to show:
+      // in one that did not, apply (the one job that pushes) was skipped, or
+      // a job after it failed, which takes longer than a new head takes to
+      // show.
+      if (fixRun?.status === 'completed' &&
+          (fixRun.conclusion !== 'success' || now - Date.parse(fixRun.updated_at) > CONFIG.fixRunGraceMs)) {
+        return { action: 'needs-human', reason: `fix round ${marker.rounds} is blocked: its run ${runUrl(marker.run)} ended (${fixRun.conclusion}) and pushed no new head for ${short(head)} (${why})` };
+      }
+      if (!marker.run && now - Date.parse(marker.at) > CONFIG.fixRunTimeoutMs) {
         return { action: 'needs-human', reason: `the fix run for ${short(head)} ended without changing the head (${why})` };
       }
       return { action: 'wait', reason: `fix round ${marker.rounds} is running for ${short(head)}` };
@@ -284,7 +296,7 @@ async function startFix({ token, dispatchToken, repo, pull, marker, checks, comm
   }
   const id = run?.workflow_run_id;
   if (!id) return 'run started';
-  const url = `https://github.com/${CONFIG.dispatchRepo}/actions/runs/${id}`;
+  const url = runUrl(id);
   await upsertMarker(token, repo, pull.number, marker, { ...state, run: id }, `${of}: [run](${url}).`);
   return url;
 }

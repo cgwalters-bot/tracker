@@ -65,7 +65,8 @@ one step for each:
   once GitHub says it is mergeable: while that is unknown, as it is for a
   while after a push, the pass does nothing and the next one looks again;
 - when the rounds are used up or a fix run ends without pushing, the pull
-  request is labelled `needs-human`.
+  request is labelled `needs-human`, its comment linking the run. A fix run
+  that did not succeed pushed nothing, so that happens on the next pass.
 
 The rounds live in one comment on the pull request that the poll edits in
 place. A pull request labelled `needs-human` is not touched again: remove the
