@@ -556,4 +556,10 @@ Asked whether the tracker's control plane (its `.github/`: the dispatch bounds, 
 
 > Yes we trust our own harness to evolve itself for now. With adversarial review of course
 
-My reading: an approving event review (a real review by github-actions, required by the ruleset on main, stale approvals dismissed on push) is sufficient for harness changes, the tracker's `.github/` included; changes to the review gate's own files still wait for a person; "for now" means this is revisited, see cgwalters-forge/tracker#528.
+Later the same day, asked to approve three agentic-job pull requests by hand because they touched the review's own files:
+
+> no change the prompt to stop gating on me for every change to agentic-job like that
+
+and then, when one of them (cgwalters-forge/agentic-job#541, which removes the hold) was still refused by the reviewer: he merged it himself.
+
+My reading: an approving event review (a real review by github-actions, required by the ruleset on main, stale approvals dismissed on push) is the gate for every file, the tracker's `.github/` and the review's own files included (cgwalters-forge/agentic-job#540, cgwalters-forge/agentic-job#541); "for now" means this is revisited, see cgwalters-forge/tracker#528.
