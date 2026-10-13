@@ -35,6 +35,7 @@ const ciFailed = { ci: { conclusion: 'FAILURE' } };
 const changes = { review: { state: 'FAILURE' } };
 const conflict = { mergeable: 'CONFLICTING' };
 const label = { labels: { nodes: [{ name: CONFIG.label }] } };
+const stopped = { stopped: true };
 
 const cases = [
   ['approved and green merges', 'pull-470', {}, {}, 'merge'],
@@ -70,6 +71,18 @@ const cases = [
     { marker: { rounds: 1, sha: HEAD, at: '2026-10-11T12:00:00Z' } }, 'needs-human'],
   ['rounds exhausted goes to a human', 'pull-470', { contexts: changes }, { marker: { rounds: 2, sha: 'older' } }, 'needs-human'],
   ['needs-human is never touched again', 'pull-470', { ...label, contexts: changes }, {}, 'skip'],
+  // The markers needsHuman leaves, once the label is gone again (#511).
+  ['removing needs-human starts again on the head the fix did not change', 'pull-470', { contexts: changes },
+    { marker: { ...stopped, rounds: 1, sha: HEAD, run: 7 }, fixRun: { status: 'completed', updated_at: '2026-10-12T01:00:00Z' } }, 'fix', 1],
+  ['removing needs-human gives used-up rounds back', 'pull-470', { contexts: changes },
+    { marker: { ...stopped, rounds: 2, sha: 'older' } }, 'fix', 1],
+  ['removing needs-human retries a fix run that could not be started', 'pull-470', { contexts: changes },
+    { marker: { ...stopped, rounds: 1, sha: HEAD, at: '2026-10-12T01:59:00Z' } }, 'fix', 1],
+  ['removing needs-human on a conflicting head rebases it', 'pull-470', conflict,
+    { marker: { ...stopped, rounds: 2, sha: HEAD, run: 7 }, fixRun: { status: 'completed', updated_at: '2026-10-12T01:00:00Z' } }, 'fix', 1],
+  ['a stopped pull request still labelled stays stopped', 'pull-470', { ...label, contexts: changes },
+    { marker: { ...stopped, rounds: 2, sha: HEAD } }, 'skip'],
+  ['a stopped pull request that is approved and green merges', 'pull-470', {}, { marker: { ...stopped, rounds: 2, sha: HEAD } }, 'merge'],
   ['a failing draft on our own branch is its author\'s', 'pull-143', {}, {}, 'skip'],
   ['a green draft on our own branch is its author\'s', 'pull-143', { contexts: { ci: { conclusion: 'SUCCESS' } } }, {}, 'skip'],
   ['another fork\'s dispatch/ branch gets no fix', 'pull-470',

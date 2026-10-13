@@ -69,8 +69,8 @@ one step for each:
 
 The rounds live in one comment on the pull request that the poll edits in
 place. A pull request labelled `needs-human` is not touched again: remove the
-label to have the poll look once more, and delete its comment to give it
-fresh rounds.
+label to have the poll start again on it with fresh rounds, on the same head
+too.
 
 Its limits. Marking ready, fixing and `needs-human` apply only to what a
 dispatch run opened, a `dispatch/` branch of the bot's fork, since

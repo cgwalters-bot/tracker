@@ -163,6 +163,14 @@ function decide({ pull, checks, marker, fixRun = null, now = Date.now() }) {
   if (pull.labels.nodes.some(l => l.name === CONFIG.label)) {
     return { action: 'skip', reason: `labelled ${CONFIG.label}` };
   }
+  // `stopped` is what needsHuman wrote next to the label, so with the label
+  // gone someone took it off: that asks for fresh rounds, on this head too.
+  // What the marker says of the stopped rounds would only label it again
+  // (#511). The next fix run's marker has no `stopped`, so a removal resets
+  // once; and only the bot's own marker is read, and taking a label off
+  // needs triage access, so it is not a visitor's to ask for.
+  const reset = Boolean(marker.stopped);
+  if (reset) marker = { rounds: 0 };
   const harness = isHarness(pull);
   const failing = [
     ...(checks.review?.state === 'failure' ? ['review did not approve'] : []),
@@ -184,7 +192,7 @@ function decide({ pull, checks, marker, fixRun = null, now = Date.now() }) {
     if (marker.rounds >= CONFIG.maxFixRounds) {
       return { action: 'needs-human', reason: `${marker.rounds} fix rounds used and ${short(head)} still fails (${why})` };
     }
-    return { action: 'fix', reason: why, round: marker.rounds + 1 };
+    return { action: 'fix', reason: reset ? `${why}; ${CONFIG.label} was removed, so the rounds start again` : why, round: marker.rounds + 1 };
   }
   if (pull.isDraft) {
     return harness
@@ -247,7 +255,7 @@ async function needsHuman(token, repo, number, marker, reason) {
   }).catch(err => { if (!/HTTP 422/.test(err.message)) throw err; });
   await request(token, 'POST', `/repos/${repo}/issues/${number}/labels`, { labels: [CONFIG.label] });
   await upsertMarker(token, repo, number, marker, { ...marker.state, stopped: true },
-    `The poll stopped following this pull request: ${reason}. It is labelled \`${CONFIG.label}\`; remove the label to have the poll look at it again.`);
+    `The poll stopped following this pull request: ${reason}. It is labelled \`${CONFIG.label}\`; remove the label to have the poll start again on it, with fresh fix rounds.`);
 }
 
 // The marker goes first: a pass that dies after it has used a round and
