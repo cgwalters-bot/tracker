@@ -3,17 +3,19 @@
 # is our wrapper's, cgwalters-forge/actions' cgwalters-agentic-job.yml: it
 # carries the agentic-job pin, the tailnet join, the inference proxy, the
 # runner and the model. This file keeps what is this repository's: the
-# trigger and its four inputs, the run name, the concurrency, the
+# trigger and its five inputs, the run name, the concurrency, the
 # environment that gates apply and which secret is the apply token; the
 # bounds are in .github/agentic-job (dispatch.toml, fix.toml for `fix`) and
 # the runner configuration in hosted.toml there, the wrapper's default paths.
+# The `pool` input picks the agent and model from the closed set in pools.json
+# there; empty leaves them to the repository variables AGENT and AGENT_MODEL.
 # Ours too is the standing brief of each kind, profiles/KIND.md there: the
 # `profile` job puts it before the task, so a dispatch carries only what is
 # particular to its item. The wrapper adds its own line on top, which says
 # what the kind may hand back.
 # To take a newer agentic-job or wrapper, move the commit in `uses`.
 name: dispatch
-run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}
+run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.pool && format(' ({0})', inputs.pool) || '' }}
 
 on:
   workflow_dispatch:
@@ -35,6 +37,10 @@ on:
         type: choice
         options: [implement, triage, research, review, fix]
         required: true
+      pool:
+        description: "Inference pool: claude or openai (.github/agentic-job/pools.json); empty uses the variables AGENT and AGENT_MODEL"
+        type: string
+        default: ''
 
 permissions: {}
 concurrency:
@@ -51,11 +57,15 @@ jobs:
       contents: read
     outputs:
       task: ${{ steps.compose.outputs.task }}
+      agent: ${{ steps.pool.outputs.agent }}
+      model: ${{ steps.pool.outputs.model }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          sparse-checkout: .github/agentic-job/profiles
+          sparse-checkout: |
+            .github/agentic-job/profiles
+            .github/agentic-job/pools.json
       - name: Put the profile before the task
         id: compose
         env:
@@ -73,6 +83,21 @@ jobs:
             printf '\n%s\n' "$TASK"
             echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
+      # The pool's agent and model, both empty without a pool so that the
+      # wrapper falls back to the variables. A name outside pools.json stops
+      # the run here rather than reaching the wrapper.
+      - name: Resolve the pool
+        id: pool
+        env:
+          POOL: ${{ inputs.pool }}
+        run: |
+          [[ -z "$POOL" ]] && { echo "agent=" >> "$GITHUB_OUTPUT"; echo "model=" >> "$GITHUB_OUTPUT"; exit 0; }
+          pools=.github/agentic-job/pools.json
+          if ! jq -e --arg pool "$POOL" 'has($pool)' "$pools" > /dev/null; then
+            echo "::error::unknown pool '${POOL}'; expected one of: $(jq -r 'keys | join(", ")' "$pools")"
+            exit 1
+          fi
+          jq -r --arg pool "$POOL" '.[$pool] | "agent=\(.agent)\nmodel=\(.model)"' "$pools" >> "$GITHUB_OUTPUT"
 
   run:
     needs: profile
@@ -90,6 +115,8 @@ jobs:
       repo: ${{ inputs.repo }}
       item: ${{ inputs.item }}
       kind: ${{ inputs.kind }}
+      agent: ${{ needs.profile.outputs.agent }}
+      model: ${{ needs.profile.outputs.model }}
       apply-environment: agent-apply
     # The bot's token, an organization secret, named and never inherited.
     # The wrapper hands it to apply, in the environment above, and to the

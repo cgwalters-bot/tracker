@@ -18,6 +18,9 @@ const CONFIG = Object.freeze({
   dispatchWorkflow: 'dispatch.yml',
   fixBranchPrefix: 'dispatch/',
   maxFixRounds: 2,
+  // dispatch.yml's `pool` input, one per fix round in turn, so the rounds of
+  // one pull request do not both land on one inference pool.
+  fixPools: ['claude', 'openai'],
   // fix.toml's replacement_max_commits: the series a fix may hand back.
   fixSeriesMaxCommits: 5,
   reviewContext: 'review',
@@ -133,6 +136,8 @@ function fixTask({ repo, pull, checks, review, round }) {
   }
   return lines.join('\n');
 }
+
+const poolForRound = round => CONFIG.fixPools[(round - 1) % CONFIG.fixPools.length];
 
 const short = sha => sha.slice(0, 12);
 
@@ -254,7 +259,7 @@ async function startFix({ token, dispatchToken, repo, pull, marker, checks, comm
   marker.state = state;
   const inputs = {
     task: fixTask({ repo, pull, checks, review: reviewText(comments, login), round }),
-    repo, item: String(pull.number), kind: 'fix',
+    repo, item: String(pull.number), kind: 'fix', pool: poolForRound(round),
   };
   const path = `/repos/${CONFIG.dispatchRepo}/actions/workflows/${CONFIG.dispatchWorkflow}/dispatches`;
   let run;
@@ -365,7 +370,7 @@ async function main(argv) {
   if (errors) throw new Error(`${errors} pull request(s) or repositories could not be handled`);
 }
 
-module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, reviewText, writeOutput };
+module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, poolForRound, reviewText, writeOutput };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`poll: ${err.message}`); process.exit(1); });

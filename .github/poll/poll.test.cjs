@@ -8,7 +8,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, reviewText, writeOutput } = require('./poll.cjs');
+const { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, poolForRound, reviewText, writeOutput } = require('./poll.cjs');
 
 const load = name => structuredClone(require(`./testdata/${name}.json`));
 const required = load('rules-agentic-job').flatMap(r => r.parameters.required_status_checks.map(c => c.context));
@@ -175,4 +175,15 @@ test('the fix task carries the newest review and the failed job', () => {
 
   const long = reviewText([{ user: { login: BOT }, body: `VERDICT: CHANGES\n${'x'.repeat(3 * CONFIG.reviewTextLimit)}` }], BOT);
   assert.ok(long.length < CONFIG.reviewTextLimit + 20 && long.endsWith('[cut]'));
+});
+
+test('fix rounds alternate over the pools dispatch.yml and pools.json name', () => {
+  for (const [round, pool] of [[1, 'claude'], [2, 'openai'], [3, 'claude']]) {
+    assert.equal(poolForRound(round), pool, `round ${round}`);
+  }
+  const pools = JSON.parse(fs.readFileSync(path.join(__dirname, '../agentic-job/pools.json'), 'utf8'));
+  const dispatch = fs.readFileSync(path.join(__dirname, '../workflows/dispatch.yml'), 'utf8');
+  const description = /^ {6}pool:\n(?:.*\n)*? {8}description: "([^"]*)"/m.exec(dispatch)?.[1];
+  for (const name of Object.keys(pools)) assert.match(description, new RegExp(`\\b${name}\\b`));
+  for (let round = 1; round <= CONFIG.maxFixRounds; round++) assert.ok(poolForRound(round) in pools);
 });

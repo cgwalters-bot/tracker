@@ -60,7 +60,13 @@ pull request for review and fix; `OWNER/REPO` must be listed in
 `.github/agentic-job/dispatch.toml` (`fix.toml` for a fix). The standing
 instructions of each kind are not part of the brief: `dispatch.yml` puts
 `.github/agentic-job/profiles/KIND.md` before it, so they change by a pull
-request here and a brief says only what this item needs. The run applies
+request here and a brief says only what this item needs. `dispatch.yml`
+also takes an optional `pool` input, `claude` or `openai`, which
+`.github/agentic-job/pools.json` maps to a fixed agent and model (`claude`
+with `claude-opus-5-5`, `opencode` with `praxis/gpt-6.1-sol`); left empty,
+the repository variables `AGENT` and `AGENT_MODEL` apply. Any other value
+fails the run before it starts, and the poll alternates its fix rounds
+between the two. The run applies
 its own result: a pull request from the bot's fork, or one comment on the
 item. `scripts/wait-run RUN` waits for a run and prints its conclusion and
 failed jobs.
