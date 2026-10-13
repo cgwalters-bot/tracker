@@ -1,0 +1,32 @@
+# An agent's review of every pull request here, as agent-board has it
+# (agentic-job's docs/review.md, "Another repository"). The reusable
+# workflow, at the commit dispatch.yml's wrapper pins, reads its bounds
+# (workflow/review.toml, workflow/review-command.toml), its task
+# (workflow/review.md) and hosted.toml from this repository's base branch.
+# With the variable AGENT_REAL_REVIEWS it also submits the verdict as a
+# review by github-actions[bot], except an approval of a pull request
+# that touches `.github/` or `workflow/`: those need a person's.
+name: review
+on:
+  # Runs this file from the base branch. No job here checks out the pull
+  # request: the agent fetches the head as data inside its sandbox, with
+  # no credential, and no secret is passed to the called workflow.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created]
+permissions: {}
+jobs:
+  review:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.issue.pull_request && startsWith(github.event.comment.body, '/review'))
+    # Base-owned policy; the head is fetched only as data inside the sandbox.
+    uses: cgwalters-forge/agentic-job/.github/workflows/review.yml@af62d95d1c18ab445bc4064424e182c088320b1e
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: write
+      actions: read
+      id-token: write
+      statuses: write
