@@ -1,0 +1,87 @@
+# Checks of this repository's own automation, so a pull request that edits
+# `.github/` is tested before it merges. The one job named ci is what the
+# main branch ruleset requires: a new check is added to its `needs`, with
+# no change to the ruleset.
+name: ci
+
+on:
+  pull_request:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  poll:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The hosted image's Node; poll.cjs has no dependencies to install.
+      - run: node --test
+        working-directory: .github/poll
+
+  actionlint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The release and checksum agentic-job's ci uses. actionlint runs the
+      # image's shellcheck over each `run:` script.
+      - name: Install actionlint
+        working-directory: ${{ runner.temp }}
+        run: |
+          curl -fL --retry 3 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o actionlint.tar.gz
+          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum -c -
+          tar -xzf actionlint.tar.gz actionlint
+      - run: |
+          "$RUNNER_TEMP/actionlint" -color .github/workflows/*.yml
+
+  # The bounds, runner configuration and pools that dispatch.yml reads from
+  # the default branch: a file that does not parse fails every run after
+  # the merge.
+  config:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Parse the JSON and TOML files of .github/agentic-job
+        run: |
+          python3 - .github/agentic-job/*.json .github/agentic-job/*.toml <<'PY'
+          import json, sys, tomllib
+
+          failed = False
+          for path in sys.argv[1:]:
+              try:
+                  with open(path, "rb") as f:
+                      (json if path.endswith(".json") else tomllib).load(f)
+              except (OSError, ValueError) as e:
+                  failed = True
+                  print(f"::error file={path}::{e}")
+              else:
+                  print(f"ok {path}")
+          sys.exit(failed)
+          PY
+
+  # Require only ci in the ruleset, on both PR and merge-group commits.
+  ci:
+    if: ${{ always() }}
+    needs: [poll, actionlint, config]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: jq -e 'all(.[]; .result == "success")' <<< "$RESULTS"
