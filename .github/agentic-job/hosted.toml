@@ -6,12 +6,6 @@
 # names it.
 
 [sandbox]
-# The read-only filesystem view in place of the host walk, which is most
-# of setup's time (agentic-job's docs/sandbox.md): the sandbox user's
-# processes cannot write outside their home, /run/user and the temporary
-# directories. It strips no unknown setuid program, which a fresh hosted
-# image is trusted not to carry, and no step of ours follows the agent.
-world-write-walk = false
 # Daemons of the image that listen for every local user and that an agent
 # run does not use.
 stop-services = [
