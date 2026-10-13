@@ -1,12 +1,20 @@
 # An agent's review of every pull request here, as agent-board has it
 # (agentic-job's docs/review.md, "Another repository"). The reusable
-# workflow, at the commit dispatch.yml's wrapper pins, reads its bounds
-# (workflow/review.toml, workflow/review-command.toml), its task
-# (workflow/review.md) and hosted.toml from this repository's base branch.
+# workflow reads its bounds (workflow/review.toml,
+# workflow/review-command.toml) and its task (workflow/review.md) from
+# this repository's base branch, and the runner's configuration from
+# agentic-job's own hosted.toml at the pinned commit unless the variable
+# AGENT_CONFIG names a file here. dispatch.yml's wrapper
+# may pin an older agentic-job commit; the review profile there runs at
+# that commit, not this one.
 # With the variable AGENT_REAL_REVIEWS it also submits the verdict as a
-# review by github-actions[bot], except an approval of a pull request
-# that changes the review's own gate (the files that document lists, this
-# one among them): those need a person's.
+# review by github-actions[bot], an approval whatever files change, this
+# one and the review's own bounds and task included (agentic-job#540; the operator's
+# decision is in docs/operator-notes.md, "2026-10-13, the harness evolving
+# itself").
+# No workflow-ingress check runs here, and ci runs from the pull request's
+# head, so for every change to .github/ and workflow/ the model's verdict
+# is the only gate.
 name: review
 on:
   # Runs this file from the base branch. No job here checks out the pull
@@ -23,7 +31,7 @@ jobs:
       github.event_name == 'pull_request_target' ||
       (github.event.issue.pull_request && startsWith(github.event.comment.body, '/review'))
     # Base-owned policy; the head is fetched only as data inside the sandbox.
-    uses: cgwalters-forge/agentic-job/.github/workflows/review.yml@fbb0a2708f231ecc7acd7116fc957b8b3712a41c
+    uses: cgwalters-forge/agentic-job/.github/workflows/review.yml@0d5e8dc31705dd50dfe3900714a13b5e6343355d
     permissions:
       contents: read
       issues: read
