@@ -64,10 +64,15 @@ request here and a brief says only what this item needs. `dispatch.yml`
 also takes an optional `pool` input, `claude`, `openai` or `mistral`, which
 `.github/agentic-job/pools.json` maps to a fixed agent and model (`claude`
 with `claude-opus-5-5`, `opencode` with `praxis/gpt-6.1-sol`, `vibe` with
-`devstral-small-latest`); left empty,
-the repository variables `AGENT` and `AGENT_MODEL` apply. Any other value
-fails the run before it starts, and the poll alternates its fix rounds
-between the first two; `mistral` is for toil such as triage. The run applies
+`zai-glm-5-3`) and a run budget in AIC, hundredths of a dollar
+(`budget`); left empty, the repository variables `AGENT` and `AGENT_MODEL`
+apply. Any other value fails the run before it starts. A pool may also say
+what its provider allows a period, for tools to pace runs against where the
+provider reports no quota: `allowance` is `amount` in `currency` per
+`period`, which is `calendar-month` (`mistral`: 300 USD). Nothing in this
+repository enforces it. The poll alternates its fix rounds between the
+first two, except that a first round that is only toil goes to `mistral`;
+`mistral` is for toil such as triage. The run applies
 its own result: a pull request from the bot's fork, or one comment on the
 item. `scripts/wait-run RUN` waits for a run and prints its conclusion and
 failed jobs.

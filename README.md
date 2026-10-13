@@ -54,7 +54,12 @@ one step for each:
 - a head whose `review` status is a failure, or with a failed required check,
   gets one `fix` run of `dispatch.yml`, its task carrying the review comment
   and the failed job's name and log link, at most once per head and twice per
-  pull request. The task asks for the fix folded into the commit it corrects,
+  pull request. The rounds alternate between the `claude` and `openai` pools,
+  but a first round that is only toil (a rebase, placeholder subjects, or
+  review findings that each open by naming a commit message, a description,
+  a rebase or formatting, and no failed check) goes to `mistral`, and the
+  round after it to `claude`. A finding that is not plainly toil keeps the
+  round on the usual pools. The task asks for the fix folded into the commit it corrects,
   which `replacement_max_commits` in `.github/agentic-job/fix.toml` lets the
   run push as a rewrite of the branch;
 - a head that conflicts with its base, approved or not, gets the same `fix`
