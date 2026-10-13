@@ -1,7 +1,9 @@
 // node --test .github/poll/poll.test.cjs
 // The fixtures in testdata/ are recorded API answers: pull-470 is a dispatch
 // run's pull request from the bot's fork, approved and green; pull-143 is a
-// draft on a branch of the repository itself whose `ci` failed.
+// draft on a branch of the repository itself whose `ci` failed; pull-511 is
+// one of a run cut off before it wrote a message, approved and green under
+// the harness's placeholder title and commit subject (it was merged so).
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -32,6 +34,10 @@ function pull(name, { contexts = {}, ...fields } = {}) {
 
 const HEAD = load('pull-470').headRefOid;
 const failedRun = { status: 'completed', conclusion: 'failure', updated_at: '2026-10-12T01:59:30Z' };
+// pull-511 once a fix has given its commit a message: the title is as it was.
+const reworded = { series: { nodes: [{ commit: { oid: 'f'.repeat(40), messageHeadline: 'check: Say why' } }] } };
+const partialTitle = { title: '[partial: stopped at a limit] Wrote the first half' };
+const partialBody = { body: '**Partial work.** The run was stopped at its timeout before the task was done; this is what it handed back.\n\nrest' };
 const ciFailed = { ci: { conclusion: 'FAILURE' } };
 const changes = { review: { state: 'FAILURE' } };
 const conflict = { mergeable: 'CONFLICTING' };
@@ -94,6 +100,21 @@ const cases = [
   ['a green draft on our own branch is its author\'s', 'pull-143', { contexts: { ci: { conclusion: 'SUCCESS' } } }, {}, 'skip'],
   ['another fork\'s dispatch/ branch gets no fix', 'pull-470',
     { headRepositoryOwner: { login: 'someone' }, contexts: changes }, {}, 'skip'],
+  ['an approved and green placeholder gets a fix for its messages, not a merge', 'pull-511', {}, {}, 'fix', 1],
+  ['a placeholder draft gets a fix, not ready', 'pull-511', { isDraft: true, contexts: { review: null } }, {}, 'fix', 1],
+  ['a placeholder with a fix running waits', 'pull-511', {},
+    { marker: { rounds: 1, sha: load('pull-511').headRefOid, run: 7 }, fixRun: { status: 'in_progress', updated_at: '2026-10-12T01:00:00Z' } }, 'wait'],
+  ['a placeholder with the rounds used up goes to a human', 'pull-511', {}, { marker: { rounds: 2, sha: 'older' } }, 'needs-human'],
+  ['a placeholder title over reworded commits goes to a human', 'pull-511', reworded, { marker: { rounds: 1, sha: 'older' } }, 'needs-human'],
+  ['a placeholder title on a draft is not marked ready', 'pull-511', { ...reworded, isDraft: true }, {}, 'needs-human'],
+  ['a title the author wrote over reworded commits merges', 'pull-511', { ...reworded, title: 'check: Say why' }, {}, 'merge'],
+  ['a title that only mentions an agent run merges', 'pull-470', { title: 'docs: Explain what Agent run 12 printed' }, {}, 'merge'],
+  ['a partial title is not merged', 'pull-470', partialTitle, {}, 'needs-human'],
+  ['a partial description is not merged', 'pull-470', partialBody, {}, 'needs-human'],
+  ['a partial draft is not marked ready', 'pull-470', { ...partialTitle, ...partialBody, isDraft: true, contexts: { review: null } }, {}, 'needs-human'],
+  ['a partial pull request with failed ci gets its fix first', 'pull-470', { ...partialTitle, contexts: ciFailed }, {}, 'fix', 1],
+  ['another fork\'s placeholder is left alone', 'pull-511', { headRepositoryOwner: { login: 'someone' } }, {}, 'skip'],
+  ['our own branch marked partial is its author\'s', 'pull-143', { ...partialTitle, isDraft: false, contexts: { ci: { conclusion: 'SUCCESS' } } }, {}, 'skip'],
 ];
 
 for (const [name, fixture, change, { marker = { rounds: 0 }, fixRun = null }, action, round] of cases) {
@@ -204,6 +225,18 @@ test('a blocked fix run is named in the reason the stop comment carries', () => 
   assert.equal(action, 'needs-human');
   assert.match(reason, /^fix round 1 is blocked: /);
   assert.ok(reason.includes(`https://github.com/${CONFIG.dispatchRepo}/actions/runs/7 ended (failure)`), reason);
+});
+
+test('the fix task for a placeholder asks for commit messages only', () => {
+  const p = pull('pull-511');
+  const task = fixTask({ repo: 'cgwalters-forge/agentic-job', pull: p, checks: classifyChecks(p, required), review: null, round: 1 });
+  for (const want of [/placeholder \("Agent run" and a number\) is the subject of: 4b0f8188b7da\./, /a body that says why/,
+    /Change no file for this alone/, /You cannot edit the pull request's title and description/]) assert.match(task, want);
+  assert.ok(task.includes(`at most ${CONFIG.fixSeriesMaxCommits} commits`));
+  for (const not of [/Fold the change/, /Failed checks/, /Rebase/]) assert.doesNotMatch(task, not);
+  // Nothing of it in the task for a pull request with real messages.
+  const q = pull('pull-470', { contexts: changes });
+  assert.doesNotMatch(fixTask({ repo: 'cgwalters-forge/agentic-job', pull: q, checks: classifyChecks(q, required), review: null, round: 1 }), /placeholder/);
 });
 
 test('fix rounds alternate over the pools dispatch.yml and pools.json name', () => {

@@ -40,17 +40,25 @@ const FAILED = new Set(['FAILURE', 'TIMED_OUT', 'CANCELLED', 'ACTION_REQUIRED', 
 const PASSED = new Set(['SUCCESS', 'SKIPPED', 'NEUTRAL']);
 // A pull request's `mergeable` when its branch conflicts with its base.
 const CONFLICTING = 'CONFLICTING';
+// The harness's words where an author's should be (cgwalters-forge/tracker#517):
+// the title and commit subject agentic-job's run gives a change whose agent
+// was cut off before it wrote a summary, and the marks its apply puts on the
+// title and at the top of the description of a run stopped at a limit.
+const PLACEHOLDER_RE = /^Agent run \d+$/;
+const PARTIAL_TITLE_PREFIX = '[partial:';
+const PARTIAL_BODY_PREFIX = '**Partial work.**';
 
 const PULL_QUERY = `
 query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
     pullRequest(number: $number) {
-      id number url title isDraft mergeable headRefOid headRefName baseRefName isCrossRepository
+      id number url title body isDraft mergeable headRefOid headRefName baseRefName isCrossRepository
       author { login }
       headRepositoryOwner { login }
       labels(first: 50) { nodes { name } }
       autoMergeRequest { enabledAt }
       mergeQueueEntry { state }
+      series: commits(first: 100) { nodes { commit { oid messageHeadline } } }
       commits(last: 1) { nodes { commit { oid statusCheckRollup { contexts(first: 100) { nodes {
         __typename
         ... on CheckRun { name status conclusion detailsUrl isRequired(pullRequestNumber: $number) }
@@ -113,6 +121,21 @@ function reviewText(comments, login) {
   return body.length > CONFIG.reviewTextLimit ? `${body.slice(0, CONFIG.reviewTextLimit)}\n[cut]` : body;
 }
 
+// The commits whose subject is the placeholder: a fix run can reword them.
+const placeholderCommits = pull => (pull.series?.nodes ?? []).map(n => n.commit)
+  .filter(c => PLACEHOLDER_RE.test(c.messageHeadline ?? ''));
+
+// What is wrong with the title and description. Nothing we dispatch can
+// change these: fix.toml gives a fix run a push to the branch and no more.
+function undescribed(pull) {
+  const title = (pull.title ?? '').trim();
+  const partial = title.startsWith(PARTIAL_TITLE_PREFIX) || (pull.body ?? '').trimStart().startsWith(PARTIAL_BODY_PREFIX);
+  return [
+    ...(PLACEHOLDER_RE.test(title) ? ['its title is the harness placeholder'] : []),
+    ...(partial ? ['it is marked as partial work'] : []),
+  ];
+}
+
 function fixTask({ repo, pull, checks, review, round }) {
   const lines = [
     `Pull request ${repo}#${pull.number} at head ${pull.headRefOid} cannot merge as it is. Make the smallest change to its branch that addresses what follows, and nothing else. This is fix round ${round} of ${CONFIG.maxFixRounds}.`,
@@ -122,6 +145,10 @@ function fixTask({ repo, pull, checks, review, round }) {
     lines.push('', `Its branch conflicts with ${pull.baseRefName}. Rebase its commits onto current ${pull.baseRefName}, resolve the conflicts keeping the intent of both sides, and rerun the tests the change touches. Hand back the rebased commits as the replacement your brief describes (at most ${CONFIG.fixSeriesMaxCommits} commits), which replaces the branch. Add no commit on top: only the rebased series resolves a conflict.`);
   }
   if (rejected) lines.push('', `Fold the change into the commit it corrects, as \`git commit --fixup\` and \`git rebase --autosquash\` would, and hand back the whole series as the replacement your brief describes (at most ${CONFIG.fixSeriesMaxCommits} commits, on the base it names). Do not add a commit on top that only addresses the review or a check; a change that belongs to no existing commit, or a series too long to replace, is the case for one commit of its own.`);
+  const unnamed = placeholderCommits(pull);
+  if (unnamed.length) {
+    lines.push('', `The run that made this change was cut off before it wrote a commit message, so the harness's placeholder ("Agent run" and a number) is the subject of: ${unnamed.map(c => short(c.oid)).join(', ')}. Read the change and the issue it is for, and give each of them a proper message in the target repository's style: a subject that says what changes and a body that says why. Change no file for this alone. Hand back the whole series as the replacement your brief describes (at most ${CONFIG.fixSeriesMaxCommits} commits). You cannot edit the pull request's title and description; a person writes them from your commit message, so make it fit to copy.`);
+  }
   if (checks.failed.length) {
     lines.push('', 'Failed checks (name, job log):', ...checks.failed.map(c => `- ${c.name}: ${c.url ?? 'no log URL'}`));
   }
@@ -179,6 +206,8 @@ function decide({ pull, checks, marker, fixRun = null, now = Date.now() }) {
     ...checks.failed.map(c => `check ${c.name} failed`),
     // Work for a fix run, which may replace the branch with a rebased one.
     ...(pull.mergeable === CONFLICTING ? [`conflicts with ${pull.baseRefName}`] : []),
+    // Not to be marked ready or merged under that subject, whatever the review said.
+    ...(placeholderCommits(pull).length ? ['a commit subject is the harness placeholder'] : []),
   ];
   if (failing.length) {
     const why = failing.join(', ');
@@ -205,6 +234,13 @@ function decide({ pull, checks, marker, fixRun = null, now = Date.now() }) {
       return { action: 'needs-human', reason: `${marker.rounds} fix rounds used and ${short(head)} still fails (${why})` };
     }
     return { action: 'fix', reason: reset ? `${why}; ${CONFIG.label} was removed, so the rounds start again` : why, round: marker.rounds + 1 };
+  }
+  const unwritten = undescribed(pull);
+  if (unwritten.length) {
+    const what = unwritten.join(' and ');
+    return harness
+      ? { action: 'needs-human', reason: `${what}, which a fix run cannot change; write the title and description (and see that the work is whole) before removing the label` }
+      : { action: 'skip', reason: `${what}; not a ${CONFIG.fixBranchPrefix} branch of the bot's fork, left to its author` };
   }
   if (pull.isDraft) {
     return harness

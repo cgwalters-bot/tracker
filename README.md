@@ -64,6 +64,12 @@ one step for each:
   (or the merge queue; a plain rebase merge where the repository has neither),
   once GitHub says it is mergeable: while that is unknown, as it is for a
   while after a push, the pass does nothing and the next one looks again;
+- a commit whose subject is the harness's placeholder (`Agent run` and a
+  number, from a run cut off before it wrote a message) is a failure like
+  those, whatever the review said: the `fix` run is asked for proper commit
+  messages. A placeholder title, or the `[partial:` and `**Partial work.**`
+  marks of a run stopped at a limit, no fix run can change, so that pull
+  request is labelled `needs-human` rather than marked ready or merged;
 - when the rounds are used up or a fix run ends without pushing, the pull
   request is labelled `needs-human`, its comment linking the run. A fix run
   that did not succeed pushed nothing, so that happens on the next pass.
