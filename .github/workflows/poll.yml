@@ -245,6 +245,7 @@ jobs:
             --operator="$(jq -er .operator "$config")"
             --bot="$(jq -er .bot "$config")"
             --dispatch-repo="$(jq -er .dispatchRepo "$config")"
+            --review-workflow="$(jq -er .reviewWorkflow "$config")"
           )
           # Process substitution hides jq's status: a pass over nothing
           # would look like an idle one.

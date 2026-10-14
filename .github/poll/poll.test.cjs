@@ -451,6 +451,8 @@ test('agent-board.json previews the pass poll.cjs takes', () => {
   assert.equal(ab.rev, undefined);
   assert.equal(ab.bot, CONFIG.author);
   assert.equal(ab.dispatchRepo, CONFIG.dispatchRepo);
+  assert.equal(ab.reviewWorkflow, 'review.yml');
+  assert.ok(fs.existsSync(path.join(__dirname, '../workflows', ab.reviewWorkflow)));
   assert.deepEqual(ab.fixPools, CONFIG.fixPools);
   assert.match(ab.operator, /^[\w-]+$/);
   for (const repo of ab.follow) assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
@@ -476,6 +478,8 @@ test('poll.yml previews with agent-board read-only', () => {
     assert.match(pass, /^ {6}- name: (?:One pass|One pass, previewed)\n(?: {8}.*\n)*? {8}shell: bash\n/m);
   }
   assert.match(job, /agent-board" poll --dry-run/);
+  // Without the workflow identity, the preview ignores the review job's approval.
+  assert.match(job, /--review-workflow="\$\(jq -er \.reviewWorkflow "\$config"\)"/);
 });
 
 // The skills reach implement and fix runs on an agent that has them and no

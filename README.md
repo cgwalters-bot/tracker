@@ -98,7 +98,9 @@ The same run's `agent-board` job previews the pass with `agent-board poll
 --dry-run`, the poll that is to replace poll.cjs
 ([agent-board#40](https://github.com/cgwalters-forge/agent-board/issues/40)),
 built at the head of the branch `.github/poll/agent-board.json` names and over the
-repositories and logins it names: poll.cjs's, and this repository. Both
+repositories and logins it names: poll.cjs's, and this repository. Its
+`reviewWorkflow` names the workflow whose review-job approval the preview
+counts for the head. Both
 jobs write their lines to the run's summary, one under the other. It takes no
 step and has only the job token, read-only; its state file is an artifact of
 the last run that saved one. Its failure does not fail the run.

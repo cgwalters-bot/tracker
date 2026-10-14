@@ -4,6 +4,7 @@
   "operator": "cgwalters",
   "bot": "cgwalters-bot",
   "dispatchRepo": "cgwalters-forge/tracker",
+  "reviewWorkflow": "review.yml",
   "follow": [
     "cgwalters-forge/agentic-job",
     "cgwalters-forge/agent-board",
