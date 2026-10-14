@@ -92,3 +92,12 @@ are the base branch's ruleset's (every check, where it requires none). It
 does not read the board, start work for an item that has no pull request, or
 follow pull requests in repositories we cannot write to. A pass that fails
 part way is repeated five minutes later. Test with `node --test .github/poll/poll.test.cjs`.
+
+The same run's `agent-board` job previews the pass with `agent-board poll
+--dry-run`, the poll that is to replace poll.cjs
+([agent-board#40](https://github.com/cgwalters-forge/agent-board/issues/40)),
+built at the commit `.github/poll/agent-board.json` pins and over the
+repositories and logins it names: poll.cjs's, and this repository. Both
+jobs write their lines to the run's summary, one under the other. It takes no
+step and has only the job token, read-only; its state file is an artifact of
+the last run that saved one. Its failure does not fail the run.
