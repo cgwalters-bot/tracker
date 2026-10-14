@@ -13,7 +13,8 @@
 # `profile` job puts it before the task, so a dispatch carries only what is
 # particular to its item. The wrapper adds its own line on top, which says
 # what the kind may hand back.
-# To take a newer agentic-job or wrapper, move the commit in `uses`.
+# The wrapper is followed at its main (#544): our own repositories are not
+# pinned by commit, third-party actions are. It sets the agentic-job ref.
 name: dispatch
 run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.pool && format(' ({0})', inputs.pool) || '' }}
 
@@ -125,7 +126,7 @@ jobs:
 
   run:
     needs: profile
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@42ad118d85775363833c731898f0fefd0e0d2f27
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:

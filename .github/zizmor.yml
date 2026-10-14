@@ -1,0 +1,7 @@
+# Our own reusable workflows and actions are followed at main (#544);
+# everything else keeps zizmor's default, a pin by commit.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        cgwalters-forge/*: ref-pin

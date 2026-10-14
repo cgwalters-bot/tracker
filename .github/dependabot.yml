@@ -1,0 +1,8 @@
+# Moves the commit pins of third-party actions daily (#544). Our own
+# workflows and actions are followed at main and are not pinned.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
