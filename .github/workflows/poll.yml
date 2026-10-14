@@ -90,6 +90,60 @@ jobs:
           sleep "$WAIT_SECONDS"
           gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
 
+  # The board scheduler (#401): starts the run an accepted plan on a ready
+  # board item proposes, or a triage run to write one, up to the cap in
+  # agent-board.json's `schedule`; .github/poll/schedule.cjs and the README
+  # say how. It only previews unless the repository variable BOARD_DISPATCH
+  # is `apply`, so it can be compared with the runs still started by hand
+  # before it is let act. In the passes' concurrency group like the poll
+  # job, so two passes never decide on the same board; fix runs the poll
+  # job starts in the same pass are counted against the cap in the next.
+  board:
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    # `actions: write` starts dispatch.yml here, with the job token.
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # As the agent-board job below builds it, and never cached. Unlike that
+      # job's, this binary is given the bot's token: whatever lands on
+      # agent-board's branch runs with it on the next pass, as whatever
+      # lands on the actions wrapper's main does in dispatch.yml (#544).
+      - name: Build agent-board at the branch's head
+        run: |
+          source=$(jq -er .source .github/poll/agent-board.json)
+          branch=$(jq -er .branch .github/poll/agent-board.json)
+          rev=$(git ls-remote --exit-code "$source" "refs/heads/$branch" | cut -f1)
+          [[ $rev =~ ^[0-9a-f]{40}$ ]]
+          cargo install --locked --root "$RUNNER_TEMP/agent-board" \
+            --git "$source" --rev "$rev" agent-board
+      - name: One pass
+        env:
+          # The bot's token reads the organization's board, and is what
+          # `agent-board dispatch --apply` requires: a planner's own token,
+          # under which it records each plan it starts.
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          DISPATCH_TOKEN: ${{ github.token }}
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+          APPLY: ${{ !inputs.dry-run && vars.BOARD_DISPATCH == 'apply' && '--apply' || '' }}
+        shell: bash
+        # stderr too, so that the summary says why a pass failed.
+        run: node .github/poll/schedule.cjs ${APPLY:+"$APPLY"} 2>&1 | tee "$RUNNER_TEMP/pass.log"
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo '### Board scheduler'
+            echo '<pre>'
+            sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$RUNNER_TEMP/pass.log" 2>/dev/null || echo 'No pass ran'
+            echo '</pre>'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # agent-board's poll (cgwalters-forge/agent-board#40), which is to replace
   # poll.cjs, previewing the same pass so the two summaries can be compared
   # before the switch (#534). It takes no step and holds no bot token: the

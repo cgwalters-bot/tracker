@@ -514,7 +514,7 @@ async function main(argv) {
   if (errors) throw new Error(`${errors} pull request(s) or repositories could not be handled`);
 }
 
-module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, poolForFix, poolForKind, poolForRound, reviewText, toilOnly, writeOutput };
+module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, paged, poolForFix, poolForKind, poolForRound, request, reviewText, toilOnly, writeOutput };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`poll: ${err.message}`); process.exit(1); });
