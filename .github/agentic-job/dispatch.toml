@@ -20,8 +20,13 @@ missing_data = { max = 1 }
 # edit AGENTS.md, a protected file by default, there.
 [unprotected_files]
 # This repository by the operator's decision: docs/operator-notes.md, "2026-10-13, the harness evolving itself".
-# actions and agenthome: the harness works on all of its own repositories (cgwalters-forge/tracker#544).
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome"]
+# A repository is listed only once its ruleset on main requires an approving
+# review with stale approvals dismissed on push, and it has a review workflow:
+# that review is the only gate on a run's `.github/` edit there. agenthome
+# waits for cgwalters-forge/agenthome#1 and its ruleset; actions
+# (cgwalters-forge/tracker#544) for a review workflow and a ruleset that
+# requires one: today it requires no approval.
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]

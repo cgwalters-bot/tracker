@@ -9,7 +9,8 @@
 # per-repository list of its own: the repositories named here are the only
 # ones a fix may target.
 hosts = ["github.com"]
-# tracker, actions and agenthome: fixes on all of the harness's own repositories (cgwalters-forge/tracker#544).
+# tracker, actions and agenthome: fixes on all of the harness's own repositories (cgwalters-forge/tracker#544);
+# `.github/` stays refused in actions and agenthome, see [unprotected_files].
 repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-bot/homegit", "cgwalters-bot/praxis-credential-broker"]
 bases = ["main"]
 max_outputs = 3
@@ -34,8 +35,9 @@ missing_data = { max = 1 }
 # a replacement series can carry a pull request's `.github` changes. `files`
 # also lets them edit AGENTS.md there.
 [unprotected_files]
-# The same list as dispatch.toml's, which poll.test.cjs checks.
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome"]
+# The same list as dispatch.toml's, which poll.test.cjs checks;
+# the precondition for listing a repository is in its comment.
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]
