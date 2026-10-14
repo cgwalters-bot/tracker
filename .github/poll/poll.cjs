@@ -11,7 +11,9 @@
 const fs = require('node:fs');
 
 const CONFIG = Object.freeze({
-  repos: ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board'],
+  // Each must be in fix.toml's repos (poll.test.cjs checks) and run the `review`
+  // workflow: without its verdict a pull request waits, and the chain runs, for good.
+  repos: ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board', 'cgwalters-forge/tracker'],
   author: 'cgwalters-bot',
   // Where fix runs are started, and the only branches fix.toml lets one push to.
   dispatchRepo: 'cgwalters-forge/tracker',

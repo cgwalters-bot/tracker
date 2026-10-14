@@ -168,6 +168,27 @@ test('the fix task names the series bound fix.toml sets', () => {
   assert.equal(Number(bound?.[1]), CONFIG.fixSeriesMaxCommits);
 });
 
+// A TOML string array by its key, under the table it is in ('' for the top).
+function tomlList(file, table, key) {
+  const toml = fs.readFileSync(path.join(__dirname, '../agentic-job', file), 'utf8');
+  const section = table ? toml.split(`\n[${table}]\n`)[1].split('\n[')[0] : toml.split('\n[')[0];
+  const line = new RegExp(`^${key} = \\[(.*)\\]$`, 'm').exec(section);
+  assert.ok(line, `${file}: ${key} is not a one-line array`);
+  return JSON.parse(`[${line[1]}]`);
+}
+
+test('the poll follows only repositories fix.toml lets a fix push to', () => {
+  const fixable = tomlList('fix.toml', '', 'repos');
+  for (const repo of CONFIG.repos) assert.ok(fixable.includes(repo), repo);
+});
+
+test('fix.toml and dispatch.toml unprotect the same files in the same repositories', () => {
+  for (const key of ['repos', 'files', 'dot_folders']) {
+    const sorted = file => tomlList(file, 'unprotected_files', key).sort();
+    assert.deepEqual(sorted('fix.toml'), sorted('dispatch.toml'), key);
+  }
+});
+
 test('required checks come from the rules as well as isRequired', () => {
   // Recorded: GitHub reports isRequired false for `ci` on this draft.
   const p = pull('pull-143');
