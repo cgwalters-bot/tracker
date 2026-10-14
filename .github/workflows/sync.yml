@@ -1,0 +1,60 @@
+# Keeps the forge-native repositories' agentic-job pins at its main
+# (cgwalters-forge/tracker#544): .github/sync/sync.cjs reads
+# .github/sync/manifest.json and starts one implement run of dispatch.yml for
+# each caller that is behind, so the move gets dispatch's bounds and review
+# and lands as a pull request. Nothing here pushes. The README says what a
+# pass does and does not do.
+name: sync
+run-name: sync${{ (inputs.dry-run || vars.SYNC_DISPATCH != 'true') && ' (dry run)' || '' }}
+
+on:
+  schedule:
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: Print what a pass would do and start nothing
+        type: boolean
+        default: false
+
+permissions: {}
+concurrency:
+  group: sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # The manifest and the script are the default branch's, never a
+    # dispatcher's: a run on any other ref does nothing.
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The callers are public, so the job token reads them; `actions: write`
+    # is what lets it start dispatch.yml here, and no more.
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: One pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # Off until the variable SYNC_DISPATCH is `true`: each run it starts
+          # costs a model run and a pull request in another repository, so a
+          # merge of this file alone only reports.
+          DRY_RUN: ${{ (inputs.dry-run || vars.SYNC_DISPATCH != 'true') && '--dry-run' || '' }}
+        # `shell: bash` adds pipefail; stderr too, so a failed pass says why in the summary.
+        shell: bash
+        run: node .github/sync/sync.cjs ${DRY_RUN:+"$DRY_RUN"} 2>&1 | tee "$RUNNER_TEMP/pass.log"
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo '### sync'
+            echo '<pre>'
+            sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$RUNNER_TEMP/pass.log" 2>/dev/null || echo 'No pass ran'
+            echo '</pre>'
+          } >> "$GITHUB_STEP_SUMMARY"
