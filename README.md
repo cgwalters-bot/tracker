@@ -107,7 +107,11 @@ too.
 Its limits. Marking ready, fixing and `needs-human` apply only to what a
 dispatch run opened, a `dispatch/` branch of the bot's fork, since
 `.github/agentic-job/fix.toml` lets a fix push nowhere else; the bot's other
-pull requests are only merged once approved and green. The required checks
+pull requests are only merged once approved and green. The poll also follows
+pull requests by the configured `mergeAuthors` in
+`.github/poll/agent-board.json` (empty by default, here Dependabot). These
+authors are followed for merging only: failing or unapproved heads are left
+alone, never fixed, marked ready or labelled `needs-human`. The required checks
 are the base branch's ruleset's (every check, where it requires none). It
 does not read the board or start work for an item that has no pull request
 (the board scheduler below does), or follow pull requests in repositories we
