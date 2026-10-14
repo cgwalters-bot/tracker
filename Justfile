@@ -5,7 +5,10 @@
 set positional-arguments
 
 # Every test of the scripts under .github.
-test: test-poll test-usage test-session
+test: test-poll test-usage test-session test-tools
+
+test-tools:
+    node --test .github/agentic-job/tools.test.cjs
 
 test-session:
     node --test .github/agentic-job/session.test.cjs

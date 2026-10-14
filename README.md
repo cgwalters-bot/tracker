@@ -32,6 +32,26 @@ fresh machine from credentials alone, how to dispatch a run and where its
 state is. [docs/operator-notes.md](docs/operator-notes.md) is the log of
 cgwalters' instructions.
 
+## Dispatched tools
+
+Dispatched runs have a staged opt-in to agenthome's `install-tools` through
+the commented `[setup.tools]` in `.github/agentic-job/hosted.toml`, including ast-outline
+and ast-grep. The pin is the API-resolved merge of
+[agenthome#4](https://github.com/cgwalters-forge/agenthome/pull/4),
+`9b43eb81e1266ec762a6c49a4e31fb6b4ff3e0e0` (main on 2026-10-14).
+This configuration waits for the shared actions wrapper to upgrade from
+agentic-job v0.2.0 to a release containing
+[#602](https://github.com/cgwalters-forge/agentic-job/pull/602); v0.2.0
+cannot parse the opt-in. After that upgrade, uncomment the four-line table
+and update the staging regression test to require the active table.
+No wrapper input is needed: it already passes
+the caller's runner configuration. The installer runs before network
+lockdown as the sandbox user, with upstream's 120-second Git phases and
+600-second install limit; its code and dependencies are trusted setup,
+not sandboxed task code. Test the caller wiring with `just test-tools`;
+a real install and hardening check still need a fresh dispatched runner
+after that release upgrade.
+
 ## The pull request poll
 
 `.github/workflows/poll.yml` runs one pass of `.github/poll/poll.cjs`. A pass

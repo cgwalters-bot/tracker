@@ -44,7 +44,19 @@ allow-sockets = [
 [setup]
 # The egress proxy runs in a Python environment of its own, behind
 # nftables rules; podman is what an agent builds containers with.
-packages = ["python3-venv", "nftables", "podman", "uidmap"]
+packages = ["python3-venv", "nftables", "podman", "uidmap", "git", "just", "nodejs", "npm", "curl", "tar", "unzip"]
+
+# Uncomment this table only after the wrapper upgrades to the agentic-job
+# release containing #602: v0.2.0 rejects it and would break every dispatch.
+# A moving ref could replace pre-lockdown setup code without review here.
+# API-resolved merge of agenthome#4, also main on 2026-10-14:
+# https://github.com/cgwalters-forge/agenthome/pull/4
+# Runs unprivileged with upstream's bounded fetch/install phases; this does
+# not widen sandbox egress. The installer and dependencies are trusted setup.
+# [setup.tools]
+# repository = "https://github.com/cgwalters-forge/agenthome.git"
+# revision = "9b43eb81e1266ec762a6c49a4e31fb6b4ff3e0e0"
+# recipe = "install-tools"
 
 # The toolchain of each target repository, added to the packages above
 # for a run on it (`default` for any other). It is the caller's choice:
