@@ -16,6 +16,11 @@
   "epics": {
     "repository": "cgwalters-forge/tracker"
   },
+  "coordinator": {
+    "statusIssue": 572,
+    "statusHourUTC": 11,
+    "priorities": ["P0", "P1", "P2", "P3"]
+  },
   "schedule": {
     "owner": "cgwalters-forge",
     "project": 1,

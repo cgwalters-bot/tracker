@@ -52,7 +52,7 @@ test('only the operator\'s comments, last edited by the operator, count', () => 
     c(8, 'CGWALTERS'),
   ];
   assert.deepEqual(operatorComments(comments, OP).map(x => x.id), ['1', '4', '8']);
-  assert.deepEqual(operatorComments([c(1, OP)], OP), [{ id: '1', updated_at: '2026-10-11T00:00:00Z' }]);
+  assert.deepEqual(operatorComments([c(1, OP)], OP), [{ id: '1', updated_at: '2026-10-11T00:00:00Z', body: '' }]);
 });
 
 const epic = { updated_at: '2026-10-14T00:00:00Z' };

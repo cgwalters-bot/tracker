@@ -63,7 +63,7 @@ function provenance(timeline, operator) {
 function operatorComments(comments, operator) {
   const is = actor => actor?.login !== undefined && lower(actor.login) === lower(operator);
   return comments.filter(c => is(c.author) && !((c.lastEditedAt || c.editor) && !is(c.editor)))
-    .map(c => ({ id: String(c.databaseId), updated_at: c.updatedAt }));
+    .map(c => ({ id: String(c.databaseId), updated_at: c.updatedAt, body: c.body ?? '' }));
 }
 
 // OWNER/REPO of a REST issue, from its repository_url.
@@ -75,6 +75,7 @@ function subIssue(issue, board, followed) {
   const repository = repoOf(issue);
   const on = board.get(lower(issue.html_url));
   return {
+    ...(typeof issue.title === 'string' ? { title: issue.title, body: issue.body ?? '' } : {}),
     number: issue.number, repository, state: issue.state, updated_at: issue.updated_at,
     url: issue.html_url, created: issue.created_at,
     status: on?.status ?? null, priority: on?.priority ?? null, onBoard: Boolean(on),
@@ -186,7 +187,7 @@ async function readBoard(post, config) {
 const COMMENTS_QUERY = `query($owner: String!, $name: String!, $number: Int!, $cursor: String) {
   repository(owner: $owner, name: $name) { issue(number: $number) {
     comments(first: 100, after: $cursor) {
-      nodes { databaseId updatedAt lastEditedAt author { login } editor { login } }
+      nodes { databaseId updatedAt lastEditedAt body author { login } editor { login } }
       pageInfo { hasNextPage endCursor }
     }
   } }
@@ -233,7 +234,7 @@ async function census(get, post, config) {
       if (board.errors.length && subs.some(s => !s.onBoard)) throw new Error(`board read errors: ${board.errors.slice(0, 5).join('; ')}`);
       const comments = operatorComments(await readComments(post, repo, epic.number), config.operator);
       const priority = board.board.get(lower(epic.html_url))?.priority ?? null;
-      Object.assign(entry, { priority, subs, comments, fingerprint: fingerprint(epic, comments, subs) });
+      Object.assign(entry, { title: epic.title, body: epic.body, priority, subs, comments, fingerprint: fingerprint(epic, comments, subs) });
     } catch (err) {
       // One epic not read is said on its line; the others go on.
       entry.error = err.message;

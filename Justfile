@@ -16,6 +16,9 @@ session-profile:
 test-poll:
     cd .github/poll && node --test
 
+coordinator *args:
+    node .github/poll/coordinator.cjs "$@"
+
 test-usage:
     cd .github/usage && node --test
 
