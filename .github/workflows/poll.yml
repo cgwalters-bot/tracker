@@ -12,8 +12,9 @@ on:
   schedule:
     - cron: '*/10 * * * *'
   # Runs this file as the default branch has it, with the default branch as
-  # github.ref, whatever ref the dispatch run was on.
-  workflow_run:
+  # github.ref, whatever ref the dispatch run was on. It checks out only the
+  # default branch, never the triggering run's head or artifacts.
+  workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows: [dispatch]
     types: [completed]
   workflow_dispatch:

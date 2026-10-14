@@ -6,3 +6,7 @@ updates:
     directory: /
     schedule:
       interval: daily
+    # A release has a week to be found compromised and pulled before a pin
+    # moves to it.
+    cooldown:
+      default-days: 7
