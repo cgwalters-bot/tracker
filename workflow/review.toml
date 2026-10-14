@@ -1,8 +1,11 @@
 # Bounds for review.yml's automatic events, copied from agentic-job's
 # workflow/review.toml with this repository's name: any role's pull
 # request, forks included. The reusable workflow's `if:` narrows automatic
-# starts to the owner, members and collaborators, to protect the shared
-# inference cap. The agent reviews the head as data, without a credential.
+# starts to the owner, members and collaborators, and to bots whose user
+# id the REVIEW_BOT_IDS variable lists, to protect the shared inference
+# cap. Such a bot must also be named in `bots`: these bounds check the
+# actor, the `if:` the author. The agent reviews the head as data, without
+# a credential.
 hosts = ["github.com"]
 repos = ["cgwalters-forge/tracker"]
 bases = ["main"]
@@ -17,5 +20,6 @@ noop = { max = 1 }
 [trigger]
 events = ["pull_request_target", "pull_request"]
 roles = ["all"]
-bots = []
+# A `[bot]` login is a GitHub App's; no user can take it.
+bots = ["dependabot[bot]"]
 forks = true
