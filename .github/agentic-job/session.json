@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "repository": "cgwalters-forge/tracker",
+  "issue": 576,
+  "idleMinutes": 10
+}

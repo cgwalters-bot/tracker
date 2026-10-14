@@ -87,6 +87,42 @@ failed jobs.
 
 ## What is in flight
 
+### An interactive session
+
+`session.yml` starts a fresh read-only coordinator through the same wrapper.
+It is disabled in `.github/agentic-job/session.json`. Before enabling it,
+the operator must set the fixed tracker repository and session issue there,
+populate `[session] operators` (tailnet logins, not GitHub logins) and `origins`
+in `hosted.toml`, and set the repository variable `TAILNET_DOMAIN`. The login
+list prevents other tailnet users prompting the agent; the origin list prevents
+cross-site WebSocket hijacking from another page in the operator's browser.
+Never take these lists or the publication issue from dispatch inputs.
+
+Operator prerequisites: permit the operator to reach the runner's serve port,
+isolate runners from each other, and enable tailnet HTTPS
+([agentic-job#536](https://github.com/cgwalters-forge/agentic-job/issues/536));
+choose the operator login list and review site's origins
+([tracker#576](https://github.com/cgwalters-forge/tracker/issues/576)). Record any
+applied tailnet change as a dated entry in the private wiki
+([llm-wiki#35](http://forge/colin/llm-wiki/issues/35)). No tailnet change is made
+by this workflow.
+
+Dispatch on the default branch with an optional public opening prompt, a pool
+(default `claude`) and `idle-minutes` (empty uses the config's 10; range 1–60).
+The wrapper posts the `wss://` endpoint in the fixed issue's run status while
+the session is live; wait for the agent job's summary to show it served.
+One session runs at a time. The agent builds agent-board from the source in
+`agent-board.json` and uses only read commands with its read-only job token.
+That token may not read the organisation's private project: missing access is
+reported, never replaced with a write credential. A separate read-only project
+credential is not added here.
+
+This uses the wrapper's research profile: no patch or board mutation, and at
+most one end-of-session comment plus bounded diagnostic outputs, checked and
+applied separately under `dispatch.toml`. Dispatching work, board updates,
+mid-session writes, the review site's pane and a scripted fake-agent end-to-end
+run remain follow-ups. Check the caller with `just test-session`.
+
 Nothing has to be remembered by the coordinator. The runs themselves are
 `gh run list -R cgwalters-forge/tracker` (the run name is the kind and the
 item). What they opened is the bot's open pull requests on `dispatch/`
