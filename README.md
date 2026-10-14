@@ -121,6 +121,12 @@ flight, higher priorities first; fix runs the poll job starts in the same
 pass count from the next. Each line of the run's summary is one item and what
 was, or would be, done.
 
+The board is read with one paged GraphQL query, not `agent-board item list`,
+which reads every item's fields one request at a time. Each `agent-board`
+call gets no stdin and is stopped after `schedule.timeoutSeconds` (default
+120); one that fails puts its command line and the end of its stderr, tokens
+masked, on the item's line.
+
 It only previews, its lines marked `[dry-run]`, until the repository variable
 `BOARD_DISPATCH` is `apply`. To compare its decisions with the runs still
 started by hand, put a run's summary next to the dispatch runs started around
