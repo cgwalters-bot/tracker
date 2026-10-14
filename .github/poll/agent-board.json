@@ -16,7 +16,6 @@
   "schedule": {
     "owner": "cgwalters-forge",
     "project": 1,
-    "ready": ["Ready"],
     "wip": 4,
     "priorityField": "Priority",
     "triagePerPass": 1,

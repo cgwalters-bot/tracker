@@ -105,10 +105,14 @@ the last run that saved one. Its failure does not fail the run.
 
 ## The board scheduler
 
-The same run's `board` job, `.github/poll/schedule.cjs`, starts new work from
-the board. Each open issue whose Status is one of `schedule.ready` in
-`.github/poll/agent-board.json`, in a repository `schedule.repositories` lists,
-gets at most one step: `agent-board dispatch --apply` where it has an accepted
+The same run's `board` job, `.github/poll/schedule.cjs`, starts new work on
+the operator's epics. Its candidates are the open sub-issues of the live
+epics, as the epic census below finds them: an epic is live only while the
+operator is the last to have applied its `epic` label, so an epic the bot or
+anyone else labelled starts nothing. With no live epics the pass says `no live
+epics` and starts nothing. Each candidate in a repository
+`schedule.repositories` in `.github/poll/agent-board.json` lists gets at most
+one step: `agent-board dispatch --apply` where it has an accepted
 implement
 [job plan](https://github.com/cgwalters-forge/agent-board/blob/main/docs/job-plans.md),
 else one `triage` run of `dispatch.yml` asked to write one. An item is skipped
@@ -120,22 +124,24 @@ it is among the last hundred. Items of unlisted repositories, upstream ones
 among them, are skipped as "not a followed repository", as is a plan whose
 target is in one: upstream work is the operator's to start.
 
-`schedule.ready` is `["Ready"]`, not `Todo`: Todo is the backlog, with many
-stale or superseded items, and only what the operator or the controller moves
-to Ready is started. A ready status the board's Status field has no option
-for matches nothing; the pass's first line names it rather than failing.
-
-Items are taken by the board field `schedule.priorityField` (default
-`Priority`), P0 first, then oldest first. No step starts once `schedule.wip`
-runs of `dispatch.yml`, of any kind, are in flight; fix runs the poll job
-starts in the same pass count from the next. No more than
+Candidates are taken by their epic's board field `schedule.priorityField`
+(default `Priority`), then by their own, which the coordinator sets, P0 first,
+then oldest first; a sub-issue of two epics is taken once, from the one that
+ranks it first. An epic the census cannot read in full gives no candidates
+and fails the pass, after the rest is done, so that a board the token cannot
+read is not taken for one with no live epics; so do open epics past the
+census's 50. Who added a sub-issue to a live epic is not checked. No step
+starts once `schedule.wip` runs of `dispatch.yml`, of any kind, are in
+flight; fix runs the poll job starts in the same pass count from the next. No more than
 `schedule.triagePerPass` (default 1) triage runs start in a pass, and once
 that many have, the pass stops reading items after ten more fresh ones turn
 out to have no plan, so a plan further down waits for a later pass. Each line
-of the run's summary is one item and what was, or would be, done.
+of the run's summary is one item, the epic it was taken from, and what was,
+or would be, done.
 
-The board is read with one paged GraphQL query, not `agent-board item list`,
-which reads every item's fields one request at a time. Each `agent-board`
+The census, and with it the board, is read as the census step reads it, not
+with `agent-board item list`, which reads every item's fields one request at
+a time. Each `agent-board`
 call gets no stdin and is stopped after `schedule.timeoutSeconds` (default
 120); one that fails puts its command line and the end of its stderr, tokens
 masked, on the item's line.

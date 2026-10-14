@@ -94,9 +94,9 @@ test('a sub-issue takes its board fields by URL and its repository from the API'
   const board = new Map([['https://github.com/o/r/issues/2', { status: 'Ready', priority: 'P1' }]]);
   const issue = (repo, n) => ({ number: n, state: 'open', updated_at: 't', html_url: `https://github.com/${repo}/issues/${n}`, repository_url: `https://api.github.com/repos/${repo}` });
   assert.deepEqual(subIssue(issue('O/R', 2), board, new Set(['o/r'])),
-    { number: 2, repository: 'O/R', state: 'open', updated_at: 't', status: 'Ready', priority: 'P1', onBoard: true, followed: true });
+    { number: 2, repository: 'O/R', state: 'open', updated_at: 't', url: 'https://github.com/O/R/issues/2', created: undefined, status: 'Ready', priority: 'P1', onBoard: true, followed: true });
   assert.deepEqual(subIssue(issue('up/stream', 2), board, new Set(['o/r'])),
-    { number: 2, repository: 'up/stream', state: 'open', updated_at: 't', status: null, priority: null, onBoard: false, followed: false });
+    { number: 2, repository: 'up/stream', state: 'open', updated_at: 't', url: 'https://github.com/up/stream/issues/2', created: undefined, status: null, priority: null, onBoard: false, followed: false });
 });
 
 test('the board is read by pages into Status and Priority by URL', async () => {

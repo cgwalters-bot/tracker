@@ -1,0 +1,45 @@
+{
+  "repository": "o/t",
+  "followed": ["o/r"],
+  "rest": {
+    "/repos/o/t/issues?state=open&labels=epic": [
+      { "number": 1, "state": "open", "updated_at": "2026-10-14T00:00:00Z", "html_url": "https://github.com/o/t/issues/1", "repository_url": "https://api.github.com/repos/o/t" },
+      { "number": 2, "state": "open", "updated_at": "2026-10-14T00:00:00Z", "html_url": "https://github.com/o/t/issues/2", "repository_url": "https://api.github.com/repos/o/t" },
+      { "number": 3, "state": "open", "updated_at": "2026-10-14T00:00:00Z", "html_url": "https://github.com/o/t/issues/3", "repository_url": "https://api.github.com/repos/o/t" }
+    ],
+    "/repos/o/t/issues/1/timeline": [
+      { "event": "labeled", "actor": { "login": "cgwalters-bot" }, "label": { "name": "epic" } },
+      { "event": "labeled", "actor": { "login": "op" }, "label": { "name": "epic" } }
+    ],
+    "/repos/o/t/issues/2/timeline": [
+      { "event": "labeled", "actor": { "login": "cgwalters-bot" }, "label": { "name": "epic" } }
+    ],
+    "/repos/o/t/issues/3/timeline": [
+      { "event": "labeled", "actor": { "login": "op" }, "label": { "name": "epic" } }
+    ],
+    "/repos/o/t/issues/1/sub_issues": [
+      { "number": 10, "state": "open", "created_at": "2026-09-01T00:00:00Z", "html_url": "https://github.com/o/r/issues/10", "repository_url": "https://api.github.com/repos/o/r" },
+      { "number": 11, "state": "closed", "created_at": "2026-08-01T00:00:00Z", "html_url": "https://github.com/o/r/issues/11", "repository_url": "https://api.github.com/repos/o/r" },
+      { "number": 5, "state": "open", "created_at": "2026-08-01T00:00:00Z", "html_url": "https://github.com/up/stream/issues/5", "repository_url": "https://api.github.com/repos/up/stream" },
+      { "number": 12, "state": "open", "created_at": "2026-10-05T00:00:00Z", "html_url": "https://github.com/o/r/issues/12", "repository_url": "https://api.github.com/repos/o/r" }
+    ],
+    "/repos/o/t/issues/2/sub_issues": [
+      { "number": 20, "state": "open", "created_at": "2026-08-01T00:00:00Z", "html_url": "https://github.com/o/r/issues/20", "repository_url": "https://api.github.com/repos/o/r" }
+    ],
+    "/repos/o/t/issues/3/sub_issues": [
+      { "number": 30, "state": "open", "created_at": "2026-10-10T00:00:00Z", "html_url": "https://github.com/o/r/issues/30", "repository_url": "https://api.github.com/repos/o/r" },
+      { "number": 31, "state": "open", "created_at": "2026-07-01T00:00:00Z", "html_url": "https://github.com/o/r/issues/31", "repository_url": "https://api.github.com/repos/o/r" },
+      { "number": 12, "state": "open", "created_at": "2026-10-05T00:00:00Z", "html_url": "https://github.com/o/r/issues/12", "repository_url": "https://api.github.com/repos/o/r" }
+    ]
+  },
+  "board": [
+    { "status": { "name": "In Progress" }, "priority": { "name": "P1" }, "content": { "url": "https://github.com/o/t/issues/1" } },
+    { "status": { "name": "In Progress" }, "priority": { "name": "P0" }, "content": { "url": "https://github.com/o/t/issues/3" } },
+    { "status": { "name": "Todo" }, "priority": { "name": "P0" }, "content": { "url": "https://github.com/o/r/issues/10" } },
+    { "status": { "name": "Done" }, "priority": { "name": "P0" }, "content": { "url": "https://github.com/o/r/issues/11" } },
+    { "status": { "name": "Todo" }, "priority": { "name": "P2" }, "content": { "url": "https://github.com/o/r/issues/12" } },
+    { "status": { "name": "Todo" }, "priority": { "name": "P0" }, "content": { "url": "https://github.com/o/r/issues/20" } },
+    { "status": { "name": "Todo" }, "priority": { "name": "P2" }, "content": { "url": "https://github.com/o/r/issues/30" } },
+    { "status": { "name": "Todo" }, "priority": null, "content": { "url": "https://github.com/o/r/issues/31" } }
+  ]
+}
