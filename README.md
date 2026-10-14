@@ -213,6 +213,8 @@ resolved from the configured project's API response, never from a plan.
 At most one live epic per pass gets a planning run or an apply preview. Planning is
 `kind=triage`, with the epic's census facts and only authenticated operator
 comments as decisions. Its one comment carries an `agent-board-epic-plan`.
+`coordinator.planPool` in `agent-board.json` defaults to `claude`: epic
+planning must not inherit the triage toil pool.
 A later pass invokes `agent-board epic apply --dry-run`. **Epic mutations
 remain disabled even with `COORDINATOR=apply`:** the current CLI cannot pin
 the expected plan comment ID/version at its mutation boundary. Independently
@@ -234,7 +236,10 @@ Results carry a unique request marker; an obsolete run must finish before its re
 and a matching result hidden behind a newer writer's plan is not applied.
 
 Reporting uses the same triage/checkpoint mechanism on
-`coordinator.statusIssue` in the epic repository. It requests prose daily
+`coordinator.statusIssue` in the epic repository. Its `coordinator.statusPool`
+defaults to `mistral`, since the model only turns supplied facts into prose.
+Both pool settings must name entries in `.github/agentic-job/pools.json`.
+It requests prose daily
 after `coordinator.statusHourUTC` (default 11), or when any epic's health
 changes, and publishes the returned `coordinator-status` block with
 `agent-board project status-update` in a later pass. The controller, not the

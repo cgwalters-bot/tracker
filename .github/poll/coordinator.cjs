@@ -3,7 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { request, poolForKind } = require('./poll.cjs');
+const { request } = require('./poll.cjs');
 const { agentBoard, readRuns, openPullRefs } = require('./schedule.cjs');
 const { canonical, census, loadEpicsConfig, readComments, operatorComments } = require('./epics.cjs');
 const { previousSnapshot } = require('../usage/usage.cjs');
@@ -146,13 +146,19 @@ function loadConfig(text) {
   const config = loadEpicsConfig(text);
   const all = JSON.parse(text);
   const c = all.coordinator ?? {};
+  const pools = require('../agentic-job/pools.json');
+  const planPool = c.planPool === undefined ? 'claude' : c.planPool;
+  const statusPool = c.statusPool === undefined ? 'mistral' : c.statusPool;
+  for (const [name, pool] of Object.entries({ planPool, statusPool })) {
+    if (typeof pool !== 'string' || !Object.hasOwn(pools, pool)) throw new Error(`coordinator.${name} must name a configured pool`);
+  }
   const hour = c.statusHourUTC ?? 11;
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error('coordinator.statusHourUTC must be 0 to 23');
   if (!Number.isSafeInteger(c.statusIssue) || c.statusIssue < 1) throw new Error('coordinator.statusIssue must name the reporting issue');
   if (!Array.isArray(c.priorities) || !c.priorities.length || !c.priorities.every(p => /^P\d{1,3}$/.test(p))) {
     throw new Error('coordinator.priorities must list Priority options');
   }
-  return { ...config, statusHourUTC: hour, statusIssue: c.statusIssue, priorities: c.priorities,
+  return { ...config, planPool, statusPool, statusHourUTC: hour, statusIssue: c.statusIssue, priorities: c.priorities,
     epicDocs: `${all.source}/blob/${all.branch}/docs/epic-plans.md`, usage: require('../usage/config.json') };
 }
 
@@ -249,7 +255,7 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
           const repository = await get('GET', `/repos/${config.caller}`);
           await dispatch('POST', `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`, {
             ref: repository.default_branch, inputs: { kind: 'triage', repo: config.epicsRepository,
-              item: String(config.statusIssue), pool: poolForKind('triage'), task },
+              item: String(config.statusIssue), pool: config.statusPool, task },
           });
         }
       }
@@ -305,7 +311,7 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
         const repository = await get('GET', `/repos/${config.caller}`);
         await dispatch('POST', `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`, {
           ref: repository.default_branch, inputs: { kind: 'triage', repo: config.epicsRepository,
-            item: String(epic.number), pool: poolForKind('triage'), task },
+            item: String(epic.number), pool: config.planPool, task },
         });
       }
       break;

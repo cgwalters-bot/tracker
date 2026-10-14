@@ -96,6 +96,40 @@ test('health reports blocked, absent and unread board facts', () => {
   assert.equal(health([{ error: 'unread' }]), 'off-track');
 });
 
+test('coordinator pools default independently and reject unknown pool names', () => {
+  const source = JSON.parse(fs.readFileSync(require.resolve('./agent-board.json'), 'utf8'));
+  assert.equal(loadConfig(JSON.stringify(source)).planPool, 'claude');
+  assert.equal(loadConfig(JSON.stringify(source)).statusPool, 'mistral');
+  delete source.coordinator.planPool;
+  delete source.coordinator.statusPool;
+  const defaults = loadConfig(JSON.stringify(source));
+  assert.equal(defaults.planPool, 'claude');
+  assert.equal(defaults.statusPool, 'mistral');
+  for (const name of ['planPool', 'statusPool']) {
+    for (const value of ['', 'unknown', 'toString', null, 1]) {
+      assert.throws(() => loadConfig(JSON.stringify({ ...source,
+        coordinator: { ...source.coordinator, [name]: value } })), new RegExp(`coordinator.${name}`));
+    }
+  }
+});
+
+test('planning and status dispatch use their own configured pools', async () => {
+  const source = JSON.parse(fs.readFileSync(require.resolve('./agent-board.json'), 'utf8'));
+  for (const overrides of [{}, { planPool: 'openai', statusPool: 'claude' }]) {
+    delete source.coordinator.planPool;
+    delete source.coordinator.statusPool;
+    const config = loadConfig(JSON.stringify({ ...source, coordinator: { ...source.coordinator, ...overrides } }));
+    const h = harness(true);
+    Object.assign(h.options.config, { planPool: config.planPool, statusPool: config.statusPool });
+    assert.equal((await pass(h.options)).errors, 0);
+    assert.equal(h.dispatches.length, 2);
+    assert.equal(h.dispatches[0].inputs.item, '99');
+    assert.equal(h.dispatches[0].inputs.pool, overrides.statusPool ?? 'mistral');
+    assert.equal(h.dispatches[1].inputs.item, '7');
+    assert.equal(h.dispatches[1].inputs.pool, overrides.planPool ?? 'claude');
+  }
+});
+
 test('long comment history packs newest decisions first within the UTF-8 dispatch limit', () => {
   const config = { epicsRepository: 'o/r', operator: 'op', followed: new Set(['o/r']), epicDocs: 'https://example.test/docs' };
   for (const body of ['x'.repeat(10000), '😀'.repeat(4000), '\"\\\n'.repeat(4000)]) {
@@ -146,7 +180,7 @@ test('apply config resolves only configured Priority options', async () => {
 function harness(apply = false, entries = [epic, { ...epic, number: 9 }], comments = []) {
   const writes = [], dispatches = [], commands = [], lines = [];
   const config = { epicsRepository: 'o/r', planner: 'bot', operator: 'op', caller: 'o/controller', workflow: 'dispatch.yml',
-    followed: new Set(['o/r']), wip: 4, statusIssue: 99, statusHourUTC: 11, usage: { repo: 'o/usage', issue: 1, bot: 'bot' } };
+    followed: new Set(['o/r']), wip: 4, planPool: 'claude', statusPool: 'mistral', statusIssue: 99, statusHourUTC: 11, usage: { repo: 'o/usage', issue: 1, bot: 'bot' } };
   return { writes, dispatches, commands, lines, options: { config, entries, note: '', now, apply,
     get: async (method, p, body) => { if (method !== 'GET') { writes.push({ method, p, body }); return {}; }
       return p === '/repos/o/controller' ? { default_branch: 'trunk' } : []; },
