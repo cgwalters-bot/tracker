@@ -9,5 +9,11 @@
     "cgwalters-forge/agent-board",
     "cgwalters-forge/tracker"
   ],
-  "fixPools": ["claude", "openai"]
+  "fixPools": ["claude", "openai"],
+  "schedule": {
+    "owner": "cgwalters-forge",
+    "project": 1,
+    "ready": ["Todo"],
+    "wip": 4
+  }
 }

@@ -89,8 +89,9 @@ dispatch run opened, a `dispatch/` branch of the bot's fork, since
 `.github/agentic-job/fix.toml` lets a fix push nowhere else; the bot's other
 pull requests are only merged once approved and green. The required checks
 are the base branch's ruleset's (every check, where it requires none). It
-does not read the board, start work for an item that has no pull request, or
-follow pull requests in repositories we cannot write to. A pass that fails
+does not read the board or start work for an item that has no pull request
+(the board scheduler below does), or follow pull requests in repositories we
+cannot write to. A pass that fails
 part way is repeated five minutes later. Test with `node --test .github/poll/poll.test.cjs`.
 
 The same run's `agent-board` job previews the pass with `agent-board poll
@@ -101,3 +102,28 @@ repositories and logins it names: poll.cjs's, and this repository. Both
 jobs write their lines to the run's summary, one under the other. It takes no
 step and has only the job token, read-only; its state file is an artifact of
 the last run that saved one. Its failure does not fail the run.
+
+## The board scheduler
+
+The same run's `board` job, `.github/poll/schedule.cjs`, starts new work from
+the board. Each open issue whose Status is one of `schedule.ready` in
+`.github/poll/agent-board.json` gets at most one step: `agent-board dispatch
+--apply` where it has an accepted implement
+[job plan](https://github.com/cgwalters-forge/agent-board/blob/main/docs/job-plans.md),
+else one `triage` run of `dispatch.yml` asked to write one. An item is skipped
+while a `dispatch.yml` run for it, or for the item its plan targets, is in
+flight or a pull request of the bot says `Refs` to it; while its plan
+has a dispatch record (agent-board's, by this job or by hand; a writer edits
+or replaces the plan to dispatch again); and,
+for triage, while a triage run for it is among the last hundred. No step
+starts once `schedule.wip` runs of `dispatch.yml`, of any kind, are in
+flight, higher priorities first; fix runs the poll job starts in the same
+pass count from the next. Each line of the run's summary is one item and what
+was, or would be, done.
+
+It only previews, its lines marked `[dry-run]`, until the repository variable
+`BOARD_DISPATCH` is `apply`. To compare its decisions with the runs still
+started by hand, put a run's summary next to the dispatch runs started around
+it, `gh run list -R cgwalters-forge/tracker -w dispatch.yml --json
+displayTitle,createdAt`: run names are `KIND REPO#ITEM`, as the summary names
+items. Test with `node --test .github/poll/schedule.test.cjs`.
