@@ -92,18 +92,31 @@ jobs:
         id: pool
         env:
           POOL: ${{ inputs.pool }}
+          KIND: ${{ inputs.kind }}
+          # The wrapper's fallback without a pool, its default included.
+          AGENT: ${{ vars.AGENT || 'opencode' }}
         run: |
-          [[ -z "$POOL" ]] && { printf "agent=\nmodel=\nbudget=\n" >> "$GITHUB_OUTPUT"; exit 0; }
           pools=.github/agentic-job/pools.json
-          if ! jq -e --arg pool "$POOL" 'has($pool)' "$pools" > /dev/null; then
+          if [[ -n "$POOL" ]] && ! jq -e --arg pool "$POOL" 'has($pool)' "$pools" > /dev/null; then
             echo "::error::unknown pool '${POOL}'; expected one of: $(jq -r 'keys | join(", ")' "$pools")"
             exit 1
           fi
+          # profiles/implement.md names the implement skill, which the
+          # wrapper installs for claude and opencode only (`skills` below):
+          # vibe would run an implement with no procedure at all. fake reads
+          # no task.
+          agent=${POOL:+$(jq -r --arg pool "$POOL" '.[$pool].agent' "$pools")}
+          agent=${agent:-$AGENT}
+          if [[ "$KIND" == implement && ! "$agent" =~ ^(claude|opencode|fake)$ ]]; then
+            echo "::error::${POOL:-the variable AGENT} gives ${agent}, which has no implement skill; implement needs claude or opencode"
+            exit 1
+          fi
+          [[ -z "$POOL" ]] && { printf "agent=\nmodel=\nbudget=\n" >> "$GITHUB_OUTPUT"; exit 0; }
           jq -r --arg pool "$POOL" '.[$pool] | "agent=\(.agent)\nmodel=\(.model)\nbudget=\(.budget)"' "$pools" >> "$GITHUB_OUTPUT"
 
   run:
     needs: profile
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@71cae47f275af8825e81b3a63a6531362e3e58da
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@42ad118d85775363833c731898f0fefd0e0d2f27
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:
@@ -120,6 +133,13 @@ jobs:
       agent: ${{ needs.profile.outputs.agent }}
       model: ${{ needs.profile.outputs.model }}
       budget: ${{ needs.profile.outputs.budget || '500' }}
+      # agentic-job's implement skill and diff-reviewer subagent, so that a
+      # run reviews its own change before it hands it back (#543) and
+      # profiles/implement.md need not spell the procedure out. The wrapper
+      # honours it only for implement with claude or opencode; fix is asked
+      # for too, but keeps its profile's full text until agentic-job has a
+      # fix skill (its #542).
+      skills: ${{ inputs.kind == 'implement' || inputs.kind == 'fix' }}
       apply-environment: agent-apply
     # The bot's token, an organization secret, named and never inherited.
     # The wrapper hands it to apply, in the environment above, and to the
