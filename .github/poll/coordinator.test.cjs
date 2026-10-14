@@ -96,6 +96,44 @@ test('health reports blocked, absent and unread board facts', () => {
   assert.equal(health([{ error: 'unread' }]), 'off-track');
 });
 
+test('long comment history packs newest decisions first within the UTF-8 dispatch limit', () => {
+  const config = { epicsRepository: 'o/r', operator: 'op', followed: new Set(['o/r']), epicDocs: 'https://example.test/docs' };
+  for (const body of ['x'.repeat(10000), '😀'.repeat(4000), '\"\\\n'.repeat(4000)]) {
+    const comments = Array.from({ length: 100 }, (_, i) => ({ id: String(i + 1),
+      updated_at: new Date(now + i * 1000).toISOString(), body: `${i === 99 ? 'NEWEST' : 'OLDER'} ${body}` }));
+    const value = { ...epic, comments, subs: [{ ...epic.subs[0], body: 'CHILD BODY'.repeat(10000), linkedPR: 'https://example.test/pull/1' }] };
+    const task = brief(config, value, 'request');
+    assert.ok(Buffer.byteLength(JSON.stringify(value)) > 60000);
+    assert.ok(Buffer.byteLength(task) <= 60000);
+    assert.match(task, /NEWEST/);
+    assert.doesNotMatch(task, /CHILD BODY/);
+    const lines = task.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line));
+    const packed = lines.filter(line => line.id);
+    assert.equal(packed[0].id, '100');
+    assert.ok(packed.length > 0 && packed.length < 100);
+    assert.deepEqual(packed.map(c => c.id), [...comments].reverse().slice(0, packed.length).map(c => c.id));
+    for (const c of packed) {
+      assert.ok(Buffer.byteLength(c.body) <= 4000);
+      assert.doesNotMatch(c.body, /\ufffd/);
+      assert.match(c.body, /truncated/);
+    }
+    assert.match(task, new RegExp(`${100 - packed.length} older operator comment\\(s\\) left out; read https://github.com/o/r/issues/7`));
+    assert.equal(lines.find(line => line.issue).linkedPR, 'https://example.test/pull/1');
+    assert.equal(lines[0].body, epic.body);
+  }
+  assert.match(brief(config, { ...epic, comments: [] }, 'request'), /0 older operator comment/);
+  const tied = brief(config, { ...epic, comments: ['9', '11', '10'].map(id => ({ id, updated_at: epic.comments[0].updated_at, body: id })) }, 'request');
+  assert.deepEqual(tied.split('\n').filter(line => line.startsWith('{')).map(line => JSON.parse(line)).filter(c => c.id).map(c => c.id), ['11', '10', '9']);
+  assert.throws(() => brief(config, { ...epic, body: 'x'.repeat(60000) }, 'request'), /after packing/);
+});
+
+test('coordinator workflow failures are isolated and retain the controller summary', () => {
+  const workflow = fs.readFileSync(require.resolve('../workflows/poll.yml'), 'utf8');
+  const step = workflow.split('      - name: Coordinator\n')[1].split('\n  # agent-board')[0];
+  assert.match(step, /continue-on-error: true/);
+  assert.match(step, /run: just coordinator/);
+});
+
 test('apply config resolves only configured Priority options', async () => {
   const project = { id: 'project', field: { id: 'field', options: [{ name: 'P1', id: 'option' }] } };
   const post = async () => ({ data: { repositoryOwner: { projectV2: project } } });
@@ -150,6 +188,38 @@ test('incomplete census never plans an epic, and dispatch failure retains its cl
   assert.equal((await pass(failed.options)).errors, 2);
   assert.equal(failed.writes.length, 2);
   assert.match(failed.writes[0].body.body, /pending/);
+});
+
+test('large epic dispatch succeeds and includes only configured bot-linked open PR facts', async () => {
+  const value = { ...epic, comments: Array.from({ length: 100 }, (_, i) => ({ id: String(i + 1),
+    updated_at: new Date(now + i * 1000).toISOString(), body: `${i === 99 ? 'NEWEST' : 'OLDER'} ${'x'.repeat(10000)}` })) };
+  const h = harness(true, [value]);
+  h.options.config.followed = new Set(['o/r']);
+  const get = h.options.get;
+  h.options.get = async (method, p, body) => p.includes('/pulls?') ? [
+    { user: { login: 'bot' }, body: 'Refs O/R#8', html_url: 'https://example.test/pull/1' },
+    { user: { login: 'visitor' }, body: 'Refs O/R#8', html_url: 'https://example.test/pull/2' },
+  ] : get(method, p, body);
+  const counts = await pass(h.options);
+  assert.equal(counts.errors, 0);
+  const task = h.dispatches.at(-1).inputs.task;
+  assert.ok(Buffer.byteLength(task) <= 60000);
+  assert.match(task, /NEWEST/);
+  assert.match(task, /https:\/\/example.test\/pull\/1/);
+  assert.doesNotMatch(task, /https:\/\/example.test\/pull\/2/);
+});
+
+test('unavailable PR facts fail before the epic pending checkpoint is written', async () => {
+  const h = harness(true);
+  h.options.config.followed = new Set(['o/r']);
+  const get = h.options.get;
+  h.options.get = async (method, p, body) => {
+    if (p.includes('/pulls?')) throw new Error('PR snapshot unavailable');
+    return get(method, p, body);
+  };
+  assert.ok((await pass(h.options)).errors > 0);
+  assert.equal(h.writes.some(w => w.p.endsWith('/7/comments')), false);
+  assert.equal(h.dispatches.some(d => d.inputs.item === '7'), false);
 });
 
 test('a later prose result publishes once, claims first, and a preview never publishes', async () => {
