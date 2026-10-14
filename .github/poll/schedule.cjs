@@ -14,15 +14,20 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync, spawnSync } = require('node:child_process');
+const { spawnSync } = require('node:child_process');
 const { CONFIG: POLL, paged, poolForKind, request } = require('./poll.cjs');
 
 const CONFIG_FILE = path.join(__dirname, 'agent-board.json');
 // How many of dispatch.yml's newest runs are read: enough to hold every run
 // in flight, and the window in which an item is triaged at most once.
 const HISTORY_RUNS = 100;
-// One agent-board call, so that a hung one fails its item, not the job.
-const AGENT_BOARD_TIMEOUT_MS = 2 * 60 * 1000;
+// One agent-board call, unless `schedule.timeoutSeconds` says otherwise, so
+// that a hung one fails its item, not the job. A dry run reads one issue's
+// comments; nothing it does should take minutes.
+const AGENT_BOARD_TIMEOUT_S = 120;
+// The board is read 100 items a page; past this many pages the pass stops
+// rather than spend the token's budget on a board it cannot have meant.
+const BOARD_PAGES = 50;
 // A run that has not completed holds its slot and its item.
 const RUNNING = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
 // dispatch.yml's run-name: "KIND OWNER/REPO#ITEM", then the pool.
@@ -63,6 +68,10 @@ function loadConfig(text) {
     throw new Error('agent-board.json: schedule.ready must list at least one status');
   }
   if (!Number.isSafeInteger(config.wip) || config.wip < 0) throw new Error('agent-board.json: schedule.wip must be a count');
+  // A bound on one call; the job's timeout-minutes is the pass's.
+  const t = s.timeoutSeconds ?? AGENT_BOARD_TIMEOUT_S;
+  if (!Number.isSafeInteger(t) || t < 1 || t > 600) throw new Error('agent-board.json: schedule.timeoutSeconds must be 1 to 600');
+  config.timeoutMs = t * 1000;
   if (!login.test(config.operator ?? '') || !login.test(config.planner ?? '') || !/^[\w.-]+\/[\w.-]+$/.test(config.caller ?? '')) {
     throw new Error('agent-board.json: operator, bot and dispatchRepo are required');
   }
@@ -179,7 +188,7 @@ async function decide(items, { inFlight, busy: running, triaged }, wip, probe, p
       found = await probe(item);
       if (found.plan && !found.recorded) holding = await held(found.target);
     } catch (err) {
-      skip(`could not be read: ${err.message.slice(0, 300)}`);
+      skip(`could not be read: ${err.message.slice(0, 2500)}`);
       continue;
     }
     if (found.plan) {
@@ -217,10 +226,99 @@ function triageTask(key, url, planDocs) {
   ].join('\n\n');
 }
 
-// ---- I/O ----
+// The ready items of one page of the board, as `decide` takes them: open,
+// with a Status in `ready`. Pull requests are kept, to be skipped by name.
+function readItems(nodes, ready) {
+  const statuses = new Set(ready);
+  return nodes.filter(n => n?.content?.state === 'OPEN' && statuses.has(n.status?.name)).map(n => ({
+    repository: n.content.repository.nameWithOwner,
+    number: n.content.number,
+    content_kind: n.content.__typename === 'Issue' ? 'issue' : 'pull_request',
+    url: n.content.url,
+    priority: n.priority?.name ?? null,
+  }));
+}
 
-function agentBoard(bin, args, env) {
-  return execFileSync(bin, args, { encoding: 'utf8', env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'], timeout: AGENT_BOARD_TIMEOUT_MS });
+// The board read in one paged query that asks only for the fields used.
+// `agent-board item list` builds a full snapshot instead, three requests an
+// item, closed ones too, one after another, and did so once per status:
+// with about 400 items that outlasted its timeout on every pass.
+const BOARD_QUERY = `query($owner: String!, $number: Int!, $cursor: String) {
+  repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) {
+    items(first: 100, after: $cursor) {
+      nodes {
+        status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+        priority: fieldValueByName(name: "Priority") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+        content {
+          __typename
+          ... on Issue { number url state repository { nameWithOwner } }
+          ... on PullRequest { number url state repository { nameWithOwner } }
+        }
+      }
+      pageInfo { hasNextPage endCursor }
+    }
+  } } }
+}`;
+
+// `post(body)` is the GraphQL request. An item whose content the token
+// cannot read comes back null, with an error beside the data: that item is
+// left out and counted, and the errors kept for the log, rather than one
+// item stopping every pass.
+async function readBoard(post, config) {
+  const items = [];
+  let unreadable = 0;
+  const errors = new Set();
+  let cursor = null;
+  for (let page = 0; page < BOARD_PAGES; page++) {
+    const out = await post({ query: BOARD_QUERY, variables: { owner: config.owner, number: config.project, cursor } });
+    const project = out.data?.repositoryOwner?.projectV2;
+    if (!project?.items) {
+      const why = (out.errors ?? []).map(e => e.message).join('; ');
+      throw new Error(`board ${config.owner}/${config.project} not found, or not readable with GH_TOKEN${why ? `: ${why}` : ''}`);
+    }
+    unreadable += project.items.nodes.filter(n => !n?.content).length;
+    for (const e of out.errors ?? []) errors.add(e.message);
+    items.push(...readItems(project.items.nodes, config.ready));
+    if (!project.items.pageInfo.hasNextPage) return { items, unreadable, errors: [...errors] };
+    cursor = project.items.pageInfo.endCursor;
+  }
+  throw new Error(`board ${config.owner}/${config.project} has more than ${BOARD_PAGES * 100} items`);
+}
+
+// One agent-board call. Its stdin is closed, so nothing it might ask waits
+// for an answer, and it is stopped after `timeoutMs`. One that cannot start,
+// times out, is killed or, with `check`, exits non-zero throws `failure`.
+// What it prints is logged to the run's summary, so the tokens given to it
+// are masked in its output, here and in its failure.
+function agentBoard(bin, args, { env = {}, timeoutMs, check = true } = {}) {
+  const run = spawnSync(bin, args, {
+    encoding: 'utf8', env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: timeoutMs, killSignal: 'SIGKILL', maxBuffer: 16 * 1024 * 1024,
+  });
+  const mask = masker(env);
+  const out = { status: run.status, stdout: mask(run.stdout), stderr: mask(run.stderr) };
+  if (!run.error && !run.signal && (run.status === 0 || !check)) return out;
+  const why = run.error?.code === 'ETIMEDOUT' ? `timed out after ${timeoutMs / 1000} s`
+    : run.error ? run.error.message
+      : run.signal ? `killed by ${run.signal}` : `exited ${run.status}`;
+  throw failure(args, why, out.stderr, env);
+}
+
+// The tokens it is given, and those it inherits.
+const masker = env => {
+  const secrets = [...Object.values(env), process.env.GH_TOKEN, process.env.DISPATCH_TOKEN].filter(v => typeof v === 'string' && v.length >= 8);
+  return text => secrets.reduce((t, s) => t.split(s).join('***'), String(text ?? ''));
+};
+
+// An error naming the agent-board command and carrying the end of its
+// stderr, where agent-board says what went wrong, on one line, as the
+// summary has one line an item.
+function failure(args, why, stderr, env) {
+  const mask = masker(env);
+  const tail = mask(stderr).trim().split('\n').filter(Boolean).slice(-20).join(' | ').slice(-2000);
+  const err = new Error(`${mask(['agent-board', ...args].join(' '))}: ${why}; ${tail ? `stderr: ${tail}` : 'no stderr'}`);
+  err.stderr = mask(stderr);
+  return err;
 }
 
 function dispatchArgs(config) {
@@ -230,12 +328,18 @@ function dispatchArgs(config) {
 
 // agent-board's dry run reads the plan and prints the request it would
 // send; the line naming the plan's comment is on stderr.
+// A non-zero exit is its refusal, which is an answer; a timeout is not.
 async function probePlan(bin, config, token, item) {
-  const run = spawnSync(bin, ['dispatch', item.url, '--dry-run', ...dispatchArgs(config)],
-    { encoding: 'utf8', env: { ...process.env, GH_TOKEN: token }, timeout: AGENT_BOARD_TIMEOUT_MS });
-  if (run.error) throw run.error;
+  const args = ['dispatch', item.url, '--dry-run', ...dispatchArgs(config)];
+  const env = { GH_TOKEN: token };
+  const run = agentBoard(bin, args, { env, timeoutMs: config.timeoutMs, check: false });
   if (run.status !== 0) return readRefusal(run.stderr);
-  const found = readDryRun(run.stdout, run.stderr);
+  let found;
+  try {
+    found = readDryRun(run.stdout, run.stderr);
+  } catch (err) {
+    throw failure(args, `output not understood: ${err.message}`, run.stderr, env);
+  }
   const comments = await paged(token, `/repos/${item.repository}/issues/${item.number}/comments`);
   return { ...found, recorded: findRecord(comments, [config.operator, config.planner], found.commentId) };
 }
@@ -251,12 +355,7 @@ async function main(argv) {
   const config = loadConfig(fs.readFileSync(CONFIG_FILE, 'utf8'));
   const log = line => console.log(apply ? line : `[dry-run] ${line}`);
 
-  const items = [];
-  for (const status of config.ready) {
-    const out = agentBoard(bin, ['--owner', config.owner, '--project', String(config.project), 'item', 'list',
-      '--status', status, '--state', 'open', '-L', '1000', '--json', 'repository,number,content_kind,url,priority']);
-    items.push(...JSON.parse(out));
-  }
+  const { items, unreadable, errors: boardErrors } = await readBoard(body => request(token, 'POST', '/graphql', body), config);
   const runs = (await request(dispatchToken, 'GET',
     `/repos/${config.caller}/actions/workflows/${config.workflow}/runs?per_page=${HISTORY_RUNS}`)).workflow_runs;
   const state = readRuns(runs);
@@ -267,7 +366,9 @@ async function main(argv) {
     if (!listed.has(repo)) listed.set(repo, openPullRefs(await paged(token, `/repos/${repo}/pulls?state=open`), config.planner));
     return listed.get(repo).get(key);
   };
-  log(`${items.length} ready item(s); ${state.inFlight} of ${config.wip} run(s) in flight`);
+  log(`${items.length} ready item(s); ${state.inFlight} of ${config.wip} run(s) in flight`
+    + (unreadable ? `; ${unreadable} board item(s) not readable, left out` : '')
+    + (boardErrors.length ? `; board read errors: ${boardErrors.slice(0, 5).join(' | ').slice(0, 1000)}` : ''));
 
   const byName = new Map(items.map(i => [`${i.repository}#${i.number}`, i]));
   let errors = 0;
@@ -283,9 +384,9 @@ async function main(argv) {
         // agent-board records the plan on the issue before it sends, and
         // refuses one recorded already, so a plan starts one run however
         // many passes see it.
-        const out = agentBoard(bin, ['dispatch', item.url, '--apply', ...dispatchArgs(config)],
-          { GH_TOKEN: token, DISPATCH_TOKEN: dispatchToken });
-        log(`${step.item} dispatch: ${step.reason}; ${out.trim().split('\n').join(', ')}`);
+        const { stdout } = agentBoard(bin, ['dispatch', item.url, '--apply', ...dispatchArgs(config)],
+          { env: { GH_TOKEN: token, DISPATCH_TOKEN: dispatchToken }, timeoutMs: config.timeoutMs });
+        log(`${step.item} dispatch: ${step.reason}; ${stdout.trim().split('\n').join(', ')}`);
       } else {
         // The run's details, as poll.cjs asks for them, so that the run is
         // named here; where the API does not know them, asked again without.
@@ -303,16 +404,16 @@ async function main(argv) {
         log(`${step.item} triage: started ${run?.html_url ?? ''}`.trimEnd());
       }
     } catch (err) {
-      const reason = String(err.stderr || err.message).trim().split('\n').at(-1);
-      if (RECORDED_RE.test(reason)) { log(`${step.item} skip: ${reason}`); continue; }
+      const last = String(err.stderr ?? '').trim().split('\n').at(-1);
+      if (RECORDED_RE.test(last)) { log(`${step.item} skip: ${last}`); continue; }
       errors++;
-      log(`${step.item} ${step.action} error: ${reason}`);
+      log(`${step.item} ${step.action} error: ${err.message}`);
     }
   }
   if (errors) throw new Error(`${errors} step(s) failed`);
 }
 
-module.exports = { decide, findRecord, loadConfig, openPullRefs, readDryRun, readRefusal, readRuns, triageTask };
+module.exports = { agentBoard, decide, readBoard, findRecord, loadConfig, openPullRefs, probePlan, readDryRun, readItems, readRefusal, readRuns, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });

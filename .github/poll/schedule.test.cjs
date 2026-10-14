@@ -2,9 +2,10 @@
 'use strict';
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
 const path = require('node:path');
-const { test } = require('node:test');
-const { decide, findRecord, loadConfig, openPullRefs, readDryRun, readRefusal, readRuns, triageTask } = require('./schedule.cjs');
+const { after, test } = require('node:test');
+const { agentBoard, decide, readBoard, findRecord, loadConfig, openPullRefs, probePlan, readDryRun, readItems, readRefusal, readRuns, triageTask } = require('./schedule.cjs');
 
 const BOT = 'cgwalters-bot';
 const issue = (number, extra = {}) => ({ repository: 'o/r', number, content_kind: 'issue', url: `https://github.com/o/r/issues/${number}`, ...extra });
@@ -29,6 +30,11 @@ test('a config without a schedule, or with a bad cap, is refused', () => {
   assert.throws(() => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, wip: '4' } })), /wip/);
   assert.throws(() => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, ready: [] } })), /ready/);
   assert.throws(() => loadConfig(JSON.stringify({ ...base, bot: undefined, schedule })), /operator, bot/);
+  assert.equal(loadConfig(JSON.stringify({ ...base, schedule })).timeoutMs, 120000);
+  assert.equal(loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, timeoutSeconds: 30 } })).timeoutMs, 30000);
+  for (const timeoutSeconds of [0, 601, '30', 1.5]) {
+    assert.throws(() => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, timeoutSeconds } })), /timeoutSeconds/);
+  }
 });
 
 test('runs in flight hold a slot each, and their item', () => {
@@ -193,4 +199,108 @@ test('the triage task asks for one implement plan in the job-plan format', () =>
   assert.match(task, /agent-board-plan/);
   assert.match(task, /agent-board\/job-plan\/v1/);
   assert.match(task, /"implement"/);
+});
+
+test('the board read keeps open items with a ready Status', () => {
+  const node = (number, status, extra = {}) => ({
+    status: status && { name: status }, priority: { name: 'P1' },
+    content: { __typename: 'Issue', number, url: `u${number}`, state: 'OPEN', repository: { nameWithOwner: 'o/r' } },
+    ...extra,
+  });
+  const items = readItems([
+    node(1, 'Todo'),
+    node(2, 'In Progress'),
+    node(3, null),
+    node(4, 'Todo', { content: { __typename: 'Issue', number: 4, url: 'u4', state: 'CLOSED', repository: { nameWithOwner: 'o/r' } } }),
+    node(5, 'Ready', { priority: null, content: { __typename: 'PullRequest', number: 5, url: 'u5', state: 'OPEN', repository: { nameWithOwner: 'o/p' } } }),
+    { status: { name: 'Todo' }, content: null },
+  ], ['Todo', 'Ready']);
+  assert.deepEqual(items, [
+    { repository: 'o/r', number: 1, content_kind: 'issue', url: 'u1', priority: 'P1' },
+    { repository: 'o/p', number: 5, content_kind: 'pull_request', url: 'u5', priority: null },
+  ]);
+});
+
+// Stub agent-board binaries, made where each test runs, not in the tree.
+const stubDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-board-stub-'));
+after(() => fs.rmSync(stubDir, { recursive: true, force: true }));
+const stub = (name, body) => {
+  const file = path.join(stubDir, name);
+  fs.writeFileSync(file, `#!/usr/bin/env node\n${body}\n`, { mode: 0o755 });
+  return file;
+};
+const HANGS = stub('hangs', "process.stderr.write('reading the plan\\n'); setInterval(() => {}, 1000);");
+const FAILS = stub('fails', "process.stderr.write(`warning: slow\\nerror: bad credentials for ${process.env.GH_TOKEN}\\n`); process.exit(3);");
+// Waits for stdin to end, as a prompt would wait for an answer.
+const READS_STDIN = stub('reads-stdin', "process.stdin.resume(); process.stdin.on('end', () => process.stdout.write('done\\n'));");
+const GARBLED = stub('garbled', "process.stdout.write('not json'); process.stderr.write('dry run\\n');");
+const TOKEN = 'ghp_secretsecretsecret';
+const CONFIG = { caller: 'o/t', workflow: 'dispatch.yml', operator: 'op', planner: BOT, timeoutMs: 10000 };
+const ITEM = issue(7);
+
+test('a hung agent-board is stopped, and the error names the command', () => {
+  const started = Date.now();
+  // What it wrote before it hung is kept, if it got that far before the kill.
+  assert.throws(() => agentBoard(HANGS, ['dispatch', ITEM.url, '--dry-run'], { env: { GH_TOKEN: TOKEN }, timeoutMs: 1000 }),
+    /^Error: agent-board dispatch https:\/\/github.com\/o\/r\/issues\/7 --dry-run: timed out after 1 s; (stderr: reading the plan|no stderr)$/);
+  assert.ok(Date.now() - started < 10000);
+});
+
+test('a failing agent-board throws its command, exit status and stderr on one line, with the token masked', () => {
+  assert.throws(() => agentBoard(FAILS, ['dispatch', ITEM.url, '--apply'], { env: { GH_TOKEN: TOKEN }, timeoutMs: 10000 }),
+    err => {
+      assert.equal(err.message, `agent-board dispatch ${ITEM.url} --apply: exited 3; stderr: warning: slow | error: bad credentials for ***`);
+      assert.doesNotMatch(err.stderr, new RegExp(TOKEN));
+      return true;
+    });
+  // A binary that is not there is named too.
+  assert.throws(() => agentBoard(path.join(stubDir, 'missing'), ['item', 'list'], { timeoutMs: 10000 }),
+    /^Error: agent-board item list: spawnSync .*ENOENT; no stderr$/);
+});
+
+test('agent-board gets no stdin to wait on', () => {
+  assert.equal(agentBoard(READS_STDIN, [], { timeoutMs: 10000 }).stdout, 'done\n');
+});
+
+test("a dry run's refusal is an answer; a hang or output not understood skips the item with the command", async () => {
+  // FAILS exits non-zero: agent-board's refusal, the last line of stderr.
+  assert.deepEqual(await probePlan(FAILS, CONFIG, TOKEN, ITEM), { refused: 'error: bad credentials for ***' });
+  await assert.rejects(probePlan(GARBLED, CONFIG, TOKEN, ITEM),
+    /^Error: agent-board dispatch \S+ --dry-run --caller o\/t .*: output not understood: .*; stderr: dry run$/);
+  const steps = await decide([ITEM, issue(8)], empty, 4,
+    item => item.number === 7 ? probePlan(HANGS, { ...CONFIG, timeoutMs: 1000 }, TOKEN, item) : none(), noPulls);
+  assert.equal(steps[0].action, 'skip');
+  assert.match(steps[0].reason, /^could not be read: agent-board dispatch \S+ --dry-run .*: timed out after 1 s; /);
+  assert.deepEqual(steps[1], { item: 'o/r#8', action: 'triage', reason: 'no plan' });
+});
+
+const BOARD = { owner: 'o', project: 1, ready: ['Todo'] };
+const page = (nodes, next, extra = {}) => ({
+  data: { repositoryOwner: { projectV2: { items: { nodes, pageInfo: { hasNextPage: !!next, endCursor: next ?? null } } } } },
+  ...extra,
+});
+const todo = number => ({
+  status: { name: 'Todo' },
+  content: { __typename: 'Issue', number, url: `u${number}`, state: 'OPEN', repository: { nameWithOwner: 'o/r' } },
+});
+
+test('the board is read page by page, an unreadable item counted and left out', async () => {
+  const asked = [];
+  const pages = [page([todo(1)], 'c1'), page([todo(2), { status: { name: 'Todo' }, content: null }], null, { errors: [{ message: 'FORBIDDEN' }] })];
+  const { items, unreadable, errors } = await readBoard(async body => { asked.push(body.variables.cursor); return pages.shift(); }, BOARD);
+  assert.deepEqual(asked, [null, 'c1']);
+  assert.deepEqual(items.map(i => i.number), [1, 2]);
+  assert.equal(unreadable, 1);
+  assert.deepEqual(errors, ['FORBIDDEN']);
+});
+
+test('a board that cannot be found, or never ends, stops the pass', async () => {
+  await assert.rejects(readBoard(async () => ({ data: { repositoryOwner: null }, errors: [{ message: 'no such owner' }] }), BOARD),
+    /board o\/1 not found.*: no such owner/);
+  // A page that failed partway, its connection null beside the error.
+  await assert.rejects(readBoard(async () => ({ data: { repositoryOwner: { projectV2: { items: null } } }, errors: [{ message: 'timeout' }] }), BOARD),
+    /not readable with GH_TOKEN: timeout/);
+  let calls = 0;
+  await assert.rejects(readBoard(async () => { calls++; return page([], `c${calls}`); }, BOARD), /more than 5000 items/);
+  assert.equal(calls, 50);
 });
