@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, poolForFix, poolForKind, poolForRound, reviewText, toilOnly, writeOutput } = require('./poll.cjs');
+const { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, merge, poolForFix, poolForKind, poolForRound, reviewText, toilOnly, writeOutput } = require('./poll.cjs');
 
 const load = name => structuredClone(require(`./testdata/${name}.json`));
 const required = load('rules-agentic-job').flatMap(r => r.parameters.required_status_checks.map(c => c.context));
@@ -180,6 +180,36 @@ function tomlList(file, table, key) {
 test('the poll follows only repositories fix.toml lets a fix push to', () => {
   const fixable = tomlList('fix.toml', '', 'repos');
   for (const repo of CONFIG.repos) assert.ok(fixable.includes(repo), repo);
+});
+
+test('the poll follows the review-enabled tooling repositories, not agenthome', () => {
+  const owner = CONFIG.dispatchRepo.split('/')[0];
+  for (const name of ['actions', 'review']) assert.ok(CONFIG.repos.includes(`${owner}/${name}`));
+  assert.ok(!CONFIG.repos.includes(`${owner}/agenthome`));
+});
+
+test('merge falls back to a head-pinned rebase without auto-merge or a queue', async t => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const body = JSON.parse(options.body);
+    calls.push({ url, method: options.method, body });
+    if (calls.length <= 2) {
+      return { ok: true, text: async () => JSON.stringify({ errors: [{ message: 'not enabled' }] }) };
+    }
+    return { ok: true, text: async () => JSON.stringify({ merged: true }) };
+  });
+  const p = pull('pull-470');
+  const repo = CONFIG.repos.at(-1);
+  assert.equal(await merge('test-token', repo, p), 'merged');
+  assert.equal(calls.length, 3);
+  assert.match(calls[0].body.query, /enablePullRequestAutoMerge/);
+  assert.match(calls[1].body.query, /enqueuePullRequest/);
+  assert.deepEqual(calls[0].body.variables, { id: p.id });
+  assert.deepEqual(calls[1].body.variables, { id: p.id });
+  assert.deepEqual(calls[2], {
+    url: `https://api.github.com/repos/${repo}/pulls/${p.number}/merge`,
+    method: 'PUT', body: { merge_method: 'rebase', sha: p.headRefOid },
+  });
 });
 
 test('fix.toml and dispatch.toml unprotect the same files in the same repositories', () => {
