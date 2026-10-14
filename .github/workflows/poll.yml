@@ -207,7 +207,7 @@ jobs:
       # written it, and re-saving what was restored would carry a state the
       # pass cannot read into every later pass. Kept long enough to outlast
       # an idle gap of six hours, agent-board's longest.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ steps.pass.outcome == 'success' }}
         with:
           name: agent-board-poll-state-${{ steps.build.outputs.rev }}
