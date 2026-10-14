@@ -1,0 +1,23 @@
+{
+  "source": "cgwalters-forge/agentic-job",
+  "branch": "main",
+  "bot": "cgwalters-bot",
+  "callers": [
+    {
+      "repo": "cgwalters-forge/actions",
+      "files": [".github/workflows/cgwalters-agentic-job.yml"]
+    },
+    {
+      "repo": "cgwalters-forge/agent-board",
+      "files": [".github/workflows/review.yml"]
+    },
+    {
+      "repo": "cgwalters-forge/tracker",
+      "files": [".github/workflows/review.yml"]
+    },
+    {
+      "repo": "cgwalters-forge/agenthome",
+      "files": [".github/workflows/review.yml"]
+    }
+  ]
+}
