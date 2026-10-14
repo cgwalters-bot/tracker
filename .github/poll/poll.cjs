@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // One pass of the pull request poll (cgwalters-forge/agent-board#27): look at
-// every open pull request the bot authored in the configured repositories and
+// every open pull request by configured authors in the followed repositories and
 // take at most one step for each towards a fix, a merge or a human. All state
 // is on GitHub: the head's checks and `review` status, the `needs-human`
 // label, and one marker comment per pull request that records the fix rounds.
@@ -9,14 +9,16 @@
 'use strict';
 
 const fs = require('node:fs');
+const settings = require('./agent-board.json');
 
 const CONFIG = Object.freeze({
   // Each must be in fix.toml's repos (poll.test.cjs checks) and run the `review`
   // workflow: without its verdict a pull request waits, and the chain runs, for good.
-  repos: require('./agent-board.json').follow,
-  author: 'cgwalters-bot',
+  repos: settings.follow,
+  author: settings.bot,
+  mergeAuthors: settings.mergeAuthors ?? [],
   // Where fix runs are started, and the only branches fix.toml lets one push to.
-  dispatchRepo: 'cgwalters-forge/tracker',
+  dispatchRepo: settings.dispatchRepo,
   dispatchWorkflow: 'dispatch.yml',
   fixBranchPrefix: 'dispatch/',
   maxFixRounds: 2,
@@ -258,7 +260,7 @@ const runUrl = id => `https://github.com/${CONFIG.dispatchRepo}/actions/runs/${i
 
 // What a dispatch run opened: a fix can push nowhere else, and a draft on
 // any other branch is its author's to mark ready.
-const isHarness = pull => Boolean(pull.isCrossRepository) && pull.headRepositoryOwner?.login === CONFIG.author &&
+const isHarness = pull => pull.author?.login === CONFIG.author && Boolean(pull.isCrossRepository) && pull.headRepositoryOwner?.login === CONFIG.author &&
   pull.headRefName.startsWith(CONFIG.fixBranchPrefix);
 
 // Whether a pull request is still ours to follow after this pass took
@@ -443,7 +445,7 @@ async function merge(token, repo, pull) {
 
 async function pollRepo({ repo, token, dispatchToken, login, dryRun, log }) {
   const [owner, name] = repo.split('/');
-  const open = (await paged(token, `/repos/${repo}/pulls?state=open`)).filter(p => p.user?.login === CONFIG.author);
+  const open = (await paged(token, `/repos/${repo}/pulls?state=open`)).filter(p => followsAuthor(p.user?.login));
   const required = new Map();
   const result = { errors: 0, inFlight: 0 };
   for (const { number } of open) {
@@ -455,7 +457,9 @@ async function pollRepo({ repo, token, dispatchToken, login, dryRun, log }) {
           .flatMap(r => r.parameters.required_status_checks.map(c => c.context)));
       }
       const checks = classifyChecks(pull, required.get(pull.baseRefName));
-      const comments = await paged(token, `/repos/${repo}/issues/${number}/comments`);
+      // Merge-only authors cannot use fix markers to trigger dispatch-token reads.
+      const comments = pull.author?.login === CONFIG.author
+        ? await paged(token, `/repos/${repo}/issues/${number}/comments`) : [];
       const marker = findMarker(comments, login);
       const fixRun = marker.state.run && marker.state.sha === pull.headRefOid
         ? await request(dispatchToken, 'GET', `/repos/${CONFIG.dispatchRepo}/actions/runs/${marker.state.run}`)
@@ -514,7 +518,9 @@ async function main(argv) {
   if (errors) throw new Error(`${errors} pull request(s) or repositories could not be handled`);
 }
 
-module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, merge, paged, poolForFix, poolForKind, poolForRound, request, reviewText, toilOnly, writeOutput };
+const followsAuthor = login => login === CONFIG.author || CONFIG.mergeAuthors.includes(login);
+
+module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, followsAuthor, inFlight, markerBody, merge, paged, pollRepo, poolForFix, poolForKind, poolForRound, request, reviewText, toilOnly, writeOutput };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`poll: ${err.message}`); process.exit(1); });

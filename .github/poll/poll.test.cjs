@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, merge, poolForFix, poolForKind, poolForRound, reviewText, toilOnly, writeOutput } = require('./poll.cjs');
+const { CONFIG, classifyChecks, decide, findMarker, fixTask, followsAuthor, inFlight, markerBody, merge, pollRepo, poolForFix, poolForKind, poolForRound, reviewText, toilOnly, writeOutput } = require('./poll.cjs');
 
 const load = name => structuredClone(require(`./testdata/${name}.json`));
 const required = load('rules-agentic-job').flatMap(r => r.parameters.required_status_checks.map(c => c.context));
@@ -43,6 +43,64 @@ const changes = { review: { state: 'FAILURE' } };
 const conflict = { mergeable: 'CONFLICTING' };
 const label = { labels: { nodes: [{ name: CONFIG.label }] } };
 const stopped = { stopped: true };
+
+test('configured merge-only authors are followed, other authors are not', () => {
+  assert.ok(CONFIG.mergeAuthors.length);
+  assert.equal(followsAuthor(CONFIG.mergeAuthors[0]), true);
+  assert.equal(followsAuthor(BOT), true);
+  assert.equal(followsAuthor('unlisted-bot[bot]'), false);
+});
+
+for (const [name, fields, expected] of [
+  ['approved', {}, 'merge'],
+  ['unapproved', { contexts: { review: null } }, 'wait'],
+  ['rejected', { contexts: changes }, 'skip'],
+  ['failing', { contexts: ciFailed }, 'skip'],
+  ['pending', { contexts: { ci: { status: 'IN_PROGRESS' } } }, 'wait'],
+  ['conflicting', conflict, 'skip'],
+  ['draft', { isDraft: true }, 'skip'],
+  ['partial', partialTitle, 'skip'],
+]) {
+  test(`merge-only author: ${name}`, () => {
+    // Even a bot-fork dispatch branch cannot grant another author fix access.
+    const p = pull('pull-470', { ...fields, author: { login: CONFIG.mergeAuthors[0] } });
+    const got = decide({ pull: p, checks: classifyChecks(p, required), marker: { rounds: 2, stopped: true } });
+    assert.equal(got.action, expected, got.reason);
+    assert.equal(inFlight(p, got.action), false);
+  });
+}
+
+test('poll discovers merge-only authors and only writes a merge for approved heads', async t => {
+  const saved = global.fetch;
+  t.after(() => { global.fetch = saved; });
+  const writes = [];
+  const pulls = [
+    pull('pull-470', { number: 1, author: { login: CONFIG.mergeAuthors[0] } }),
+    pull('pull-470', { number: 2, author: { login: CONFIG.mergeAuthors[0] }, contexts: { review: null } }),
+    pull('pull-470', { number: 3, author: { login: CONFIG.mergeAuthors[0] }, contexts: ciFailed }),
+  ];
+  global.fetch = async (url, options) => {
+    const body = options.body && JSON.parse(options.body);
+    let data;
+    if (url.endsWith('/pulls?state=open&per_page=100&page=1')) {
+      data = pulls.map(p => ({ number: p.number, user: p.author }));
+    } else if (url.includes('/rules/branches/')) {
+      data = load('rules-agentic-job');
+    } else if (body?.query?.includes('pullRequest(number:')) {
+      data = { data: { repository: { pullRequest: pulls[body.variables.number - 1] } } };
+    } else if (body?.query?.includes('enablePullRequestAutoMerge')) {
+      writes.push(body);
+      data = { data: {} };
+    } else {
+      throw new Error(`unexpected request: ${url}`);
+    }
+    return { ok: true, text: async () => JSON.stringify(data) };
+  };
+  const result = await pollRepo({ repo: CONFIG.repos[0], token: 'test', dispatchToken: 'test', login: BOT, dryRun: false, log: () => {} });
+  assert.deepEqual(result, { errors: 0, inFlight: 0 });
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].variables.id, pulls[0].id);
+});
 
 const cases = [
   ['approved and green merges', 'pull-470', {}, {}, 'merge'],

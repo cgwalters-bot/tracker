@@ -3,6 +3,7 @@
   "branch": "main",
   "operator": "cgwalters",
   "bot": "cgwalters-bot",
+  "mergeAuthors": ["dependabot[bot]"],
   "dispatchRepo": "cgwalters-forge/tracker",
   "reviewWorkflow": "review.yml",
   "follow": [
