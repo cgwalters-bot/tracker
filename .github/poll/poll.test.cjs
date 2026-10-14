@@ -189,6 +189,17 @@ test('fix.toml and dispatch.toml unprotect the same files in the same repositori
   }
 });
 
+// Unprotecting a repository neither a pull request nor a fix may target
+// does nothing, and reads as if it did.
+test('every repository with .github unprotected is one a run may target', () => {
+  for (const file of ['dispatch.toml', 'fix.toml']) {
+    const targets = tomlList(file, '', 'repos');
+    for (const repo of tomlList(file, 'unprotected_files', 'repos')) {
+      assert.ok(targets.includes(repo), `${file}: ${repo} is unprotected but not in its repos`);
+    }
+  }
+});
+
 test('required checks come from the rules as well as isRequired', () => {
   // Recorded: GitHub reports isRequired false for `ci` on this draft.
   const p = pull('pull-143');
