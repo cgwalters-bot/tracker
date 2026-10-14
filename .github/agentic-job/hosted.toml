@@ -60,6 +60,15 @@ packages = ["python3-venv", "nftables", "podman", "uidmap"]
 # Their build scripts and proc macros run as the sandbox user.
 "cgwalters-forge/agentic-job" = ["cargo"]
 "cgwalters-forge/agent-board" = ["cargo"]
+"cgwalters-forge/tracker" = ["cargo"]
+
+# Inert for ordinary runs. Before enabling session.json, the operator must
+# name tailnet logins and browser origins here. Empty lists fail closed.
+# Logins stop other tailnet users prompting the agent; origins stop another
+# website connecting with the operator's tailnet identity.
+[session]
+operators = []
+origins = []
 
 [commit]
 author = "agentic-job <agentic-job@users.noreply.github.com>"

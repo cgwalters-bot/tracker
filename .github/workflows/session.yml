@@ -1,0 +1,74 @@
+name: session
+run-name: Operator session (${{ inputs.pool }})
+on:
+  workflow_dispatch:
+    inputs:
+      idle-minutes:
+        description: Idle timeout, 1 to 60 minutes; empty uses session.json
+        type: string
+        default: ''
+      pool:
+        description: Inference pool from pools.json
+        type: choice
+        options: [claude, openai, mistral]
+        default: claude
+      prompt:
+        description: Optional public opening prompt
+        type: string
+        default: ''
+permissions: {}
+concurrency:
+  group: operator-session
+  cancel-in-progress: false
+jobs:
+  profile:
+    # A branch dispatcher must not substitute the trusted profile or config.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    outputs:
+      repo: ${{ steps.compose.outputs.repo }}
+      item: ${{ steps.compose.outputs.item }}
+      idle: ${{ steps.compose.outputs.idle }}
+      agent: ${{ steps.compose.outputs.agent }}
+      model: ${{ steps.compose.outputs.model }}
+      budget: ${{ steps.compose.outputs.budget }}
+      task: ${{ steps.compose.outputs.task }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - id: compose
+        env:
+          POOL: ${{ inputs.pool }}
+          IDLE: ${{ inputs.idle-minutes }}
+          PROMPT: ${{ inputs.prompt }}
+        run: just session-profile
+  run:
+    needs: profile
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read
+      id-token: write
+    with:
+      kind: research
+      repo: ${{ needs.profile.outputs.repo }}
+      item: ${{ needs.profile.outputs.item }}
+      task: ${{ needs.profile.outputs.task }}
+      agent: ${{ needs.profile.outputs.agent }}
+      model: ${{ needs.profile.outputs.model }}
+      budget: ${{ needs.profile.outputs.budget }}
+      session: true
+      idle-minutes: ${{ needs.profile.outputs.idle }}
+      allow: .github/agentic-job/dispatch.toml
+      config: .github/agentic-job/hosted.toml
+      apply-environment: agent-apply
+    secrets:
+      SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
