@@ -60,6 +60,7 @@ jobs:
       agent: ${{ steps.pool.outputs.agent }}
       model: ${{ steps.pool.outputs.model }}
       budget: ${{ steps.pool.outputs.budget }}
+      skilled: ${{ steps.pool.outputs.skilled }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -67,25 +68,9 @@ jobs:
           sparse-checkout: |
             .github/agentic-job/profiles
             .github/agentic-job/pools.json
-      - name: Put the profile before the task
-        id: compose
-        env:
-          KIND: ${{ inputs.kind }}
-          TASK: ${{ inputs.task }}
-        run: |
-          profile=".github/agentic-job/profiles/${KIND}.md"
-          [[ "$KIND" =~ ^[a-z]+$ && -s "$profile" ]] ||
-            { echo "::error::no profile for kind '${KIND}' (${profile})"; exit 1; }
-          # A delimiter neither text can contain.
-          delimiter="task-$(openssl rand -hex 16)"
-          {
-            echo "task<<${delimiter}"
-            cat "$profile"
-            printf '\n%s\n' "$TASK"
-            echo "$delimiter"
-          } >> "$GITHUB_OUTPUT"
       # The pool's agent, model and budget, all empty without a pool so that
-      # the wrapper falls back to the variables and its default budget. A
+      # the wrapper falls back to the variables and its default budget, and
+      # whether that agent gets agentic-job's skills. A
       # name outside pools.json stops the run here rather than reaching the
       # wrapper.
       - name: Resolve the pool
@@ -101,18 +86,42 @@ jobs:
             echo "::error::unknown pool '${POOL}'; expected one of: $(jq -r 'keys | join(", ")' "$pools")"
             exit 1
           fi
-          # profiles/implement.md names the implement skill, which the
-          # wrapper installs for claude and opencode only (`skills` below):
-          # vibe would run an implement with no procedure at all. fake reads
-          # no task.
+          # The wrapper installs agentic-job's skills for claude and opencode
+          # only (`skills` below); vibe gets none, so the next step gives it
+          # the full profile instead. fake reads no task.
           agent=${POOL:+$(jq -r --arg pool "$POOL" '.[$pool].agent' "$pools")}
           agent=${agent:-$AGENT}
-          if [[ "$KIND" == implement && ! "$agent" =~ ^(claude|opencode|fake)$ ]]; then
-            echo "::error::${POOL:-the variable AGENT} gives ${agent}, which has no implement skill; implement needs claude or opencode"
-            exit 1
-          fi
+          skilled=false
+          [[ "$agent" =~ ^(claude|opencode|fake)$ ]] && skilled=true
+          echo "skilled=${skilled}" >> "$GITHUB_OUTPUT"
           [[ -z "$POOL" ]] && { printf "agent=\nmodel=\nbudget=\n" >> "$GITHUB_OUTPUT"; exit 0; }
           jq -r --arg pool "$POOL" '.[$pool] | "agent=\(.agent)\nmodel=\(.model)\nbudget=\(.budget)"' "$pools" >> "$GITHUB_OUTPUT"
+      - name: Put the profile before the task
+        id: compose
+        env:
+          KIND: ${{ inputs.kind }}
+          TASK: ${{ inputs.task }}
+          SKILLED: ${{ steps.pool.outputs.skilled }}
+        run: |
+          profile=".github/agentic-job/profiles/${KIND}.md"
+          [[ "$KIND" =~ ^[a-z]+$ && -s "$profile" ]] ||
+            { echo "::error::no profile for kind '${KIND}' (${profile})"; exit 1; }
+          # profiles/implement.md says "Use the implement skill" and leaves
+          # the procedure to it. An agent without skills (vibe, from the
+          # mistral pool) would get no procedure at all, so it gets
+          # KIND-full.md, the profile as it was before the skill, where one
+          # exists (#524). Fix has no skill yet and no -full file.
+          if [[ "$SKILLED" != true && -s "${profile%.md}-full.md" ]]; then
+            profile="${profile%.md}-full.md"
+          fi
+          # A delimiter neither text can contain.
+          delimiter="task-$(openssl rand -hex 16)"
+          {
+            echo "task<<${delimiter}"
+            cat "$profile"
+            printf '\n%s\n' "$TASK"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
 
   run:
     needs: profile
@@ -138,8 +147,9 @@ jobs:
       # profiles/implement.md need not spell the procedure out. The wrapper
       # honours it only for implement with claude or opencode; fix is asked
       # for too, but keeps its profile's full text until agentic-job has a
-      # fix skill (its #542).
-      skills: ${{ inputs.kind == 'implement' || inputs.kind == 'fix' }}
+      # fix skill (its #542). Off for an agent without skills, which gets
+      # the full profile instead (the profile job).
+      skills: ${{ needs.profile.outputs.skilled == 'true' && (inputs.kind == 'implement' || inputs.kind == 'fix') }}
       apply-environment: agent-apply
     # The bot's token, an organization secret, named and never inherited.
     # The wrapper hands it to apply, in the environment above, and to the

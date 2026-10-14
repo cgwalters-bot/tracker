@@ -436,53 +436,95 @@ test('poll.yml previews with agent-board read-only', () => {
   assert.match(job, /agent-board" poll --dry-run/);
 });
 
-// The skills reach implement and fix runs and no other kind, and the
-// implement profile names the skill instead of carrying its procedure. Fix
+// The skills reach implement and fix runs on an agent that has them and no
+// other, and the implement profile names the skill instead of carrying its
+// procedure; implement-full.md carries it for an agent without skills. Fix
 // has no skill yet, so its profile must still say what to do.
 test('dispatch.yml turns on the skills for implement and fix only', () => {
   const dispatch = fs.readFileSync(path.join(__dirname, '../workflows/dispatch.yml'), 'utf8');
   const lines = dispatch.match(/^ {6}skills: .*$/gm);
-  assert.deepEqual(lines, ["      skills: ${{ inputs.kind == 'implement' || inputs.kind == 'fix' }}"]);
+  assert.deepEqual(lines, ["      skills: ${{ needs.profile.outputs.skilled == 'true' && (inputs.kind == 'implement' || inputs.kind == 'fix') }}"]);
   const profile = kind => fs.readFileSync(path.join(__dirname, `../agentic-job/profiles/${kind}.md`), 'utf8');
   assert.match(profile('implement'), /^Use the implement skill\./);
   assert.doesNotMatch(profile('implement'), /AGENTS\.md|subagent|left undone/);
+  assert.doesNotMatch(profile('implement-full'), /\bskill\b/);
+  assert.match(profile('implement-full'), /^Implement this issue properly with tests/);
+  // The standing rules after the first sentence are in both, so an edit to
+  // one that misses the other fails here.
+  for (const rule of profile('implement').trim().split(/(?<=\.) /).slice(1)) assert.ok(profile('implement-full').includes(rule), rule);
   assert.doesNotMatch(profile('fix'), /implement skill/);
   for (const kind of ['research', 'triage', 'review']) assert.doesNotMatch(profile(kind), /\bskill\b/);
 });
 
-// Runs dispatch.yml's own pool step: an implement whose agent, from the pool
-// or else the variable AGENT, has no skills stops there; the rest resolve.
-test('dispatch.yml refuses implement on an agent without the implement skill', () => {
+// Runs dispatch.yml's own pool and profile steps, in that order, as the
+// profile job does: an agent from the pool, or else the variable AGENT, gets
+// the skills if it is claude or opencode (or fake), and otherwise the full
+// implement profile; every kind resolves on every pool.
+test('dispatch.yml gives an agent without skills the full implement profile', () => {
   const { execFileSync } = require('node:child_process');
   const dispatch = fs.readFileSync(path.join(__dirname, '../workflows/dispatch.yml'), 'utf8');
-  const step = /^ {6}- name: Resolve the pool\n(?: {8}.*\n)*? {8}run: \|\n((?:(?: {10}.*)?\n)+)/m.exec(dispatch)?.[1];
-  assert.ok(step, 'the pool step');
-  const script = step.replace(/^ {10}/gm, '');
+  const stepScript = name => {
+    const re = new RegExp(`^ {6}- name: ${name}\\n(?: {8}.*\\n)*? {8}run: \\|\\n((?:(?: {10}.*)?\\n)+)`, 'm');
+    const step = re.exec(dispatch)?.[1];
+    assert.ok(step, name);
+    return step.replace(/^ {10}/gm, '');
+  };
+  assert.ok(dispatch.indexOf('- name: Resolve the pool') < dispatch.indexOf('- name: Put the profile before the task'), 'pool step first');
+  const poolStep = stepScript('Resolve the pool');
+  const composeStep = stepScript('Put the profile before the task');
   const pools = JSON.parse(fs.readFileSync(path.join(__dirname, '../agentic-job/pools.json'), 'utf8'));
+  const profiles = path.join(__dirname, '../agentic-job/profiles');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-'));
-  const run = (pool, kind, agent = 'opencode') => {
-    const out = path.join(dir, `${pool}-${kind}-${agent}`);
+  const outputs = text => Object.fromEntries([...text.matchAll(/^([a-z]+)=(.*)$/gm)].map(m => [m[1], m[2]]));
+  let n = 0;
+  const bash = (script, env) => {
+    const out = path.join(dir, String(n++));
     fs.writeFileSync(out, '');
-    try {
-      execFileSync('bash', ['-eo', 'pipefail', '-c', script], {
-        cwd: path.join(__dirname, '../..'), stdio: 'pipe',
-        env: { ...process.env, POOL: pool, KIND: kind, AGENT: agent, GITHUB_OUTPUT: out },
-      });
-    } catch { return null; }
+    execFileSync('bash', ['-eo', 'pipefail', '-c', script], {
+      cwd: path.join(__dirname, '../..'), stdio: 'pipe',
+      env: { ...process.env, ...env, GITHUB_OUTPUT: out },
+    });
     return fs.readFileSync(out, 'utf8');
   };
-  const none = 'agent=\nmodel=\nbudget=\n';
+  // The pool step's outputs and the composed task, or null where a step fails.
+  const run = (pool, kind, agent = 'opencode') => {
+    try {
+      const resolved = outputs(bash(poolStep, { POOL: pool, KIND: kind, AGENT: agent }));
+      const composed = bash(composeStep, { KIND: kind, TASK: 'the task', SKILLED: resolved.skilled });
+      const task = /^task<<(task-[0-9a-f]{32})\n([\s\S]*)\n\1\n$/.exec(composed)?.[2];
+      assert.ok(task, composed);
+      return { ...resolved, task };
+    } catch (e) {
+      if (e instanceof assert.AssertionError) throw e;
+      return null;
+    }
+  };
+  const profile = name => fs.readFileSync(path.join(profiles, `${name}.md`), 'utf8');
+  const expected = (kind, skilled) =>
+    `${profile(!skilled && fs.existsSync(path.join(profiles, `${kind}-full.md`)) ? `${kind}-full` : kind)}\nthe task`;
+  const kinds = ['implement', 'fix', 'triage', 'research', 'review'];
   for (const [name, pool] of Object.entries(pools)) {
-    // A pool's agent wins over the variable.
     const skilled = ['claude', 'opencode'].includes(pool.agent);
-    assert.equal(run(name, 'implement', 'vibe') !== null, skilled, `implement on ${name}`);
-    for (const kind of ['fix', 'triage', 'research', 'review']) {
-      assert.match(run(name, kind) ?? '', new RegExp(`^agent=${pool.agent}$`, 'm'), `${kind} on ${name}`);
+    for (const kind of kinds) {
+      // A pool's agent wins over the variable.
+      const r = run(name, kind, skilled ? 'vibe' : 'claude');
+      assert.ok(r, `${kind} on ${name}`);
+      assert.equal(r.agent, pool.agent, `${kind} on ${name}`);
+      assert.equal(r.skilled, String(skilled), `${kind} on ${name}`);
+      assert.equal(r.task, expected(kind, skilled), `${kind} on ${name}`);
     }
   }
-  assert.ok(Object.values(pools).some(p => !['claude', 'opencode'].includes(p.agent)), 'a pool to refuse');
-  for (const agent of ['claude', 'opencode', 'fake']) assert.equal(run('', 'implement', agent), none, agent);
-  assert.equal(run('', 'implement', 'vibe'), null);
-  assert.equal(run('', 'fix', 'vibe'), none);
+  assert.ok(Object.values(pools).some(p => !['claude', 'opencode'].includes(p.agent)), 'a pool without skills');
+  assert.ok(Object.values(pools).some(p => ['claude', 'opencode'].includes(p.agent)), 'a pool with skills');
+  // Without a pool the outputs stay empty and the variable decides.
+  for (const agent of ['claude', 'opencode', 'fake']) {
+    assert.deepEqual(run('', 'implement', agent), { skilled: 'true', agent: '', model: '', budget: '', task: expected('implement', true) }, agent);
+  }
+  assert.deepEqual(run('', 'implement', 'vibe'), { skilled: 'false', agent: '', model: '', budget: '', task: expected('implement', false) });
+  assert.equal(run('', 'fix', 'vibe').task, expected('fix', false));
+  assert.notEqual(expected('implement', false), expected('implement', true));
+  assert.equal(expected('fix', false), expected('fix', true));
   assert.equal(run('nonesuch', 'fix'), null);
+  // Not a kind: the full profile is reached only through the agent.
+  assert.equal(run('', 'implement-full', 'vibe'), null);
 });
