@@ -46,7 +46,7 @@ passes share one concurrency group, which keeps one run and one pending
 successor, so the triggers cannot add up to parallel chains; a pass that an
 event asks for during the wait runs when the wait is over. To start one by
 hand, `gh workflow run poll.yml`; its `dry-run` input only prints. Each pass looks at the open pull requests `cgwalters-bot` authored in
-cgwalters-forge/agentic-job and cgwalters-forge/agent-board and takes at most
+the repositories of `CONFIG.repos` in `poll.cjs` and takes at most
 one step for each:
 
 - a draft with no failed check is marked ready for review, which is what

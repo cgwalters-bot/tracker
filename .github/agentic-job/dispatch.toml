@@ -1,7 +1,7 @@
 # Bounds for dispatch.yml: the repositories a dispatched run may target.
 # Exact names, no globs; add a repository here before dispatching to it.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-bot/homegit", "cgwalters-bot/praxis-credential-broker"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-bot/homegit", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/actions", "cgwalters-forge/agenthome"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576
@@ -20,7 +20,8 @@ missing_data = { max = 1 }
 # edit AGENTS.md, a protected file by default, there.
 [unprotected_files]
 # This repository by the operator's decision: docs/operator-notes.md, "2026-10-13, the harness evolving itself".
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker"]
+# actions and agenthome: the harness works on all of its own repositories (cgwalters-forge/tracker#544).
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]
