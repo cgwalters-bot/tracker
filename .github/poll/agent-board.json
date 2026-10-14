@@ -7,7 +7,9 @@
   "follow": [
     "cgwalters-forge/agentic-job",
     "cgwalters-forge/agent-board",
-    "cgwalters-forge/tracker"
+    "cgwalters-forge/tracker",
+    "cgwalters-forge/actions",
+    "cgwalters-forge/review"
   ],
   "fixPools": ["claude", "openai"],
   "epics": {

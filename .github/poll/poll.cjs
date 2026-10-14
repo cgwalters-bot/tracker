@@ -13,7 +13,7 @@ const fs = require('node:fs');
 const CONFIG = Object.freeze({
   // Each must be in fix.toml's repos (poll.test.cjs checks) and run the `review`
   // workflow: without its verdict a pull request waits, and the chain runs, for good.
-  repos: ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board', 'cgwalters-forge/tracker'],
+  repos: require('./agent-board.json').follow,
   author: 'cgwalters-bot',
   // Where fix runs are started, and the only branches fix.toml lets one push to.
   dispatchRepo: 'cgwalters-forge/tracker',
@@ -514,7 +514,7 @@ async function main(argv) {
   if (errors) throw new Error(`${errors} pull request(s) or repositories could not be handled`);
 }
 
-module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, paged, poolForFix, poolForKind, poolForRound, request, reviewText, toilOnly, writeOutput };
+module.exports = { CONFIG, classifyChecks, decide, findMarker, fixTask, inFlight, markerBody, merge, paged, poolForFix, poolForKind, poolForRound, request, reviewText, toilOnly, writeOutput };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`poll: ${err.message}`); process.exit(1); });
