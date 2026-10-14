@@ -293,6 +293,7 @@ function readItems(nodes, ready) {
 // with about 400 items that outlasted its timeout on every pass.
 const BOARD_QUERY = `query($owner: String!, $number: Int!, $priority: String!, $cursor: String) {
   repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) {
+    statusField: field(name: "Status") { ... on ProjectV2SingleSelectField { options { name } } }
     items(first: 100, after: $cursor) {
       nodes {
         status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
@@ -311,11 +312,17 @@ const BOARD_QUERY = `query($owner: String!, $number: Int!, $priority: String!, $
 // `post(body)` is the GraphQL request. An item whose content the token
 // cannot read comes back null, with an error beside the data: that item is
 // left out and counted, and the errors kept for the log, rather than one
-// item stopping every pass.
+// item stopping every pass. `missing` lists the `ready` statuses the board's
+// Status field has no option for, read from the first page: such a status
+// matches no item, so the pass finds nothing and says why on its first line
+// rather than failing (a status is added in the project's settings, which
+// may come after the config names it). Null when no single-select field
+// named Status can be read: missing, of another type, or not readable.
 async function readBoard(post, config) {
   const items = [];
   let unreadable = 0;
   const errors = new Set();
+  let missing;
   let cursor = null;
   for (let page = 0; page < BOARD_PAGES; page++) {
     const out = await post({ query: BOARD_QUERY, variables: { owner: config.owner, number: config.project, priority: config.priorityField, cursor } });
@@ -324,10 +331,14 @@ async function readBoard(post, config) {
       const why = (out.errors ?? []).map(e => e.message).join('; ');
       throw new Error(`board ${config.owner}/${config.project} not found, or not readable with GH_TOKEN${why ? `: ${why}` : ''}`);
     }
+    if (missing === undefined) {
+      const options = project.statusField?.options;
+      missing = Array.isArray(options) ? config.ready.filter(r => !options.some(o => o?.name === r)) : null;
+    }
     unreadable += project.items.nodes.filter(n => !n?.content).length;
     for (const e of out.errors ?? []) errors.add(e.message);
     items.push(...readItems(project.items.nodes, config.ready));
-    if (!project.items.pageInfo.hasNextPage) return { items, unreadable, errors: [...errors] };
+    if (!project.items.pageInfo.hasNextPage) return { items, unreadable, errors: [...errors], missing };
     cursor = project.items.pageInfo.endCursor;
   }
   throw new Error(`board ${config.owner}/${config.project} has more than ${BOARD_PAGES * 100} items`);
@@ -403,7 +414,7 @@ async function main(argv) {
   const config = loadConfig(fs.readFileSync(CONFIG_FILE, 'utf8'));
   const log = line => console.log(apply ? line : `[dry-run] ${line}`);
 
-  const { items, unreadable, errors: boardErrors } = await readBoard(body => request(token, 'POST', '/graphql', body), config);
+  const { items, unreadable, errors: boardErrors, missing } = await readBoard(body => request(token, 'POST', '/graphql', body), config);
   const runs = (await request(dispatchToken, 'GET',
     `/repos/${config.caller}/actions/workflows/${config.workflow}/runs?per_page=${HISTORY_RUNS}`)).workflow_runs;
   const state = readRuns(runs);
@@ -416,6 +427,8 @@ async function main(argv) {
   };
   log(`${items.length} ready item(s), taken ${order(config.priorityField)}; ${state.inFlight} of ${config.wip} run(s) in flight;`
     + ` at most ${config.triagePerPass} triage run(s) a pass; items of ${config.followed.size} followed repositories only`
+    + (missing?.length ? `; the board's Status field has no ${missing.map(m => JSON.stringify(m)).join(', ')} option, so no item can be ready by it` : '')
+    + (missing === null ? '; no single-select Status field could be read on the board, so its options were not checked' : '')
     + (unreadable ? `; ${unreadable} board item(s) not readable, left out` : '')
     + (boardErrors.length ? `; board read errors: ${boardErrors.slice(0, 5).join(' | ').slice(0, 1000)}` : ''));
 

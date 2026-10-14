@@ -120,6 +120,11 @@ it is among the last hundred. Items of unlisted repositories, upstream ones
 among them, are skipped as "not a followed repository", as is a plan whose
 target is in one: upstream work is the operator's to start.
 
+`schedule.ready` is `["Ready"]`, not `Todo`: Todo is the backlog, with many
+stale or superseded items, and only what the operator or the controller moves
+to Ready is started. A ready status the board's Status field has no option
+for matches nothing; the pass's first line names it rather than failing.
+
 Items are taken by the board field `schedule.priorityField` (default
 `Priority`), P0 first, then oldest first. No step starts once `schedule.wip`
 runs of `dispatch.yml`, of any kind, are in flight; fix runs the poll job
