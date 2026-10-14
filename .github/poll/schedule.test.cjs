@@ -27,7 +27,7 @@ test('the repository config parses and names a board, statuses and a cap', () =>
 test('a config without a schedule, or with a bad cap, is refused', () => {
   const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
   assert.throws(() => loadConfig(JSON.stringify(base)), /schedule.owner/);
-  const schedule = { owner: 'o', project: 1, ready: ['Todo'], wip: 4, repositories: ['o/r'] };
+  const schedule = { owner: 'o', project: 1, ready: ['Ready'], wip: 4, repositories: ['o/r'] };
   assert.equal(loadConfig(JSON.stringify({ ...base, schedule })).wip, 4);
   assert.throws(() => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, wip: '4' } })), /wip/);
   assert.throws(() => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, ready: [] } })), /ready/);
@@ -41,7 +41,7 @@ test('a config without a schedule, or with a bad cap, is refused', () => {
 
 test('the scheduled repositories are listed, priority comes from a named field, and triage is capped', () => {
   const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
-  const schedule = { owner: 'o', project: 1, ready: ['Todo'], wip: 4, repositories: ['O/R'] };
+  const schedule = { owner: 'o', project: 1, ready: ['Ready'], wip: 4, repositories: ['O/R'] };
   const parse = extra => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, ...extra } }));
   const config = parse({});
   assert.deepEqual([...config.followed], ['o/r']);
@@ -232,11 +232,15 @@ test('a pass reads a bounded number of items, the slots it leaves free notwithst
 // The board as the first preview read it (tracker run 38590120618): 165
 // Todo items, upstream ones among them, one run in flight and no plans.
 // That pass would have triaged three tracker items in board order and gone
-// on to an upstream one.
+// on to an upstream one. Todo is the backlog now, many of its items stale,
+// and the repository's config starts none of them; the decisions are those
+// of a config that still read Todo.
 test('the first preview, again: one triage, of the oldest P0 item of a followed repository', async () => {
   const nodes = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'board-preview.json'), 'utf8'));
   const config = loadConfig(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
-  const items = readItems(nodes, config.ready);
+  assert.ok(!config.ready.includes('Todo'));
+  assert.deepEqual(readItems(nodes, config.ready), []);
+  const items = readItems(nodes, ['Todo']);
   assert.equal(items.length, 165);
   const steps = await decide(items, { ...empty, inFlight: 1 }, config, none, noPulls);
   assert.equal(steps.length, 165);
@@ -313,13 +317,15 @@ test('the board read keeps open items with a ready Status', () => {
     ...extra,
   });
   const items = readItems([
-    node(1, 'Todo'),
+    node(1, 'Ready'),
     node(2, 'In Progress'),
     node(3, null),
-    node(4, 'Todo', { content: { __typename: 'Issue', number: 4, url: 'u4', state: 'CLOSED', repository: { nameWithOwner: 'o/r' } } }),
-    node(5, 'Ready', { priority: null, content: { __typename: 'PullRequest', number: 5, url: 'u5', state: 'OPEN', repository: { nameWithOwner: 'o/p' } } }),
-    { status: { name: 'Todo' }, content: null },
-  ], ['Todo', 'Ready']);
+    node(4, 'Ready', { content: { __typename: 'Issue', number: 4, url: 'u4', state: 'CLOSED', repository: { nameWithOwner: 'o/r' } } }),
+    node(5, 'Next', { priority: null, content: { __typename: 'PullRequest', number: 5, url: 'u5', state: 'OPEN', repository: { nameWithOwner: 'o/p' } } }),
+    { status: { name: 'Ready' }, content: null },
+    // The backlog is not started from.
+    node(6, 'Todo'),
+  ], ['Ready', 'Next']);
   assert.deepEqual(items, [
     { repository: 'o/r', number: 1, content_kind: 'issue', url: 'u1', priority: 'P1', created: 't1' },
     { repository: 'o/p', number: 5, content_kind: 'pull_request', url: 'u5', priority: null, created: undefined },
@@ -379,19 +385,19 @@ test("a dry run's refusal is an answer; a hang or output not understood skips th
   assert.deepEqual(steps[1], { item: 'o/r#8', action: 'triage', reason: 'no plan' });
 });
 
-const BOARD = { owner: 'o', project: 1, ready: ['Todo'], priorityField: 'Urgency' };
+const BOARD = { owner: 'o', project: 1, ready: ['Ready'], priorityField: 'Urgency' };
 const page = (nodes, next, extra = {}) => ({
   data: { repositoryOwner: { projectV2: { items: { nodes, pageInfo: { hasNextPage: !!next, endCursor: next ?? null } } } } },
   ...extra,
 });
-const todo = number => ({
-  status: { name: 'Todo' },
+const ready = number => ({
+  status: { name: 'Ready' },
   content: { __typename: 'Issue', number, url: `u${number}`, state: 'OPEN', repository: { nameWithOwner: 'o/r' } },
 });
 
 test('the board is read page by page, an unreadable item counted and left out', async () => {
   const asked = [];
-  const pages = [page([todo(1)], 'c1'), page([todo(2), { status: { name: 'Todo' }, content: null }], null, { errors: [{ message: 'FORBIDDEN' }] })];
+  const pages = [page([ready(1)], 'c1'), page([ready(2), { status: { name: 'Ready' }, content: null }], null, { errors: [{ message: 'FORBIDDEN' }] })];
   const { items, unreadable, errors } = await readBoard(async body => { asked.push(body.variables); return pages.shift(); }, BOARD);
   assert.deepEqual(asked.map(v => v.cursor), [null, 'c1']);
   // The priority is read from the field the config names.
@@ -399,6 +405,24 @@ test('the board is read page by page, an unreadable item counted and left out', 
   assert.deepEqual(items.map(i => i.number), [1, 2]);
   assert.equal(unreadable, 1);
   assert.deepEqual(errors, ['FORBIDDEN']);
+});
+
+test('a ready status the Status field has no option for is reported, not fatal', async () => {
+  const withOptions = (names, next) => {
+    const out = page(next ? [] : [ready(1)], next);
+    out.data.repositoryOwner.projectV2.statusField = { options: names.map(name => ({ name })) };
+    return out;
+  };
+  // The board before the operator adds the option: nothing found, one note.
+  const before = await readBoard(async () => withOptions(['Todo', 'In Progress', 'Done']), { ...BOARD, ready: ['Ready', 'Next'] });
+  assert.deepEqual(before.missing, ['Ready', 'Next']);
+  const pages = [withOptions(['Todo', 'Ready'], 'c1'), withOptions(['Todo'])];
+  const after = await readBoard(async () => pages.shift(), BOARD);
+  // Read from the first page only.
+  assert.deepEqual(after.missing, []);
+  assert.deepEqual(after.items.map(i => i.number), [1]);
+  // A field the token cannot read is unknown, not missing.
+  assert.equal((await readBoard(async () => page([]), BOARD)).missing, null);
 });
 
 test('a board that cannot be found, or never ends, stops the pass', async () => {
