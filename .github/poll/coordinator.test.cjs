@@ -78,6 +78,30 @@ test('plan, later apply, daily refresh, stale result and authenticated comments'
   assert.equal(statusProse({ body: '```coordinator-status\nNeeds operator.\n```' }), 'Needs operator.');
 });
 
+test('a run that ends without its result fails after the grace period, and repeated failures stop planning', () => {
+  const fingerprint = changedFingerprint(epic);
+  const limits = { graceMs: 5 * 60000, runTimeoutMs: 60 * 60000, maxFailedRuns: 3 };
+  const pending = { id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint, run: 42 };
+  const plan = comment(1, '<!-- coordinator-request: request1 -->\n```agent-board-epic-plan\n{}\n```');
+  const done = (minutes, conclusion = 'success') => ({ status: 'completed', conclusion,
+    updated_at: new Date(now - minutes * 60000).toISOString() });
+  for (const [state, comments, run, action] of [
+    [{ pending }, [], done(10), 'failed'],
+    [{ pending }, [], done(10, 'failure'), 'failed'],
+    [{ pending }, [], done(2), 'wait'],
+    [{ pending }, [], { status: 'in_progress', updated_at: '2026-10-14T00:00:00Z' }, 'wait'],
+    [{ pending }, [plan], done(2), 'apply'],
+    [{ pending }, [plan], done(10), 'apply'],
+    [{ pending: { ...pending, run: undefined } }, [], null, 'failed'],
+    [{ pending: { ...pending, run: undefined, at: '2026-10-14T10:30:00Z' } }, [], null, 'wait'],
+    [{ failures: 2 }, [], null, 'plan'],
+    [{ failures: 3 }, [], null, 'stuck'],
+    [{ failures: 3, pending }, [], done(10), 'failed'],
+  ]) assert.equal(decision(epic, state, comments, 'bot', now, 'bot', run, limits).action, action, JSON.stringify([state, run]));
+  // Without configured limits a legacy pending waits out the six-hour default.
+  assert.equal(decision(epic, { pending: { ...pending, run: undefined } }, [], 'bot', now).action, 'wait');
+});
+
 test('configuration and brief keep authority in owned config', () => {
   const text = fs.readFileSync(require.resolve('./agent-board.json'), 'utf8');
   const config = loadConfig(text);
@@ -182,7 +206,7 @@ function harness(apply = false, entries = [epic, { ...epic, number: 9 }], commen
   const config = { epicsRepository: 'o/r', planner: 'bot', operator: 'op', caller: 'o/controller', workflow: 'dispatch.yml',
     followed: new Set(['o/r']), wip: 4, planPool: 'claude', statusPool: 'mistral', statusIssue: 99, statusHourUTC: 11, usage: { repo: 'o/usage', issue: 1, bot: 'bot' } };
   return { writes, dispatches, commands, lines, options: { config, entries, note: '', now, apply,
-    get: async (method, p, body) => { if (method !== 'GET') { writes.push({ method, p, body }); return {}; }
+    get: async (method, p, body) => { if (method !== 'GET') { writes.push({ method, p, body }); return { id: writes.length }; }
       return p === '/repos/o/controller' ? { default_branch: 'trunk' } : []; },
     post: async ({ variables }) => ({ data: { repository: { issue: { comments: {
       nodes: variables.number === 99 ? comments : [], pageInfo: { hasNextPage: false } } } } } }),
@@ -376,4 +400,132 @@ test('obsolete runs finish before replacement, and higher Priority epics are sel
   sorted.options.config.priorities = ['P0', 'P1', 'P2', 'P3'];
   await pass(sorted.options);
   assert.equal(sorted.dispatches.at(-1).inputs.item, '9');
+});
+
+test('retry limits default from owned config and are bounded', () => {
+  const source = JSON.parse(fs.readFileSync(require.resolve('./agent-board.json'), 'utf8'));
+  const config = loadConfig(JSON.stringify(source));
+  assert.deepEqual([config.graceMs, config.runTimeoutMs, config.maxFailedRuns], [5 * 60000, 360 * 60000, 3]);
+  for (const [name, value] of [['resultGraceMinutes', 0], ['resultGraceMinutes', 61], ['runTimeoutMinutes', 1441],
+    ['maxFailedRuns', 0], ['maxFailedRuns', 21], ['maxFailedRuns', '3']]) {
+    assert.throws(() => loadConfig(JSON.stringify({ ...source, coordinator: { ...source.coordinator, [name]: value } })),
+      new RegExp(`coordinator.${name}`));
+  }
+});
+
+// A pass whose epic 7 and status issue 99 carry the given checkpoints.
+function retryHarness(epicState, statusState, run) {
+  const h = harness(true, [epic]);
+  Object.assign(h.options.config, { graceMs: 5 * 60000, runTimeoutMs: 60 * 60000, maxFailedRuns: 3 });
+  const checkpoints = { 7: epicState && comment(10, `<!-- coordinator/v1: ${JSON.stringify(epicState)} -->\ncheckpoint`),
+    99: statusState && comment(20, `<!-- coordinator-status/v1: ${JSON.stringify(statusState)} -->\ncheckpoint`) };
+  h.options.post = async ({ variables }) => ({ data: { repository: { issue: { comments: {
+    nodes: checkpoints[variables.number] ? [checkpoints[variables.number]] : [], pageInfo: { hasNextPage: false } } } } } });
+  h.lookups = [];
+  h.options.dispatch = async (method, p, body) => {
+    if (method === 'POST') { h.dispatches.push(body); return { workflow_run_id: 500 + h.dispatches.length }; }
+    if (p.includes('/actions/runs/')) { h.lookups.push(p); return run; }
+    return { workflow_runs: [] };
+  };
+  return h;
+}
+const checkpointState = write => JSON.parse(/: (\{.*\}) -->/.exec(write.body.body)[1]);
+const summary = h => JSON.parse(h.lines.at(-1).slice('coordinator/v1 '.length));
+const finished = { status: 'completed', conclusion: 'success', updated_at: '2026-10-14T10:30:00Z' };
+
+test('dispatches record their run id in the claim written before them', async () => {
+  const h = retryHarness(null, null);
+  assert.equal((await pass(h.options)).errors, 0);
+  assert.equal(h.dispatches.length, 2);
+  assert.ok(h.dispatches.every(d => d.return_run_details === true));
+  // Claim, then the run id in the same comment, for status then the epic.
+  assert.deepEqual(h.writes.map(w => w.method), ['POST', 'PATCH', 'POST', 'PATCH']);
+  assert.deepEqual([h.writes[1].p, h.writes[3].p], ['/repos/o/r/issues/comments/1', '/repos/o/r/issues/comments/3']);
+  assert.equal(checkpointState(h.writes[1]).pending.run, 501);
+  assert.equal(checkpointState(h.writes[3]).pending.run, 502);
+  assert.equal(checkpointState(h.writes[3]).pending.id, checkpointState(h.writes[2]).pending.id);
+});
+
+test('a finished planning run without a plan is cleared, counted and re-planned, until the operator is needed', async () => {
+  const pending = { id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint: changedFingerprint(epic), run: 42 };
+  const status = { at: new Date(now).toISOString(), healthHash: 'unchanged', claimed: true };
+  const failed = retryHarness({ pending, failures: 1 }, status, finished);
+  assert.equal((await pass(failed.options)).failed, 1);
+  assert.deepEqual(failed.lookups, ['/repos/o/controller/actions/runs/42']);
+  assert.equal(summary(failed).failed, 1);
+  const saved = checkpointState(failed.writes.find(w => w.p.endsWith('/comments/10')));
+  assert.deepEqual([saved.pending, saved.failures], [null, 2]);
+  assert.equal(failed.dispatches.some(d => d.inputs.item === '7'), false);
+
+  const again = retryHarness(saved, status);
+  assert.equal((await pass(again.options)).plan, 1);
+  assert.equal(again.dispatches.at(-1).inputs.item, '7');
+  assert.equal(checkpointState(again.writes.find(w => w.p.endsWith('/comments/10'))).failures, 2);
+
+  const stuck = retryHarness({ pending: null, failures: 3 }, status);
+  const counts = await pass(stuck.options);
+  assert.deepEqual([counts.stuck, counts.plan, counts.errors], [1, 0, 0]);
+  assert.equal(stuck.dispatches.some(d => d.inputs.item === '7'), false);
+  assert.equal(stuck.writes.some(w => w.p.endsWith('/comments/10')), false);
+  assert.ok(stuck.lines.includes('o/r#7 needs operator: 3 planning runs posted no plan'));
+
+  // A preview reports the failure but writes nothing.
+  const preview = retryHarness({ pending }, status, finished);
+  preview.options.apply = false;
+  assert.equal((await pass(preview.options)).failed, 1);
+  assert.deepEqual(preview.writes, []);
+});
+
+test('a running or just-finished planning run keeps its pending checkpoint', async () => {
+  const pending = { id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint: changedFingerprint(epic), run: 42 };
+  const status = { at: new Date(now).toISOString(), healthHash: 'unchanged', claimed: true };
+  for (const run of [{ status: 'in_progress', updated_at: '2026-10-14T10:00:00Z' },
+    { status: 'completed', conclusion: 'success', updated_at: '2026-10-14T10:58:00Z' }]) {
+    const h = retryHarness({ pending }, status, run);
+    const counts = await pass(h.options);
+    assert.deepEqual([counts.wait, counts.failed], [1, 0]);
+    assert.equal(h.writes.some(w => w.p.endsWith('/comments/10')), false);
+  }
+  // A checkpoint from before run ids waits out the run timeout, then fails.
+  for (const [at, failed] of [['2026-10-14T10:30:00Z', 0], ['2026-10-14T09:00:00Z', 1]]) {
+    const h = retryHarness({ pending: { ...pending, run: undefined, at } }, status);
+    assert.equal((await pass(h.options)).failed, failed);
+    assert.deepEqual(h.lookups, []);
+  }
+});
+
+test('a finished status run without prose is cleared and counted, and stops after repeated failures', async () => {
+  const first = harness(true, []);
+  await pass(first.options);
+  const healthHash = checkpointState(first.writes[0]).pending.healthHash;
+  const pending = { id: 'status1', at: '2026-10-14T10:00:00Z', healthHash, run: 7 };
+  const h = retryHarness(null, { at: '2026-10-13T11:00:00Z', healthHash, pending, failures: 2 }, finished);
+  h.options.entries = [];
+  const counts = await pass(h.options);
+  assert.deepEqual([counts.failed, counts.status], [1, 0]);
+  const saved = checkpointState(h.writes[0]);
+  assert.deepEqual([saved.pending, saved.failures], [null, 3]);
+  const stuck = retryHarness(null, saved);
+  stuck.options.entries = [];
+  assert.equal((await pass(stuck.options)).stuck, 1);
+  assert.deepEqual(stuck.dispatches, []);
+});
+
+test('a deleted run counts as finished, and a settled checkpoint is not looked up', async () => {
+  const pending = { id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint: changedFingerprint(epic), run: 42 };
+  const status = { at: new Date(now).toISOString(), healthHash: 'unchanged', claimed: true };
+  for (const [error, failed, errors] of [['HTTP 404 Not Found', 1, 0], ['HTTP 502 Bad Gateway', 0, 1]]) {
+    const h = retryHarness({ pending }, status);
+    const dispatch = h.options.dispatch;
+    h.options.dispatch = async (method, p, body) => {
+      if (p.includes('/actions/runs/')) throw new Error(`GET ${p}: ${error}`);
+      return dispatch(method, p, body);
+    };
+    const counts = await pass(h.options);
+    assert.deepEqual([counts.failed, counts.errors], [failed, errors]);
+  }
+  const stale = retryHarness({ pending: { ...pending, fingerprint: 'old intent' } }, status, finished);
+  await pass(stale.options);
+  assert.deepEqual(stale.lookups, []);
+  assert.equal(checkpointState(stale.writes.find(w => w.p.endsWith('/comments/10'))).pending, null);
 });

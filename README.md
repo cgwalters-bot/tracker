@@ -257,9 +257,18 @@ usage JSON is passed, not other private ops comments.
 Reporting failures are reported independently and do not prevent epic work.
 
 Pending operations are recorded before dispatch or publication, to prevent
-repeated writes after an ambiguous failure. A failed planning/prose run or
-ambiguous dispatch waits for a person: inspect the linked Actions runs and
-reset its pending checkpoint comment to retry. A claimed status publication
+repeated writes after an ambiguous failure. The checkpoint then records the
+dispatched run's id. A planning/prose run that completed, with any
+conclusion, more than `coordinator.resultGraceMinutes` (default 5) ago
+without posting its result is cleared and counted as a failure (`failed` in
+the summary line), and the next pass asks again. A checkpoint without a run id
+(older ones, or a dispatch that returned none) fails once older than
+`coordinator.runTimeoutMinutes` (default 360). After
+`coordinator.maxFailedRuns` (default 3) failures the epic or report is not
+asked again and is logged as needing the operator (`stuck`); delete its
+checkpoint comment to retry. A published report starts its count again; an
+epic's count, until epic apply is enabled, only that deletion resets, not an
+edit to the epic. A recorded run that has since been deleted counts as finished. A claimed status publication
 is not automatically retried. The scheduler's WIP cap also bounds new
 coordinator runs. Calls inherit its agent-board timeout; the workflow gives
 the coordinator eight minutes, and dispatch briefs are limited to 60,000
@@ -273,10 +282,11 @@ Coordinator failures retain their own error summary but do not fail the board
 scheduler job. The controller panel reads the coordinator's errors independently.
 
 The controller panel can parse the final log and job-summary line:
-`coordinator/v1 {"mode":"preview","plan":1,"apply":0,"status":0,"wait":0,"errors":0}`.
+`coordinator/v1 {"mode":"preview","plan":1,"apply":0,"status":0,"wait":0,"failed":0,"stuck":0,"errors":0}`.
 The prefix and version are fixed; the rest is one JSON object. Counts are
 epics selected for planning/apply, project updates selected for publication,
-pending/cap waits and pass errors. Preview counts describe proposed actions;
+pending/cap waits, runs that ended without their result, epics or reports
+needing the operator, and pass errors. Preview counts describe proposed actions;
 they are not writes. Prose requests are not counted as epic plans. Test with
 `node --test .github/poll/coordinator.test.cjs` or `just test-poll`.
 
