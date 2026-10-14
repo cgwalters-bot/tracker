@@ -10,6 +10,9 @@
     "cgwalters-forge/tracker"
   ],
   "fixPools": ["claude", "openai"],
+  "epics": {
+    "repository": "cgwalters-forge/tracker"
+  },
   "schedule": {
     "owner": "cgwalters-forge",
     "project": 1,

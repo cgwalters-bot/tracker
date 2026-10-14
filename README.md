@@ -147,6 +147,28 @@ it, `gh run list -R cgwalters-forge/tracker -w dispatch.yml --json
 displayTitle,createdAt`: run names are `KIND REPO#ITEM`, as the summary names
 items. Test with `node --test .github/poll/schedule.test.cjs`.
 
+## The epic census
+
+After the scheduler, the `board` job runs `.github/poll/epics.cjs`, the first
+part of the coordinator for the operator's epics
+([#572](https://github.com/cgwalters-forge/tracker/issues/572)). It only
+reads. Each open issue labelled `epic` in the repository that `epics.repository`
+in `.github/poll/agent-board.json` names gets one line under `### Epics` in the
+run's summary. An epic is live only when the newest event adding or removing
+its `epic` label is the `operator` adding it. Otherwise the line says who
+labelled it, or that it was unlabelled. For a live epic the line has its
+sub-issues counted by board Status (their repositories may be any), how many
+sit outside `schedule.repositories`, and how many of its comments count as the
+operator's. A comment counts when the operator wrote it and, if anyone edited
+it, the operator made the last edit. The line ends with a sha256 fingerprint
+over the epic's `updated_at`, those comments and each sub-issue's repository,
+number, state, Status and Priority, so a change to any of them shows. An
+epic that cannot be read in full, a board item hidden from the token among
+them, gets no fingerprint but a line saying why. The census reads at most 50
+epics and a bounded number of pages for each listing, and the step runs at
+most five minutes. A failure of the census is reported in its section and
+does not fail the job. Test with `node --test .github/poll/epics.test.cjs`.
+
 ## The usage snapshot
 
 `.github/workflows/usage.yml` publishes, every fifteen minutes, the

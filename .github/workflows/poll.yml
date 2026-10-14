@@ -102,7 +102,9 @@ jobs:
   board:
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    # The build, then the scheduler's 15 and the census's 5, so that the
+    # census never runs into the job's limit, which would fail the job.
+    timeout-minutes: 30
     # `actions: write` starts dispatch.yml here, with the job token.
     permissions:
       contents: read
@@ -116,6 +118,7 @@ jobs:
       # agent-board's branch runs with it on the next pass, as whatever
       # lands on the actions wrapper's main does in dispatch.yml (#544).
       - name: Build agent-board at the branch's head
+        timeout-minutes: 10
         run: |
           source=$(jq -er .source .github/poll/agent-board.json)
           branch=$(jq -er .branch .github/poll/agent-board.json)
@@ -124,6 +127,7 @@ jobs:
           cargo install --locked --root "$RUNNER_TEMP/agent-board" \
             --git "$source" --rev "$rev" agent-board
       - name: One pass
+        timeout-minutes: 15
         env:
           # The bot's token reads the organization's board, and is what
           # `agent-board dispatch --apply` requires: a planner's own token,
@@ -144,6 +148,18 @@ jobs:
             sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$RUNNER_TEMP/pass.log" 2>/dev/null || echo 'No pass ran'
             echo '</pre>'
           } >> "$GITHUB_STEP_SUMMARY"
+      # The epic census (#572): reads the live epics and prints their state,
+      # for the coordinator to come; it writes nothing. Its failure is not
+      # the pass's: it is reported in its section, or, where Node could not
+      # load it, in the step's log.
+      - name: Epic census
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+        shell: bash
+        run: node .github/poll/epics.cjs | tee -a "$GITHUB_STEP_SUMMARY"
 
   # agent-board's poll (cgwalters-forge/agent-board#40), which is to replace
   # poll.cjs, previewing the same pass so the two summaries can be compared
