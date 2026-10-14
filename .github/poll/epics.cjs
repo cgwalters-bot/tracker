@@ -76,6 +76,7 @@ function subIssue(issue, board, followed) {
   const on = board.get(lower(issue.html_url));
   return {
     number: issue.number, repository, state: issue.state, updated_at: issue.updated_at,
+    url: issue.html_url, created: issue.created_at,
     status: on?.status ?? null, priority: on?.priority ?? null, onBoard: Boolean(on),
     followed: followed.has(lower(repository)),
   };
@@ -207,13 +208,12 @@ async function readComments(post, repository, number) {
   throw new Error(`more than ${COMMENT_PAGES * 100} comments`);
 }
 
-async function main() {
-  const token = process.env.GH_TOKEN;
-  if (!token) throw new Error('GH_TOKEN is required');
-  const config = loadEpicsConfig(fs.readFileSync(CONFIG_FILE, 'utf8'));
+// One census: an entry for each open epic read, as summaryLine takes it,
+// and a note when there were more than it reads. A live epic's entry has
+// its own board Priority too, which the scheduler orders its sub-issues by.
+// `get` and `post` are the REST and GraphQL requests.
+async function census(get, post, config) {
   const repo = config.epicsRepository;
-  const post = body => request(token, 'POST', '/graphql', body);
-  const get = p => request(token, 'GET', p);
   const open = (await pagedUpTo(get, `/repos/${repo}/issues?state=open&labels=${LABEL}`))
     .filter(i => !i.pull_request).sort((a, b) => a.number - b.number);
   const epics = open.slice(0, MAX_EPICS);
@@ -232,16 +232,25 @@ async function main() {
       const subs = (await pagedUpTo(get, `/repos/${repo}/issues/${epic.number}/sub_issues`)).map(i => subIssue(i, board.board, config.followed));
       if (board.errors.length && subs.some(s => !s.onBoard)) throw new Error(`board read errors: ${board.errors.slice(0, 5).join('; ')}`);
       const comments = operatorComments(await readComments(post, repo, epic.number), config.operator);
-      Object.assign(entry, { subs, comments, fingerprint: fingerprint(epic, comments, subs) });
+      const priority = board.board.get(lower(epic.html_url))?.priority ?? null;
+      Object.assign(entry, { priority, subs, comments, fingerprint: fingerprint(epic, comments, subs) });
     } catch (err) {
       // One epic not read is said on its line; the others go on.
       entry.error = err.message;
     }
   }
-  console.log(summary(repo, entries, note));
+  return { entries, note };
 }
 
-module.exports = { canonical, fingerprint, loadEpicsConfig, main, operatorComments, pagedUpTo, provenance, readBoard, readComments, subIssue, summary, summaryLine };
+async function main() {
+  const token = process.env.GH_TOKEN;
+  if (!token) throw new Error('GH_TOKEN is required');
+  const config = loadEpicsConfig(fs.readFileSync(CONFIG_FILE, 'utf8'));
+  const { entries, note } = await census(p => request(token, 'GET', p), body => request(token, 'POST', '/graphql', body), config);
+  console.log(summary(config.epicsRepository, entries, note));
+}
+
+module.exports = { canonical, census, fingerprint, loadEpicsConfig, main, operatorComments, pagedUpTo, provenance, readBoard, readComments, subIssue, summary, summaryLine };
 
 if (require.main === module) {
   main().catch(err => {

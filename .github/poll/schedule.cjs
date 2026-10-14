@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 // One pass of the board scheduler (cgwalters-forge/tracker#401): start new
-// work from the board, which until now only the chat session did by hand.
-// Each open issue whose Status is one of `schedule.ready` in agent-board.json
-// in one of `schedule.repositories` gets at most one step: the job its
-// newest accepted plan comment proposes (`agent-board dispatch --apply`,
-// agent-board's docs/job-plans.md), or, with no plan, one triage run asked
-// to write one. Items are taken by `schedule.priorityField`, P0 first, then
-// oldest first. No step starts once `schedule.wip` dispatch.yml runs are in
-// flight, counting those already going, and no more than
+// work on the operator's epics, which until now only the chat session did by
+// hand. The candidates are the open sub-issues of the live epics, as the
+// epic census (epics.cjs) finds them: an epic is live only if the operator
+// applied its `epic` label, so no epic the bot or a visitor labels starts a
+// run. Who added a sub-issue to a live epic is not checked: anyone who may
+// edit the epic's sub-issues can make an item a candidate, as anyone who
+// could move a board item's Status could before. Each candidate in one of
+// `schedule.repositories` of agent-board.json gets at most one step: the
+// job its newest accepted plan comment proposes (`agent-board dispatch
+// --apply`, agent-board's docs/job-plans.md), or, with no plan, one triage run asked to write one. Candidates are taken by
+// their epic's `schedule.priorityField` on the board, then their own, P0
+// first, then oldest first. No step starts once `schedule.wip` dispatch.yml
+// runs are in flight, counting those already going, and no more than
 // `schedule.triagePerPass` triage runs start in one pass. A dry run, the
 // default, only reads: `--apply` is passed by the workflow only where the
 // repository variable says so.
@@ -28,9 +33,6 @@ const HISTORY_RUNS = 100;
 // that a hung one fails its item, not the job. A dry run reads one issue's
 // comments; nothing it does should take minutes.
 const AGENT_BOARD_TIMEOUT_S = 120;
-// The board is read 100 items a page; past this many pages the pass stops
-// rather than spend the token's budget on a board it cannot have meant.
-const BOARD_PAGES = 50;
 // Items read in one pass after the triage cap is reached that turn out to
 // have no plan. A slot is only taken by a run started, so past the cap
 // every item without a plan would otherwise be read in turn, only to be
@@ -68,7 +70,7 @@ function loadConfig(text) {
   const all = JSON.parse(text);
   const s = all.schedule ?? {};
   const config = {
-    owner: s.owner, project: s.project, ready: s.ready, wip: s.wip,
+    owner: s.owner, project: s.project, wip: s.wip,
     priorityField: s.priorityField ?? 'Priority', triagePerPass: s.triagePerPass ?? 1,
     operator: all.operator, planner: all.bot, caller: all.dispatchRepo, workflow: POLL.dispatchWorkflow,
     planDocs: `${all.source}/blob/${all.branch}/docs/job-plans.md`,
@@ -76,9 +78,6 @@ function loadConfig(text) {
   const login = /^[A-Za-z0-9-]+$/;
   if (!login.test(config.owner ?? '') || !Number.isSafeInteger(config.project) || config.project < 1) {
     throw new Error('agent-board.json: schedule.owner and schedule.project must name the board');
-  }
-  if (!Array.isArray(config.ready) || !config.ready.length || !config.ready.every(r => typeof r === 'string' && r)) {
-    throw new Error('agent-board.json: schedule.ready must list at least one status');
   }
   if (!Number.isSafeInteger(config.wip) || config.wip < 0) throw new Error('agent-board.json: schedule.wip must be a count');
   // The repositories whose items are scheduled, by exact name. There is no
@@ -186,11 +185,34 @@ function findRecord(comments, writers, commentId) {
 }
 
 // The order items are taken in, for the summary.
-const order = field => `by ${field} (P0 first, unset last), then oldest first`;
+const order = field => `by their epic's ${field}, then their own (P0 first, unset last), then oldest first`;
 // P0, P1, ... by the number; any other value, or none, after them all.
 const rank = p => { const m = /^P(\d{1,3})$/.exec(p ?? ''); return m ? Number(m[1]) : Infinity; };
 const age = item => Date.parse(item.created ?? '') || Infinity; // Two unknowns tie: Infinity - Infinity is NaN, hence `|| 0` below.
-const byPriority = items => [...items].sort((a, b) => (rank(a.priority) - rank(b.priority) || 0) || (age(a) - age(b) || 0));
+const ahead = (a, b) => (rank(a.epicPriority) - rank(b.epicPriority) || 0) || (rank(a.priority) - rank(b.priority) || 0) || (age(a) - age(b) || 0);
+const byPriority = items => [...items].sort(ahead);
+
+// The candidates of a census (epics.cjs's `census`): the open sub-issues of
+// the live epics read in full, each once, from the epic that ranks it first,
+// whose name it carries for the summary. `live` counts those epics; an epic
+// that could not be read gives none, and is said on its census line.
+function candidates(entries, repository) {
+  // An entry is live once its label is read, and may fail after.
+  const live = entries.filter(e => e.live && !e.error);
+  const byKey = new Map();
+  for (const epic of live) {
+    for (const s of epic.subs) {
+      if (s.state !== 'open') continue;
+      const item = {
+        repository: s.repository, number: s.number, content_kind: 'issue', url: s.url, priority: s.priority,
+        created: s.created, epic: `${repository}#${epic.number}`, epicPriority: epic.priority,
+      };
+      const key = keyOf(s.repository, s.number);
+      if (!byKey.has(key) || ahead(item, byKey.get(key)) < 0) byKey.set(key, item);
+    }
+  }
+  return { items: [...byKey.values()], live: live.length, unread: entries.filter(e => e.error).length };
+}
 
 // One step for each item. `probe(item)` says what agent-board would do with
 // it: { plan, target, recorded? }, { none: true } or { refused: reason }.
@@ -273,77 +295,6 @@ function triageTask(key, url, planDocs) {
   ].join('\n\n');
 }
 
-// The ready items of one page of the board, as `decide` takes them: open,
-// with a Status in `ready`. Pull requests are kept, to be skipped by name.
-function readItems(nodes, ready) {
-  const statuses = new Set(ready);
-  return nodes.filter(n => n?.content?.state === 'OPEN' && statuses.has(n.status?.name)).map(n => ({
-    repository: n.content.repository.nameWithOwner,
-    number: n.content.number,
-    content_kind: n.content.__typename === 'Issue' ? 'issue' : 'pull_request',
-    url: n.content.url,
-    priority: n.priority?.name ?? null,
-    created: n.content.createdAt,
-  }));
-}
-
-// The board read in one paged query that asks only for the fields used.
-// `agent-board item list` builds a full snapshot instead, three requests an
-// item, closed ones too, one after another, and did so once per status:
-// with about 400 items that outlasted its timeout on every pass.
-const BOARD_QUERY = `query($owner: String!, $number: Int!, $priority: String!, $cursor: String) {
-  repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) {
-    statusField: field(name: "Status") { ... on ProjectV2SingleSelectField { options { name } } }
-    items(first: 100, after: $cursor) {
-      nodes {
-        status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-        priority: fieldValueByName(name: $priority) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-        content {
-          __typename
-          ... on Issue { number url state createdAt repository { nameWithOwner } }
-          ... on PullRequest { number url state createdAt repository { nameWithOwner } }
-        }
-      }
-      pageInfo { hasNextPage endCursor }
-    }
-  } } }
-}`;
-
-// `post(body)` is the GraphQL request. An item whose content the token
-// cannot read comes back null, with an error beside the data: that item is
-// left out and counted, and the errors kept for the log, rather than one
-// item stopping every pass. `missing` lists the `ready` statuses the board's
-// Status field has no option for, read from the first page: such a status
-// matches no item, so the pass finds nothing and says why on its first line
-// rather than failing (a status is added in the project's settings, which
-// may come after the config names it). Null when no single-select field
-// named Status can be read: missing, of another type, or not readable.
-async function readBoard(post, config) {
-  const items = [];
-  let unreadable = 0;
-  const errors = new Set();
-  let missing;
-  let cursor = null;
-  for (let page = 0; page < BOARD_PAGES; page++) {
-    const out = await post({ query: BOARD_QUERY, variables: { owner: config.owner, number: config.project, priority: config.priorityField, cursor } });
-    const project = out.data?.repositoryOwner?.projectV2;
-    if (!project?.items) {
-      const why = (out.errors ?? []).map(e => e.message).join('; ');
-      throw new Error(`board ${config.owner}/${config.project} not found, or not readable with GH_TOKEN${why ? `: ${why}` : ''}`);
-    }
-    if (missing === undefined) {
-      const options = project.statusField?.options;
-      missing = Array.isArray(options) ? config.ready.filter(r => !options.some(o => o?.name === r)) : null;
-    }
-    unreadable += project.items.nodes.filter(n => !n?.content).length;
-    for (const e of out.errors ?? []) errors.add(e.message);
-    items.push(...readItems(project.items.nodes, config.ready));
-    if (!project.items.pageInfo.hasNextPage) return { items, unreadable, errors: [...errors], missing };
-    cursor = project.items.pageInfo.endCursor;
-  }
-  throw new Error(`board ${config.owner}/${config.project} has more than ${BOARD_PAGES * 100} items`);
-}
-
 // One agent-board call. Its stdin is closed, so nothing it might ask waits
 // for an answer, and it is stopped after `timeoutMs`. One that cannot start,
 // times out, is killed or, with `check`, exits non-zero throws `failure`.
@@ -411,10 +362,27 @@ async function main(argv) {
   const bin = process.env.AGENT_BOARD;
   if (!token || !bin) throw new Error('GH_TOKEN (the planner\'s token) and AGENT_BOARD (the binary) are required');
   const dispatchToken = process.env.DISPATCH_TOKEN || token;
-  const config = loadConfig(fs.readFileSync(CONFIG_FILE, 'utf8'));
+  // Required here, not above: epics.cjs takes loadConfig from this module.
+  const { census, loadEpicsConfig } = require('./epics.cjs');
+  const config = loadEpicsConfig(fs.readFileSync(CONFIG_FILE, 'utf8'));
   const log = line => console.log(apply ? line : `[dry-run] ${line}`);
 
-  const { items, unreadable, errors: boardErrors, missing } = await readBoard(body => request(token, 'POST', '/graphql', body), config);
+  const get = p => request(token, 'GET', p);
+  const { entries, note } = await census(get, body => request(token, 'POST', '/graphql', body), config);
+  const { items, live, unread } = candidates(entries, config.epicsRepository);
+  // An epic not read may be live, and a board the token lost would leave
+  // every epic so: that fails the pass, after what could be read is done,
+  // rather than pass as an idle one. So do epics past the census's bound,
+  // which anyone who may label an older issue `epic` could push the
+  // operator's out of.
+  const failed = entries.filter(e => e.error).map(e => `${config.epicsRepository}#${e.number}: ${e.error}`);
+  const unreadNote = (unread ? `; ${unread} epic(s) not read (${failed.slice(0, 3).join(' | ').slice(0, 1000)})` : '')
+    + (note ? `; ${note}` : '');
+  if (!live) {
+    log(`no live epics${unreadNote}; nothing started`);
+    if (unread || note) throw new Error(`${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
+    return;
+  }
   const runs = (await request(dispatchToken, 'GET',
     `/repos/${config.caller}/actions/workflows/${config.workflow}/runs?per_page=${HISTORY_RUNS}`)).workflow_runs;
   const state = readRuns(runs);
@@ -425,20 +393,19 @@ async function main(argv) {
     if (!listed.has(repo)) listed.set(repo, openPullRefs(await paged(token, `/repos/${repo}/pulls?state=open`), config.planner));
     return listed.get(repo).get(key);
   };
-  log(`${items.length} ready item(s), taken ${order(config.priorityField)}; ${state.inFlight} of ${config.wip} run(s) in flight;`
-    + ` at most ${config.triagePerPass} triage run(s) a pass; items of ${config.followed.size} followed repositories only`
-    + (missing?.length ? `; the board's Status field has no ${missing.map(m => JSON.stringify(m)).join(', ')} option, so no item can be ready by it` : '')
-    + (missing === null ? '; no single-select Status field could be read on the board, so its options were not checked' : '')
-    + (unreadable ? `; ${unreadable} board item(s) not readable, left out` : '')
-    + (boardErrors.length ? `; board read errors: ${boardErrors.slice(0, 5).join(' | ').slice(0, 1000)}` : ''));
+  log(`${items.length} open sub-issue(s) of ${live} live epic(s)${unreadNote}, taken ${order(config.priorityField)};`
+    + ` ${state.inFlight} of ${config.wip} run(s) in flight;`
+    + ` at most ${config.triagePerPass} triage run(s) a pass; items of ${config.followed.size} followed repositories only`);
 
   const byName = new Map(items.map(i => [`${i.repository}#${i.number}`, i]));
   let errors = 0;
   const steps = await decide(items, state, config, item => probePlan(bin, config, token, item), pullFor);
   for (const step of steps) {
     const item = byName.get(step.item);
+    // Each line names the epic its item was taken from.
+    const name = `${step.item} (epic ${item.epic})`;
     if (step.action === 'skip' || !apply) {
-      log(`${step.item} ${step.action}: ${step.reason}`);
+      log(`${name} ${step.action}: ${step.reason}`);
       continue;
     }
     try {
@@ -448,7 +415,7 @@ async function main(argv) {
         // many passes see it.
         const { stdout } = agentBoard(bin, ['dispatch', item.url, '--apply', ...dispatchArgs(config)],
           { env: { GH_TOKEN: token, DISPATCH_TOKEN: dispatchToken }, timeoutMs: config.timeoutMs });
-        log(`${step.item} dispatch: ${step.reason}; ${stdout.trim().split('\n').join(', ')}`);
+        log(`${name} dispatch: ${step.reason}; ${stdout.trim().split('\n').join(', ')}`);
       } else {
         // The run's details, as poll.cjs asks for them, so that the run is
         // named here; where the API does not know them, asked again without.
@@ -463,19 +430,19 @@ async function main(argv) {
             if (!/HTTP 422/.test(err.message)) throw err;
             return request(dispatchToken, 'POST', path, body);
           });
-        log(`${step.item} triage: started ${run?.html_url ?? ''}`.trimEnd());
+        log(`${name} triage: started ${run?.html_url ?? ''}`.trimEnd());
       }
     } catch (err) {
       const last = String(err.stderr ?? '').trim().split('\n').at(-1);
-      if (RECORDED_RE.test(last)) { log(`${step.item} skip: ${last}`); continue; }
+      if (RECORDED_RE.test(last)) { log(`${name} skip: ${last}`); continue; }
       errors++;
-      log(`${step.item} ${step.action} error: ${err.message}`);
+      log(`${name} ${step.action} error: ${err.message}`);
     }
   }
-  if (errors) throw new Error(`${errors} step(s) failed`);
+  if (errors || unread || note) throw new Error(`${errors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { agentBoard, decide, readBoard, findRecord, loadConfig, openPullRefs, probePlan, readDryRun, readItems, readRefusal, readRuns, triageTask };
+module.exports = { agentBoard, candidates, decide, findRecord, loadConfig, main, openPullRefs, probePlan, readDryRun, readRefusal, readRuns, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });

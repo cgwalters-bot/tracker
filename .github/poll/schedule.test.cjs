@@ -5,7 +5,8 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { agentBoard, decide, readBoard, findRecord, loadConfig, openPullRefs, probePlan, readDryRun, readItems, readRefusal, readRuns, triageTask } = require('./schedule.cjs');
+const { agentBoard, candidates, decide, findRecord, loadConfig, main, openPullRefs, probePlan, readDryRun, readRefusal, readRuns, triageTask } = require('./schedule.cjs');
+const { census } = require('./epics.cjs');
 
 const BOT = 'cgwalters-bot';
 const issue = (number, extra = {}) => ({ repository: 'o/r', number, content_kind: 'issue', url: `https://github.com/o/r/issues/${number}`, ...extra });
@@ -16,9 +17,10 @@ const noPulls = () => undefined;
 const caps = (wip, extra = {}) => ({ wip, triagePerPass: 10, followed: new Set(['o/r', 'o/p', 'up/stream']), ...extra });
 const plan = (target, extra = {}) => ({ plan: `https://github.com/o/r/issues/1#issuecomment-${target.length}`, target, kind: 'implement', ...extra });
 
-test('the repository config parses and names a board, statuses and a cap', () => {
+test('the repository config parses and names a board and a cap', () => {
   const config = loadConfig(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
-  assert.ok(config.ready.length > 0);
+  // Candidates come from the epics, not from a board Status.
+  assert.ok(!('ready' in config));
   assert.ok(Number.isSafeInteger(config.wip));
   assert.equal(config.workflow, 'dispatch.yml');
   assert.match(config.planDocs, /^https:\/\/github.com\/.+\/docs\/job-plans.md$/);
@@ -27,10 +29,9 @@ test('the repository config parses and names a board, statuses and a cap', () =>
 test('a config without a schedule, or with a bad cap, is refused', () => {
   const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
   assert.throws(() => loadConfig(JSON.stringify(base)), /schedule.owner/);
-  const schedule = { owner: 'o', project: 1, ready: ['Ready'], wip: 4, repositories: ['o/r'] };
+  const schedule = { owner: 'o', project: 1, wip: 4, repositories: ['o/r'] };
   assert.equal(loadConfig(JSON.stringify({ ...base, schedule })).wip, 4);
   assert.throws(() => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, wip: '4' } })), /wip/);
-  assert.throws(() => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, ready: [] } })), /ready/);
   assert.throws(() => loadConfig(JSON.stringify({ ...base, bot: undefined, schedule })), /operator, bot/);
   assert.equal(loadConfig(JSON.stringify({ ...base, schedule })).timeoutMs, 120000);
   assert.equal(loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, timeoutSeconds: 30 } })).timeoutMs, 30000);
@@ -41,7 +42,7 @@ test('a config without a schedule, or with a bad cap, is refused', () => {
 
 test('the scheduled repositories are listed, priority comes from a named field, and triage is capped', () => {
   const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
-  const schedule = { owner: 'o', project: 1, ready: ['Ready'], wip: 4, repositories: ['O/R'] };
+  const schedule = { owner: 'o', project: 1, wip: 4, repositories: ['O/R'] };
   const parse = extra => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, ...extra } }));
   const config = parse({});
   assert.deepEqual([...config.followed], ['o/r']);
@@ -232,24 +233,24 @@ test('a pass reads a bounded number of items, the slots it leaves free notwithst
 // The board as the first preview read it (tracker run 38590120618): 165
 // Todo items, upstream ones among them, one run in flight and no plans.
 // That pass would have triaged three tracker items in board order and gone
-// on to an upstream one. Todo is the backlog now, many of its items stale,
-// and the repository's config starts none of them; the decisions are those
-// of a config that still read Todo.
+// on to an upstream one. Its 157 issues are taken here as the sub-issues of
+// one live epic, as if the operator had put the backlog under one.
 test('the first preview, again: one triage, of the oldest P0 item of a followed repository', async () => {
   const nodes = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'board-preview.json'), 'utf8'));
   const config = loadConfig(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
-  assert.ok(!config.ready.includes('Todo'));
-  assert.deepEqual(readItems(nodes, config.ready), []);
-  const items = readItems(nodes, ['Todo']);
-  assert.equal(items.length, 165);
+  const subs = nodes.filter(n => n.content.__typename === 'Issue').map(({ content: c, priority }) => ({
+    repository: c.repository.nameWithOwner, number: c.number, state: c.state.toLowerCase(), url: c.url, created: c.createdAt, priority: priority?.name ?? null,
+  }));
+  const { items } = candidates([{ number: 1, live: true, priority: 'P0', subs }], 'o/t');
+  assert.equal(items.length, 157);
   const steps = await decide(items, { ...empty, inFlight: 1 }, config, none, noPulls);
-  assert.equal(steps.length, 165);
+  assert.equal(steps.length, 157);
   const started = steps.filter(s => s.action !== 'skip');
   const followed = item => config.followed.has(item.repository.toLowerCase());
-  const first = items.filter(i => followed(i) && i.content_kind === 'issue' && i.priority === 'P0')
+  const first = items.filter(i => followed(i) && i.priority === 'P0')
     .sort((a, b) => Date.parse(a.created) - Date.parse(b.created))[0];
   assert.deepEqual(started, [{ item: `${first.repository}#${first.number}`, action: 'triage', reason: 'no plan' }]);
-  for (const name of ['bootc-dev/bootc#2559', 'composefs/composefs-rs#408', 'cgwalters-bot/cgwalters-bot#11']) {
+  for (const name of ['bootc-dev/bootc#2559', 'cgwalters-bot/cgwalters-bot#11']) {
     assert.equal(steps.find(s => s.item === name).reason, 'not a followed repository');
   }
   const outside = items.filter(i => !followed(i)).length;
@@ -258,7 +259,7 @@ test('the first preview, again: one triage, of the oldest P0 item of a followed 
   // Ten more are read and wait for the triage cap; the rest are not read.
   assert.equal(steps.filter(s => s.reason === 'triage cap of 1 a pass reached').length, 10);
   assert.equal(steps.filter(s => s.reason === 'limit of 10 items read past the triage cap reached').length,
-    items.filter(i => followed(i) && i.content_kind === 'issue').length - 11);
+    items.filter(followed).length - 11);
 });
 
 test('a refused plan or an earlier triage takes no slot', async () => {
@@ -308,28 +309,6 @@ test('the triage task asks for one implement plan in the job-plan format', () =>
   assert.match(task, /agent-board\/job-plan\/v1/);
   assert.match(task, /"implement"/);
   assert.match(task, /work is in another repository.*write no plan/);
-});
-
-test('the board read keeps open items with a ready Status', () => {
-  const node = (number, status, extra = {}) => ({
-    status: status && { name: status }, priority: { name: 'P1' },
-    content: { __typename: 'Issue', number, url: `u${number}`, state: 'OPEN', createdAt: 't1', repository: { nameWithOwner: 'o/r' } },
-    ...extra,
-  });
-  const items = readItems([
-    node(1, 'Ready'),
-    node(2, 'In Progress'),
-    node(3, null),
-    node(4, 'Ready', { content: { __typename: 'Issue', number: 4, url: 'u4', state: 'CLOSED', repository: { nameWithOwner: 'o/r' } } }),
-    node(5, 'Next', { priority: null, content: { __typename: 'PullRequest', number: 5, url: 'u5', state: 'OPEN', repository: { nameWithOwner: 'o/p' } } }),
-    { status: { name: 'Ready' }, content: null },
-    // The backlog is not started from.
-    node(6, 'Todo'),
-  ], ['Ready', 'Next']);
-  assert.deepEqual(items, [
-    { repository: 'o/r', number: 1, content_kind: 'issue', url: 'u1', priority: 'P1', created: 't1' },
-    { repository: 'o/p', number: 5, content_kind: 'pull_request', url: 'u5', priority: null, created: undefined },
-  ]);
 });
 
 // Stub agent-board binaries, made where each test runs, not in the tree.
@@ -385,53 +364,144 @@ test("a dry run's refusal is an answer; a hang or output not understood skips th
   assert.deepEqual(steps[1], { item: 'o/r#8', action: 'triage', reason: 'no plan' });
 });
 
-const BOARD = { owner: 'o', project: 1, ready: ['Ready'], priorityField: 'Urgency' };
-const page = (nodes, next, extra = {}) => ({
-  data: { repositoryOwner: { projectV2: { items: { nodes, pageInfo: { hasNextPage: !!next, endCursor: next ?? null } } } } },
-  ...extra,
-});
-const ready = number => ({
-  status: { name: 'Ready' },
-  content: { __typename: 'Issue', number, url: `u${number}`, state: 'OPEN', repository: { nameWithOwner: 'o/r' } },
+// A census over the API as testdata/epics-schedule.json answers it: #1 and
+// #3 labelled by the operator, the board ranking #3 first; #2 by the bot.
+const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'epics-schedule.json'), 'utf8'));
+const fixtureCensus = rest => census(
+  async p => {
+    const key = p.replace(/[?&]per_page=100&page=1$/, '');
+    if (!(key in rest)) throw new Error(`GET ${key}: HTTP 404`);
+    return rest[key];
+  },
+  async ({ query }) => (query.includes('projectV2')
+    ? { data: { repositoryOwner: { projectV2: { items: { nodes: fixture.board, pageInfo: { hasNextPage: false } } } } } }
+    : { data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } }),
+  { epicsRepository: fixture.repository, operator: 'op', owner: 'o', project: 1, priorityField: 'Priority', followed: new Set(fixture.followed) });
+
+test("the candidates are the open sub-issues of the operator's epics, by epic priority, then their own, then age", async () => {
+  const { entries } = await fixtureCensus(fixture.rest);
+  const { items, live, unread } = candidates(entries, fixture.repository);
+  assert.deepEqual([live, unread], [2, 0]);
+  // The bot's epic gives nothing, its P0 sub-issue o/r#20 included; nor does
+  // the closed o/r#11. o/r#12, in both live epics, is taken once, from #3.
+  const steps = await decide(items, empty, caps(10, { followed: new Set(fixture.followed) }), none, noPulls);
+  const epicOf = new Map(items.map(i => [`${i.repository}#${i.number}`, i.epic]));
+  assert.deepEqual(steps.map(s => [s.item, epicOf.get(s.item), s.action, s.reason]), [
+    // #3 is P0: its P2 items oldest first, then the one with no Priority.
+    ['o/r#12', 'o/t#3', 'triage', 'no plan'],
+    ['o/r#30', 'o/t#3', 'triage', 'no plan'],
+    ['o/r#31', 'o/t#3', 'triage', 'no plan'],
+    // #1 is P1: its P0 sub-issue comes after all of #3's.
+    ['o/r#10', 'o/t#1', 'triage', 'no plan'],
+    ['up/stream#5', 'o/t#1', 'skip', 'not a followed repository'],
+  ]);
 });
 
-test('the board is read page by page, an unreadable item counted and left out', async () => {
-  const asked = [];
-  const pages = [page([ready(1)], 'c1'), page([ready(2), { status: { name: 'Ready' }, content: null }], null, { errors: [{ message: 'FORBIDDEN' }] })];
-  const { items, unreadable, errors } = await readBoard(async body => { asked.push(body.variables); return pages.shift(); }, BOARD);
-  assert.deepEqual(asked.map(v => v.cursor), [null, 'c1']);
-  // The priority is read from the field the config names.
-  assert.equal(asked[0].priority, 'Urgency');
-  assert.deepEqual(items.map(i => i.number), [1, 2]);
-  assert.equal(unreadable, 1);
-  assert.deepEqual(errors, ['FORBIDDEN']);
+test('an epic that cannot be read gives no candidates, and is counted', async () => {
+  const rest = { ...fixture.rest };
+  delete rest['/repos/o/t/issues/3/sub_issues'];
+  const { items, live, unread } = candidates((await fixtureCensus(rest)).entries, fixture.repository);
+  assert.deepEqual([live, unread], [1, 1]);
+  assert.deepEqual(items.map(i => i.number).sort(), [10, 12, 5]);
 });
 
-test('a ready status the Status field has no option for is reported, not fatal', async () => {
-  const withOptions = (names, next) => {
-    const out = page(next ? [] : [ready(1)], next);
-    out.data.repositoryOwner.projectV2.statusField = { options: names.map(name => ({ name })) };
-    return out;
+// main over a stubbed API: `rest` answers GETs by path, without the first
+// page's paging; GraphQL gets `board` (null: not readable) and no comments. Returns the lines it
+// logged, the requests it made and what it threw.
+const REPO_CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
+const EPICS = REPO_CONFIG.epics.repository;
+const epicIssue = n => ({ number: n, state: 'open', updated_at: 't', html_url: `https://github.com/${EPICS}/issues/${n}`, repository_url: `https://api.github.com/repos/${EPICS}` });
+const labelled = login => [{ event: 'labeled', actor: { login }, label: { name: 'epic' } }];
+async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing') } = {}) {
+  const calls = [];
+  const out = [];
+  const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD };
+  globalThis.fetch = async (u, init) => {
+    const p = u.replace('https://api.github.com', '').replace(/[?&]per_page=100&page=1$/, '');
+    calls.push(`${init?.method ?? 'GET'} ${p}`);
+    let body;
+    if (p === '/graphql') {
+      body = JSON.parse(init.body).query.includes('projectV2')
+        ? board === null ? { errors: [{ message: 'Could not resolve to a ProjectV2' }] } : { data: { repositoryOwner: { projectV2: { items: { nodes: board, pageInfo: { hasNextPage: false } } } } } }
+        : { data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } };
+    } else if (p in rest) {
+      body = rest[p];
+    } else {
+      return new Response('nope', { status: 404 });
+    }
+    return new Response(JSON.stringify(body), { status: 200 });
   };
-  // The board before the operator adds the option: nothing found, one note.
-  const before = await readBoard(async () => withOptions(['Todo', 'In Progress', 'Done']), { ...BOARD, ready: ['Ready', 'Next'] });
-  assert.deepEqual(before.missing, ['Ready', 'Next']);
-  const pages = [withOptions(['Todo', 'Ready'], 'c1'), withOptions(['Todo'])];
-  const after = await readBoard(async () => pages.shift(), BOARD);
-  // Read from the first page only.
-  assert.deepEqual(after.missing, []);
-  assert.deepEqual(after.items.map(i => i.number), [1]);
-  // A field the token cannot read is unknown, not missing.
-  assert.equal((await readBoard(async () => page([]), BOARD)).missing, null);
+  console.log = line => out.push(line);
+  process.env.GH_TOKEN = 'test-token';
+  process.env.AGENT_BOARD = bin;
+  let error;
+  try {
+    await main(args);
+  } catch (err) {
+    error = err;
+  } finally {
+    globalThis.fetch = saved.fetch;
+    console.log = saved.log;
+    for (const k of ['GH_TOKEN', 'AGENT_BOARD']) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+  }
+  return { out, calls, error };
+}
+const LIST = `/repos/${EPICS}/issues?state=open&labels=epic`;
+
+test('with no live epics a pass says so and starts nothing', async () => {
+  // Only the bot's epic, as on the board until the operator labels one.
+  const { out, calls, error } = await runMain(['--apply'], {
+    [LIST]: [epicIssue(2)],
+    [`/repos/${EPICS}/issues/2/timeline`]: labelled(REPO_CONFIG.bot),
+  });
+  assert.equal(error, undefined);
+  assert.deepEqual(out, ['no live epics; nothing started']);
+  // Nothing past the census is read, and nothing is written.
+  assert.deepEqual(calls, [`GET ${LIST}`, `GET /repos/${EPICS}/issues/2/timeline`]);
 });
 
-test('a board that cannot be found, or never ends, stops the pass', async () => {
-  await assert.rejects(readBoard(async () => ({ data: { repositoryOwner: null }, errors: [{ message: 'no such owner' }] }), BOARD),
-    /board o\/1 not found.*: no such owner/);
-  // A page that failed partway, its connection null beside the error.
-  await assert.rejects(readBoard(async () => ({ data: { repositoryOwner: { projectV2: { items: null } } }, errors: [{ message: 'timeout' }] }), BOARD),
-    /not readable with GH_TOKEN: timeout/);
-  let calls = 0;
-  await assert.rejects(readBoard(async () => { calls++; return page([], `c${calls}`); }, BOARD), /more than 5000 items/);
-  assert.equal(calls, 50);
+test('each line of a pass names the epic its item came from', async () => {
+  const NO_PLAN_BIN = stub('no-plan', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
+  const sub = { ...epicIssue(40), created_at: '2026-10-01T00:00:00Z' };
+  const { out, error } = await runMain([], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [sub],
+    [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
+    [`/repos/${EPICS}/pulls?state=open`]: [],
+  }, { bin: NO_PLAN_BIN, board: [{ status: { name: 'Todo' }, priority: { name: 'P1' }, content: { url: sub.html_url } }] });
+  assert.equal(error, undefined);
+  assert.equal(out.length, 2);
+  assert.match(out[0], /^\[dry-run\] 1 open sub-issue\(s\) of 1 live epic\(s\), taken by their epic's Priority/);
+  assert.equal(out[1], `[dry-run] ${EPICS}#40 (epic ${EPICS}#1) triage: no plan`);
+});
+
+test('an epic the census cannot read fails the pass, and is not reported as no live epics', async () => {
+  // The board not readable with the token: every live epic is unread.
+  const rest = {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+  };
+  const { out, error } = await runMain(['--apply'], rest, { board: null });
+  assert.match(error?.message ?? '', /1 epic\(s\) could not be read/);
+  assert.match(out[0], new RegExp(`^no live epics; 1 epic\\(s\\) not read \\(${EPICS}#1: board .* not readable`));
+});
+
+test('an epic with no board Priority ranks after those with one, its sub-issues by their own', async () => {
+  const sub = (number, priority) => ({ repository: 'o/r', number, state: 'open', url: `u${number}`, created: null, priority });
+  const { items } = candidates([
+    { number: 1, live: true, priority: null, subs: [sub(1, 'P0')] },
+    { number: 2, live: true, priority: 'P3', subs: [sub(2, null), sub(3, 'P1')] },
+  ], 'o/t');
+  const steps = await decide(items, empty, caps(4), none, noPulls);
+  assert.deepEqual(steps.map(s => s.item), ['o/r#3', 'o/r#2', 'o/r#1']);
+});
+
+test('epics past the census bound fail a pass that found no live one', async () => {
+  const many = Array.from({ length: 51 }, (_, i) => epicIssue(i + 1));
+  const rest = { [LIST]: many };
+  for (const e of many) rest[`/repos/${EPICS}/issues/${e.number}/timeline`] = labelled(REPO_CONFIG.bot);
+  const { out, error } = await runMain(['--apply'], rest);
+  assert.match(out[0], /^no live epics; 1 more epic\(s\) not read/);
+  assert.match(error?.message ?? '', /0 epic\(s\) could not be read, 1 more epic\(s\) not read/);
 });
