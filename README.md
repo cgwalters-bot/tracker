@@ -258,7 +258,14 @@ reset its pending checkpoint comment to retry. A claimed status publication
 is not automatically retried. The scheduler's WIP cap also bounds new
 coordinator runs. Calls inherit its agent-board timeout; the workflow gives
 the coordinator eight minutes, and dispatch briefs are limited to 60,000
-UTF-8 bytes. An oversized brief is refused before recording a pending run.
+UTF-8 bytes. Planning briefs retain the epic body and one census line per child,
+including the bot's linked open PR from at most 100 recently updated open PRs
+per child repository. Child bodies are left for the planner to read. Operator
+comments are newest first, capped at 4,000 UTF-8 bytes each; older comments
+are dropped to fit, with an omitted count and history link. The final byte
+limit still refuses oversized epic bodies/census before recording a pending run.
+Coordinator failures retain their own error summary but do not fail the board
+scheduler job. The controller panel reads the coordinator's errors independently.
 
 The controller panel can parse the final log and job-summary line:
 `coordinator/v1 {"mode":"preview","plan":1,"apply":0,"status":0,"wait":0,"errors":0}`.
