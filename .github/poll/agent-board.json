@@ -1,0 +1,13 @@
+{
+  "source": "https://github.com/cgwalters-forge/agent-board",
+  "rev": "4798c4cd14453250bd73ac10e98cfa32ca2b6bab",
+  "operator": "cgwalters",
+  "bot": "cgwalters-bot",
+  "dispatchRepo": "cgwalters-forge/tracker",
+  "follow": [
+    "cgwalters-forge/agentic-job",
+    "cgwalters-forge/agent-board",
+    "cgwalters-forge/tracker"
+  ],
+  "fixPools": ["claude", "openai"]
+}

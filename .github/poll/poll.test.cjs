@@ -378,3 +378,39 @@ test('pools.json has what dispatch.yml reads, and a well-formed allowance', () =
   assert.equal(pools.mistral.budget, '1000');
   assert.deepEqual(pools.mistral.allowance, { amount: 300, currency: 'USD', period: 'calendar-month' });
 });
+
+// poll.yml's agent-board job previews the pass this file takes, so the two
+// can be compared before the switch: the same repositories (this one too),
+// logins and pools, and a commit, not a branch, to build.
+test('agent-board.json previews the pass poll.cjs takes', () => {
+  const ab = JSON.parse(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
+  assert.match(ab.source, /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/);
+  assert.match(ab.rev, /^[0-9a-f]{40}$/);
+  assert.equal(ab.bot, CONFIG.author);
+  assert.equal(ab.dispatchRepo, CONFIG.dispatchRepo);
+  assert.deepEqual(ab.fixPools, CONFIG.fixPools);
+  assert.match(ab.operator, /^[\w-]+$/);
+  for (const repo of ab.follow) assert.match(repo, /^[\w.-]+\/[\w.-]+$/);
+  assert.deepEqual(new Set(ab.follow), new Set([...CONFIG.repos, CONFIG.dispatchRepo]));
+});
+
+// The preview runs a binary built from another repository: it must not be
+// handed the bot's token or a write permission, nor take a step.
+test('poll.yml previews with agent-board read-only', () => {
+  const yml = fs.readFileSync(path.join(__dirname, '../workflows/poll.yml'), 'utf8');
+  const job = yml.slice(yml.indexOf('\n  agent-board:\n'));
+  assert.ok(job.length > 1 && !/^ {2}\S/m.test(job.slice(16)), 'agent-board is the last job');
+  assert.doesNotMatch(job, /\bsecrets\b|write-all|--apply|^ {4}needs:/m);
+  const perms = /^ {4}permissions:\n((?: {6}.*\n)+)/m.exec(job)?.[1];
+  assert.ok(perms, 'agent-board has its own permissions');
+  for (const line of perms.trimEnd().split('\n')) assert.match(line, /^ {6}[a-z-]+: read$/);
+  // Its failure cannot fail the pass, and it runs on the default branch only.
+  assert.match(job, /^ {4}continue-on-error: true$/m);
+  assert.match(job, /^ {4}if: \$\{\{ github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\) && !inputs\.dry-run \}\}$/m);
+  assert.match(job, /persist-credentials: false/);
+  // Both passes are piped to tee; without pipefail a failed one is green.
+  for (const pass of [yml.slice(0, yml.indexOf('\n  agent-board:\n')), job]) {
+    assert.match(pass, /^ {6}- name: (?:One pass|One pass, previewed)\n(?: {8}.*\n)*? {8}shell: bash\n/m);
+  }
+  assert.match(job, /agent-board" poll --dry-run/);
+});
