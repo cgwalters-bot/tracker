@@ -1,0 +1,55 @@
+# Publishes the usage snapshot the review app's pool meters read, from the
+# inference broker's /usage over the tailnet, so that it does not depend on a
+# machine of ours staying up (#558). Where it goes and the pacing are in
+# .github/usage/config.json; the README says what it publishes.
+name: usage
+
+on:
+  # Every fifteen minutes, as GitHub manages: it starts scheduled runs late
+  # or drops them. Each pool carries its own observed_at, which is what
+  # says how fresh it is.
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  # A publish now. There is no dry run here: this repository's logs are
+  # public and the snapshot is not (`just publish-usage --dry-run` prints it
+  # where the broker is reachable).
+  workflow_dispatch:
+
+permissions: {}
+concurrency:
+  group: usage
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # The bot's token is only for this file as the default branch has it.
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The identity token is the tailnet join's; the comment is written with
+    # the bot's token, in another repository.
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The same join, tags and proxy setting as the agent job's, which the
+      # broker admits by being on the tailnet.
+      - name: Join the tailnet
+        id: tailnet
+        uses: cgwalters-forge/actions/tailscale@main
+        with:
+          hostname: usage-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Publish
+        env:
+          # The organization secret poll.yml uses: the comment is the bot's,
+          # on a private repository of the organization.
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          # As the agent job resolves it: the variable, else the
+          # organization's tailnet setting.
+          INFERENCE_URL: ${{ vars.INFERENCE_URL || steps.tailnet.outputs.proxy }}
+        # Run Node directly: no unchecked release binary runs with the PAT
+        # or the job's OIDC grant.
+        run: node .github/usage/usage.cjs

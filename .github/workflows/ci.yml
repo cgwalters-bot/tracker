@@ -17,16 +17,20 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  poll:
+  # The tests of poll.cjs and usage.cjs, through the Justfile.
+  test:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The hosted image's Node; poll.cjs has no dependencies to install.
-      - run: node --test
-        working-directory: .github/poll
+      # The hosted image's Node; the scripts have no dependencies to install.
+      # A pinned just: Ubuntu's apt carries an old one (1.21 on 24.04).
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - run: just test
 
   # actionlint, zizmor and the runner-label policy shared by the forge
   # repositories, at the versions its `just check` recipe pins on the
@@ -72,7 +76,7 @@ jobs:
   # Require only ci in the ruleset, on both PR and merge-group commits.
   ci:
     if: ${{ always() }}
-    needs: [poll, lint, config]
+    needs: [test, lint, config]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
