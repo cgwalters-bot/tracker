@@ -60,8 +60,14 @@ pull request for review and fix; `OWNER/REPO` must be listed in
 `.github/agentic-job/dispatch.toml` (`fix.toml` for a fix). The standing
 instructions of each kind are not part of the brief: `dispatch.yml` puts
 `.github/agentic-job/profiles/KIND.md` before it, so they change by a pull
-request here and a brief says only what this item needs. `dispatch.yml`
-also takes an optional `pool` input, `claude`, `openai` or `mistral`, which
+request here and a brief says only what this item needs. An implement run
+with `claude` or `opencode` also gets agentic-job's skills (its
+`docs/skills.md`): its implement skill carries the procedure, the
+self-review with a subagent included, and `profiles/implement.md` only
+what is ours. `vibe` gets no skills, so an implement that would run it,
+from the pool or the variable `AGENT`, fails before it starts. Fix has no
+skill yet and keeps its full profile. `dispatch.yml` also takes an
+optional `pool` input, `claude`, `openai` or `mistral`, which
 `.github/agentic-job/pools.json` maps to a fixed agent and model (`claude`
 with `claude-opus-5-5`, `opencode` with `praxis/gpt-6.1-sol`, `vibe` with
 `zai-glm-5-3`) and a run budget in AIC, hundredths of a dollar

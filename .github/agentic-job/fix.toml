@@ -1,9 +1,13 @@
 # Bounds for dispatch.yml's `fix` kind, which pushes to the branch of a
 # pull request that apply itself opened from the bot's fork
 # (cgwalters-forge/agentic-job#435): one commit on top, or the whole
-# series again with the fix folded in. A separate file from dispatch.toml
-# because the push type has no per-repository list of its own: the
-# repositories named here are the only ones a fix may target.
+# series again with the fix folded in. Since cgwalters-forge/agentic-job#553
+# apply may also push to another head repository, but only one whose
+# default branch has `.github/agentic-job/accept-owner-branches` naming it
+# (agentic-job's docs/safe-outputs.md), and `.github` stays refused there.
+# A separate file from dispatch.toml because the push type has no
+# per-repository list of its own: the repositories named here are the only
+# ones a fix may target.
 hosts = ["github.com"]
 # tracker, actions and agenthome: fixes on all of the harness's own repositories (cgwalters-forge/tracker#544).
 repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-bot/homegit", "cgwalters-bot/praxis-credential-broker"]
@@ -25,8 +29,8 @@ missing_tool = { max = 1 }
 missing_data = { max = 1 }
 
 # A fix's push may edit `.github/` (workflows included) in these
-# repositories and no other, as a pull request may (dispatch.toml); the
-# push goes to the bot's fork, which has Actions off. Needed so a fix or
+# repositories and no other, as a pull request may (dispatch.toml), when
+# the push goes to the bot's fork, which has Actions off. Needed so a fix or
 # a replacement series can carry a pull request's `.github` changes. `files`
 # also lets them edit AGENTS.md there.
 [unprotected_files]
