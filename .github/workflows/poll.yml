@@ -102,9 +102,9 @@ jobs:
   board:
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-26.04
-    # The build, then the scheduler's 15 and the census's 5, so that the
-    # census never runs into the job's limit, which would fail the job.
-    timeout-minutes: 30
+    # The build, scheduler, census and coordinator each have their own bound;
+    # leave room for all four and just setup inside the job's limit.
+    timeout-minutes: 40
     # `actions: write` starts dispatch.yml here, with the job token.
     permissions:
       contents: read
@@ -160,6 +160,19 @@ jobs:
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
         shell: bash
         run: node .github/poll/epics.cjs | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - name: Coordinator
+        if: ${{ !cancelled() }}
+        timeout-minutes: 8
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          DISPATCH_TOKEN: ${{ github.token }}
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+          APPLY: ${{ !inputs.dry-run && vars.COORDINATOR == 'apply' && '--apply' || '' }}
+        shell: bash
+        run: just coordinator ${APPLY:+"$APPLY"}
 
   # agent-board's poll (cgwalters-forge/agent-board#40), which is to replace
   # poll.cjs, previewing the same pass so the two summaries can be compared

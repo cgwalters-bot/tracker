@@ -177,6 +177,73 @@ epics and a bounded number of pages for each listing, and the step runs at
 most five minutes. A failure of the census is reported in its section and
 does not fail the job. Test with `node --test .github/poll/epics.test.cjs`.
 
+## The epic coordinator
+
+After the census, `just coordinator` previews planning and project reporting.
+It writes nothing unless `COORDINATOR=apply` is set as a repository variable;
+the poll workflow's dry-run input still prevents writes. No dispatcher input
+can expand its repository or Priority bounds. `coordinator.priorities` in
+`agent-board.json` supplies the allowed options; project and field IDs are
+resolved from the configured project's API response, never from a plan.
+
+At most one live epic per pass gets a planning run or an apply preview. Planning is
+`kind=triage`, with the epic's census facts and only authenticated operator
+comments as decisions. Its one comment carries an `agent-board-epic-plan`.
+A later pass invokes `agent-board epic apply --dry-run`. **Epic mutations
+remain disabled even with `COORDINATOR=apply`:** the current CLI cannot pin
+the expected plan comment ID/version at its mutation boundary. Independently
+selecting the newest plan again could apply an obsolete destructive plan
+posted between reads. Enabling epic writes requires that upstream
+precondition, plus checkpointing that preserves concurrent operator changes
+to both epic intent and child scope. Until then a requested apply previews,
+reports this dependency as an error, and retains its pending checkpoint.
+Planning and status publication can be enabled independently of this missing
+capability by the existing COORDINATOR variable; there is no second control.
+Ordering is only Priority, with no Ready step.
+Epics are selected by their configured Priority order, then issue number.
+Changed intent, sub-issue text or board facts trigger planning; the decision
+logic also forces a daily pass after a completed applied checkpoint. Pending
+plans do not get additional daily runs, so that refresh loop cannot complete
+until pinned apply and checkpointing are implemented. The coordinator fingerprints content rather than
+the epic's `updated_at`, so its own comments do not start another plan.
+Results carry a unique request marker; an obsolete run must finish before its request is replaced,
+and a matching result hidden behind a newer writer's plan is not applied.
+
+Reporting uses the same triage/checkpoint mechanism on
+`coordinator.statusIssue` in the epic repository. It requests prose daily
+after `coordinator.statusHourUTC` (default 11), or when any epic's health
+changes, and publishes the returned `coordinator-status` block with
+`agent-board project status-update` in a later pass. The controller, not the
+model, chooses the project and status. An unread census is off-track; an
+open sub-issue that is Blocked or absent from the board is at-risk; otherwise
+an epic is on-track. Facts include census state, open question/needs-human
+asks (three per repository and label), the five most recently updated PRs per
+followed repository (with merge timestamps and their epic associations), the
+last 30 dispatch runs, at most ten blocked children per epic, counts of
+sub-issues opened since the last report, and the authenticated usage
+snapshot. These are bounded current snapshots, not a complete activity
+history; removed board members cannot be reconstructed. The prose must name
+its snapshot time and distinguish missing/stale usage from zero. Only the
+usage JSON is passed, not other private ops comments.
+Reporting failures are reported independently and do not prevent epic work.
+
+Pending operations are recorded before dispatch or publication, to prevent
+repeated writes after an ambiguous failure. A failed planning/prose run or
+ambiguous dispatch waits for a person: inspect the linked Actions runs and
+reset its pending checkpoint comment to retry. A claimed status publication
+is not automatically retried. The scheduler's WIP cap also bounds new
+coordinator runs. Calls inherit its agent-board timeout; the workflow gives
+the coordinator eight minutes, and dispatch briefs are limited to 60,000
+UTF-8 bytes. An oversized brief is refused before recording a pending run.
+
+The controller panel can parse the final log and job-summary line:
+`coordinator/v1 {"mode":"preview","plan":1,"apply":0,"status":0,"wait":0,"errors":0}`.
+The prefix and version are fixed; the rest is one JSON object. Counts are
+epics selected for planning/apply, project updates selected for publication,
+pending/cap waits and pass errors. Preview counts describe proposed actions;
+they are not writes. Prose requests are not counted as epic plans. Test with
+`node --test .github/poll/coordinator.test.cjs` or `just test-poll`.
+
 ## The usage snapshot
 
 `.github/workflows/usage.yml` publishes, every fifteen minutes, the
