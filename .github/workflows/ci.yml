@@ -28,23 +28,18 @@ jobs:
       - run: node --test
         working-directory: .github/poll
 
-  actionlint:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+  # actionlint, zizmor and the runner-label policy shared by the forge
+  # repositories, at the versions its `just check` recipe pins on the
+  # actions repository's main, which this follows (#544); `just lint` runs
+  # the same recipe locally.
+  lint:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The release and checksum agentic-job's ci uses. actionlint runs the
-      # image's shellcheck over each `run:` script.
-      - name: Install actionlint
-        working-directory: ${{ runner.temp }}
-        run: |
-          curl -fL --retry 3 https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz -o actionlint.tar.gz
-          echo '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  actionlint.tar.gz' | sha256sum -c -
-          tar -xzf actionlint.tar.gz actionlint
-      - run: |
-          "$RUNNER_TEMP/actionlint" -color .github/workflows/*.yml
+      - uses: cgwalters-forge/actions/lint@main
 
   # The bounds, runner configuration and pools that dispatch.yml reads from
   # the default branch, and review.yml's bounds: a file that does not parse
@@ -77,7 +72,7 @@ jobs:
   # Require only ci in the ruleset, on both PR and merge-group commits.
   ci:
     if: ${{ always() }}
-    needs: [poll, actionlint, config]
+    needs: [poll, lint, config]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
