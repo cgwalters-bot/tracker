@@ -37,7 +37,7 @@ missing_data = { max = 1 }
 [unprotected_files]
 # The same list as dispatch.toml's, which poll.test.cjs checks;
 # the precondition for listing a repository is in its comment.
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker"]
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]
