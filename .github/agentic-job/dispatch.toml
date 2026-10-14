@@ -25,12 +25,15 @@ missing_data = { max = 1 }
 # on a run's `.github/` edit there. The organisation's ruleset (25084478) does
 # so on every cgwalters-forge repository; review's own ruleset (24017897)
 # requires none, so there it rests on 25084478. Where there is no review workflow,
-# as in review today, only the operator can give that approval; review's
-# first `.github/` change should add its review workflow, approved by the
-# operator. agenthome and actions (cgwalters-forge/tracker#544) now meet it
-# too but are left to changes of their own: actions holds the shared
-# workflow every repository's runs call.
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review"]
+# as in review and agenthome today, only the operator can give that approval;
+# their first `.github/` change should add a review workflow, approved by the
+# operator. actions holds the shared wrapper every repository's runs call, so
+# its gate matters most. Its own ruleset (24147876) requires no approval, but
+# 25084478 with its review workflow (cgwalters-forge/actions#28) makes it the
+# same review gate as agentic-job's. Callers use actions at @main, not a release,
+# so a merge there takes effect at once. Its workflows are under `.github/`;
+# while it was unlisted, no run could change them.
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]
