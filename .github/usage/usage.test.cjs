@@ -1,0 +1,240 @@
+// node --test .github/usage/usage.test.cjs
+// testdata/broker-usage.json is a praxis-broker-usage/v1 answer in the shape
+// of the broker's usage.rs, its window headers those of its own fixtures.
+'use strict';
+const assert = require('node:assert/strict');
+const { test } = require('node:test');
+const http = require('node:http');
+const { MARKER, carryPools, checkConfig, findComment, mistralAllowance, mistralUsage, poolPace, previousSnapshot, publish, readBroker, render, snapshot } = require('./usage.cjs');
+
+const CONFIG = require('./config.json');
+const POOLS = require('../agentic-job/pools.json');
+const load = () => structuredClone(require('./testdata/broker-usage.json'));
+const NOW = Date.parse('2026-10-08T10:00:00Z');
+const PACING = { target: 0.95, burst: 3 };
+// pools.json's mistral entry, as the meter's tests need it whatever that file holds.
+const MISTRAL = { model: 'mistral-medium', allowance: { amount: 300, currency: 'USD', period: 'calendar-month' } };
+const PRICES = { 'mistral-medium': { input: 0.4, output: 2 } };
+const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);
+
+test('the repository config and the Mistral allowance in pools.json are usable', () => {
+  checkConfig(CONFIG);
+  assert.ok(mistralAllowance(POOLS.mistral, load(), NOW), 'pools.json mistral.allowance is one usage.cjs can publish');
+  for (const bad of [{ ...CONFIG, repo: 'bot-ops' }, { ...CONFIG, issue: 0 }, { ...CONFIG, pacing: { claude: PACING } }]) {
+    assert.throws(() => checkConfig(bad));
+  }
+});
+
+test('the broker answer becomes the pools and Mistral counters of bot-usage/v1', () => {
+  const snap = snapshot(load(), CONFIG, MISTRAL, NOW);
+  assert.equal(snap.schema, 'bot-usage/v1');
+  assert.equal(snap.updated_at, '2026-10-08T10:00:00.000Z');
+  assert.deepEqual([snap.windows, snap.workers], [[], []]);
+  // Claude's week: 81% used, 4 days 10 hours into it, so the pace allows
+  // 95% of 106/168 and the pool holds.
+  const { claude, openai } = snap.pools;
+  close(claude.used_percent, 81);
+  close(claude.allowed_percent, (95 * 106) / 168);
+  assert.equal(claude.resets_at, '2026-10-11T00:00:00.000Z');
+  assert.equal(claude.observed_at, '2026-10-08T09:00:00.000Z');
+  assert.equal(claude.window_minutes, 7 * 24 * 60);
+  assert.deepEqual([claude.hold, claude.reason], [true, 'pace']);
+  // OpenAI's week (the secondary window) is behind its pace.
+  close(openai.used_percent, 20);
+  assert.equal(openai.resets_at, '2026-10-12T09:16:40.000Z');
+  assert.deepEqual([openai.hold, openai.reason, openai.next_dispatch_at], [false, null, null]);
+  assert.deepEqual(snap.mistral, {
+    requests: 8,
+    tokens: 3900,
+    since: '2026-10-05T00:00:00.000Z',
+    allowance: { limit_usd: 300, resets_at: '2026-11-01T00:00:00.000Z' },
+  });
+});
+
+test('the comment is what the review app parses: the marker, then the JSON', () => {
+  const snap = snapshot(load(), CONFIG, MISTRAL, NOW);
+  const body = render(snap, '`usage`');
+  assert.ok(body.startsWith(`${MARKER}\n`));
+  // review's src/github/usage.ts: JSON_FENCE_RE and parsePool's fields.
+  const m = /^```json\n([\s\S]*?)\n```$/m.exec(body);
+  assert.deepEqual(JSON.parse(m[1]), snap);
+  for (const p of Object.values(snap.pools)) {
+    for (const k of ['used_percent', 'allowed_percent']) assert.ok(Number.isFinite(p[k]) && p[k] >= 0, k);
+    for (const k of ['resets_at', 'observed_at']) assert.match(p[k], /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+    assert.equal(typeof p.hold, 'boolean');
+  }
+  assert.match(body, /^- mistral: 8 requests, 3900 tokens since 2026-10-05T00:00:00.000Z \(unpaced\); allowance \$300, resets 2026-11-01T00:00:00.000Z$/m);
+});
+
+test('a pool is unpaced without a week that has yet to reset, and held by a spent shorter window', () => {
+  const broker = load();
+  delete broker.anthropic.unified_7d;
+  assert.equal(snapshot(broker, CONFIG, null, NOW).pools.claude, null, 'five hours alone are not paced');
+  assert.equal(snapshot(load(), CONFIG, null, Date.parse('2026-10-11T00:00:01Z')).pools.claude, null, 'the week has reset');
+  const empty = load();
+  empty.anthropic = { counts: empty.anthropic.counts, unified_5h: null, unified_7d: null };
+  assert.equal(snapshot(empty, CONFIG, null, NOW).pools.claude, null);
+  const spent = load();
+  spent.anthropic.unified_7d.utilization = 0.1;
+  spent.anthropic.unified_5h.utilization = 1;
+  const claude = snapshot(spent, CONFIG, null, NOW).pools.claude;
+  assert.deepEqual([claude.hold, claude.reason, claude.next_dispatch_at], [true, 'window', '2026-10-08T12:00:00.000Z']);
+  // A window the broker saw only part of (no utilization) is no reading.
+  const partial = load();
+  partial.anthropic.unified_7d.utilization = null;
+  assert.equal(snapshot(partial, CONFIG, null, NOW).pools.claude, null);
+  assert.equal(poolPace(null, PACING, NOW), null);
+});
+
+test('Mistral: absent without counters, and the allowance only one the meter can read', () => {
+  const broker = load();
+  delete broker.mistral;
+  assert.equal('mistral' in snapshot(broker, CONFIG, MISTRAL, NOW), false);
+  for (const allowance of [{ ...MISTRAL.allowance, period: 'week' }, { ...MISTRAL.allowance, currency: 'EUR' }, { ...MISTRAL.allowance, amount: 0 }, undefined]) {
+    assert.equal('allowance' in mistralUsage(load(), { ...MISTRAL, allowance }, NOW), false, JSON.stringify(allowance));
+  }
+  assert.equal(mistralAllowance(MISTRAL, load(), Date.parse('2026-12-31T23:59:59Z')).resets_at, '2027-01-01T00:00:00.000Z');
+});
+
+test('Mistral: with prices, this month of tokens goes out for an estimate, as review parseAllowance reads it', () => {
+  const pool = { ...MISTRAL, allowance: { ...MISTRAL.allowance, prices: PRICES } };
+  // Cache reads are charged as input: the broker counts them apart.
+  assert.deepEqual(mistralAllowance(pool, load(), NOW), {
+    limit_usd: 300,
+    resets_at: '2026-11-01T00:00:00.000Z',
+    models: [{ model: 'mistral-medium', input_tokens: 3500, output_tokens: 400 }],
+    prices: PRICES,
+  });
+  // A broker up since last month counts more than this month: no estimate.
+  const old = load();
+  old.started_at = Date.parse('2026-09-30T23:59:59Z') / 1e3;
+  assert.deepEqual(mistralAllowance(pool, old, NOW), { limit_usd: 300, resets_at: '2026-11-01T00:00:00.000Z' });
+});
+
+test('an answer that is not the broker usage is refused', () => {
+  for (const bad of [null, [], {}, { ...load(), schema: 'praxis-broker-usage/v2' }]) {
+    assert.throws(() => snapshot(bad, CONFIG, null, NOW), /not praxis-broker-usage\/v1/);
+  }
+});
+
+test('only the bot comment with the marker is the one to edit', () => {
+  const body = `${MARKER}\nx`;
+  const comments = [
+    { id: 1, user: { login: 'someone' }, body },
+    { id: 2, user: { login: CONFIG.bot }, body: 'other' },
+    { id: 3, user: { login: CONFIG.bot }, body },
+  ];
+  assert.equal(findComment(comments, CONFIG.bot).id, 3);
+  assert.equal(findComment(comments.slice(0, 2), CONFIG.bot), null);
+});
+
+test('a pace hold says when the pace catches up, and a pool past its target waits for the reset', () => {
+  // A week from 2026-10-04 to 2026-10-11, at 2026-10-08T10:00Z.
+  const reading = used => ({ source: 'praxis', observed_at: NOW, windows: [{ used_percent: used, window_ms: 7 * 24 * HOUR, resets_at: Date.parse('2026-10-11T00:00:00Z') }] });
+  const p = poolPace(reading(81), PACING, NOW);
+  assert.equal(p.next_dispatch_at, new Date(Date.parse('2026-10-04T00:00:00Z') + ((81 - 3) / 95) * 7 * 24 * HOUR).toISOString());
+  assert.equal(poolPace(reading(96), PACING, NOW).next_dispatch_at, '2026-10-11T00:00:00.000Z');
+  // Codex's five hours used up hold a pool whose week is behind its pace.
+  const broker = load();
+  Object.assign(broker.codex.primary, { used_percent: 100, reset_after_seconds: 7200 });
+  const openai = snapshot(broker, CONFIG, null, NOW).pools.openai;
+  assert.deepEqual([openai.hold, openai.reason, openai.next_dispatch_at], [true, 'window', '2026-10-08T11:16:40.000Z']);
+});
+
+const HOUR = 3600e3;
+// A broker just restarted: no window seen yet, the counters from zero.
+function restarted() {
+  const b = load();
+  b.anthropic.unified_5h = b.anthropic.unified_7d = null;
+  b.codex.primary = b.codex.secondary = null;
+  return b;
+}
+
+test('a pool the broker has no reading of keeps the last one until its window resets', () => {
+  const previous = snapshot(load(), CONFIG, null, NOW);
+  const later = NOW + HOUR;
+  const snap = carryPools(snapshot(restarted(), CONFIG, null, later), previous, CONFIG, later);
+  close(snap.pools.claude.used_percent, 81);
+  assert.equal(snap.pools.claude.observed_at, previous.pools.claude.observed_at, 'the reading keeps its age');
+  close(snap.pools.claude.allowed_percent, (95 * 107) / 168);
+  assert.equal(snap.pools.openai.resets_at, previous.pools.openai.resets_at);
+  // A fresh reading wins, and a carried one ends with its window.
+  assert.deepEqual(carryPools(snapshot(load(), CONFIG, null, later), { pools: { claude: { ...previous.pools.claude, used_percent: 1 } } }, CONFIG, later).pools.claude.used_percent, previous.pools.claude.used_percent);
+  const afterReset = Date.parse('2026-10-11T00:00:01Z');
+  assert.equal(carryPools(snapshot(restarted(), CONFIG, null, afterReset), previous, CONFIG, afterReset).pools.claude, null);
+  assert.equal(previousSnapshot(render(previous, 'x')).updated_at, previous.updated_at);
+  for (const body of [undefined, '', `${MARKER}\n\`\`\`json\n{nope\n\`\`\``]) assert.equal(previousSnapshot(body), null);
+});
+
+// A fake GitHub: the repository, the issue's comments, the token's
+// login; the requests it was sent.
+function github({ private: priv = true, comments = [], login = CONFIG.bot } = {}) {
+  const calls = [];
+  const request = async (method, path, body) => {
+    calls.push({ method, path, body });
+    if (path === `/repos/${CONFIG.repo}`) return { private: priv };
+    if (path === '/user') return { login };
+    if (method === 'GET' && path.includes('/comments')) return comments;
+    if (method === 'POST') return { html_url: 'created' };
+    return {};
+  };
+  return { calls, request, writes: () => calls.filter(c => c.method !== 'GET') };
+}
+const publishWith = (gh, snap = snapshot(load(), CONFIG, null, NOW)) =>
+  publish({ config: CONFIG, snap, render: s => render(s, 'x'), request: gh.request, log: () => {} });
+
+test('publish edits the bot comment, creates one only as the bot, and never writes to a public repository', async () => {
+  const mine = { id: 9, html_url: 'u', user: { login: CONFIG.bot }, body: `${MARKER}\nold` };
+  let gh = github({ comments: [{ id: 1, user: { login: 'someone' }, body: MARKER }, mine] });
+  await publishWith(gh);
+  assert.deepEqual(gh.writes().map(c => [c.method, c.path]), [['PATCH', `/repos/${CONFIG.repo}/issues/comments/9`]]);
+  assert.ok(gh.writes()[0].body.body.startsWith(MARKER));
+
+  gh = github();
+  await publishWith(gh);
+  assert.deepEqual(gh.writes().map(c => [c.method, c.path]), [['POST', `/repos/${CONFIG.repo}/issues/${CONFIG.issue}/comments`]]);
+
+  gh = github({ login: 'someone-else' });
+  await assert.rejects(publishWith(gh), /not creating a comment/);
+  assert.deepEqual(gh.writes(), []);
+
+  gh = github({ private: false, comments: [mine] });
+  await assert.rejects(publishWith(gh), /is not private/);
+  assert.deepEqual(gh.writes(), []);
+});
+
+test('publish looks only where the review app reads, and does not add a comment it would not see', async () => {
+  const other = { id: 1, user: { login: 'someone' }, body: 'hi' };
+  const gh = github({ comments: Array(100).fill(other) });
+  await assert.rejects(publishWith(gh), /among the first 100/);
+  assert.deepEqual(gh.writes(), []);
+  assert.deepEqual(gh.calls.filter(c => c.method === 'GET').map(c => c.path), [`/repos/${CONFIG.repo}`, `/repos/${CONFIG.repo}/issues/${CONFIG.issue}/comments?per_page=100`]);
+});
+
+test('publish leaves the last snapshot alone when there is no pool reading to replace it with', async () => {
+  const gh = github();
+  await publishWith(gh, snapshot(restarted(), CONFIG, null, NOW));
+  assert.deepEqual(gh.writes(), []);
+  // With a previous snapshot to carry from, it writes.
+  const previous = { id: 9, html_url: 'u', user: { login: CONFIG.bot }, body: render(snapshot(load(), CONFIG, null, NOW), 'x') };
+  const again = github({ comments: [previous] });
+  await publishWith(again, snapshot(restarted(), CONFIG, null, NOW + HOUR));
+  close(previousSnapshot(again.writes()[0].body.body).pools.claude.used_percent, 81);
+});
+
+test('readBroker reads /usage at the root of the broker, bounded', async t => {
+  let answer = '';
+  const server = http.createServer((req, res) => {
+    if (req.url !== '/usage') { res.statusCode = 404; return res.end(); }
+    res.end(answer);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}/v1`;
+  answer = JSON.stringify(load());
+  assert.equal((await readBroker(base)).schema, 'praxis-broker-usage/v1');
+  answer = 'x'.repeat(300 * 1024);
+  await assert.rejects(readBroker(base), /answer over/);
+  answer = '<html>';
+  await assert.rejects(readBroker(base), /\/usage: not JSON/);
+});

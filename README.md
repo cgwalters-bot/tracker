@@ -127,3 +127,25 @@ started by hand, put a run's summary next to the dispatch runs started around
 it, `gh run list -R cgwalters-forge/tracker -w dispatch.yml --json
 displayTitle,createdAt`: run names are `KIND REPO#ITEM`, as the summary names
 items. Test with `node --test .github/poll/schedule.test.cjs`.
+
+## The usage snapshot
+
+`.github/workflows/usage.yml` publishes, every fifteen minutes, the
+`bot-usage/v1` snapshot that the review app's pool meters read: one comment by
+the bot, edited in place, on the issue `.github/usage/config.json` names, in a
+repository GitHub must say is private. It joins the tailnet as the agent job
+does and reads the inference broker's `/usage` (the variable `INFERENCE_URL`,
+else the organization's tailnet setting). It holds the claude and openai pools,
+paced as homegit's `bin/bot-capacity` paces them (the config's `pacing`), but
+read from the windows the broker sees in the providers' answers: claude's is
+therefore the account as the broker sees it, not Claude Code's status line on
+a machine. Mistral has its counters and the monthly allowance of
+`.github/agentic-job/pools.json`, with this month's tokens and the
+allowance's `prices` (USD per million tokens, by model) when those are
+configured, for the review app's estimate of the spend. A broker it cannot read fails the run and
+leaves the last snapshot, and its time, as they were. The broker keeps its
+readings in memory, so after a restart it has none until a run goes through
+it: a pool without a reading keeps the last one published, with its own
+time, until that window resets, and with neither pool the comment is not
+touched. `just publish-usage --dry-run` prints the comment (without carrying
+anything over); test with `just test-usage`.
