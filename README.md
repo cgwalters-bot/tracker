@@ -107,19 +107,27 @@ the last run that saved one. Its failure does not fail the run.
 
 The same run's `board` job, `.github/poll/schedule.cjs`, starts new work from
 the board. Each open issue whose Status is one of `schedule.ready` in
-`.github/poll/agent-board.json` gets at most one step: `agent-board dispatch
---apply` where it has an accepted implement
+`.github/poll/agent-board.json`, in a repository `schedule.repositories` lists,
+gets at most one step: `agent-board dispatch --apply` where it has an accepted
+implement
 [job plan](https://github.com/cgwalters-forge/agent-board/blob/main/docs/job-plans.md),
 else one `triage` run of `dispatch.yml` asked to write one. An item is skipped
 while a `dispatch.yml` run for it, or for the item its plan targets, is in
-flight or a pull request of the bot says `Refs` to it; while its plan
-has a dispatch record (agent-board's, by this job or by hand; a writer edits
-or replaces the plan to dispatch again); and,
-for triage, while a triage run for it is among the last hundred. No step
-starts once `schedule.wip` runs of `dispatch.yml`, of any kind, are in
-flight, higher priorities first; fix runs the poll job starts in the same
-pass count from the next. Each line of the run's summary is one item and what
-was, or would be, done.
+flight or a pull request of the bot says `Refs` to it; while its plan has a
+dispatch record (agent-board's, by this job or by hand; a writer edits or
+replaces the plan to dispatch again); and, for triage, while a triage run for
+it is among the last hundred. Items of unlisted repositories, upstream ones
+among them, are skipped as "not a followed repository", as is a plan whose
+target is in one: upstream work is the operator's to start.
+
+Items are taken by the board field `schedule.priorityField` (default
+`Priority`), P0 first, then oldest first. No step starts once `schedule.wip`
+runs of `dispatch.yml`, of any kind, are in flight; fix runs the poll job
+starts in the same pass count from the next. No more than
+`schedule.triagePerPass` (default 1) triage runs start in a pass, and once
+that many have, the pass stops reading items after ten more fresh ones turn
+out to have no plan, so a plan further down waits for a later pass. Each line
+of the run's summary is one item and what was, or would be, done.
 
 The board is read with one paged GraphQL query, not `agent-board item list`,
 which reads every item's fields one request at a time. Each `agent-board`
