@@ -17,9 +17,10 @@ dispatch workflow, the bounds and per-kind profiles under
 before dispatching anything: briefs and decisions are checked against them,
 and a new instruction is appended there, verbatim and dated, in a pull
 request. The wrapper every run goes through,
-[cgwalters-forge/actions](https://github.com/cgwalters-forge/actions), and
-[cgwalters-forge/agentic-job](https://github.com/cgwalters-forge/agentic-job)
-are pinned by commit in `.github/workflows/dispatch.yml` and need no clone.
+[cgwalters-forge/actions](https://github.com/cgwalters-forge/actions), is
+followed at its main in `.github/workflows/dispatch.yml` and needs no clone;
+it brings [cgwalters-forge/agentic-job](https://github.com/cgwalters-forge/agentic-job)
+at whatever commit its main takes.
 
 ## Credentials and settings
 

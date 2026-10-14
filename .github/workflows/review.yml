@@ -3,10 +3,9 @@
 # workflow reads its bounds (workflow/review.toml,
 # workflow/review-command.toml) and its task (workflow/review.md) from
 # this repository's base branch, and the runner's configuration from
-# agentic-job's own hosted.toml at the pinned commit unless the variable
-# AGENT_CONFIG names a file here. dispatch.yml's wrapper
-# may pin an older agentic-job commit; the review profile there runs at
-# that commit, not this one.
+# agentic-job's own hosted.toml unless the variable AGENT_CONFIG names a
+# file here. agentic-job is followed at its main here (#544), but
+# dispatch.yml goes through the wrapper, whose own agentic-job ref may lag.
 # With the variable AGENT_REAL_REVIEWS it also submits the verdict as a
 # review by github-actions[bot], an approval whatever files change, this
 # one and the review's own bounds and task included (agentic-job#540; the operator's
@@ -31,7 +30,7 @@ jobs:
       github.event_name == 'pull_request_target' ||
       (github.event.issue.pull_request && startsWith(github.event.comment.body, '/review'))
     # Base-owned policy; the head is fetched only as data inside the sandbox.
-    uses: cgwalters-forge/agentic-job/.github/workflows/review.yml@0d5e8dc31705dd50dfe3900714a13b5e6343355d
+    uses: cgwalters-forge/agentic-job/.github/workflows/review.yml@main
     permissions:
       contents: read
       issues: read

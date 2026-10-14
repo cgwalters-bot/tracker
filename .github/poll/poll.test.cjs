@@ -402,11 +402,12 @@ test('pools.json has what dispatch.yml reads, and a well-formed allowance', () =
 
 // poll.yml's agent-board job previews the pass this file takes, so the two
 // can be compared before the switch: the same repositories (this one too),
-// logins and pools, and a commit, not a branch, to build.
+// logins and pools, and the branch to build, followed at its head (#544).
 test('agent-board.json previews the pass poll.cjs takes', () => {
   const ab = JSON.parse(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
   assert.match(ab.source, /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+$/);
-  assert.match(ab.rev, /^[0-9a-f]{40}$/);
+  assert.equal(ab.branch, 'main');
+  assert.equal(ab.rev, undefined);
   assert.equal(ab.bot, CONFIG.author);
   assert.equal(ab.dispatchRepo, CONFIG.dispatchRepo);
   assert.deepEqual(ab.fixPools, CONFIG.fixPools);
@@ -527,4 +528,21 @@ test('dispatch.yml gives an agent without skills the full implement profile', ()
   assert.equal(run('nonesuch', 'fix'), null);
   // Not a kind: the full profile is reached only through the agent.
   assert.equal(run('', 'implement-full', 'vibe'), null);
+});
+
+// #544: our own workflows and actions are followed at main, everything
+// else is pinned by commit, which dependabot moves. The owner is the one
+// this repository dispatches from, not a name written here.
+test('workflows follow our own repositories at main and pin the rest', () => {
+  const owner = CONFIG.dispatchRepo.split('/')[0];
+  const dir = path.join(__dirname, '../workflows');
+  let seen = 0;
+  for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.yml'))) {
+    for (const [, ref] of fs.readFileSync(path.join(dir, file), 'utf8').matchAll(/^\s*(?:- )?uses:\s*(\S+)/gm)) {
+      seen++;
+      if (ref.startsWith(`${owner}/`)) assert.match(ref, /^[\w.-]+\/[\w.\/-]+@main$/, `${file}: ${ref}`);
+      else assert.match(ref, /^[\w.-]+\/[\w.\/-]+@[0-9a-f]{40}$/, `${file}: ${ref}`);
+    }
+  }
+  assert.ok(seen > 0);
 });

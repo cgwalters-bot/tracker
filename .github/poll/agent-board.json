@@ -1,6 +1,6 @@
 {
   "source": "https://github.com/cgwalters-forge/agent-board",
-  "rev": "4798c4cd14453250bd73ac10e98cfa32ca2b6bab",
+  "branch": "main",
   "operator": "cgwalters",
   "bot": "cgwalters-bot",
   "dispatchRepo": "cgwalters-forge/tracker",

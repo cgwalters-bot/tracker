@@ -114,17 +114,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The source and the commit are in .github/poll/agent-board.json, with
-      # the logins and repositories below. Built each pass and never cached:
-      # a cache any job on the default branch can write is not where a
-      # binary that is later given the bot's token should come from.
-      - name: Build agent-board at the pinned commit
+      # The source and the branch are in .github/poll/agent-board.json, with
+      # the logins and repositories below; our own repositories are followed
+      # at their branch, not pinned (#544). The head is resolved once so the
+      # build and the state's name below are of the same commit. Built each
+      # pass and never cached: a cache any job on the default branch can
+      # write is not where a binary that is later given the bot's token
+      # should come from.
+      - name: Build agent-board at the branch's head
         id: build
         run: |
-          rev=$(jq -er .rev .github/poll/agent-board.json)
+          source=$(jq -er .source .github/poll/agent-board.json)
+          branch=$(jq -er .branch .github/poll/agent-board.json)
+          rev=$(git ls-remote --exit-code "$source" "refs/heads/$branch" | cut -f1)
+          [[ $rev =~ ^[0-9a-f]{40}$ ]]
           cargo install --locked --root "$RUNNER_TEMP/agent-board" \
-            --git "$(jq -er .source .github/poll/agent-board.json)" \
-            --rev "$rev" agent-board
+            --git "$source" --rev "$rev" agent-board
           echo "rev=$rev" >> "$GITHUB_OUTPUT"
       # The state file holds cached response bodies the poll trusts and its
       # idle interval, so it is read back only from what this job saved: the
@@ -132,10 +137,11 @@ jobs:
       # branch, started by one of its own triggers in this repository. The
       # name alone is not enough, as dispatch runs here upload artifacts on
       # the default branch too, nor is the branch: a fork's pull request
-      # from its main, editing this file, reports main as well. It is named for the pinned
-      # commit, so a new pin, which may not read an older state, starts
-      # afresh, as does none (the first pass, or expired, or this step
-      # failing): agent-board allows that, the state being disposable.
+      # from its main, editing this file, reports main as well. It is named
+      # for the commit built, so a new commit, which may not read an older
+      # state, starts afresh, as does none (the first pass, or expired, or
+      # this step failing): agent-board allows that, the state being
+      # disposable.
       - name: Restore the state of the last pass
         continue-on-error: true
         env:

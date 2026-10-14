@@ -96,28 +96,8 @@ part way is repeated five minutes later. Test with `node --test .github/poll/pol
 The same run's `agent-board` job previews the pass with `agent-board poll
 --dry-run`, the poll that is to replace poll.cjs
 ([agent-board#40](https://github.com/cgwalters-forge/agent-board/issues/40)),
-built at the commit `.github/poll/agent-board.json` pins and over the
+built at the head of the branch `.github/poll/agent-board.json` names and over the
 repositories and logins it names: poll.cjs's, and this repository. Both
 jobs write their lines to the run's summary, one under the other. It takes no
 step and has only the job token, read-only; its state file is an artifact of
 the last run that saved one. Its failure does not fail the run.
-
-## The pin sync
-
-`.github/workflows/sync.yml` runs `.github/sync/sync.cjs` daily and on
-`gh workflow run sync.yml`. `.github/sync/manifest.json` lists the source
-(agentic-job and its branch) and each caller with the files that pin it.
-For a caller whose files pin the source anywhere but the branch's head, a
-pass starts one `implement` run of `dispatch.yml` on the caller's `issue`,
-asking it to move the pins and adapt to what changed. A caller is skipped,
-with the reason in the run's summary, while an implement run for that
-issue is not done, while an open `dispatch/` pull request of the bot
-changes one of its pinned files, when the manifest names no `issue` for
-it, or when a listed file is missing or pins nothing. It only reports
-until the repository variable `SYNC_DISPATCH` is `true`; its `dry-run`
-input reports either way. It pushes nothing, opens no issue, and does
-not follow the pins of the wrapper in `cgwalters-forge/actions` that
-`dispatch.yml` itself uses. A caller's `issue` is one opened for its pin
-moves alone: the run reads it as its brief, and runs on one item share a
-concurrency group. None has one yet, so every caller is only reported
-until one is added. Test with `node --test` in `.github/sync`.
