@@ -2,12 +2,15 @@
 // One pass of the board scheduler (cgwalters-forge/tracker#401): start new
 // work from the board, which until now only the chat session did by hand.
 // Each open issue whose Status is one of `schedule.ready` in agent-board.json
-// gets at most one step: the job its newest accepted plan comment proposes
-// (`agent-board dispatch --apply`, agent-board's docs/job-plans.md), or,
-// with no plan, one triage run asked to write one. No step starts once
-// `schedule.wip` dispatch.yml runs are in flight, counting those already
-// going. A dry run, the default, only reads: `--apply` is passed by the
-// workflow only where the repository variable says so.
+// in one of `schedule.repositories` gets at most one step: the job its
+// newest accepted plan comment proposes (`agent-board dispatch --apply`,
+// agent-board's docs/job-plans.md), or, with no plan, one triage run asked
+// to write one. Items are taken by `schedule.priorityField`, P0 first, then
+// oldest first. No step starts once `schedule.wip` dispatch.yml runs are in
+// flight, counting those already going, and no more than
+// `schedule.triagePerPass` triage runs start in one pass. A dry run, the
+// default, only reads: `--apply` is passed by the workflow only where the
+// repository variable says so.
 // Standard library and the agent-board binary; `decide` and its helpers are
 // pure and are what schedule.test.cjs covers.
 'use strict';
@@ -28,6 +31,16 @@ const AGENT_BOARD_TIMEOUT_S = 120;
 // The board is read 100 items a page; past this many pages the pass stops
 // rather than spend the token's budget on a board it cannot have meant.
 const BOARD_PAGES = 50;
+// Items read in one pass after the triage cap is reached that turn out to
+// have no plan. A slot is only taken by a run started, so past the cap
+// every item without a plan would otherwise be read in turn, only to be
+// skipped, each an agent-board call of up to `timeoutSeconds` and a read of
+// its comments: a board of a hundred such items would outlast the job and
+// the token's budget. Reads that end otherwise (triaged already, recorded,
+// refused) are not counted, so items stuck in those states cannot use the
+// limit up; each pass triages the first fresh item, so the next pass reads
+// one further down.
+const PAST_CAP_READS = 10;
 // A run that has not completed holds its slot and its item.
 const RUNNING = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
 // dispatch.yml's run-name: "KIND OWNER/REPO#ITEM", then the pool.
@@ -43,7 +56,6 @@ const PLAN_FROM_RE = /request for the plan in (https:\/\/github\.com\/\S+#issuec
 const RECORD_RE = /^<!-- agent-board-dispatch: (\d+)@\S+ -->$/;
 // agent-board's refusal of a plan it has a record of, which takes no step.
 const RECORDED_RE = /has a dispatch record already/;
-const PRIORITY = { P0: 0, P1: 1, P2: 2 };
 
 // GitHub names are case-insensitive; the board, a plan and a run name may
 // spell one differently.
@@ -57,6 +69,7 @@ function loadConfig(text) {
   const s = all.schedule ?? {};
   const config = {
     owner: s.owner, project: s.project, ready: s.ready, wip: s.wip,
+    priorityField: s.priorityField ?? 'Priority', triagePerPass: s.triagePerPass ?? 1,
     operator: all.operator, planner: all.bot, caller: all.dispatchRepo, workflow: POLL.dispatchWorkflow,
     planDocs: `${all.source}/blob/${all.branch}/docs/job-plans.md`,
   };
@@ -68,6 +81,25 @@ function loadConfig(text) {
     throw new Error('agent-board.json: schedule.ready must list at least one status');
   }
   if (!Number.isSafeInteger(config.wip) || config.wip < 0) throw new Error('agent-board.json: schedule.wip must be a count');
+  // The repositories whose items are scheduled, by exact name. There is no
+  // default and no wildcard: an upstream project's issue on the board is
+  // there to be tracked, and work on it is the operator's to start, on a
+  // devspace, not this job's. A repository missing here is only not
+  // scheduled; one listed here still has to be in dispatch.toml's bounds.
+  const repos = s.repositories;
+  if (!Array.isArray(repos) || !repos.every(r => typeof r === 'string' && /^[\w.-]+\/[\w.-]+$/.test(r))) {
+    throw new Error('agent-board.json: schedule.repositories must list OWNER/REPO names');
+  }
+  config.followed = new Set(repos.map(r => r.toLowerCase()));
+  if (typeof config.priorityField !== 'string' || !/^[\w .-]{1,100}$/.test(config.priorityField)) {
+    throw new Error('agent-board.json: schedule.priorityField must name a board field');
+  }
+  // Every item the scheduler has not seen before is without a plan, so the
+  // first pass with --apply would otherwise triage up to `wip` of them at
+  // once, and as many again each pass as slots free up.
+  if (!Number.isSafeInteger(config.triagePerPass) || config.triagePerPass < 0 || config.triagePerPass > 10) {
+    throw new Error('agent-board.json: schedule.triagePerPass must be 0 to 10');
+  }
   // A bound on one call; the job's timeout-minutes is the pass's.
   const t = s.timeoutSeconds ?? AGENT_BOARD_TIMEOUT_S;
   if (!Number.isSafeInteger(t) || t < 1 || t > 600) throw new Error('agent-board.json: schedule.timeoutSeconds must be 1 to 600');
@@ -153,17 +185,25 @@ function findRecord(comments, writers, commentId) {
   return undefined;
 }
 
-// Higher priority first, then as the board lists them.
-const byPriority = items => [...items].sort((a, b) => (PRIORITY[a.priority] ?? 3) - (PRIORITY[b.priority] ?? 3));
+// The order items are taken in, for the summary.
+const order = field => `by ${field} (P0 first, unset last), then oldest first`;
+// P0, P1, ... by the number; any other value, or none, after them all.
+const rank = p => { const m = /^P(\d{1,3})$/.exec(p ?? ''); return m ? Number(m[1]) : Infinity; };
+const age = item => Date.parse(item.created ?? '') || Infinity; // Two unknowns tie: Infinity - Infinity is NaN, hence `|| 0` below.
+const byPriority = items => [...items].sort((a, b) => (rank(a.priority) - rank(b.priority) || 0) || (age(a) - age(b) || 0));
 
 // One step for each item. `probe(item)` says what agent-board would do with
 // it: { plan, target, recorded? }, { none: true } or { refused: reason }.
 // `pullFor(key)` names the bot's open pull request for an item, if any. A
 // probe is made only while a slot is free, so a full pass reads no issue's
 // comments; only a step that starts a run takes a slot. One item failing to
-// be read is skipped with the reason, and the others go on.
-async function decide(items, { inFlight, busy: running, triaged }, wip, probe, pullFor) {
+// be read is skipped with the reason, and the others go on. `limits` is
+// the config's `wip`, `triagePerPass` and `followed`.
+async function decide(items, { inFlight, busy: running, triaged }, { wip, triagePerPass, followed }, probe, pullFor) {
   let free = wip - inFlight;
+  let pastCap = 0;
+  let triages = triagePerPass;
+  const isFollowed = key => followed.has(key.split('#')[0]);
   const steps = [];
   // What this pass starts holds its items as a run in flight would, so two
   // plans with one target, or a plan's target that is a board item too,
@@ -178,6 +218,7 @@ async function decide(items, { inFlight, busy: running, triaged }, wip, probe, p
     const name = `${item.repository}#${item.number}`;
     const skip = reason => steps.push({ item: name, action: 'skip', reason });
     const key = keyOf(item.repository, item.number);
+    if (!isFollowed(key)) { skip('not a followed repository'); continue; }
     if (item.content_kind !== 'issue') { skip('not an issue'); continue; }
     let holding;
     let found;
@@ -185,6 +226,7 @@ async function decide(items, { inFlight, busy: running, triaged }, wip, probe, p
       holding = await held(key);
       if (holding) { skip(holding); continue; }
       if (free <= 0) { skip(`work-in-progress cap of ${wip} reached`); continue; }
+      if (triages <= 0 && pastCap >= PAST_CAP_READS) { skip(`limit of ${PAST_CAP_READS} items read past the triage cap reached`); continue; }
       found = await probe(item);
       if (found.plan && !found.recorded) holding = await held(found.target);
     } catch (err) {
@@ -194,6 +236,9 @@ async function decide(items, { inFlight, busy: running, triaged }, wip, probe, p
     if (found.plan) {
       if (found.recorded) { skip(`plan ${found.plan} was dispatched already, ${found.recorded}`); continue; }
       if (holding) { skip(`its plan's ${found.target}: ${holding}`); continue; }
+      // A tracker issue's plan may point at another repository: the same
+      // list bounds where a run goes, not only which items are read.
+      if (!isFollowed(found.target)) { skip(`its plan's ${found.target}: not a followed repository`); continue; }
       // A triage or research plan, which a triage run could write, would start
       // a run that writes another plan: such chains are a person's to start.
       if (found.kind !== 'implement') { skip(`plan ${found.plan} is for ${found.kind}, which is dispatched by hand`); continue; }
@@ -205,6 +250,8 @@ async function decide(items, { inFlight, busy: running, triaged }, wip, probe, p
       // every pass.
       const before = triaged.get(key);
       if (before) { skip(`triaged already with no plan, ${before}`); continue; }
+      if (triages <= 0) { pastCap++; skip(`triage cap of ${triagePerPass} a pass reached`); continue; }
+      triages--;
       steps.push({ item: name, action: 'triage', reason: 'no plan' });
     } else {
       skip(`plan refused: ${found.refused}`);
@@ -222,7 +269,7 @@ async function decide(items, { inFlight, busy: running, triaged }, wip, probe, p
 function triageTask(key, url, planDocs) {
   return [
     `Triage ${url} (${key}) so that it can be scheduled.`,
-    `If it is ready to implement, end your comment with a job plan for the one implement run that would resolve it, in the format of ${planDocs}: a fenced block, info string \`agent-board-plan\`, holding one JSON object with exactly the fields schema ("agent-board/job-plan/v1"), repo, item, kind ("implement"), runner ("hosted"), an optional pool, and brief (the task for that run, at most 16,000 characters). Its repo and item are this issue's, or those of the upstream issue it is a pointer to. Write one plan at most, and none if the issue is not ready; then say what it needs instead.`,
+    `If it is ready to implement, end your comment with a job plan for the one implement run that would resolve it, in the format of ${planDocs}: a fenced block, info string \`agent-board-plan\`, holding one JSON object with exactly the fields schema ("agent-board/job-plan/v1"), repo, item, kind ("implement"), runner ("hosted"), an optional pool, and brief (the task for that run, at most 16,000 characters). Its repo and item are this issue's. If the work is in another repository, as for an issue that points to an upstream one, write no plan: that is the operator's to start. Write one plan at most, and none if the issue is not ready; then say what it needs instead.`,
   ].join('\n\n');
 }
 
@@ -236,6 +283,7 @@ function readItems(nodes, ready) {
     content_kind: n.content.__typename === 'Issue' ? 'issue' : 'pull_request',
     url: n.content.url,
     priority: n.priority?.name ?? null,
+    created: n.content.createdAt,
   }));
 }
 
@@ -243,16 +291,16 @@ function readItems(nodes, ready) {
 // `agent-board item list` builds a full snapshot instead, three requests an
 // item, closed ones too, one after another, and did so once per status:
 // with about 400 items that outlasted its timeout on every pass.
-const BOARD_QUERY = `query($owner: String!, $number: Int!, $cursor: String) {
+const BOARD_QUERY = `query($owner: String!, $number: Int!, $priority: String!, $cursor: String) {
   repositoryOwner(login: $owner) { ... on ProjectV2Owner { projectV2(number: $number) {
     items(first: 100, after: $cursor) {
       nodes {
         status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-        priority: fieldValueByName(name: "Priority") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+        priority: fieldValueByName(name: $priority) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
         content {
           __typename
-          ... on Issue { number url state repository { nameWithOwner } }
-          ... on PullRequest { number url state repository { nameWithOwner } }
+          ... on Issue { number url state createdAt repository { nameWithOwner } }
+          ... on PullRequest { number url state createdAt repository { nameWithOwner } }
         }
       }
       pageInfo { hasNextPage endCursor }
@@ -270,7 +318,7 @@ async function readBoard(post, config) {
   const errors = new Set();
   let cursor = null;
   for (let page = 0; page < BOARD_PAGES; page++) {
-    const out = await post({ query: BOARD_QUERY, variables: { owner: config.owner, number: config.project, cursor } });
+    const out = await post({ query: BOARD_QUERY, variables: { owner: config.owner, number: config.project, priority: config.priorityField, cursor } });
     const project = out.data?.repositoryOwner?.projectV2;
     if (!project?.items) {
       const why = (out.errors ?? []).map(e => e.message).join('; ');
@@ -366,13 +414,14 @@ async function main(argv) {
     if (!listed.has(repo)) listed.set(repo, openPullRefs(await paged(token, `/repos/${repo}/pulls?state=open`), config.planner));
     return listed.get(repo).get(key);
   };
-  log(`${items.length} ready item(s); ${state.inFlight} of ${config.wip} run(s) in flight`
+  log(`${items.length} ready item(s), taken ${order(config.priorityField)}; ${state.inFlight} of ${config.wip} run(s) in flight;`
+    + ` at most ${config.triagePerPass} triage run(s) a pass; items of ${config.followed.size} followed repositories only`
     + (unreadable ? `; ${unreadable} board item(s) not readable, left out` : '')
     + (boardErrors.length ? `; board read errors: ${boardErrors.slice(0, 5).join(' | ').slice(0, 1000)}` : ''));
 
   const byName = new Map(items.map(i => [`${i.repository}#${i.number}`, i]));
   let errors = 0;
-  const steps = await decide(items, state, config.wip, item => probePlan(bin, config, token, item), pullFor);
+  const steps = await decide(items, state, config, item => probePlan(bin, config, token, item), pullFor);
   for (const step of steps) {
     const item = byName.get(step.item);
     if (step.action === 'skip' || !apply) {

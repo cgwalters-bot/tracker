@@ -14,6 +14,16 @@
     "owner": "cgwalters-forge",
     "project": 1,
     "ready": ["Todo"],
-    "wip": 4
+    "wip": 4,
+    "priorityField": "Priority",
+    "triagePerPass": 1,
+    "repositories": [
+      "cgwalters-forge/tracker",
+      "cgwalters-forge/agentic-job",
+      "cgwalters-forge/agent-board",
+      "cgwalters-forge/review",
+      "cgwalters-forge/actions",
+      "cgwalters-forge/agenthome"
+    ]
   }
 }
