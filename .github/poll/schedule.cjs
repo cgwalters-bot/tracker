@@ -311,7 +311,7 @@ function agentBoard(bin, args, { env = {}, timeoutMs, check = true } = {}) {
   const why = run.error?.code === 'ETIMEDOUT' ? `timed out after ${timeoutMs / 1000} s`
     : run.error ? run.error.message
       : run.signal ? `killed by ${run.signal}` : `exited ${run.status}`;
-  throw failure(args, why, out.stderr, env);
+  throw Object.assign(failure(args, why, out.stderr, env), { status: run.status });
 }
 
 // The tokens it is given, and those it inherits.

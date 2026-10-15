@@ -339,6 +339,7 @@ test('a hung agent-board is stopped, and the error names the command', () => {
 test('a failing agent-board throws its command, exit status and stderr on one line, with the token masked', () => {
   assert.throws(() => agentBoard(FAILS, ['dispatch', ITEM.url, '--apply'], { env: { GH_TOKEN: TOKEN }, timeoutMs: 10000 }),
     err => {
+      assert.equal(err.status, 3);
       assert.equal(err.message, `agent-board dispatch ${ITEM.url} --apply: exited 3; stderr: warning: slow | error: bad credentials for ***`);
       assert.doesNotMatch(err.stderr, new RegExp(TOKEN));
       return true;

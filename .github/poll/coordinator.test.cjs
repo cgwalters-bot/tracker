@@ -424,7 +424,7 @@ test('foreign/invalid prose is never published, and changed health invalidates q
   assert.match(changed.writes[0].body.body, /"pending":null/);
 });
 
-test('later epic apply never grants writes without a pinned-plan CLI boundary', async () => {
+test('later epic apply pins the matched plan in preview and apply', async () => {
   const value = { ...epic, subs: [] };
   const checkpoint = comment(10, `<!-- coordinator/v1: ${JSON.stringify({ pending: {
     id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint: changedFingerprint(value) } })} -->\ncheckpoint`);
@@ -439,12 +439,17 @@ test('later epic apply never grants writes without a pinned-plan CLI boundary', 
         pageInfo: { hasNextPage: false } } } } } };
     };
     const counts = await pass(h.options);
-    assert.equal(counts.errors, apply ? 1 : 0);
+    assert.equal(counts.errors, 0);
     assert.equal(counts.apply, 1);
-    assert.equal(h.commands.length, 1);
+    assert.equal(h.commands.length, apply ? 2 : 1);
     assert.equal(h.commands[0].at(-1), '--dry-run');
-    assert.equal(h.writes.length, 0);
-    assert.equal(h.commands.some(args => args.includes('--apply')), false);
+    for (const args of h.commands) assert.deepEqual(args.slice(5, -1), [
+      '--expect-request', 'request1', '--expect-comment', '11', '--expect-updated-at', plan.updatedAt]);
+    assert.equal(h.writes.length, apply ? 1 : 0);
+    if (apply) {
+      assert.equal(h.commands[1].at(-1), '--apply');
+      assert.deepEqual(checkpointState(h.writes[0]), { applied: changedFingerprint(value), at: new Date(now).toISOString(), pending: null });
+    }
   }
 });
 
@@ -537,11 +542,53 @@ test('agent-board failures that are not a refused plan leave it pending and unco
       assert.equal(h.dispatches.some(d => d.inputs.item === '9'), false);
     }
   }
-  // A valid plan still previews, and apply still stops at the missing pin.
+  // A valid plan previews and applies successfully.
   for (const apply of [false, true]) {
     const counts = await pass(refusalHarness(apply, null).options);
-    assert.deepEqual([counts.apply, counts.failed, counts.errors], [1, 0, apply ? 1 : 0]);
+    assert.deepEqual([counts.apply, counts.failed, counts.errors], [1, 0, 0]);
   }
+});
+
+test('plan changes, refusals and transient failures at either CLI boundary', async () => {
+  for (const boundary of ['--dry-run', '--apply']) {
+    for (const [status, stderr, expected] of [
+      [3, `error: newest epic plan ${plan}: changed`, [0, 0, 0, 1]],
+      [1, `error: newest epic plan ${plan}: invalid action`, [0, 1, 0, 0]],
+      [1, 'error: HTTP 502', [0, 0, 1, 0]],
+      [0, '', [1, 0, 0, 0]],
+    ]) {
+      const h = refusalHarness(true, null, { failures: 1 });
+      h.options.entries = h.options.entries.slice(0, 1);
+      h.options.board = args => {
+        h.commands.push(args);
+        if (status && args.includes(boundary)) throw Object.assign(new Error('CLI failed'), { status, stderr });
+      };
+      const counts = await pass(h.options);
+      assert.deepEqual([counts.apply, counts.failed, counts.errors, counts.wait], expected, `${boundary}: ${status}: ${stderr}`);
+      const saved = h.writes.find(w => w.p === '/repos/o/r/issues/comments/10');
+      if (status === 3 || counts.errors) assert.equal(saved, undefined, 'pending and failures unchanged');
+      else if (counts.failed) assert.deepEqual([checkpointState(saved).pending, checkpointState(saved).failures], [null, 2]);
+      else assert.equal(checkpointState(saved).applied, changedFingerprint(h.options.entries[0]));
+    }
+  }
+});
+
+test('a retained claim after ambiguous apply does not checkpoint success on retry', async () => {
+  const h = refusalHarness(true, null, { failures: 1 });
+  h.options.entries = h.options.entries.slice(0, 1);
+  let claimed = false;
+  h.options.board = args => {
+    if (!args.includes('--apply')) return { stdout: '' };
+    if (claimed) return { stdout: 'Request: request1\nAlready claimed; nothing changed.\n' };
+    claimed = true;
+    throw Object.assign(new Error('HTTP 502 after claim'), { status: 1, stderr: 'error: HTTP 502' });
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const counts = await pass(h.options);
+    assert.deepEqual([counts.apply, counts.failed, counts.errors], [0, 0, 1]);
+    assert.equal(h.writes.some(w => w.p === '/repos/o/r/issues/comments/10'), false);
+  }
+  assert.ok(h.lines.some(l => l.includes('inspect agent-board claim')));
 });
 
 test('ordinary reporting volume is bounded and reporting failures do not block epic planning', async () => {
