@@ -16,7 +16,8 @@ test('probe accepts any HTTP response without credentials or redirects', async t
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => server.close());
   const url = `http://127.0.0.1:${server.address().port}/v1`;
-  for (status of [200, 301, 401, 404, 500]) assert.equal(await probe(url, 100), true);
+  // Allow for CI contention; the separate non-HTTP test checks short deadlines.
+  for (status of [200, 301, 401, 404, 500]) assert.equal(await probe(url, 5000), true);
   await assert.rejects(probe('http://user:password@localhost'), /without credentials/);
 });
 
