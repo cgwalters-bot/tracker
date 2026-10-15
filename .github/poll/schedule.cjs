@@ -442,7 +442,7 @@ async function main(argv) {
   if (errors || unread || note) throw new Error(`${errors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { agentBoard, candidates, decide, findRecord, loadConfig, main, openPullRefs, probePlan, readDryRun, readRefusal, readRuns, triageTask };
+module.exports = { agentBoard, candidates, decide, findRecord, loadConfig, main, openPullRefs, probePlan, rank, readDryRun, readRefusal, readRuns, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });
