@@ -5,15 +5,19 @@
   "bot": "cgwalters-bot",
   "mergeAuthors": ["dependabot[bot]"],
   "dispatchRepo": "cgwalters-forge/tracker",
+  "dispatchWorkflow": "dispatch.yml",
   "reviewWorkflow": "review.yml",
   "follow": [
     "cgwalters-forge/agentic-job",
     "cgwalters-forge/agent-board",
     "cgwalters-forge/tracker",
     "cgwalters-forge/actions",
-    "cgwalters-forge/review"
+    "cgwalters-forge/review",
+    "cgwalters-forge/agenthome"
   ],
   "fixPools": ["claude", "openai"],
+  "toilFixPool": "mistral",
+  "kindPools": { "triage": "mistral" },
   "epics": {
     "repository": "cgwalters-forge/tracker"
   },

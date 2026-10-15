@@ -22,6 +22,19 @@ test-poll:
 coordinator *args:
     node .github/poll/coordinator.cjs "$@"
 
+poll *args:
+    node .github/poll/poll.cjs "$@"
+
+build-agent-board:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    source=$(jq -er .source .github/poll/agent-board.json)
+    branch=$(jq -er .branch .github/poll/agent-board.json)
+    rev=$(git ls-remote --exit-code "$source" "refs/heads/$branch" | cut -f1)
+    [[ $rev =~ ^[0-9a-f]{40}$ ]]
+    cargo install --locked --root "$RUNNER_TEMP/agent-board" --git "$source" --rev "$rev" agent-board
+    echo "rev=$rev" >> "$GITHUB_OUTPUT"
+
 test-usage:
     cd .github/usage && node --test
 
