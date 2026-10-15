@@ -102,6 +102,13 @@ one step for each:
   request is labelled `needs-human`, its comment linking the run. A fix run
   that did not succeed pushed nothing, so that happens on the next pass.
 
+A blocked fix can request one `add_comment` explaining why it cannot safely
+change the pull request, without a push request or replacement series. This
+is opt-in in the caller's `fix.toml`, bounded to one comment on the run's
+target; it gives the agent no label or merge authority. The fix profile asks
+for this rather than a fabricated patch. The unchanged head, not the comment's
+text, is what the poll uses to stop the fix loop.
+
 The rounds live in one comment on the pull request that the poll edits in
 place. A pull request labelled `needs-human` is not touched again: remove the
 label to have the poll start again on it with fresh rounds, on the same head

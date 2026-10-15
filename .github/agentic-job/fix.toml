@@ -25,6 +25,9 @@ max_patch_files = 50
 # is a force with a lease on the head the run was pinned to. A pull
 # request here is one to three commits.
 push_to_pull_request_branch = { max = 1, branches = ["dispatch/**"], replacement_max_commits = 5 }
+# A blocked fix must explain itself without inventing a patch. Check pins
+# this comment to the run's pull request; no labels or other writes are added.
+add_comment = { max = 1 }
 noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
