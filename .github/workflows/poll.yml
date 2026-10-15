@@ -192,6 +192,9 @@ jobs:
           DISPATCH_TOKEN: ${{ github.token }}
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
           POLL_STATE: ${{ runner.temp }}/poll-state.json
+          # Off until this repository secret is set. The PAT must also have
+          # issue read/write access to the private configured decisions issue.
+          DECISIONS_STATE_KEY: ${{ secrets.DECISIONS_STATE_KEY }}
           MODE: ${{ inputs.dry-run && '--dry-run' || '--apply' }}
         shell: bash
         run: just poll "$MODE"
@@ -204,7 +207,9 @@ jobs:
         timeout-minutes: 2
         with:
           name: agent-board-poll-apply-state-${{ steps.build.outputs.rev }}
-          path: ${{ runner.temp }}/poll-state.json
+          path: |
+            ${{ runner.temp }}/poll-state.json
+            ${{ runner.temp }}/poll-state.json.decisions.enc
           if-no-files-found: ignore
           retention-days: 2
       - name: Start the next pass while active or after a failure

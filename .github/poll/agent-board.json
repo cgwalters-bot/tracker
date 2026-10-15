@@ -7,6 +7,7 @@
   "dispatchRepo": "cgwalters-forge/tracker",
   "dispatchWorkflow": "dispatch.yml",
   "reviewWorkflow": "review.yml",
+  "decisions": { "repository": "cgwalters-forge/operator", "issue": 1 },
   "follow": [
     "cgwalters-forge/agentic-job",
     "cgwalters-forge/agent-board",
