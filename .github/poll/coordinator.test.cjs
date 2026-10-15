@@ -66,6 +66,42 @@ test('daily boundaries include delayed passes and configured UTC hour', () => {
   ]) assert.equal(dailyDue(at, time, hour), due, `${at} ${time} ${hour}`);
 });
 
+test('planning interval tolerates census churn but not new operator decisions', () => {
+  const at = '2026-10-14T11:00:00Z';
+  const state = { applied: changedFingerprint(epic), at, requestedAt: at };
+  const changed = { ...epic, title: 'Changed census' };
+  for (const [value, checkpoint, time, action, reason] of [
+    [changed, state, now + 60000, 'idle', /interval/],
+    [changed, state, now + 3 * 3600000, 'plan', /interval/],
+    [epic, state, now + 3 * 3600000, 'idle', /unchanged/],
+    [changed, { ...state, empty: true }, now + 60000, 'plan', /nothing actionable/],
+    [{ ...changed, comments: [{ ...epic.comments[0], updated_at: '2026-10-14T11:00:01Z' }] }, state, now + 60000, 'plan', /operator/],
+    [epic, state, now + 24 * 3600000, 'plan', /daily/],
+  ]) {
+    const step = decision(value, checkpoint, [], 'bot', time);
+    assert.equal(step.action, action);
+    assert.match(step.reason, reason);
+  }
+  const pending = { id: 'request1', at, fingerprint: changedFingerprint(epic), targets: {} };
+  assert.equal(decision(changed, { pending }, [comment(1, planBody())], 'bot', now).action, 'apply');
+  const operatorEdit = { ...epic, comments: [{ ...epic.comments[0], updated_at: '2026-10-14T11:00:01Z' }] };
+  assert.equal(decision(operatorEdit, { pending }, [comment(1, planBody())], 'bot', now).action, 'stale');
+  // A request recorded before target snapshots re-plans on any drift.
+  const legacy = decision(changed, { pending: { ...pending, targets: undefined } }, [comment(1, planBody())], 'bot', now);
+  assert.deepEqual([legacy.action, legacy.reason], ['stale', 'census changed since legacy request']);
+});
+
+test('planning interval configuration is bounded and defaults to three hours', () => {
+  const source = JSON.parse(fs.readFileSync(require.resolve('./agent-board.json'), 'utf8'));
+  assert.equal(loadConfig(JSON.stringify(source)).minPlanIntervalMs, 3 * 3600000);
+  for (const minutes of [0, -1, 1441, '180', 1.5]) {
+    assert.throws(() => loadConfig(JSON.stringify({ ...source,
+      coordinator: { ...source.coordinator, minPlanIntervalMinutes: minutes } })), /minPlanIntervalMinutes/);
+  }
+  assert.equal(loadConfig(JSON.stringify({ ...source,
+    coordinator: { ...source.coordinator, minPlanIntervalMinutes: 60 } })).minPlanIntervalMs, 3600000);
+});
+
 test('early CLI failures still emit exactly one controller summary', () => {
   const run = spawnSync(process.execPath, [require.resolve('./coordinator.cjs')], { env: {}, encoding: 'utf8' });
   assert.equal(run.status, 1);
@@ -90,7 +126,7 @@ test('plan, later apply, daily refresh, stale result and authenticated comments'
     [{ pending }, [comment(1, plan)], 'apply'],
     [{ pending }, [comment(1, plan.replace('request1', 'obsolete'))], 'wait'],
     [{ pending }, [comment(1, plan), comment(2, plan.replace('request1', 'obsolete'))], 'wait'],
-    [{ pending: { ...pending, fingerprint: 'old' } }, [comment(1, plan)], 'stale'],
+    [{ pending: { ...pending, fingerprint: 'old', targets: {} } }, [comment(1, plan)], 'apply'],
   ]) assert.equal(decision(epic, state, comments, 'bot', now).action, action);
   assert.equal(record([comment(1, '<!-- coordinator/v1: {"applied":"fake"} -->\n', 'visitor')], 'bot').id, null);
   assert.throws(() => statusProse({ body: '```coordinator-status\n\n```' }));
@@ -296,6 +332,7 @@ function harness(apply = false, entries = [epic, { ...epic, number: 9 }], commen
   const config = { epicsRepository: 'o/r', planner: 'bot', operator: 'op', caller: 'o/controller', owner: 'o', project: 1, priorityField: 'Priority', workflow: 'dispatch.yml',
     followed: new Set(['o/r']), wip: 4, planPool: 'claude', statusPool: 'mistral', statusIssue: 99, statusHourUTC: 11, usage: { repo: 'o/usage', issue: 1, bot: 'bot' } };
   return { writes, dispatches, commands, lines, options: { config, entries, note: '', now, apply,
+    refresh: async () => ({ entries, note: '' }),
     get: async (method, p, body) => { if (method !== 'GET') { writes.push({ method, p, body }); return { id: writes.length }; }
       return p === '/repos/o/controller' ? { default_branch: 'trunk' } : []; },
     post: async ({ variables }) => variables.field ? project() : ({ data: { repository: { issue: { comments: {
@@ -519,11 +556,80 @@ test('later epic apply pins the matched plan in preview and apply', async () => 
     assert.equal(h.commands[0].at(-1), '--dry-run');
     for (const args of h.commands) assert.deepEqual(args.slice(5, -1), [
       '--expect-request', 'request1', '--expect-comment', '11', '--expect-updated-at', plan.updatedAt]);
-    assert.equal(h.writes.length, apply ? 1 : 0);
+    assert.equal(h.writes.length, apply ? 2 : 0);
     if (apply) {
       assert.equal(h.commands[1].at(-1), '--apply');
-      assert.deepEqual(checkpointState(h.writes[0]), { applied: changedFingerprint(value), at: new Date(now).toISOString(), pending: null });
+      assert.deepEqual(checkpointState(h.writes.at(-1)), { applied: changedFingerprint(value), at: new Date(now).toISOString(),
+        requestedAt: '2026-10-14T10:00:00Z', pending: null, empty: true });
     }
+  }
+});
+
+test('post-apply census records own effects and target changes remain guarded', async () => {
+  const h = refusalHarness(true, null);
+  const updated = { ...epic, title: 'Post apply', subs: [{ ...epic.subs[0], priority: 'P2' }] };
+  let refreshes = 0;
+  h.options.refresh = async () => { refreshes++; return { entries: [updated], note: '' }; };
+  assert.equal((await pass(h.options)).apply, 1);
+  assert.equal(refreshes, 1);
+  const saved = checkpointState(h.writes.at(-1));
+  assert.equal(saved.applied, changedFingerprint(updated));
+  assert.equal(decision(updated, saved, [], 'bot', now + 60000).action, 'idle');
+  const pending = { id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint: changedFingerprint(epic), targets: { 'o/r#8': 'old' } };
+  const body = '```agent-board-epic-plan\n' + JSON.stringify({ request: 'request1', actions: [
+    { type: 'rescope_sub_issue', issue: 'O/R#8', body: 'New', reason: 'Change' }] }) + '\n```';
+  for (const state of ['open', 'closed']) {
+    assert.equal(decision({ ...epic, subs: [{ ...epic.subs[0], state }] }, { pending }, [comment(1, body)], 'bot', now).action, 'blocked');
+  }
+});
+
+test('an epic left with no open children is planned again once, not on every pass', async () => {
+  const value = { ...epic, subs: [] };
+  const first = refusalHarness(true, null);
+  await pass(first.options);
+  const empty = checkpointState(first.writes.at(-1));
+  assert.equal(empty.empty, true);
+  assert.equal(decision(value, empty, [], 'bot', now + 60000).action, 'plan');
+  // The retry request records that it is one.
+  const retry = harness(true, [value]);
+  retry.options.post = async ({ variables }) => variables.field ? project() : { data: { repository: { issue: { comments: {
+    nodes: variables.number === 7 ? [comment(10, first.writes.at(-1).body.body)] : [], pageInfo: { hasNextPage: false } } } } } };
+  await pass(retry.options);
+  assert.equal(checkpointState(retry.writes.at(-1)).emptyRetry, true);
+  // Its apply, empty again, leaves the epic to the interval and daily pass.
+  const second = refusalHarness(true, null, { emptyRetry: true });
+  await pass(second.options);
+  const settled = checkpointState(second.writes.at(-1));
+  assert.equal(settled.empty, false);
+  assert.equal(decision(value, settled, [], 'bot', now + 60000).action, 'idle');
+});
+
+test('confirmed apply reconciles after a transient census failure without reapplying', async () => {
+  const h = refusalHarness(true, null);
+  h.options.refresh = async () => { throw new Error('temporary census failure'); };
+  assert.equal((await pass(h.options)).errors, 1);
+  const saved = checkpointState(h.writes.at(-1));
+  assert.equal(saved.reconcile, true);
+  assert.equal(saved.pending, null);
+  const retry = harness(true, [epic]);
+  retry.options.config.wip = 0;
+  retry.options.post = async ({ variables }) => ({ data: { repository: { issue: { comments: {
+    nodes: variables.number === 7 ? [comment(10, h.writes.at(-1).body.body)] : [], pageInfo: { hasNextPage: false }
+  } } } } });
+  assert.equal((await pass(retry.options)).errors, 0);
+  assert.equal(retry.commands.length, 0);
+  assert.equal(checkpointState(retry.writes.at(-1)).applied, changedFingerprint(epic));
+});
+
+test('epic intent changes block create-only plans even without existing targets', async () => {
+  const h = harness(true, [epic]);
+  assert.equal((await pass(h.options)).errors, 0);
+  const state = checkpointState(h.writes.find(w => w.p.endsWith('/7/comments')));
+  const body = '```agent-board-epic-plan\n' + JSON.stringify({ schema: 'agent-board/epic-plan/v1',
+    request: state.pending.id, epic: 'O/R#7', actions: [{ type: 'create_sub_issue', repo: 'O/R', title: 'Old requirements', body: 'Work' }] }) + '\n```';
+  const plan = comment(20, body);
+  for (const field of ['title', 'body']) {
+    assert.equal(decision({ ...epic, [field]: 'Withdrawn' }, state, [plan], 'bot', now).action, 'blocked');
   }
 });
 
@@ -572,7 +678,7 @@ test('a plan agent-board refuses fails that epic only, counts, and is quoted in 
       // The pass carried on: epic 9 was planned after 7's refusal.
       assert.equal(h.dispatches.filter(d => d.inputs.item === '9').length, apply ? 1 : 0);
       assert.ok(h.lines.some(l => l.startsWith('o/r#7 failed: agent-board refused the plan: newest epic plan')));
-      const saved = h.writes.find(w => w.p === '/repos/o/r/issues/comments/10');
+      const saved = h.writes.findLast(w => w.p === '/repos/o/r/issues/comments/10');
       if (!apply) { assert.equal(saved, undefined); continue; }
       assert.doesNotMatch(saved.body.body.split('\n')[0].slice(4, -4), /-->|<!--/);
       const { state } = record([comment(10, saved.body.body)], 'bot');
@@ -639,7 +745,7 @@ test('plan changes, refusals and transient failures at either CLI boundary', asy
       };
       const counts = await pass(h.options);
       assert.deepEqual([counts.apply, counts.failed, counts.errors, counts.wait], expected, `${boundary}: ${status}: ${stderr}`);
-      const saved = h.writes.find(w => w.p === '/repos/o/r/issues/comments/10');
+      const saved = h.writes.findLast(w => w.p === '/repos/o/r/issues/comments/10');
       if (status === 3 || counts.errors) assert.equal(saved, undefined, 'pending and failures unchanged');
       else if (counts.failed) assert.deepEqual([checkpointState(saved).pending, checkpointState(saved).failures], [null, 2]);
       else assert.equal(checkpointState(saved).applied, changedFingerprint(h.options.entries[0]));
@@ -841,6 +947,7 @@ test('a deleted run counts as finished, and a settled checkpoint is not looked u
     assert.deepEqual([counts.failed, counts.errors], [failed, errors]);
   }
   const stale = retryHarness({ pending: { ...pending, fingerprint: 'old intent' } }, status, finished);
+  stale.options.entries = [{ ...epic, comments: [{ ...epic.comments[0], updated_at: new Date(now).toISOString() }] }];
   await pass(stale.options);
   assert.deepEqual(stale.lookups, []);
   assert.equal(checkpointState(stale.writes.find(w => w.p.endsWith('/comments/10'))).pending, null);
