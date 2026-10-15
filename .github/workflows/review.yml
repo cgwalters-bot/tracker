@@ -1,11 +1,17 @@
-# An agent's review of every pull request here, as agent-board has it
-# (agentic-job's docs/review.md, "Another repository"). The reusable
-# workflow reads its bounds (workflow/review.toml,
+# An agent's review of every pull request here, through our deployment's
+# review entrypoint, cgwalters-forge/actions' cgwalters-review.yml, which
+# composes agentic-job v0.4.0's review jobs with our tailnet join and
+# inference defaults, and admits PRs as agentic-job's review.yml did
+# (#625). It reads its bounds (workflow/review.toml,
 # workflow/review-command.toml) and its task (workflow/review.md) from
-# this repository's base branch, and the runner's configuration from
-# agentic-job's own hosted.toml unless the variable AGENT_CONFIG names a
-# file here. agentic-job is followed at its main here (#544), but
-# dispatch.yml goes through the wrapper, whose own agentic-job ref may lag.
+# this repository's base branch, its agent, model, runner and inference
+# settings from repository variables (the actions README, "Review"), and
+# the runner's configuration from agentic-job's hosted.toml unless the
+# variable AGENT_CONFIG names a file here. Pinned by SHA, not followed at
+# main as our other callers are (#544), so that this gate changes only by
+# a reviewed change here; the job_workflow_ref the tailnet and inference
+# broker admit then names that commit, so move the pin and that admission
+# together.
 # With the variable AGENT_REAL_REVIEWS it also submits the verdict as a
 # review by github-actions[bot], an approval whatever files change, this
 # one and the review's own bounds and task included (agentic-job#540; the operator's
@@ -30,7 +36,11 @@ jobs:
       github.event_name == 'pull_request_target' ||
       (github.event.issue.pull_request && startsWith(github.event.comment.body, '/review'))
     # Base-owned policy; the head is fetched only as data inside the sandbox.
-    uses: cgwalters-forge/agentic-job/.github/workflows/review.yml@main
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@951f34c721801050714c9e0ca9bc9d87f7be5d6f # main, agentic-job v0.4.0
+    # The union of the wrapper's job grants: statuses for its compatibility
+    # status, id-token for the tailnet join. No SAFE_OUTPUTS_PAT: the
+    # wrapper gives it only to apply, the comment fallback; real reviews
+    # submit with the job token.
     permissions:
       contents: read
       issues: read
