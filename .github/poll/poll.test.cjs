@@ -89,6 +89,23 @@ test('configuration follows every dispatch target and preserves pool policy', ()
   for (const pool of [...c.fixPools, c.toilFixPool, ...Object.values(c.kindPools)]) assert.ok(pools[pool], pool);
 });
 
+test('blocked fixes can explain themselves without a push or extra write authority', () => {
+  const bounds = fs.readFileSync(path.join(__dirname, '../agentic-job/fix.toml'), 'utf8');
+  const outputs = bounds.split('[outputs]')[1].split('[unprotected_files]')[0];
+  const entries = [...outputs.matchAll(/^([a-z_]+) = (.+)$/gm)];
+  assert.deepEqual(entries.map(m => m[1]), [
+    'push_to_pull_request_branch', 'add_comment', 'noop', 'missing_tool', 'missing_data',
+  ]);
+  assert.equal(entries.find(m => m[1] === 'add_comment')[2], '{ max = 1 }');
+  assert.match(bounds, /^max_outputs = 3$/m);
+  const profile = fs.readFileSync(path.join(__dirname, '../agentic-job/profiles/fix.md'), 'utf8');
+  for (const rule of [
+    'leave the working tree unchanged', 'one `add_comment` safe output with a `body`',
+    'Do not request `push_to_pull_request_branch` or write a replacement series when there is no change to push',
+    'Do not invent a patch',
+  ]) assert.ok(profile.includes(rule), rule);
+});
+
 test('workflow has one acting pass, respects dry-run, and isolates trusted apply state', () => {
   const yml = fs.readFileSync(path.join(__dirname, '../workflows/poll.yml'), 'utf8');
   const job = yml.slice(yml.indexOf('\n  poll:\n'));
