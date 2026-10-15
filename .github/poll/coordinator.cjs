@@ -124,20 +124,58 @@ function expired(pending, run, now, limits = LIMITS) {
 // else), since no epic result is applied yet. Editing the epic does not reset it.
 const exhausted = (state, limits = LIMITS) => (state.failures ?? 0) >= limits.maxFailedRuns;
 
+function targetSnapshots(epic) {
+  return Object.fromEntries(epic.subs.map(s => [`${s.repository}#${s.number}`.toLowerCase(),
+    hash({ title: s.title, body: s.body, state: s.state, priority: s.priority })]));
+}
+
+function epicIntent(epic) {
+  return hash({ title: epic.title, body: epic.body });
+}
+
 function decision(epic, state, comments, bot, now, operator = bot, run = null, limits = LIMITS) {
   const fingerprint = changedFingerprint(epic);
+  if (state.reconcile) return { action: 'reconcile', fingerprint, reason: 'confirmed apply awaits post-apply census' };
+  const operatorSince = at => epic.comments.some(c => Date.parse(c.updated_at) > Date.parse(at));
   if (state.pending) {
     const comment = planComment(comments, bot, operator, state.pending);
-    // A changed epic while a run was thinking invalidates its result.
-    if (state.pending.fingerprint !== fingerprint) return { action: 'stale', fingerprint };
-    if (comment) return { action: 'apply', fingerprint, comment };
-    if (expired(state.pending, run, now, limits)) return { action: 'failed', fingerprint };
-    return { action: 'wait', fingerprint };
+    if (operatorSince(state.pending.at)) return { action: 'stale', fingerprint, reason: 'operator commented after request' };
+    // Legacy requests have no per-target snapshot: any drift re-plans, as before.
+    if (!state.pending.targets && state.pending.fingerprint !== fingerprint) {
+      return { action: 'stale', fingerprint, reason: 'census changed since legacy request' };
+    }
+    if (comment) {
+      if (state.pending.intent && state.pending.intent !== epicIntent(epic)) {
+        return { action: 'blocked', fingerprint, reason: 'epic requirements edited; inspect pending plan' };
+      }
+      const plan = resultJSON(comment, 'agent-board-epic-plan');
+      const current = targetSnapshots(epic);
+      // Until agent-board can prune while retaining source-plan preconditions,
+      // do not overwrite a target edited since dispatch. Only an operator
+      // comment on the epic clears this (as 'stale' above).
+      const targetsChanged = state.pending.targets &&
+        (Array.isArray(plan.actions) ? plan.actions : []).some(a => typeof a?.issue === 'string' &&
+          state.pending.targets[a.issue.toLowerCase()] !== current[a.issue.toLowerCase()]);
+      if (targetsChanged) return { action: 'blocked', fingerprint, reason: 'target changed since request; comment on the epic to re-plan' };
+      return { action: 'apply', fingerprint, comment, reason: 'matching plan; validate through epic apply' };
+    }
+    if (expired(state.pending, run, now, limits)) return { action: 'failed', fingerprint, reason: 'run expired without a plan' };
+    return { action: 'wait', fingerprint, reason: 'waiting for requested plan' };
   }
-  if (state.applied !== fingerprint || dailyDue(state.at, now)) {
-    return { action: exhausted(state, limits) ? 'stuck' : 'plan', fingerprint };
+  const operatorChanged = operatorSince(state.requestedAt ?? state.at);
+  const daily = dailyDue(Date.parse(state.at) > Date.parse(state.requestedAt) ? state.at : state.requestedAt ?? state.at, now);
+  const changed = state.applied !== fingerprint;
+  if (changed || daily || operatorChanged || state.empty) {
+    // Bound spending when scheduler/controller activity changes the census on
+    // every pass. Operator decisions and the daily forced pass still win.
+    if (!operatorChanged && !daily && !state.empty &&
+        Date.parse(state.requestedAt) + (limits.minPlanIntervalMs ?? 3 * 3600000) > now) {
+      return { action: 'idle', fingerprint, reason: 'minimum planning interval has not elapsed' };
+    }
+    return { action: exhausted(state, limits) ? 'stuck' : 'plan', fingerprint,
+      reason: operatorChanged ? 'operator commented' : daily ? 'daily forced pass' : state.empty ? 'applied plan left nothing actionable' : 'census changed after interval' };
   }
-  return { action: 'idle', fingerprint };
+  return { action: 'idle', fingerprint, reason: 'post-apply census unchanged' };
 }
 
 function cappedComment(body) {
@@ -225,10 +263,11 @@ function loadConfig(text) {
   const graceMs = minutes('resultGraceMinutes', 5, 60) * 60000;
   const runTimeoutMs = minutes('runTimeoutMinutes', 360, 1440) * 60000;
   const maxFailedRuns = minutes('maxFailedRuns', 3, 20);
+  const minPlanIntervalMs = minutes('minPlanIntervalMinutes', 180, 1440) * 60000;
   // Priority options are not configured: a list here once drifted from the
   // project (P3 listed, absent on the board) and failed every apply.
   return { ...config, planPool, statusPool, statusHourUTC: hour, statusIssue: c.statusIssue, reviewUrl: c.reviewUrl,
-    graceMs, runTimeoutMs, maxFailedRuns,
+    graceMs, runTimeoutMs, maxFailedRuns, minPlanIntervalMs,
     epicDocs: `${all.source}/blob/${all.branch}/docs/epic-plans.md`, usage: require('../usage/config.json') };
 }
 
@@ -299,7 +338,8 @@ async function start({ config, get, dispatch }, number, claim, state, inputs, ma
 
 // All calls have finite response sizes/pages or agent-board timeouts. Publishing
 // claims first avoids duplicate status writes after an ambiguous API failure.
-async function pass({ config, entries, note, now, apply, get, post, dispatch, board, writeFile, log }) {
+async function pass({ config, entries, note, now, apply, get, post, dispatch, board, writeFile, log,
+  refresh = () => census(p => get('GET', p), post, config) }) {
   const counts = { plan: 0, apply: 0, status: 0, wait: 0, failed: 0, stuck: 0, errors: 0 };
   // Only a recorded run id is looked up, once per pending operation still
   // waiting. A deleted run (by hand or by retention) has finished; treating
@@ -310,6 +350,19 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
       return { status: 'completed', updated_at: pending.at };
     }) : null;
   const limits = { ...LIMITS, ...config };
+  const reconcile = async (epic, old, state) => {
+    const snapshot = await refresh();
+    const updated = snapshot.entries.find(e => e.number === epic.number);
+    if (snapshot.note || !updated?.live || updated.error) throw new Error('post-apply epic census unavailable; reconciliation retained');
+    // A deferred reconcile records the census as it is then, so non-operator
+    // edits made since the apply count as unchanged until the daily pass.
+    // An epic left with no open children is planned again once, not after a
+    // plan that was itself that retry: otherwise an epic whose work is done
+    // would spend a planning run on every pass.
+    await save(get, config, epic.number, old, { applied: changedFingerprint(updated),
+      requestedAt: state.requestedAt, at: new Date(now).toISOString(), pending: null,
+      empty: !state.emptyRetry && !updated.subs.some(s => s.state === 'open') });
+  };
   try {
     const incomplete = Boolean(note || entries.some(e => e.error));
     const live = entries.filter(e => e.live).sort((a, b) => (rank(a.priority) - rank(b.priority) || 0) || a.number - b.number);
@@ -395,13 +448,21 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
       const old = record(comments, config.planner);
       // An obsolete run must finish posting before its request is replaced;
       // otherwise its late plan could become agent-board's newest selection.
-      if (running.busy.has(`${config.epicsRepository}#${epic.number}`.toLowerCase())) { counts.wait++; continue; }
+      if (running.busy.has(`${config.epicsRepository}#${epic.number}`.toLowerCase())) {
+        log(`${config.epicsRepository}#${epic.number} skipped: run in progress`);
+        counts.wait++; continue;
+      }
       let step = decision(epic, old.state, comments, config.planner, now, config.operator, null, limits);
       if (step.action === 'wait' && old.state.pending.run) {
         step = decision(epic, old.state, comments, config.planner, now, config.operator, await lookup(old.state.pending), limits);
       }
-      log(`${config.epicsRepository}#${epic.number} ${step.action}`);
+      log(`${config.epicsRepository}#${epic.number} ${step.action}: ${step.reason}`);
       if (step.action === 'wait') { counts.wait++; continue; }
+      if (step.action === 'blocked') { counts.stuck++; continue; }
+      if (step.action === 'reconcile') {
+        if (apply) { await reconcile(epic, old, old.state); counts.apply++; } else counts.wait++;
+        break;
+      }
       if (step.action === 'failed') {
         // Cleared now, planned again on the next pass unless exhausted.
         counts.failed++;
@@ -448,13 +509,20 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
           if (apply) await save(get, config, epic.number, old, { ...old.state, pending: null, failures: (old.state.failures ?? 0) + 1, refusal });
           continue;
         }
-        if (apply) await save(get, config, epic.number, old, { applied: step.fingerprint, at: new Date(now).toISOString(), pending: null });
+        if (apply) {
+          // Never use the pre-apply census: creates, closes and Priority writes
+          // are our own effects, not new reasons to spend a planning run.
+          const state = { ...old.state, requestedAt: old.state.requestedAt ?? old.state.pending.at, pending: null, reconcile: true };
+          const id = await save(get, config, epic.number, old, state);
+          await reconcile(epic, { id }, state);
+        }
         counts.apply++;
         // Only one epic is planned/previewed per pass.
         break;
       }
       if (step.action !== 'plan') continue;
       if (running.inFlight >= config.wip || running.busy.has(`${config.epicsRepository}#${epic.number}`.toLowerCase())) {
+        log(`${config.epicsRepository}#${epic.number} skipped: planning capacity full`);
         counts.wait++; continue;
       }
       counts.plan++;
@@ -471,7 +539,9 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
       { priorities, refusal: old.state.refusal });
       if (apply) {
         // The refusal was briefed once; a later brief must not quote it as current.
-        const state = { ...old.state, refusal: undefined, pending: { id, at: new Date(now).toISOString(), fingerprint: step.fingerprint } };
+        const state = { ...old.state, empty: false, emptyRetry: Boolean(old.state.empty), requestedAt: new Date(now).toISOString(), refusal: undefined,
+          pending: { id, at: new Date(now).toISOString(), fingerprint: step.fingerprint,
+            intent: epicIntent(epic), targets: targetSnapshots(epic) } };
         const claim = await save(get, config, epic.number, old, state);
         await start({ config, get, dispatch }, epic.number, claim, state, { kind: 'triage', repo: config.epicsRepository,
           item: String(epic.number), pool: config.planPool, task });
@@ -492,9 +562,11 @@ async function main(argv) {
     console.log(line);
     if (line.startsWith('coordinator/v1 ')) {
       reported = true;
-      if (process.env.GITHUB_STEP_SUMMARY) {
-        fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n\`\`\`text\n${line}\n\`\`\`\n`);
-      }
+    }
+    if (process.env.GITHUB_STEP_SUMMARY) {
+      // Agent-board stderr can hold backtick runs; a longer fence keeps them text.
+      const fence = '`'.repeat(Math.max(3, ...(line.match(/`+/g) ?? []).map(m => m.length + 1)));
+      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n${fence}text\n${line}\n${fence}\n`);
     }
   };
   try {

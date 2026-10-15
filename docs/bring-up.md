@@ -135,6 +135,23 @@ Read commands (`item list`, `item view`, `ask list`, `project view`) need no
 (`.github/poll/schedule.cjs`, from `agent-board.json`); an epic plan only by
 the coordinator's step, which pins it.
 
+The coordinator previews unless `COORDINATOR` is `apply`. Its owned
+`agent-board.json` accepts `coordinator.minPlanIntervalMinutes` (1–1440,
+default 180): census churn cannot spend another planning run inside that
+interval. New operator comments, the daily forced pass, and an applied plan
+leaving no open children bypass it; the last only once, so an epic whose
+children are all closed waits for the daily pass after its retry. After applying, a fresh bounded census
+records the plan's own effects; a failed census is retried without applying
+again. Each epic's decision and reason appear in the pass summary.
+
+Pending plans with changed target text, state or Priority, or changed epic
+requirements, currently stop for inspection rather than overwrite newer work.
+Per-action pruning needs support in agent-board's pinned apply contract; the
+coordinator does not rewrite the planner's comment to bypass that contract.
+To unblock an epic, inspect the plan and comment on the epic as the operator;
+the next pass drops the pending plan and plans again. Requests recorded before
+target snapshots are re-planned on any census drift, as before.
+
 ## What is in flight
 
 ### An interactive session
