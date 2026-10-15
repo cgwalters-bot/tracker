@@ -55,25 +55,27 @@ after that release upgrade.
 
 ## The pull request poll
 
-`.github/workflows/poll.yml` runs one pass of `.github/poll/poll.cjs`. A pass
+`.github/workflows/poll.yml` runs one `agent-board poll --apply` pass through
+`just poll`; `.github/poll/poll.cjs` only adapts its output, not its decisions. A pass
 is started by the end of every `dispatch.yml` run here (`workflow_run`), by
 the pass before it, and by a ten minute schedule that GitHub may delay or
 drop, so nothing outside GitHub has to keep it going: while a `dispatch/`
 pull request of the bot is open and not labelled `needs-human`, or a pass
 could not read one, the job waits five minutes and starts the next pass
-itself (`gh workflow run` with the job token). With nothing in flight the
+itself (`gh workflow run` with the job token). Activity also keeps the interval
+short. With nothing in flight or newly active the
 chain ends, and the next dispatch run or the schedule starts it again. The
 passes share one concurrency group, which keeps one run and one pending
 successor, so the triggers cannot add up to parallel chains; a pass that an
 event asks for during the wait runs when the wait is over. To start one by
-hand, `gh workflow run poll.yml`; its `dry-run` input only prints. Each pass looks at the open pull requests `cgwalters-bot` authored in
-the repositories of `CONFIG.repos` in `poll.cjs` and takes at most
+hand, `gh workflow run poll.yml`; its `dry-run` input only prints. Each pass looks at the open pull requests the configured bot authored in
+the repositories of `follow` in `.github/poll/agent-board.json` and takes at most
 one step for each:
 
 - a draft with no failed check is marked ready for review, which is what
   starts the event review;
-- a head whose `review` status is a failure, or with a failed required check,
-  gets one `fix` run of `dispatch.yml`, its task carrying the review comment
+- a head whose authenticated review requests changes, or with a failed required check,
+  gets one `fix` run of `dispatch.yml`, its task carrying the review
   and the failed job's name and log link, at most once per head and twice per
   pull request. The rounds alternate between the `claude` and `openai` pools,
   but a first round that is only toil (a rebase, placeholder subjects, or
@@ -86,8 +88,8 @@ one step for each:
 - a head that conflicts with its base, approved or not, gets the same `fix`
   run, counted in the same rounds, its task asking for the commits rebased
   onto the current base and pushed as that rewrite, with no commit on top;
-- a head with `review` success and its required checks green gets auto-merge
-  (or the merge queue; a plain rebase merge where the repository has neither),
+- a head with an authenticated approving review and its required checks green
+  gets a head-pinned rebase merge (or enters the required merge queue),
   once GitHub says it is mergeable: while that is unknown, as it is for a
   while after a push, the pass does nothing and the next one looks again;
 - a commit whose subject is the harness's placeholder (`Agent run` and a
@@ -117,18 +119,41 @@ are the base branch's ruleset's (every check, where it requires none). It
 does not read the board or start work for an item that has no pull request
 (the board scheduler below does), or follow pull requests in repositories we
 cannot write to. A pass that fails
-part way is repeated five minutes later. Test with `node --test .github/poll/poll.test.cjs`.
+part way is repeated five minutes later. Test with `just test-poll`.
 
-The same run's `agent-board` job previews the pass with `agent-board poll
---dry-run`, the poll that is to replace poll.cjs
-([agent-board#40](https://github.com/cgwalters-forge/agent-board/issues/40)),
-built at the head of the branch `.github/poll/agent-board.json` names and over the
-repositories and logins it names: poll.cjs's, and this repository. Its
-`reviewWorkflow` names the workflow whose review-job approval the preview
-counts for the head. Both
-jobs write their lines to the run's summary, one under the other. It takes no
-step and has only the job token, read-only; its state file is an artifact of
-the last run that saved one. Its failure does not fail the run.
+The binary is built afresh at the head of the configured source branch, never
+from a cache, and reads policy with `--config` from this default-branch checkout.
+The bot token acts on pull requests; the job token only dispatches fix runs and
+the successor pass. `reviewWorkflow` identifies the event-review workflow;
+only its authenticated review of this head or the operator's review counts,
+not a `review` status or a `VERDICT` comment. Existing auto-merge/queue entries
+are left alone; the poll never enables auto-merge on a future, unreviewed push.
+A pass is bounded to five minutes and the adapter bounds captured output to
+4 MiB. Its failure fails the job and keeps the polling chain alive.
+
+Only successful applying passes save state, under a name tied to the built
+commit, restored only from this workflow's own default-branch runs in this
+repository. Dry runs neither restore nor publish that trusted state, so a
+concurrent preview cannot replace an actor's cached observations.
+
+### Cutover comparison (#598)
+
+On 15 October 2026, a read-only capture of the open followed PRs (including
+every scheduler target) was replayed through tracker `4b87977`'s `decide` and
+agent-board `a35bf0411e451b149ff6483f137c0b0a874b492c`'s `decide` and
+`classify_checks`, with the same pull, rules, comments, fix/review run responses
+and timestamp for each. All eight actions agreed: agentic-job#528 and #144,
+agent-board#51 and #45, and agenthome#1 skipped; tracker#601, actions#36 and
+agenthome#6 waited. No writes were made.
+
+The reason differences were intentional: existing auto-merge takes precedence
+over a conflict on agentic-job#528; agent-board#45 reports auto-merge rather
+than the old combined queue/auto-merge reason. tracker#601 and actions#36 had
+a failed legacy review status and a running fix marker, but no authenticated
+review of the head: both wait, now for that review rather than for the fix.
+agenthome#6 likewise waits for a head review, not a status. All other reasons
+matched. The old actor and its decision tests are retired; agent-board owns
+the review/merge policy tests, and this repository tests the adapter and workflow.
 
 ## The board scheduler
 
