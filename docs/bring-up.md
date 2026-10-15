@@ -1,16 +1,24 @@
 # Bringing up a coordinator
 
-The coordinator is the session that picks work from the
+The coordinator picks work from the
 [board](https://github.com/orgs/cgwalters-forge/projects/1) and dispatches
-it. This page is how to start one on a machine that holds nothing but
-credentials: everything else it needs is on the forge, and what is not yet
-is listed at the end.
+it. It runs here, as `poll.yml`: its `board` job schedules the operator's
+epics, plans them and reports on the project (the README's board scheduler,
+epic census and epic coordinator), and every pass ends by itself. Their
+writes are off until the repository variables `BOARD_DISPATCH` and
+`COORDINATOR` are `apply`; until then they only preview, in the run's summary. A person
+at a machine holding nothing but credentials only checks on it, dispatches
+by hand where it does not, and answers what it cannot; everything they need
+is on the forge, and what is not yet is listed at the end.
+[cgwalters-bot/homegit](https://github.com/cgwalters-bot/homegit), whose
+`bin/bot-runs`, `bin/bot-board`, `bin/bot-git` and `bin/bot-capacity` did
+this from one machine, is frozen history: nothing here needs a checkout of
+it. A change to a repository, this one's notes included, is a dispatched
+run's pull request, not a commit made on the machine.
 
 ## What to clone
 
-Two repositories. [cgwalters-bot/homegit](https://github.com/cgwalters-bot/homegit)
-has the tools (`bin/bot-runs`, `bin/bot-board`, `bin/bot-git`), by
-convention at `~/src/github/cgwalters-bot/homegit`. This repository has the
+This repository, which has the
 dispatch workflow, the bounds and per-kind profiles under
 `.github/agentic-job`, the pull request poll, the operator's instructions
 ([operator-notes.md](operator-notes.md)) and this page. Read the notes
@@ -22,6 +30,15 @@ followed at its main in `.github/workflows/dispatch.yml` and needs no clone;
 it brings [cgwalters-forge/agentic-job](https://github.com/cgwalters-forge/agentic-job)
 at whatever commit its main takes.
 
+Besides `gh`, one tool: [agent-board](https://github.com/cgwalters-forge/agent-board),
+the board's CLI, built from source as its README says (Rust supporting
+edition 2024; there are no releases). The workflows here build it the same way, from
+the branch `.github/poll/agent-board.json` names.
+
+```sh
+cargo install --locked --git https://github.com/cgwalters-forge/agent-board agent-board
+```
+
 ## Credentials and settings
 
 On the machine, two files, neither of them in any repository. The bot
@@ -30,7 +47,6 @@ names that file in `BOT_SUPERVISOR_GH_TOKEN_FILE`. Every shell starts the
 same way, and never prints the token:
 
 ```sh
-cd ~/src/github/cgwalters-bot/homegit
 set -a; . ~/.config/bot-supervisor.env; set +a
 export GH_TOKEN="$(cat "$BOT_SUPERVISOR_GH_TOKEN_FILE")"
 ```
@@ -49,11 +65,17 @@ and are not brought up from here.
 
 ## Dispatching a run
 
-Write the sentences particular to the task in a file and name the target:
+The board scheduler starts the work of live epics by itself (an accepted
+job plan goes out with `agent-board dispatch`, an item without one gets a
+triage run), once `BOARD_DISPATCH` is `apply`, and the poll starts the fix
+rounds. Anything else is started by
+hand: write the sentences particular to the task in a file and name the
+target. Run it on the default branch, which the wrapper requires. The task
+is public, in the run's inputs; `pool` may be left out:
 
 ```sh
-bin/bot-runs dispatch --backend agentic-job --caller cgwalters-forge/tracker \
-    --repo OWNER/REPO --item N --kind KIND BRIEFFILE
+gh workflow run dispatch.yml -R cgwalters-forge/tracker \
+    -f kind=KIND -f repo=OWNER/REPO -f item=N -f task="$(cat BRIEFFILE)" -f pool=POOL
 ```
 
 `KIND` is implement, review, fix, triage or research; `N` is an issue, or a
@@ -84,6 +106,33 @@ first two, except that a first round that is only toil goes to `mistral`;
 its own result: a pull request from the bot's fork, or one comment on the
 item. `scripts/wait-run RUN` waits for a run and prints its conclusion and
 failed jobs.
+
+## Board writes, questions and status updates
+
+By hand, with agent-board and the bot's `GH_TOKEN`. Each write only prints
+what it would do until given `--apply`:
+
+```sh
+board="agent-board --owner cgwalters-forge --project 1"
+$board item add OWNER/REPO#N --priority P1 --apply
+$board item edit OWNER/REPO#N --field Status=Todo --apply
+$board -R cgwalters-forge/tracker ask create "QUESTION" --item OWNER/REPO#N \
+    --assignee cgwalters --option "RECOMMENDED" --option "OTHER" --recommend "WHY" --apply
+$board ask resolve cgwalters-forge/tracker#N "WHAT WAS DONE" --apply
+$board project status-update --status on-track --body FILE
+```
+
+`ask create` opens the `question` issue the README describes in the
+repository `-R` names (without it, next to the item it blocks), and sets it
+and the item it blocks to Needs human; `ask resolve` comments, closes and sets it
+Done. `project status-update` writes at once: the epic coordinator
+publishes the daily one once `COORDINATOR` is `apply`, so a hand-written update is for what it cannot say.
+Read commands (`item list`, `item view`, `ask list`, `project view`) need no
+`--apply`. A job plan is sent with
+`agent-board dispatch ISSUE --dry-run` first, then `--apply`, with the
+`--caller`, `--workflow`, `--operator` and `--planner` the scheduler passes
+(`.github/poll/schedule.cjs`, from `agent-board.json`); an epic plan only by
+the coordinator's step, which pins it.
 
 ## What is in flight
 
@@ -147,12 +196,9 @@ ruleset's id with `gh api repos/OWNER/REPO/rulesets` and run
 ## Still only on the machine
 
 Credentials, by design: the token file, the environment file and the
-broker's policy on the inference host. The coordinator session itself,
-which is a chat on one machine; what it knows that matters is supposed to
-be on the board or in the notes, and anything that is not is lost with it.
-And the loop that watches for cgwalters' comments on active issues and
-wakes the coordinator: it is not yet on the forge. It is a loop on the
-coordinator's machine, so on a fresh one nothing notices an answer until
-the coordinator looks for itself; the plan in
-[#507](https://github.com/cgwalters-forge/tracker/issues/507) is a
+broker's policy on the inference host. And noticing cgwalters' comments
+as they come: nothing on the forge wakes on one yet. The epic coordinator
+reads the operator's comments on epics at its next poll pass, whose schedule
+GitHub may delay; an answer to a question waits until someone looks. The
+plan in [#507](https://github.com/cgwalters-forge/tracker/issues/507) is a
 workflow here on `issue_comment`.

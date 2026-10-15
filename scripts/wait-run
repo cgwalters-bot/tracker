@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # wait-run RUN: wait for a run of this repository's workflows (a dispatch
-# that `bot-runs dispatch --backend agentic-job` started, or a poll pass)
+# that `gh workflow run dispatch.yml` started, or a poll pass)
 # to complete, then print its conclusion and the names of its failed jobs.
 # Exits 0 for a successful run, 1 for any other conclusion and 2 when the
 # run is still going after WAIT_RUN_MINUTES (default 120). Needs gh with a
