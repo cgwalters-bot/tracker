@@ -83,7 +83,9 @@ test('configuration follows every dispatch target and preserves pool policy', ()
   for (const repo of c.follow) assert.ok(fix.includes(`"${repo}"`), repo);
   assert.equal(c.dispatchWorkflow, 'dispatch.yml');
   assert.equal(c.reviewWorkflow, 'review.yml');
-  assert.equal(c.toilFixPool, 'mistral');
+  // Conflicts share the first-round toil pool: do not spend a bounded fix
+  // round on a pool whose conflict runs have returned without a new head.
+  assert.equal(c.toilFixPool, 'openai');
   assert.equal(c.kindPools.triage, 'mistral');
   const pools = require('../agentic-job/pools.json');
   for (const pool of [...c.fixPools, c.toilFixPool, ...Object.values(c.kindPools)]) assert.ok(pools[pool], pool);
