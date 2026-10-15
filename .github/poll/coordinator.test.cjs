@@ -17,12 +17,13 @@ const planBody = (request = 'request1') => '```agent-board-epic-plan\n' + JSON.s
 const statusBody = (prose, request = 'request1') => '```coordinator-status\n' + JSON.stringify({ request, prose }) + '\n```';
 
 test('status JSON has only request and bounded prose, preserved through sanitization', () => {
-  for (const prose of ['a', '😀'.repeat(4000), 'Needs operator.\nNext step.']) {
+  for (const prose of ['a', '😀'.repeat(2000), 'Needs operator.\nNext step.', Array(8).fill('line').join('\r\n')]) {
     assert.equal(statusProse({ body: sanitize(statusBody(prose)) }), prose);
   }
   for (const value of [null, [], {}, { request: 'request1' }, { request: 1, prose: 'OK' },
     { request: '', prose: 'OK' }, { request: 'request1', prose: '' },
-    { request: 'request1', prose: 'a'.repeat(4001) }, { request: 'request1', prose: 1 },
+    { request: 'request1', prose: 'a'.repeat(2001) }, { request: 'request1', prose: 1 },
+    ...['\n', '\r\n', '\r', '\u2028', '\u2029'].map(separator => ({ request: 'request1', prose: Array(9).fill('line').join(separator) })),
     { request: 'request1', prose: 'OK', extra: true }, { request: 'request1', prose: '   ' },
     { request: 'request1', prose: '\n\t' }]) {
     const body = '```coordinator-status\n' + JSON.stringify(value) + '\n```';
@@ -326,6 +327,80 @@ test('preview performs no writes; apply checkpoints before dispatch and plans at
   assert.equal(live.dispatches[1].ref, 'trunk');
   assert.equal(live.dispatches[1].inputs.kind, 'triage');
   assert.equal(live.dispatches[1].inputs.item, '7');
+});
+
+test('status brief points to Decisions without sampled asks and supplies linked activity and stale usage', async () => {
+  for (const age of [0, 3 * 3600000, 3 * 3600000 + 1, null]) {
+    const h = harness(true, [{ ...epic, subs: [{ ...epic.subs[0], status: 'Blocked' }] }, { ...epic, live: false, number: 10 }]);
+    h.options.config.reviewUrl = 'https://review.example.test/#';
+    const get = h.options.get;
+    h.options.get = async (method, p, body) => {
+      assert.equal(p.startsWith('/search/'), false, 'no decision count');
+      assert.equal(p.includes('labels='), false, 'no sampled operator asks');
+      if (p.includes('/pulls?state=all')) return [{ number: 2, html_url: 'https://github.com/o/r/pull/2',
+        body: 'Refs O/R#8', merged_at: '2026-10-14T10:30:00Z', state: 'closed' }];
+      return get(method, p, body);
+    };
+    const post = h.options.post;
+    h.options.post = async args => !args.variables.field && args.variables.number === 1 ? { data: { repository: { issue: { comments: {
+      nodes: age === null ? [] : [comment(12, '<!-- bot-usage v1 -->\n```json\n' + JSON.stringify({ schema: 'bot-usage/v1', updated_at: new Date(now - age).toISOString() }) + '\n```')],
+      pageInfo: { hasNextPage: false } } } } } } : post(args);
+    assert.equal((await pass(h.options)).errors, 0, h.lines.join('\n'));
+    const task = h.dispatches[0].inputs.task;
+    assert.match(task, /at most 8 lines/);
+    assert.match(task, /"\[Decisions\]\(URL\)" using decisions.url, with no count/);
+    assert.match(task, /at least two related failed runs/);
+    const facts = JSON.parse(task.split('\n\n')[1]);
+    assert.deepEqual(facts.decisions, { url: 'https://review.example.test/#' });
+    assert.equal(facts.epics.length, 1);
+    assert.deepEqual(facts.epics[0].blocked, ['https://github.com/O/R/issues/8']);
+    assert.equal(facts.pulls[0].pulls[0].url, 'https://github.com/o/r/pull/2');
+    assert.deepEqual(facts.pulls[0].pulls[0].epics, [7, 10]);
+    assert.equal(facts.usage.stale, age === null || age > 3 * 3600000);
+    assert.equal(facts.usage.url, 'https://github.com/o/usage/issues/1');
+    assert.equal(Object.hasOwn(facts, 'operatorAsks'), false);
+  }
+});
+
+test('large and partial censuses retain epic coverage within a recorded line budget', async () => {
+  const entries = Array.from({ length: 7 }, (_, i) => ({ ...epic, number: i + 1 }));
+  entries.push({ number: 20, error: 'timeline unavailable' });
+  const h = harness(true, entries);
+  await pass(h.options);
+  const task = h.dispatches[0].inputs.task;
+  assert.match(task, /at most 11 lines/);
+  assert.match(task, /explicitly say unavailable for unread epics/);
+  const facts = JSON.parse(task.split('\n\n')[1]);
+  assert.equal(facts.epics.length, 8);
+  assert.equal(facts.epics.at(-1).unread, true);
+  const state = checkpointState(h.writes[0]);
+  assert.equal(state.pending.maxLines, 11);
+  const prose = Array(11).fill('line').join('\n');
+  assert.equal(statusProse({ body: statusBody(prose) }, state.pending.maxLines), prose);
+  assert.throws(() => statusProse({ body: statusBody(prose) }));
+  assert.throws(() => statusProse({ body: statusBody('\n'.repeat(20) + 'OK') }));
+  // A pending run recorded before line budgets keeps its 4000-character brief.
+  assert.equal(statusProse({ body: statusBody('a\n'.repeat(1999) + 'b') }, null), 'a\n'.repeat(1999) + 'b');
+  assert.throws(() => statusProse({ body: statusBody('a'.repeat(4001)) }, null));
+});
+
+test('maximum census status matches and publishes with expanded prose bounds', async () => {
+  const entries = Array.from({ length: 50 }, (_, i) => ({ ...epic, number: i + 1 }));
+  const first = harness(true, entries);
+  assert.equal((await pass(first.options)).errors, 0);
+  assert.match(first.dispatches[0].inputs.task, /1 to 15500 characters and at most 53 lines/);
+  const checkpoint = comment(10, first.writes[0].body.body);
+  const prose = ['[Decisions](https://review.example.test/)',
+    ...entries.map(e => `[Epic ${e.number}](https://github.com/o/r/issues/${e.number}) on-track; merged none observed; blocked none observed.`),
+    '[Pool usage](https://github.com/o/usage/issues/1): unavailable, stale.'].join('\n');
+  assert.ok(prose.length > 2000);
+  assert.throws(() => statusProse({ body: statusBody(prose) }));
+  const later = harness(true, entries, [checkpoint, comment(11, resultBody(prose, checkpoint))]);
+  let published;
+  later.options.writeFile = (name, body) => { published = body; return '/tmp/status.md'; };
+  assert.equal((await pass(later.options)).status, 1);
+  assert.equal(published, prose);
+  assert.equal(later.commands.length, 1);
 });
 
 test('incomplete census never plans an epic, and dispatch failure retains its claim', async () => {
