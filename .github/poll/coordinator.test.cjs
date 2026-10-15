@@ -273,23 +273,33 @@ test('coordinator workflow failures are isolated and retain the controller summa
   assert.match(step, /run: just coordinator/);
 });
 
-test('apply config resolves only configured Priority options', async () => {
-  const project = { id: 'project', field: { id: 'field', options: [{ name: 'P1', id: 'option' }] } };
-  const post = async () => ({ data: { repositoryOwner: { projectV2: project } } });
-  const config = { operator: 'op', planner: 'bot', followed: new Set(['o/r']), priorities: ['P1'], priorityField: 'Priority' };
-  assert.deepEqual(await applyConfig(post, config), { operator: 'op', bot: 'bot', repositories: ['o/r'],
-    project: 'project', priority_field: 'Priority', priority_field_id: 'field', priorities: { P1: 'option' }, default_priority: 'P1' });
-  await assert.rejects(applyConfig(post, { ...config, priorities: ['P0'] }), /unavailable/);
+// The project's Priority field as the API returns it: P0 to P2, no P3.
+const project = (names = ['P0', 'P1', 'P2']) => ({ data: { repositoryOwner: { projectV2: { id: 'project',
+  field: { id: 'field', options: names.map(name => ({ name, id: `option-${name}` })) } } } } });
+
+test('apply config takes the Priority options the project has, not a configured list', async () => {
+  const config = { operator: 'op', planner: 'bot', followed: new Set(['o/r']), priorityField: 'Priority' };
+  const reply = value => async () => value;
+  assert.deepEqual(await applyConfig(reply(project()), config), { operator: 'op', bot: 'bot', repositories: ['o/r'],
+    project: 'project', priority_field: 'Priority', priority_field_id: 'field',
+    priorities: { P0: 'option-P0', P1: 'option-P1', P2: 'option-P2' }, default_priority: 'P2' });
+  for (const bad of [project([]), project(['P1', ' ']), { errors: [{ message: 'x' }] },
+    { data: { repositoryOwner: { projectV2: { id: 'project', field: {} } } } }, { data: { repositoryOwner: null } }]) {
+    await assert.rejects(applyConfig(reply(bad), config), /Priority/, JSON.stringify(bad));
+  }
+  const source = JSON.parse(fs.readFileSync(require.resolve('./agent-board.json'), 'utf8'));
+  assert.equal(Object.hasOwn(source.coordinator, 'priorities'), false);
+  assert.equal(Object.hasOwn(loadConfig(JSON.stringify(source)), 'priorities'), false);
 });
 
 function harness(apply = false, entries = [epic, { ...epic, number: 9 }], comments = []) {
   const writes = [], dispatches = [], commands = [], lines = [];
-  const config = { epicsRepository: 'o/r', planner: 'bot', operator: 'op', caller: 'o/controller', workflow: 'dispatch.yml',
+  const config = { epicsRepository: 'o/r', planner: 'bot', operator: 'op', caller: 'o/controller', owner: 'o', project: 1, priorityField: 'Priority', workflow: 'dispatch.yml',
     followed: new Set(['o/r']), wip: 4, planPool: 'claude', statusPool: 'mistral', statusIssue: 99, statusHourUTC: 11, usage: { repo: 'o/usage', issue: 1, bot: 'bot' } };
   return { writes, dispatches, commands, lines, options: { config, entries, note: '', now, apply,
     get: async (method, p, body) => { if (method !== 'GET') { writes.push({ method, p, body }); return { id: writes.length }; }
       return p === '/repos/o/controller' ? { default_branch: 'trunk' } : []; },
-    post: async ({ variables }) => ({ data: { repository: { issue: { comments: {
+    post: async ({ variables }) => variables.field ? project() : ({ data: { repository: { issue: { comments: {
       nodes: variables.number === 99 ? comments : [], pageInfo: { hasNextPage: false } } } } } }),
     dispatch: async (method, p, body) => { if (method === 'GET') return { workflow_runs: [] }; dispatches.push(body); },
     board: args => commands.push(args), writeFile: name => `/tmp/${name}`, log: line => lines.push(line) } };
@@ -438,6 +448,102 @@ test('later epic apply never grants writes without a pinned-plan CLI boundary', 
   }
 });
 
+// A pass in which epic 7 has a matching plan pending apply and epic 9 is
+// due a plan; agent-board's preview fails with `failure`, as agentBoard
+// (schedule.cjs) reports it, or succeeds when `failure` is null.
+function refusalHarness(apply, failure, state = {}) {
+  const value = { ...epic, subs: [] };
+  const checkpoint = comment(10, `<!-- coordinator/v1: ${JSON.stringify({ ...state, pending: {
+    id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint: changedFingerprint(value) } })} -->\ncheckpoint`);
+  const h = harness(apply, [value, { ...epic, number: 9 }]);
+  h.options.post = async ({ variables }) => variables.field ? project() : { data: { repository: { issue: { comments: {
+    nodes: variables.number === 7 ? [checkpoint, comment(11, planBody())] : [], pageInfo: { hasNextPage: false } } } } } };
+  h.options.board = args => {
+    h.commands.push(args);
+    if (failure !== null && args[0] === 'epic') throw Object.assign(new Error(`agent-board ${args.join(' ')}: exited 1`), { stderr: failure });
+  };
+  return h;
+}
+
+test('the planning brief offers only the Priority options the project has', async () => {
+  const h = harness(true, [{ ...epic, priority: 'P3', subs: [{ ...epic.subs[0], priority: 'P3' }] }]);
+  await pass(h.options);
+  const task = h.dispatches.find(d => d.inputs.item === '7').inputs.task;
+  assert.match(task, /Every set_priority value must be one of the project's Priority options: \["P0","P1","P2"\]\./);
+  assert.doesNotMatch(task, /refused/);
+  const other = harness(true, [epic]);
+  const post = other.options.post;
+  other.options.post = async args => args.variables.field ? project(['Now', 'Later']) : post(args);
+  await pass(other.options);
+  assert.match(other.dispatches.find(d => d.inputs.item === '7').inputs.task, /options: \["Now","Later"\]/);
+});
+
+const plan = 'https://github.com/o/r/issues/7#issuecomment-11';
+test('a plan agent-board refuses fails that epic only, counts, and is quoted in the next brief', async () => {
+  for (const [stderr, refusal] of [
+    [`error: newest epic plan ${plan}: epic plan refused:\n  action 2 (set_priority): Priority P3 is not a configured option\n`,
+      `newest epic plan ${plan}: epic plan refused:\n  action 2 (set_priority): Priority P3 is not a configured option`],
+    [`warning: x\nerror: newest epic plan ${plan}: expected value at line 1 column 1\n`, `newest epic plan ${plan}: expected value at line 1 column 1`],
+    [`error: newest epic plan ${plan}: unknown epic plan field "x-->"`, `newest epic plan ${plan}: unknown epic plan field "x-->"`],
+  ]) {
+    for (const apply of [false, true]) {
+      const h = refusalHarness(apply, stderr, { failures: 1 });
+      const counts = await pass(h.options);
+      assert.deepEqual([counts.failed, counts.apply, counts.errors, counts.plan], [1, 0, 0, 1], stderr);
+      // The pass carried on: epic 9 was planned after 7's refusal.
+      assert.equal(h.dispatches.filter(d => d.inputs.item === '9').length, apply ? 1 : 0);
+      assert.ok(h.lines.some(l => l.startsWith('o/r#7 failed: agent-board refused the plan: newest epic plan')));
+      const saved = h.writes.find(w => w.p === '/repos/o/r/issues/comments/10');
+      if (!apply) { assert.equal(saved, undefined); continue; }
+      assert.doesNotMatch(saved.body.body.split('\n')[0].slice(4, -4), /-->|<!--/);
+      const { state } = record([comment(10, saved.body.body)], 'bot');
+      assert.deepEqual([state.pending, state.failures, state.refusal], [null, 2, refusal]);
+
+      const next = retryHarness(state, { at: new Date(now).toISOString(), healthHash: 'unchanged', claimed: true });
+      assert.equal((await pass(next.options)).plan, 1);
+      const task = next.dispatches.find(d => d.inputs.item === '7').inputs.task;
+      assert.ok(task.includes(`agent-board refused this epic's previous plan for this reason (JSON data); the new plan must avoid it: ${JSON.stringify(refusal)}`));
+      // Briefed once: the new claim no longer carries it into later briefs.
+      const claimed = checkpointState(next.writes.find(w => w.p === '/repos/o/r/issues/comments/10'));
+      assert.deepEqual([claimed.refusal, claimed.failures, Boolean(claimed.pending)], [undefined, 2, true]);
+    }
+  }
+  // Refused plans count toward maxFailedRuns like runs that posted none.
+  const last = refusalHarness(true, `error: newest epic plan ${plan}: epic plan has no actions`, { failures: 2 });
+  await pass(last.options);
+  const { state } = record([comment(10, last.writes.find(w => w.p === '/repos/o/r/issues/comments/10').body.body)], 'bot');
+  const stuck = retryHarness(state, { at: new Date(now).toISOString(), healthHash: 'unchanged', claimed: true });
+  assert.equal((await pass(stuck.options)).stuck, 1);
+  assert.equal(stuck.dispatches.some(d => d.inputs.item === '7'), false);
+  // A long refusal is capped before it reaches a checkpoint or a brief.
+  const long = refusalHarness(true, `error: newest epic plan ${plan}: ${'😀'.repeat(5000)}`);
+  await pass(long.options);
+  const capped = record([comment(10, long.writes.find(w => w.p === '/repos/o/r/issues/comments/10').body.body)], 'bot').state.refusal;
+  assert.equal([...capped].length, 2000);
+});
+
+test('agent-board failures that are not a refused plan leave it pending and uncounted', async () => {
+  for (const stderr of ['', 'error: GitHub API GET /repos/o/r/issues/7/comments: HTTP 502 Bad Gateway\n',
+    'error: read epic config: No such file or directory\n', `error: post claim on ${plan}: HTTP 403\n`,
+    `warning: newest epic plan ${plan}: retrying\nerror: timed out\n`,
+    // A plan posted after ours was read, which agent-board selected instead.
+    'error: newest epic plan https://github.com/o/r/issues/7#issuecomment-12: epic plan has no actions\n',
+    `error: newest epic plan ${plan}0: epic plan has no actions\n`, `error: x\nnewest epic plan ${plan}: not at line start`]) {
+    for (const apply of [false, true]) {
+      const h = refusalHarness(apply, stderr, { failures: 1 });
+      const counts = await pass(h.options);
+      assert.deepEqual([counts.failed, counts.errors], [0, 1], JSON.stringify(stderr));
+      assert.equal(h.writes.some(w => w.p === '/repos/o/r/issues/comments/10'), false);
+      assert.equal(h.dispatches.some(d => d.inputs.item === '9'), false);
+    }
+  }
+  // A valid plan still previews, and apply still stops at the missing pin.
+  for (const apply of [false, true]) {
+    const counts = await pass(refusalHarness(apply, null).options);
+    assert.deepEqual([counts.apply, counts.failed, counts.errors], [1, 0, apply ? 1 : 0]);
+  }
+});
+
 test('ordinary reporting volume is bounded and reporting failures do not block epic planning', async () => {
   const h = harness(true);
   h.options.config.followed = new Set(Array.from({ length: 6 }, (_, n) => `o/r${n}`));
@@ -508,7 +614,7 @@ function retryHarness(epicState, statusState, run) {
   Object.assign(h.options.config, { graceMs: 5 * 60000, runTimeoutMs: 60 * 60000, maxFailedRuns: 3 });
   const checkpoints = { 7: epicState && comment(10, `<!-- coordinator/v1: ${JSON.stringify(epicState)} -->\ncheckpoint`),
     99: statusState && comment(20, `<!-- coordinator-status/v1: ${JSON.stringify(statusState)} -->\ncheckpoint`) };
-  h.options.post = async ({ variables }) => ({ data: { repository: { issue: { comments: {
+  h.options.post = async ({ variables }) => variables.field ? project() : ({ data: { repository: { issue: { comments: {
     nodes: checkpoints[variables.number] ? [checkpoints[variables.number]] : [], pageInfo: { hasNextPage: false } } } } } });
   h.lookups = [];
   h.options.dispatch = async (method, p, body) => {

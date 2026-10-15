@@ -21,8 +21,7 @@
     "planPool": "claude",
     "statusPool": "mistral",
     "statusIssue": 572,
-    "statusHourUTC": 11,
-    "priorities": ["P0", "P1", "P2", "P3"]
+    "statusHourUTC": 11
   },
   "schedule": {
     "owner": "cgwalters-forge",

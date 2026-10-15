@@ -206,11 +206,20 @@ does not fail the job. Test with `node --test .github/poll/epics.test.cjs`.
 After the census, `just coordinator` previews planning and project reporting.
 It writes nothing unless `COORDINATOR=apply` is set as a repository variable;
 the poll workflow's dry-run input still prevents writes. No dispatcher input
-can expand its repository or Priority bounds. `coordinator.priorities` in
-`agent-board.json` supplies the allowed options; project and field IDs are
-resolved from the configured project's API response, never from a plan.
+can expand its repository or Priority bounds. The allowed Priority options,
+and the project and field IDs, are read from the configured project
+(`schedule.project`, `schedule.priorityField`) when an epic is planned or
+previewed, never from a plan; the brief names them as the only values. New
+sub-issues start at the field's last option.
+A plan that `agent-board epic apply --dry-run` refuses (stderr
+`error: newest epic plan URL: ...`, URL being the matched plan) fails that epic only: it is cleared,
+counted toward `coordinator.maxFailedRuns` like a run that posted no plan, and
+its refusal (capped at 2000 characters) is quoted in the next brief, and the
+pass goes on to the next epic. Other agent-board failures leave the plan
+pending, uncounted, for the next pass.
 
-At most one live epic per pass gets a planning run or an apply preview. Planning is
+At most one live epic per pass gets a planning run or an apply preview that
+is not refused. Planning is
 `kind=triage`, with the epic's census facts and only authenticated operator
 comments as decisions. Its one comment carries an `agent-board-epic-plan`.
 `coordinator.planPool` in `agent-board.json` defaults to `claude`: epic
@@ -226,7 +235,7 @@ reports this dependency as an error, and retains its pending checkpoint.
 Planning and status publication can be enabled independently of this missing
 capability by the existing COORDINATOR variable; there is no second control.
 Ordering is only Priority, with no Ready step.
-Epics are selected by their configured Priority order, then issue number.
+Epics are selected by Priority (P0 first, as the scheduler ranks them), then issue number.
 Changed intent, sub-issue text or board facts trigger planning; the decision
 logic also forces a daily pass after a completed applied checkpoint. Pending
 plans do not get additional daily runs, so that refresh loop cannot complete
