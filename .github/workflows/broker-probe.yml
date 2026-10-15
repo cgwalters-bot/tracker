@@ -1,0 +1,32 @@
+name: broker-probe
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+permissions: {}
+concurrency:
+  group: broker-probe
+  cancel-in-progress: false
+jobs:
+  probe:
+    if: ${{ vars.BROKER_OUTAGE == 'apply' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Join the dispatch tailnet
+        id: tailnet
+        uses: cgwalters-forge/actions/tailscale@main
+        with:
+          hostname: broker-probe-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Probe and report
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          INFERENCE_URL: ${{ vars.INFERENCE_URL || steps.tailnet.outputs.proxy }}
+        # Run Node directly: no unchecked release binary runs with the PAT
+        # or the job's OIDC grant.
+        run: node .github/poll/broker.cjs
