@@ -55,6 +55,34 @@ after that release upgrade.
 
 ## The pull request poll
 
+### Private decisions
+
+Each pass also runs `agent-board ask read` when the repository secret
+`DECISIONS_STATE_KEY` is set (64 hexadecimal digits, a random 256-bit key).
+It is off without that secret. `decisions` in the default-branch
+`.github/poll/agent-board.json` names the private issue; the poll's existing bot
+PAT must have issue read/write access there. This change does not grant token
+permissions or act on any answer.
+
+The public log and summary contain only `decisions/v1` JSON with `status`,
+`changes` (`id` and `options`, letters only), and `other_edits`. Option labels,
+replies, before/after bodies and child diagnostics are never forwarded. The
+controller must read reply text from the private issue, not the public panel.
+A failed read fails the pass and keeps the retry chain alive.
+
+The last-written baseline is not a last-read cursor: repeated reads continue
+to report unanswered edits until a private writer updates the document.
+Agent-board recovers it from bot edit history when no local baseline exists.
+To carry a private writer's `agent-board.decisions-state.md` between passes,
+encrypt its bytes with `seal(body, keyFrom(key))` from
+`.github/poll/decisions.cjs` and seed `poll-state.json.decisions.enc` in the
+trusted poll state artifact. Never upload the plaintext baseline. Restored
+baselines are decrypted only in an owner-private temporary directory and
+removed after the bounded read; the artifact carries authenticated ciphertext
+beside the usual poll state. Rotate/reseed the encrypted baseline when rotating
+the key. `ask read` itself never writes or advances this last-written baseline.
+No real issue is fetched by `node --test .github/poll/decisions.test.cjs`.
+
 `.github/workflows/poll.yml` runs one `agent-board poll --apply` pass through
 `just poll`; `.github/poll/poll.cjs` only adapts its output, not its decisions. A pass
 is started by the end of every `dispatch.yml` run here (`workflow_run`), by

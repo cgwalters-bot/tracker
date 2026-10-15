@@ -6,6 +6,7 @@
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const settings = require('./agent-board.json');
+const { readDecisions } = require('./decisions.cjs');
 
 const CONFIG = Object.freeze({
   author: settings.bot,
@@ -66,6 +67,10 @@ function poll(argv, env = process.env, run = spawnSync) {
 
 function main(argv) {
   const result = poll(argv);
+  const decisions = readDecisions(process.env, settings);
+  const decisionLine = `decisions/v1 ${JSON.stringify(decisions)}\n`;
+  result.stdout += decisionLine;
+  if (decisions.status === 'failed') { result.status = 1; result.again = true; }
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
   if (result.status) console.error('poll: agent-board failed or did not return a valid interval');
