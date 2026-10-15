@@ -20,7 +20,9 @@ const plan = (target, extra = {}) => ({ plan: `https://github.com/o/r/issues/1#i
 const own = item => plan(`${item.repository}#${item.number}`.toLowerCase());
 // What the eligibility query answers of an issue fit to be worked on.
 const metadata = (extra = {}) => ({ state: 'OPEN', labels: { nodes: [], pageInfo: { hasNextPage: false } },
-  subIssues: { totalCount: 0 }, closedByPullRequestsReferences: { nodes: [], pageInfo: { hasNextPage: false } }, ...extra });
+  projectItems: { nodes: [], pageInfo: { hasNextPage: false } },
+  subIssues: { totalCount: 0 }, closedByPullRequestsReferences: { nodes: [], pageInfo: { hasNextPage: false } },
+  timelineItems: { nodes: [], pageInfo: { hasNextPage: false } }, blockedBy: { nodes: [], pageInfo: { hasNextPage: false } }, ...extra });
 const post = data => async () => ({ data: { repository: { issue: data } } });
 
 test('the repository config parses and names a board and a cap', () => {
@@ -484,7 +486,7 @@ test('with --apply, items with no plan or a merged closer start nothing', async 
   }, { bin: NO_PLAN_BIN, issues: { 41: merged } });
   assert.equal(error, undefined);
   assert.ok(out.some(line => /#40 .*skip: no plan$/.test(line)));
-  assert.ok(out.some(line => /#41 .*skip: probably done; close it\? merged-pr$/.test(line)));
+  assert.ok(out.some(line => /#41 .*skip: probably done by merged-pr; close it\?$/.test(line)));
   assert.ok(calls.every(c => !c.startsWith('POST ') || c === 'POST /graphql'));
 });
 
@@ -522,7 +524,7 @@ test('epics past the census bound fail a pass that found no live one', async () 
 for (const [name, data, reason] of [
   ['an umbrella', metadata({ subIssues: { totalCount: 1 } }), /has sub-issues/],
   ...['epic', 'question'].map(label => [`labelled ${label}`, metadata({ labels: { nodes: [{ name: label.toUpperCase() }], pageInfo: { hasNextPage: false } } }), new RegExp(`labelled ${label}`)]),
-  ['done by a merged pull request', metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'merged-pr' }], pageInfo: { hasNextPage: false } } }), /probably done; close it\? merged-pr/],
+  ['done by a merged pull request', metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'merged-pr' }], pageInfo: { hasNextPage: false } } }), /probably done by merged-pr; close it\?/],
   ['closed', metadata({ state: 'CLOSED' }), /not open/],
 ]) {
   test(`an issue ${name} is skipped before its plan is read, and takes no slot`, async () => {
@@ -571,4 +573,113 @@ test('GraphQL errors fail closed, and the query names the repository and issue',
     assert.match(query, /closedByPullRequestsReferences\(first: 100, includeClosedPrs: true\)/);
     return { data: { repository: { issue: metadata() } }, errors: [{ message: 'denied' }] };
   }, 'o/r#1'), /not readable/);
+});
+
+for (const [name, extra, brief, responses, expected] of [
+  ['open closer', { closedByPullRequestsReferences: { nodes: [{ state: 'OPEN', url: 'https://github.com/o/r/pull/6' }], pageInfo: { hasNextPage: false } } }, '', [], 'PR open: o/r#6'],
+  ...['OPEN', 'MERGED', 'CLOSED'].map(state => [
+    `body cross-reference ${state}`, { timelineItems: { nodes: [{ source: { state, merged: state === 'MERGED', url: 'https://github.com/o/p/pull/6', repository: { owner: { login: 'O' } } } }], pageInfo: { hasNextPage: false } } }, '', [],
+    state === 'OPEN' ? 'PR open: o/p#6' : state === 'MERGED' ? 'probably done by o/p#6; close it?' : null,
+  ]),
+  ['foreign cross-reference', { timelineItems: { nodes: [{ source: { state: 'OPEN', repository: { owner: { login: 'other' } } } }], pageInfo: { hasNextPage: false } } }, '', [], null],
+  ['native dependency', { blockedBy: { nodes: [{ state: 'OPEN', url: 'https://github.com/o/p/issues/9' }], pageInfo: { hasNextPage: false } } }, '', [], 'blocked by o/p#9'],
+  ['body dependency', { body: 'Waiting on https://github.com/o/p/pull/9' }, '', [{ state: 'open' }], 'blocked by o/p#9'],
+  ['plan dependency', {}, 'Blocked by o/p#9', [{ state: 'open' }], 'blocked by o/p#9'],
+  ['closed dependency', { body: 'Depends on #9' }, '', [{ state: 'closed' }], null],
+  ['mere mention', { body: 'See #9' }, '', [], null],
+  ['branch PR', {}, 'Branch: dispatch/work', [[{ html_url: 'https://github.com/o/r/pull/6' }]], 'PR open: o/r#6'],
+  ['existing branch', {}, 'Branch: dispatch/work', [[], [{ ref: 'refs/heads/dispatch/work' }]], 'PR open: o/r (branch dispatch/work)'],
+  ['absent branch', {}, 'Branch: dispatch/work', [[], []], null],
+]) {
+  test(`duplicate-work eligibility: ${name}`, async () => {
+    const pending = [...responses];
+    assert.equal(await eligibility(post(metadata(extra)), 'o/r#1', brief, async () => {
+      assert.ok(pending.length, 'unexpected read');
+      return pending.shift();
+    }), expected);
+    assert.equal(pending.length, 0);
+  });
+}
+
+for (const field of ['timelineItems', 'blockedBy']) {
+  test(`incomplete ${field} fails closed`, async () => {
+    await assert.rejects(eligibility(post(metadata({ [field]: { nodes: [], pageInfo: { hasNextPage: true } } })), 'o/r#1'), /eligibility/);
+  });
+}
+
+test('coordinator Blocked status survives candidate selection and consumes no slot', async () => {
+  const { items } = candidates([{ number: 10, live: true, subs: [
+    { ...issue(1), state: 'open', status: 'Blocked' }, { ...issue(2), state: 'open' },
+  ] }], 'o/t');
+  const steps = await decide(items, empty, caps(1), item => {
+    assert.equal(item.number, 2);
+    return own(item);
+  }, noPulls);
+  assert.match(steps[0].reason, /^blocked by/);
+  assert.equal(steps[1].action, 'dispatch');
+});
+
+test('plan dependencies check the followed target and leave the slot free', async () => {
+  const calls = [];
+  const steps = await decide([issue(1), issue(2)], empty, caps(1), item =>
+    item.number === 1 ? plan('o/p#7', { brief: 'Blocked by #9' }) : own(item), noPulls,
+  async (key, brief) => {
+    calls.push([key, brief]);
+    return eligibility(post(metadata()), key, brief, async p => {
+      assert.equal(p, '/repos/o/p/issues/9');
+      return { state: 'open' };
+    });
+  });
+  assert.deepEqual(steps.map(s => s.action), ['skip', 'dispatch']);
+  assert.equal(steps[0].reason, "its plan's o/p#7: blocked by o/p#9");
+  assert.ok(calls.some(([key, brief]) => key === 'o/p#7' && brief === 'Blocked by #9'));
+});
+
+test('excessive dependencies and unreadable prerequisites fail closed', async () => {
+  await assert.rejects(eligibility(post(metadata()), 'o/r#1',
+    `Blocked by ${Array.from({ length: 11 }, (_, i) => `#${i + 1}`).join(', ')}`), /exceeds 10/);
+  await assert.rejects(eligibility(post(metadata({ body: 'Waiting on #9' })), 'o/r#1', '', async () => ({})), /not readable/);
+});
+
+test('a pointer cannot dispatch a blocked candidate target', async () => {
+  const steps = await decide([issue(1), issue(2, { status: 'Blocked' })], empty, caps(1),
+    () => plan('o/r#2'), noPulls);
+  assert.ok(steps.every(s => s.action === 'skip'));
+  assert.match(steps[0].reason, /blocked by/);
+});
+
+for (const body of ['Implement #1; blocked by #9.', 'See o/p#4; waiting on #9.', 'Depends on #1 and #9.', 'Depends on #9; see #4 for background.']) {
+  test(`only dependency clause references other than self count: ${body}`, async () => {
+    const reads = [];
+    assert.equal(await eligibility(post(metadata({ body })), 'o/r#1', '', async p => {
+      reads.push(p);
+      return { state: 'closed' };
+    }), null);
+    assert.deepEqual(reads, ['/repos/o/r/issues/9']);
+  });
+}
+
+test('actual dry-run task reaches dependency eligibility through probePlan', async () => {
+  const output = { body: { inputs: { repo: 'o/r', item: '7', kind: 'implement', task: 'Waiting on #9' } } };
+  const binary = stub('dependency-plan', `process.stdout.write(${JSON.stringify(JSON.stringify(output))}); process.stderr.write('Dry run: request for the plan in https://github.com/o/r/issues/7#issuecomment-42 by op');`);
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('[]', { status: 200 });
+  try {
+    const steps = await decide([ITEM], empty, caps(1), item => probePlan(binary, CONFIG, TOKEN, item), noPulls,
+      (key, brief) => eligibility(post(metadata()), key, brief, async () => ({ state: 'open' })));
+    assert.equal(steps[0].action, 'skip');
+    assert.match(steps[0].reason, /blocked by o\/r#9/);
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
+
+test('a pointer target outside the candidate list respects the configured board hold', async () => {
+  const target = metadata({ projectItems: { nodes: [{ project: { number: 3, owner: { login: 'O' } }, status: { name: 'Blocked' } }], pageInfo: { hasNextPage: false } } });
+  const [step] = await decide([issue(1)], empty, caps(1), () => plan('o/p#7'), noPulls,
+    (key, brief) => eligibility(post(key === 'o/p#7' ? target : metadata()), key, brief, undefined, { owner: 'o', project: 3 }));
+  assert.equal(step.action, 'skip');
+  assert.match(step.reason, /blocked by/);
+  assert.equal(await eligibility(post(target), 'o/p#7', '', undefined, { owner: 'other', project: 3 }), null);
+  await assert.rejects(eligibility(post(metadata({ projectItems: { nodes: [], pageInfo: { hasNextPage: true } } })), 'o/r#1'), /board metadata/);
 });

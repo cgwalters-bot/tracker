@@ -221,9 +221,21 @@ to be dispatched by hand, since the bot that posts a run's comments is an
 accepted planner and one run must not start the next. Umbrellas
 (issues with sub-issues), issues labelled `epic` or `question`, and the configured
 coordinator status issue are skipped. GitHub closing references to a merged PR
-are reported as "probably done; close it?" rather than dispatched. These checks
+are reported as "probably done by OWNER/REPO#N; close it?" rather than dispatched.
+Open closing PRs and PR cross-references from the same organization stop a
+dispatch as `PR open: OWNER/REPO#N`, regardless of author. Merged cross-references
+also count without a closing keyword; closed, unmerged PRs do not.
+Native open dependencies, board Status `Blocked`, and explicit `blocked by`,
+`depends on`, or `waiting on/for` references in the issue body or accepted job
+plan brief stop work as `blocked by`. Closed prerequisites do not block.
+An explicit `Branch: NAME` in the brief is checked against open PR heads and
+existing branches in the target repository, to avoid repeating planned work.
+These checks
 also apply to a plan's target; unreadable or incomplete metadata skips the item.
-Each metadata query reads at most 100 labels and closing references.
+Each metadata query reads at most 100 labels, closing references,
+cross-reference events, native dependencies and board memberships, refusing
+incomplete pages. Target board holds are checked even outside the candidate list.
+Text checks read at most ten distinct dependencies and ten explicit branches.
 An item is skipped
 while a `dispatch.yml` run for it, or for the item its plan targets, is in
 flight or a pull request of the bot says `Refs` to it; while its plan has a
