@@ -188,7 +188,7 @@ function candidates(entries, repository) {
       if (s.state !== 'open') continue;
       const item = {
         repository: s.repository, number: s.number, content_kind: 'issue', url: s.url, priority: s.priority,
-        created: s.created, epic: `${repository}#${epic.number}`, epicPriority: epic.priority,
+        created: s.created, status: s.status, epic: `${repository}#${epic.number}`, epicPriority: epic.priority,
       };
       const key = keyOf(s.repository, s.number);
       if (!byKey.has(key) || ahead(item, byKey.get(key)) < 0) byKey.set(key, item);
@@ -217,6 +217,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
   // plans with one target, or a plan's target that is a board item too,
   // get one run.
   const busy = new Map(running);
+  const blockedTargets = new Set(items.filter(i => i.status === 'Blocked').map(i => keyOf(i.repository, i.number)));
   const held = async key => {
     if (busy.has(key)) return `a run is in flight, ${busy.get(key)}`;
     const pull = await pullFor(key);
@@ -229,6 +230,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
     if (!isFollowed(key)) { await skip('not a followed repository'); continue; }
     if (item.content_kind !== 'issue') { await skip('not an issue'); continue; }
     if (statusRepository && key === keyOf(statusRepository, statusIssue)) { await skip('coordinator status issue'); continue; }
+    if (item.status === 'Blocked') { await skip('blocked by coordinator plan (board Status: Blocked)'); continue; }
     let found;
     try {
       const holding = await held(key);
@@ -246,14 +248,15 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       // list bounds where a run goes, not only which items are read. Checked
       // before the target is read, so nothing is asked of one not followed.
       if (!isFollowed(found.target)) { await skip(`its plan's ${found.target}: not a followed repository`); continue; }
+      if (blockedTargets.has(found.target)) { await skip(`its plan's ${found.target}: blocked by coordinator plan (board Status: Blocked)`); continue; }
       // A triage or research plan, which a triage run could write, would start
       // a run that writes another plan, and the bot that posts a run's
       // comments is an accepted planner: such chains are a person's to start.
       // Review and fix runs are the pull request events' and the poll's.
       if (found.kind !== 'implement') { await skip(`plan ${found.plan} is for ${found.kind}, which is dispatched by hand`); continue; }
-      if (found.target !== key) {
+      if (found.target !== key || found.brief) {
         const targetIneligible = statusRepository && found.target === keyOf(statusRepository, statusIssue)
-          ? 'coordinator status issue' : await inspect(found.target);
+          ? 'coordinator status issue' : await inspect(found.target, found.brief);
         if (targetIneligible) { await skip(`its plan's ${found.target}: ${targetIneligible}`); continue; }
       }
     } catch (err) {
@@ -324,41 +327,109 @@ async function probePlan(bin, config, token, item) {
     throw failure(args, `output not understood: ${err.message}`, run.stderr, env);
   }
   const comments = await paged(token, `/repos/${item.repository}/issues/${item.number}/comments`);
-  return { ...found, recorded: findRecord(comments, [config.operator, config.planner], found.commentId) };
+  return { ...found, brief: JSON.parse(run.stdout).body.inputs.task,
+    recorded: findRecord(comments, [config.operator, config.planner], found.commentId) };
 }
 
 // A child relationship is not permission to implement an umbrella or a
-// completed task. Read GitHub's closing references, not PR body text. One
+// completed task. Read GitHub's closing references and cross-references. One
 // bounded query per issue; incomplete data fails closed rather than hiding
 // a merged closer beyond the first page.
 const ELIGIBILITY_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) { issue(number: $number) {
-    state
+    state body
+    projectItems(first: 100) {
+      nodes {
+        project { number owner { ... on Organization { login } ... on User { login } } }
+        status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+      } pageInfo { hasNextPage }
+    }
     labels(first: 100) { nodes { name } pageInfo { hasNextPage } }
     subIssues(first: 1) { totalCount }
     closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
-      nodes { merged url } pageInfo { hasNextPage }
+      nodes { merged state url } pageInfo { hasNextPage }
+    }
+    blockedBy(first: 100) {
+      nodes { state url } pageInfo { hasNextPage }
+    }
+    timelineItems(first: 100, itemTypes: [CROSS_REFERENCED_EVENT]) {
+      nodes { ... on CrossReferencedEvent { source { ... on PullRequest {
+        state merged url repository { owner { login } }
+      } } } } pageInfo { hasNextPage }
     }
   } }
 }`;
 
-async function eligibility(post, key) {
+const shortRef = url => url.replace('https://github.com/', '').replace(/\/(?:pull|issues)\//, '#');
+
+// Only explicit dependency clauses count; arbitrary mentions are not blockers.
+function dependencies(text, repository) {
+  const refs = new Set();
+  for (const line of (text ?? '').split('\n')) {
+    const clause = /\b(?:blocked by|depends on|waiting (?:on|for)|waits (?:on|for))\b(.*)/i.exec(line);
+    if (!clause) continue;
+    for (const m of clause[1].split(';')[0].matchAll(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(?:issues|pull)\/(\d+)|\b([\w.-]+\/[\w.-]+)#(\d+)|#(\d+)/g)) {
+      refs.add(keyOf(m[1] ?? m[3] ?? repository, m[2] ?? m[4] ?? m[5]));
+    }
+  }
+  if (refs.size > 10) throw new Error('issue eligibility exceeds 10 dependencies');
+  return [...refs];
+}
+
+async function eligibility(post, key, brief = '', get, board = {}) {
   const [repository, number] = key.split('#');
   const [owner, name] = repository.split('/');
   const out = await post({ query: ELIGIBILITY_QUERY, variables: { owner, name, number: Number(number) } });
   const issue = out.data?.repository?.issue;
   if (out.errors?.length || !issue || !issue.labels?.nodes || !issue.subIssues
-      || !issue.closedByPullRequestsReferences?.nodes) throw new Error('issue eligibility not readable');
+      || !issue.closedByPullRequestsReferences?.nodes || !issue.timelineItems?.nodes || !issue.blockedBy?.nodes) throw new Error('issue eligibility not readable');
   const refs = issue.closedByPullRequestsReferences;
-  if (issue.labels.pageInfo?.hasNextPage !== false || refs.pageInfo?.hasNextPage !== false) {
-    throw new Error('issue eligibility exceeds 100 labels or closing references');
+  if (!issue.projectItems?.nodes || issue.projectItems.pageInfo?.hasNextPage !== false) {
+    throw new Error('issue eligibility board metadata not readable in full');
+  }
+  if (issue.projectItems.nodes.some(i => i.project?.number === board.project
+      && i.project?.owner?.login?.toLowerCase() === board.owner?.toLowerCase() && i.status?.name === 'Blocked')) {
+    return 'blocked by coordinator plan (board Status: Blocked)';
+  }
+  if (issue.labels.pageInfo?.hasNextPage !== false || refs.pageInfo?.hasNextPage !== false
+      || issue.timelineItems.pageInfo?.hasNextPage !== false || issue.blockedBy.pageInfo?.hasNextPage !== false) {
+    throw new Error('issue eligibility exceeds 100 labels, closing references, cross-references or blockers');
   }
   if (issue.state !== 'OPEN') return 'not open';
   if (issue.subIssues.totalCount > 0) return 'umbrella: has sub-issues';
   const label = issue.labels.nodes.find(l => ['epic', 'question'].includes(l.name.toLowerCase()));
   if (label) return `labelled ${label.name.toLowerCase()}`;
-  const merged = refs.nodes.find(p => p.merged);
-  return merged ? `probably done; close it? ${merged.url}` : null;
+  const pulls = [...refs.nodes, ...issue.timelineItems.nodes.map(e => e.source)
+    .filter(p => p?.repository?.owner?.login?.toLowerCase() === owner.toLowerCase())];
+  const open = pulls.find(p => p.state === 'OPEN');
+  if (open) return `PR open: ${shortRef(open.url)}`;
+  const merged = pulls.find(p => p.merged);
+  if (merged) return `probably done by ${shortRef(merged.url)}; close it?`;
+  const blocked = issue.blockedBy.nodes.find(i => i.state === 'OPEN');
+  if (blocked) return `blocked by ${shortRef(blocked.url)}`;
+  for (const ref of dependencies(`${issue.body ?? ''}\n${brief}`, repository)) {
+    if (ref === key) continue;
+    if (!get) throw new Error('issue eligibility dependency reader missing');
+    const [repo, n] = ref.split('#');
+    const dependency = await get(`/repos/${repo}/issues/${n}`);
+    if (!['open', 'closed'].includes(dependency?.state)) throw new Error('issue eligibility dependency not readable');
+    if (dependency.state === 'open') return `blocked by ${ref}`;
+  }
+  // Plans have no branch input today. A planner can name its intended branch
+  // explicitly in the brief; match only that exact head, never a fuzzy title.
+  const branches = [...brief.matchAll(/\bbranch\s*[:=]\s*`?([\w./-]+)/gi)];
+  if (branches.length > 10) throw new Error('issue eligibility exceeds 10 branches');
+  for (const [, branch] of branches) {
+    if (!get) throw new Error('issue eligibility branch reader missing');
+    const pulls = await get(`/repos/${repository}/pulls?state=open&head=${encodeURIComponent(`${owner}:${branch}`)}&per_page=1`);
+    if (!Array.isArray(pulls)) throw new Error('issue eligibility branch not readable');
+    if (pulls.length) return `PR open: ${shortRef(pulls[0].html_url)}`;
+    const ref = await get(`/repos/${repository}/git/matching-refs/heads/${branch.split('/').map(encodeURIComponent).join('/')}?per_page=100`);
+    if (!Array.isArray(ref)) throw new Error('issue eligibility branch not readable');
+    if (ref.length >= 100) throw new Error('issue eligibility exceeds 100 matching branches');
+    if (ref.some(r => r.ref === `refs/heads/${branch}`)) return `PR open: ${repository} (branch ${branch})`;
+  }
+  return null;
 }
 
 async function main(argv) {
@@ -409,7 +480,7 @@ async function main(argv) {
   // Each step is taken as it is decided, so a pass the job's timeout stops
   // has still started what it got to, the items ranked first.
   await decide(items, state, config, item => probePlan(bin, config, token, item), pullFor,
-    key => eligibility(body => request(token, 'POST', '/graphql', body), key), async step => {
+    (key, brief) => eligibility(body => request(token, 'POST', '/graphql', body), key, brief, get, config), async step => {
       const item = byName.get(step.item);
       // Each line names the epic its item was taken from.
       const name = `${step.item} (epic ${item.epic})`;
