@@ -19,6 +19,9 @@ session-profile:
 test-poll:
     cd .github/poll && node --test
 
+broker-probe:
+    node .github/poll/broker.cjs
+
 coordinator *args:
     node .github/poll/coordinator.cjs "$@"
 

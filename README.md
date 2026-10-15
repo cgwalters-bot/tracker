@@ -107,6 +107,20 @@ place. A pull request labelled `needs-human` is not touched again: remove the
 label to have the poll start again on it with fresh rounds, on the same head
 too.
 
+### Broker outages
+
+Set the repository variable `BROKER_OUTAGE=apply` to enable the
+fifteen-minute `broker-probe.yml` schedule (off otherwise). The probe joins
+using the dispatch tailnet wrapper and resolves `INFERENCE_URL` from the
+repository variable, else the wrapper's configured proxy. It makes one TCP
+connection and one unauthenticated GET, each bounded to ten seconds; any
+HTTP response is reachable, not a claim that inference works. It creates one
+bot-owned `outage` issue here, updates it while down, and comments and
+closes it on recovery. Tailnet join or reporting failures fail the workflow,
+not a false broker recovery. There are no ACL or credential changes. A fix
+round that an outage interrupts is still charged: refunding it is for
+agent-board, which owns the rounds (#603). Test with `just test-poll`.
+
 Its limits. Marking ready, fixing and `needs-human` apply only to what a
 dispatch run opened, a `dispatch/` branch of the bot's fork, since
 `.github/agentic-job/fix.toml` lets a fix push nowhere else; the bot's other
