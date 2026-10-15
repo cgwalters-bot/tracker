@@ -17,7 +17,7 @@
     "cgwalters-forge/agenthome"
   ],
   "fixPools": ["claude", "openai"],
-  "toilFixPool": "mistral",
+  "toilFixPool": "openai",
   "kindPools": { "triage": "mistral" },
   "epics": {
     "repository": "cgwalters-forge/tracker"
