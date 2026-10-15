@@ -205,7 +205,7 @@ test('health reports blocked, absent and unread board facts', () => {
 test('coordinator pools default independently and reject unknown pool names', () => {
   const source = JSON.parse(fs.readFileSync(require.resolve('./agent-board.json'), 'utf8'));
   assert.equal(loadConfig(JSON.stringify(source)).planPool, 'claude');
-  assert.equal(loadConfig(JSON.stringify(source)).statusPool, 'mistral');
+  assert.equal(loadConfig(JSON.stringify(source)).statusPool, 'openai');
   delete source.coordinator.planPool;
   delete source.coordinator.statusPool;
   const defaults = loadConfig(JSON.stringify(source));
@@ -222,15 +222,13 @@ test('coordinator pools default independently and reject unknown pool names', ()
 test('planning and status dispatch use their own configured pools', async () => {
   const source = JSON.parse(fs.readFileSync(require.resolve('./agent-board.json'), 'utf8'));
   for (const overrides of [{}, { planPool: 'openai', statusPool: 'claude' }]) {
-    delete source.coordinator.planPool;
-    delete source.coordinator.statusPool;
     const config = loadConfig(JSON.stringify({ ...source, coordinator: { ...source.coordinator, ...overrides } }));
     const h = harness(true);
     Object.assign(h.options.config, { planPool: config.planPool, statusPool: config.statusPool });
     assert.equal((await pass(h.options)).errors, 0);
     assert.equal(h.dispatches.length, 2);
     assert.equal(h.dispatches[0].inputs.item, '99');
-    assert.equal(h.dispatches[0].inputs.pool, overrides.statusPool ?? 'mistral');
+    assert.equal(h.dispatches[0].inputs.pool, overrides.statusPool ?? 'openai');
     assert.equal(h.dispatches[1].inputs.item, '7');
     assert.equal(h.dispatches[1].inputs.pool, overrides.planPool ?? 'claude');
   }
@@ -347,6 +345,7 @@ test('status brief points to Decisions without sampled asks and supplies linked 
       pageInfo: { hasNextPage: false } } } } } } : post(args);
     assert.equal((await pass(h.options)).errors, 0, h.lines.join('\n'));
     const task = h.dispatches[0].inputs.task;
+    assert.match(task, /Write only from these facts; do not read the repository\./);
     assert.match(task, /at most 8 lines/);
     assert.match(task, /"\[Decisions\]\(URL\)" using decisions.url, with no count/);
     assert.match(task, /at least two related failed runs/);

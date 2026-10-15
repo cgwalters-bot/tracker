@@ -336,7 +336,8 @@ checkpoints need resetting.
 
 Reporting uses the same triage/checkpoint mechanism on
 `coordinator.statusIssue` in the epic repository. Its `coordinator.statusPool`
-defaults to `mistral`, since the model only turns supplied facts into prose.
+is configured as `openai` (the fallback remains `mistral`). The status brief
+requires writing only from the supplied facts, without reading the repository.
 Both pool settings must name entries in `.github/agentic-job/pools.json`.
 It requests prose daily
 after `coordinator.statusHourUTC` (default 11), or when any epic's health
