@@ -109,7 +109,9 @@ function poolPace(reading, { target, burst }, now) {
     next = Math.max(next || 0, ...spent.map(w => w.resets_at));
   }
   return {
-    source: reading.source, observed_at: iso(finite(reading.observed_at) ? reading.observed_at : now),
+    // A recent short-window header must not make the weekly number look fresh.
+    source: reading.source, observed_at: iso(finite(paced.observed_at) ? paced.observed_at : reading.observed_at),
+    computed_at: iso(now),
     used_percent: paced.used_percent, window_minutes: paced.window_ms / MINUTE_MS, resets_at: iso(paced.resets_at),
     target_percent: goal, burst, allowed_percent: allowed, ahead: paced.used_percent - allowed,
     hold, reason, next_dispatch_at: next === null ? null : iso(next),
@@ -156,7 +158,7 @@ function mistralUsage(broker, pool, now) {
   // usage in the answer) have no tokens in tokens.
   const requests = (counts.requests || 0) + (counts.unmetered || 0);
   if (![requests, counts.tokens.total].every(finite)) return null;
-  const out = { requests, tokens: counts.tokens.total };
+  const out = { requests, tokens: counts.tokens.total, observed_at: iso(now) };
   if (finite(broker.started_at)) out.since = iso(broker.started_at * 1e3);
   const allowance = mistralAllowance(pool, broker, now);
   if (allowance) out.allowance = allowance;
@@ -261,13 +263,10 @@ async function publish({ config, snap, render, request, log }) {
   const comments = await request('GET', `/repos/${config.repo}/issues/${config.issue}/comments?per_page=${COMMENT_PAGE}`);
   const existing = findComment(comments, config.bot);
   if (!existing && comments.length >= COMMENT_PAGE) throw new Error(`no usage comment of ${config.bot} among the first ${COMMENT_PAGE} on ${where}, where the review app reads it`);
+  // Written even with neither pool: a pool is only null here once the last
+  // published window has reset, and leaving the comment would keep that
+  // window's hold and hide fresh Mistral counters.
   const carried = carryPools(snap, previousSnapshot(existing?.body), config, Date.parse(snap.updated_at));
-  // The review app drops a snapshot with neither pool, Mistral's counters
-  // with it: the last one, whose time shows its age, is worth more.
-  if (Object.values(carried.pools).every(p => !p)) {
-    log(`no pool reading; ${where} left as it was`);
-    return;
-  }
   const body = render(carried);
   if (existing) {
     await request('PATCH', `/repos/${config.repo}/issues/comments/${existing.id}`, { body });
