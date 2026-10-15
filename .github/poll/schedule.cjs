@@ -9,11 +9,11 @@
 // could move a board item's Status could before. Each candidate in one of
 // `schedule.repositories` of agent-board.json gets at most one step: the
 // job its newest accepted plan comment proposes (`agent-board dispatch
-// --apply`, agent-board's docs/job-plans.md), or, with no plan, one triage run asked to write one. Candidates are taken by
+// --apply`, agent-board's docs/job-plans.md), if it is an implement one.
+// Without a plan it is skipped. Candidates are taken by
 // their epic's `schedule.priorityField` on the board, then their own, P0
 // first, then oldest first. No step starts once `schedule.wip` dispatch.yml
-// runs are in flight, counting those already going, and no more than
-// `schedule.triagePerPass` triage runs start in one pass. A dry run, the
+// runs are in flight, counting those already going. A dry run, the
 // default, only reads: `--apply` is passed by the workflow only where the
 // repository variable says so.
 // Standard library and the agent-board binary; `decide` and its helpers are
@@ -23,26 +23,16 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { CONFIG: POLL, paged, poolForKind, request } = require('./poll.cjs');
+const { CONFIG: POLL, paged, request } = require('./poll.cjs');
 
 const CONFIG_FILE = path.join(__dirname, 'agent-board.json');
 // How many of dispatch.yml's newest runs are read: enough to hold every run
-// in flight, and the window in which an item is triaged at most once.
+// in flight.
 const HISTORY_RUNS = 100;
 // One agent-board call, unless `schedule.timeoutSeconds` says otherwise, so
 // that a hung one fails its item, not the job. A dry run reads one issue's
 // comments; nothing it does should take minutes.
 const AGENT_BOARD_TIMEOUT_S = 120;
-// Items read in one pass after the triage cap is reached that turn out to
-// have no plan. A slot is only taken by a run started, so past the cap
-// every item without a plan would otherwise be read in turn, only to be
-// skipped, each an agent-board call of up to `timeoutSeconds` and a read of
-// its comments: a board of a hundred such items would outlast the job and
-// the token's budget. Reads that end otherwise (triaged already, recorded,
-// refused) are not counted, so items stuck in those states cannot use the
-// limit up; each pass triages the first fresh item, so the next pass reads
-// one further down.
-const PAST_CAP_READS = 10;
 // A run that has not completed holds its slot and its item.
 const RUNNING = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pending']);
 // dispatch.yml's run-name: "KIND OWNER/REPO#ITEM", then the pool.
@@ -71,9 +61,11 @@ function loadConfig(text) {
   const s = all.schedule ?? {};
   const config = {
     owner: s.owner, project: s.project, wip: s.wip,
-    priorityField: s.priorityField ?? 'Priority', triagePerPass: s.triagePerPass ?? 1,
+    priorityField: s.priorityField ?? 'Priority',
     operator: all.operator, planner: all.bot, caller: all.dispatchRepo, workflow: POLL.dispatchWorkflow,
     planDocs: `${all.source}/blob/${all.branch}/docs/job-plans.md`,
+    statusIssue: all.coordinator?.statusIssue,
+    statusRepository: all.epics?.repository,
   };
   const login = /^[A-Za-z0-9-]+$/;
   if (!login.test(config.owner ?? '') || !Number.isSafeInteger(config.project) || config.project < 1) {
@@ -93,12 +85,6 @@ function loadConfig(text) {
   if (typeof config.priorityField !== 'string' || !/^[\w .-]{1,100}$/.test(config.priorityField)) {
     throw new Error('agent-board.json: schedule.priorityField must name a board field');
   }
-  // Every item the scheduler has not seen before is without a plan, so the
-  // first pass with --apply would otherwise triage up to `wip` of them at
-  // once, and as many again each pass as slots free up.
-  if (!Number.isSafeInteger(config.triagePerPass) || config.triagePerPass < 0 || config.triagePerPass > 10) {
-    throw new Error('agent-board.json: schedule.triagePerPass must be 0 to 10');
-  }
   // A bound on one call; the job's timeout-minutes is the pass's.
   const t = s.timeoutSeconds ?? AGENT_BOARD_TIMEOUT_S;
   if (!Number.isSafeInteger(t) || t < 1 || t > 600) throw new Error('agent-board.json: schedule.timeoutSeconds must be 1 to 600');
@@ -113,12 +99,10 @@ function loadConfig(text) {
 }
 
 // What dispatch.yml's recent runs say: how many hold a slot, which items
-// have one in flight, and which have been triaged (whatever the triage
-// run's outcome). Fix and review runs name a pull request, not an issue,
+// have one in flight. Fix and review runs name a pull request, not an issue,
 // but count against the cap all the same.
 function readRuns(runs) {
   const busy = new Map();
-  const triaged = new Map();
   let inFlight = 0;
   for (const run of runs) {
     const running = RUNNING.has(run.status);
@@ -127,9 +111,8 @@ function readRuns(runs) {
     if (!m) continue;
     const key = keyOf(m[2], m[3]);
     if (running && !busy.has(key)) busy.set(key, run.html_url);
-    if (m[1] === 'triage' && !triaged.has(key)) triaged.set(key, run.html_url);
   }
-  return { inFlight, busy, triaged };
+  return { inFlight, busy };
 }
 
 // The items the bot's open pull requests were made for, from the `Refs`
@@ -220,13 +203,16 @@ function candidates(entries, repository) {
 // probe is made only while a slot is free, so a full pass reads no issue's
 // comments; only a step that starts a run takes a slot. One item failing to
 // be read is skipped with the reason, and the others go on. `limits` is
-// the config's `wip`, `triagePerPass` and `followed`.
-async function decide(items, { inFlight, busy: running, triaged }, { wip, triagePerPass, followed }, probe, pullFor) {
+// the config's `wip`, `followed` and status issue. `inspect(key)` says why an
+// issue is not to be worked on, if it is not. `act(step)` is called with each
+// step as it is decided, so that what a pass has decided is done even if the
+// job's timeout stops it partway down a long board.
+async function decide(items, { inFlight, busy: running }, { wip, followed, statusIssue, statusRepository }, probe, pullFor,
+  inspect = async () => null, act = async () => {}) {
   let free = wip - inFlight;
-  let pastCap = 0;
-  let triages = triagePerPass;
   const isFollowed = key => followed.has(key.split('#')[0]);
   const steps = [];
+  const push = async step => { steps.push(step); await act(step); };
   // What this pass starts holds its items as a run in flight would, so two
   // plans with one target, or a plan's target that is a board item too,
   // get one run.
@@ -238,61 +224,48 @@ async function decide(items, { inFlight, busy: running, triaged }, { wip, triage
   };
   for (const item of byPriority(items)) {
     const name = `${item.repository}#${item.number}`;
-    const skip = reason => steps.push({ item: name, action: 'skip', reason });
+    const skip = reason => push({ item: name, action: 'skip', reason });
     const key = keyOf(item.repository, item.number);
-    if (!isFollowed(key)) { skip('not a followed repository'); continue; }
-    if (item.content_kind !== 'issue') { skip('not an issue'); continue; }
-    let holding;
+    if (!isFollowed(key)) { await skip('not a followed repository'); continue; }
+    if (item.content_kind !== 'issue') { await skip('not an issue'); continue; }
+    if (statusRepository && key === keyOf(statusRepository, statusIssue)) { await skip('coordinator status issue'); continue; }
     let found;
     try {
-      holding = await held(key);
-      if (holding) { skip(holding); continue; }
-      if (free <= 0) { skip(`work-in-progress cap of ${wip} reached`); continue; }
-      if (triages <= 0 && pastCap >= PAST_CAP_READS) { skip(`limit of ${PAST_CAP_READS} items read past the triage cap reached`); continue; }
+      const holding = await held(key);
+      if (holding) { await skip(holding); continue; }
+      if (free <= 0) { await skip(`work-in-progress cap of ${wip} reached`); continue; }
+      const ineligible = await inspect(key);
+      if (ineligible) { await skip(ineligible); continue; }
       found = await probe(item);
-      if (found.plan && !found.recorded) holding = await held(found.target);
-    } catch (err) {
-      skip(`could not be read: ${err.message.slice(0, 2500)}`);
-      continue;
-    }
-    if (found.plan) {
-      if (found.recorded) { skip(`plan ${found.plan} was dispatched already, ${found.recorded}`); continue; }
-      if (holding) { skip(`its plan's ${found.target}: ${holding}`); continue; }
+      if (found.none) { await skip('no plan'); continue; }
+      if (!found.plan) { await skip(`plan refused: ${found.refused}`); continue; }
+      if (found.recorded) { await skip(`plan ${found.plan} was dispatched already, ${found.recorded}`); continue; }
+      const targetHeld = await held(found.target);
+      if (targetHeld) { await skip(`its plan's ${found.target}: ${targetHeld}`); continue; }
       // A tracker issue's plan may point at another repository: the same
-      // list bounds where a run goes, not only which items are read.
-      if (!isFollowed(found.target)) { skip(`its plan's ${found.target}: not a followed repository`); continue; }
+      // list bounds where a run goes, not only which items are read. Checked
+      // before the target is read, so nothing is asked of one not followed.
+      if (!isFollowed(found.target)) { await skip(`its plan's ${found.target}: not a followed repository`); continue; }
       // A triage or research plan, which a triage run could write, would start
-      // a run that writes another plan: such chains are a person's to start.
-      if (found.kind !== 'implement') { skip(`plan ${found.plan} is for ${found.kind}, which is dispatched by hand`); continue; }
-      steps.push({ item: name, action: 'dispatch', reason: `plan ${found.plan}` });
-      busy.set(found.target, 'started in this pass');
-    } else if (found.none) {
-      // Once per item in the window: a triage run that wrote no plan, or one
-      // agent-board refuses, is for a person to look at, not to repeat on
-      // every pass.
-      const before = triaged.get(key);
-      if (before) { skip(`triaged already with no plan, ${before}`); continue; }
-      if (triages <= 0) { pastCap++; skip(`triage cap of ${triagePerPass} a pass reached`); continue; }
-      triages--;
-      steps.push({ item: name, action: 'triage', reason: 'no plan' });
-    } else {
-      skip(`plan refused: ${found.refused}`);
+      // a run that writes another plan, and the bot that posts a run's
+      // comments is an accepted planner: such chains are a person's to start.
+      // Review and fix runs are the pull request events' and the poll's.
+      if (found.kind !== 'implement') { await skip(`plan ${found.plan} is for ${found.kind}, which is dispatched by hand`); continue; }
+      if (found.target !== key) {
+        const targetIneligible = statusRepository && found.target === keyOf(statusRepository, statusIssue)
+          ? 'coordinator status issue' : await inspect(found.target);
+        if (targetIneligible) { await skip(`its plan's ${found.target}: ${targetIneligible}`); continue; }
+      }
+    } catch (err) {
+      await skip(`could not be read: ${err.message.slice(0, 2500)}`);
       continue;
     }
+    await push({ item: name, action: 'dispatch', reason: `plan ${found.plan}` });
+    busy.set(found.target, 'started in this pass');
     busy.set(key, 'started in this pass');
     free--;
   }
   return steps;
-}
-
-// What the triage run is asked for after profiles/triage.md: its comment is
-// posted as the bot, which agent-board counts as the planner, so the plan
-// in it is what the next pass dispatches, within dispatch.toml's bounds.
-function triageTask(key, url, planDocs) {
-  return [
-    `Triage ${url} (${key}) so that it can be scheduled.`,
-    `If it is ready to implement, end your comment with a job plan for the one implement run that would resolve it, in the format of ${planDocs}: a fenced block, info string \`agent-board-plan\`, holding one JSON object with exactly the fields schema ("agent-board/job-plan/v1"), repo, item, kind ("implement"), runner ("hosted"), an optional pool, and brief (the task for that run, at most 16,000 characters). Its repo and item are this issue's. If the work is in another repository, as for an issue that points to an upstream one, write no plan: that is the operator's to start. Write one plan at most, and none if the issue is not ready; then say what it needs instead.`,
-  ].join('\n\n');
 }
 
 // One agent-board call. Its stdin is closed, so nothing it might ask waits
@@ -354,6 +327,40 @@ async function probePlan(bin, config, token, item) {
   return { ...found, recorded: findRecord(comments, [config.operator, config.planner], found.commentId) };
 }
 
+// A child relationship is not permission to implement an umbrella or a
+// completed task. Read GitHub's closing references, not PR body text. One
+// bounded query per issue; incomplete data fails closed rather than hiding
+// a merged closer beyond the first page.
+const ELIGIBILITY_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { issue(number: $number) {
+    state
+    labels(first: 100) { nodes { name } pageInfo { hasNextPage } }
+    subIssues(first: 1) { totalCount }
+    closedByPullRequestsReferences(first: 100, includeClosedPrs: true) {
+      nodes { merged url } pageInfo { hasNextPage }
+    }
+  } }
+}`;
+
+async function eligibility(post, key) {
+  const [repository, number] = key.split('#');
+  const [owner, name] = repository.split('/');
+  const out = await post({ query: ELIGIBILITY_QUERY, variables: { owner, name, number: Number(number) } });
+  const issue = out.data?.repository?.issue;
+  if (out.errors?.length || !issue || !issue.labels?.nodes || !issue.subIssues
+      || !issue.closedByPullRequestsReferences?.nodes) throw new Error('issue eligibility not readable');
+  const refs = issue.closedByPullRequestsReferences;
+  if (issue.labels.pageInfo?.hasNextPage !== false || refs.pageInfo?.hasNextPage !== false) {
+    throw new Error('issue eligibility exceeds 100 labels or closing references');
+  }
+  if (issue.state !== 'OPEN') return 'not open';
+  if (issue.subIssues.totalCount > 0) return 'umbrella: has sub-issues';
+  const label = issue.labels.nodes.find(l => ['epic', 'question'].includes(l.name.toLowerCase()));
+  if (label) return `labelled ${label.name.toLowerCase()}`;
+  const merged = refs.nodes.find(p => p.merged);
+  return merged ? `probably done; close it? ${merged.url}` : null;
+}
+
 async function main(argv) {
   const unknown = argv.filter(a => a !== '--apply');
   if (unknown.length) throw new Error(`usage: schedule.cjs [--apply] (unknown: ${unknown.join(' ')})`);
@@ -395,54 +402,39 @@ async function main(argv) {
   };
   log(`${items.length} open sub-issue(s) of ${live} live epic(s)${unreadNote}, taken ${order(config.priorityField)};`
     + ` ${state.inFlight} of ${config.wip} run(s) in flight;`
-    + ` at most ${config.triagePerPass} triage run(s) a pass; items of ${config.followed.size} followed repositories only`);
+    + ` accepted implement plans only; items of ${config.followed.size} followed repositories only`);
 
   const byName = new Map(items.map(i => [`${i.repository}#${i.number}`, i]));
   let errors = 0;
-  const steps = await decide(items, state, config, item => probePlan(bin, config, token, item), pullFor);
-  for (const step of steps) {
-    const item = byName.get(step.item);
-    // Each line names the epic its item was taken from.
-    const name = `${step.item} (epic ${item.epic})`;
-    if (step.action === 'skip' || !apply) {
-      log(`${name} ${step.action}: ${step.reason}`);
-      continue;
-    }
-    try {
-      if (step.action === 'dispatch') {
+  // Each step is taken as it is decided, so a pass the job's timeout stops
+  // has still started what it got to, the items ranked first.
+  await decide(items, state, config, item => probePlan(bin, config, token, item), pullFor,
+    key => eligibility(body => request(token, 'POST', '/graphql', body), key), async step => {
+      const item = byName.get(step.item);
+      // Each line names the epic its item was taken from.
+      const name = `${step.item} (epic ${item.epic})`;
+      if (step.action === 'skip' || !apply) {
+        log(`${name} ${step.action}: ${step.reason}`);
+        return;
+      }
+      try {
         // agent-board records the plan on the issue before it sends, and
         // refuses one recorded already, so a plan starts one run however
         // many passes see it.
         const { stdout } = agentBoard(bin, ['dispatch', item.url, '--apply', ...dispatchArgs(config)],
           { env: { GH_TOKEN: token, DISPATCH_TOKEN: dispatchToken }, timeoutMs: config.timeoutMs });
         log(`${name} dispatch: ${step.reason}; ${stdout.trim().split('\n').join(', ')}`);
-      } else {
-        // The run's details, as poll.cjs asks for them, so that the run is
-        // named here; where the API does not know them, asked again without.
-        const path = `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`;
-        const body = {
-          ref: 'main',
-          inputs: { kind: 'triage', repo: item.repository, item: String(item.number),
-            task: triageTask(step.item, item.url, config.planDocs), pool: poolForKind('triage') },
-        };
-        const run = await request(dispatchToken, 'POST', path, { ...body, return_run_details: true })
-          .catch(err => {
-            if (!/HTTP 422/.test(err.message)) throw err;
-            return request(dispatchToken, 'POST', path, body);
-          });
-        log(`${name} triage: started ${run?.html_url ?? ''}`.trimEnd());
+      } catch (err) {
+        const last = String(err.stderr ?? '').trim().split('\n').at(-1);
+        if (RECORDED_RE.test(last)) { log(`${name} skip: ${last}`); return; }
+        errors++;
+        log(`${name} ${step.action} error: ${err.message}`);
       }
-    } catch (err) {
-      const last = String(err.stderr ?? '').trim().split('\n').at(-1);
-      if (RECORDED_RE.test(last)) { log(`${name} skip: ${last}`); continue; }
-      errors++;
-      log(`${name} ${step.action} error: ${err.message}`);
-    }
-  }
+    });
   if (errors || unread || note) throw new Error(`${errors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { agentBoard, candidates, decide, findRecord, loadConfig, main, openPullRefs, probePlan, rank, readDryRun, readRefusal, readRuns, triageTask };
+module.exports = { agentBoard, candidates, decide, eligibility, findRecord, loadConfig, main, openPullRefs, probePlan, rank, readDryRun, readRefusal, readRuns };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });

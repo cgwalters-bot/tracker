@@ -5,17 +5,23 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { agentBoard, candidates, decide, findRecord, loadConfig, main, openPullRefs, probePlan, readDryRun, readRefusal, readRuns, triageTask } = require('./schedule.cjs');
+const { agentBoard, candidates, decide, eligibility, findRecord, loadConfig, main, openPullRefs, probePlan, readDryRun, readRefusal, readRuns } = require('./schedule.cjs');
 const { census } = require('./epics.cjs');
 
 const BOT = 'cgwalters-bot';
 const issue = (number, extra = {}) => ({ repository: 'o/r', number, content_kind: 'issue', url: `https://github.com/o/r/issues/${number}`, ...extra });
 const none = () => ({ none: true });
-const empty = { inFlight: 0, busy: new Map(), triaged: new Map() };
+const empty = { inFlight: 0, busy: new Map() };
 const noPulls = () => undefined;
-// The followed repositories, and no cap on triage, unless a test says.
-const caps = (wip, extra = {}) => ({ wip, triagePerPass: 10, followed: new Set(['o/r', 'o/p', 'up/stream']), ...extra });
+// The followed repositories, unless a test says.
+const caps = (wip, extra = {}) => ({ wip, followed: new Set(['o/r', 'o/p', 'up/stream']), ...extra });
 const plan = (target, extra = {}) => ({ plan: `https://github.com/o/r/issues/1#issuecomment-${target.length}`, target, kind: 'implement', ...extra });
+// Each item's own plan, for its own issue.
+const own = item => plan(`${item.repository}#${item.number}`.toLowerCase());
+// What the eligibility query answers of an issue fit to be worked on.
+const metadata = (extra = {}) => ({ state: 'OPEN', labels: { nodes: [], pageInfo: { hasNextPage: false } },
+  subIssues: { totalCount: 0 }, closedByPullRequestsReferences: { nodes: [], pageInfo: { hasNextPage: false } }, ...extra });
+const post = data => async () => ({ data: { repository: { issue: data } } });
 
 test('the repository config parses and names a board and a cap', () => {
   const config = loadConfig(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
@@ -40,19 +46,17 @@ test('a config without a schedule, or with a bad cap, is refused', () => {
   }
 });
 
-test('the scheduled repositories are listed, priority comes from a named field, and triage is capped', () => {
+test('the scheduled repositories are listed, and priority comes from a named field', () => {
   const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
   const schedule = { owner: 'o', project: 1, wip: 4, repositories: ['O/R'] };
   const parse = extra => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, ...extra } }));
   const config = parse({});
   assert.deepEqual([...config.followed], ['o/r']);
   assert.equal(config.priorityField, 'Priority');
-  assert.equal(config.triagePerPass, 1);
-  assert.equal(parse({ priorityField: 'Urgency', triagePerPass: 0 }).priorityField, 'Urgency');
+  assert.equal(parse({ priorityField: 'Urgency' }).priorityField, 'Urgency');
   // No list is no default: every repository would be scheduled otherwise.
   assert.throws(() => parse({ repositories: undefined }), /repositories/);
   for (const repositories of ['o/r', ['o/*'], ['o'], [1]]) assert.throws(() => parse({ repositories }), /repositories/);
-  for (const triagePerPass of [-1, 11, '1', 0.5]) assert.throws(() => parse({ triagePerPass }), /triagePerPass/);
   for (const priorityField of ['', 'a"b', 3]) assert.throws(() => parse({ priorityField }), /priorityField/);
 });
 
@@ -63,7 +67,13 @@ test("the repository's config schedules only its own forge's repositories", () =
   const bounds = fs.readFileSync(path.join(__dirname, '..', 'agentic-job', 'dispatch.toml'), 'utf8');
   const allowed = JSON.parse(/^repos = (\[.*\])$/m.exec(bounds.split(/^\[/m)[0])[1]).map(r => r.toLowerCase());
   for (const repo of config.followed) assert.ok(allowed.includes(repo), repo);
-  assert.equal(config.triagePerPass, 1);
+});
+
+test('the repository config names its status issue, which is never scheduled', () => {
+  const raw = JSON.parse(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
+  const config = loadConfig(JSON.stringify(raw));
+  assert.equal(config.statusRepository, raw.epics.repository);
+  assert.equal(config.statusIssue, raw.coordinator.statusIssue);
 });
 
 test('runs in flight hold a slot each, and their item', () => {
@@ -76,7 +86,6 @@ test('runs in flight hold a slot each, and their item', () => {
   ]);
   assert.equal(s.inFlight, 3);
   assert.deepEqual([...s.busy.keys()], ['o/r#1', 'o/r#9']);
-  assert.deepEqual([...s.triaged], [['o/r#3', 'run3']]);
   // A title that only starts like an item is not one.
   assert.equal(readRuns([{ status: 'queued', display_title: 'implement o/r#12x' }]).busy.size, 0);
 });
@@ -91,9 +100,10 @@ test("only the bot's pull requests hold an item, by their Refs line", () => {
   assert.deepEqual([...refs], [['o/r#5', 'pr1']]);
 });
 
-test('an item with a plan is dispatched, one without is triaged', async () => {
+test('an item with a plan is dispatched, one without is skipped', async () => {
   const probe = item => (item.number === 1 ? plan('o/r#1') : { none: true });
-  assert.deepEqual((await decide([issue(1), issue(2)], empty, caps(4), probe, noPulls)).map(s => s.action), ['dispatch', 'triage']);
+  assert.deepEqual((await decide([issue(1), issue(2)], empty, caps(4), probe, noPulls)).map(s => [s.action, s.reason]),
+    [['dispatch', 'plan https://github.com/o/r/issues/1#issuecomment-5'], ['skip', 'no plan']]);
 });
 
 test('an item never gets a second run while one is in flight or a pull request is open', async () => {
@@ -131,16 +141,16 @@ test('one pass starts one run for a target, however many items lead to it', asyn
     ['up/stream#7', 'skip', 'a run is in flight, started in this pass'],
   ]);
   // The board item a step started for is held too.
-  const again = await decide([issue(1), issue(1)], empty, caps(4), none, noPulls);
-  assert.deepEqual(again.map(s => s.action), ['triage', 'skip']);
+  const again = await decide([issue(1), issue(1)], empty, caps(4), own, noPulls);
+  assert.deepEqual(again.map(s => s.action), ['dispatch', 'skip']);
 });
 
 test('an item that cannot be read is skipped and the others go on', async () => {
   const probe = item => { if (item.number === 1) throw new Error('HTTP 502'); return { none: true }; };
   const steps = await decide([issue(1), issue(2)], empty, caps(4), probe, noPulls);
-  assert.deepEqual(steps.map(s => [s.action, s.reason]), [['skip', 'could not be read: HTTP 502'], ['triage', 'no plan']]);
+  assert.deepEqual(steps.map(s => [s.action, s.reason]), [['skip', 'could not be read: HTTP 502'], ['skip', 'no plan']]);
   const pullFor = key => { if (key === 'o/r#1') throw new Error('HTTP 404'); };
-  assert.deepEqual((await decide([issue(1), issue(2)], empty, caps(4), none, pullFor)).map(s => s.action), ['skip', 'triage']);
+  assert.deepEqual((await decide([issue(1), issue(2)], empty, caps(4), own, pullFor)).map(s => s.action), ['skip', 'dispatch']);
 });
 
 test('names match whatever their case', async () => {
@@ -159,8 +169,8 @@ test('a plan recorded already, by this job or by hand, is not dispatched again',
 
 test('the cap counts runs already going and those this pass starts', async () => {
   const items = [issue(1), issue(2), issue(3), issue(4)];
-  const steps = await decide(items, { ...empty, inFlight: 2 }, caps(4), none, noPulls);
-  assert.deepEqual(steps.map(s => s.action), ['triage', 'triage', 'skip', 'skip']);
+  const steps = await decide(items, { ...empty, inFlight: 2 }, caps(4), own, noPulls);
+  assert.deepEqual(steps.map(s => s.action), ['dispatch', 'dispatch', 'skip', 'skip']);
   assert.match(steps[3].reason, /cap of 4/);
   // Over the cap already (fix runs are counted too): nothing starts, and no
   // comments are read.
@@ -170,19 +180,24 @@ test('the cap counts runs already going and those this pass starts', async () =>
   assert.deepEqual((await decide(items, empty, caps(0), probe, noPulls)).map(s => s.action), ['skip', 'skip', 'skip', 'skip']);
 });
 
-test('only implement plans are dispatched by the scheduler', async () => {
-  const steps = await decide([issue(1)], empty, caps(4), () => plan('o/r#1', { kind: 'triage' }), noPulls);
-  assert.deepEqual(steps.map(s => s.action), ['skip']);
-  assert.match(steps[0].reason, /is for triage, which is dispatched by hand/);
-});
+// The bot posts every run's comments and is an accepted planner, so a plan
+// of any other kind, which a run could write, would let runs start runs.
+for (const kind of ['triage', 'research', 'review', 'fix']) {
+  test(`a ${kind} plan is left to be dispatched by hand, and takes no slot`, async () => {
+    const steps = await decide([issue(1), issue(2)], empty, caps(1),
+      item => plan(`o/r#${item.number}`, { kind: item.number === 1 ? kind : 'implement' }), noPulls);
+    assert.deepEqual(steps.map(s => s.action), ['skip', 'dispatch']);
+    assert.match(steps[0].reason, new RegExp(`is for ${kind}, which is dispatched by hand`));
+  });
+}
 
 test('slots go to the higher priority first, then to the oldest', async () => {
   const items = [issue(1), issue(2, { priority: 'P2' }), issue(3, { priority: 'P0', created: '2026-10-02T00:00:00Z' }),
     issue(4, { priority: 'P0', created: '2026-10-01T00:00:00Z' }), issue(5, { priority: 'High' }),
     issue(6, { priority: 'P0' }), issue(7, { priority: 'P10' })];
-  const steps = await decide(items, empty, caps(1), none, noPulls);
+  const steps = await decide(items, empty, caps(1), own, noPulls);
   // Unset or unknown values go last, as do unknown ages among one priority.
-  assert.deepEqual(steps.map(s => [s.item, s.action]), [['o/r#4', 'triage'], ['o/r#3', 'skip'], ['o/r#6', 'skip'],
+  assert.deepEqual(steps.map(s => [s.item, s.action]), [['o/r#4', 'dispatch'], ['o/r#3', 'skip'], ['o/r#6', 'skip'],
     ['o/r#2', 'skip'], ['o/r#7', 'skip'], ['o/r#1', 'skip'], ['o/r#5', 'skip']]);
 });
 
@@ -193,49 +208,17 @@ test("an item outside the followed repositories, or a plan that leads out of the
   assert.deepEqual(steps.map(s => [s.item, s.action, s.reason]), [
     ['Upstream/Big#1', 'skip', 'not a followed repository'],
     ['o/r#2', 'skip', "its plan's elsewhere/x#9: not a followed repository"],
-    ['o/r#3', 'triage', 'no plan'],
+    ['o/r#3', 'skip', 'no plan'],
   ]);
-});
-
-test('triage runs are capped a pass, plans are not', async () => {
-  const items = [issue(1), issue(2), issue(3), issue(4)];
-  const probe = item => (item.number === 3 ? plan('o/r#3') : { none: true });
-  const steps = await decide(items, empty, caps(4, { triagePerPass: 1 }), probe, noPulls);
-  assert.deepEqual(steps.map(s => [s.item, s.action, s.reason]), [
-    ['o/r#1', 'triage', 'no plan'],
-    ['o/r#2', 'skip', 'triage cap of 1 a pass reached'],
-    ['o/r#3', 'dispatch', 'plan https://github.com/o/r/issues/1#issuecomment-5'],
-    ['o/r#4', 'skip', 'triage cap of 1 a pass reached'],
-  ]);
-  assert.deepEqual((await decide(items, empty, caps(4, { triagePerPass: 0 }), none, noPulls)).map(s => s.action),
-    ['skip', 'skip', 'skip', 'skip']);
-});
-
-test('a pass reads a bounded number of items, the slots it leaves free notwithstanding', async () => {
-  const items = Array.from({ length: 30 }, (_, i) => issue(i + 1));
-  let probed = 0;
-  const steps = await decide(items, empty, caps(4, { triagePerPass: 1 }), () => { probed++; return { none: true }; }, noPulls);
-  assert.equal(probed, 11);
-  assert.equal(steps.filter(s => s.reason === 'triage cap of 1 a pass reached').length, 10);
-  assert.equal(steps.filter(s => s.reason === 'limit of 10 items read past the triage cap reached').length, 19);
-  // Items stuck as triaged already, recorded or refused do not use the
-  // limit up: a plan below them is still dispatched.
-  const stuck = Array.from({ length: 12 }, (_, i) => issue(i + 1));
-  const triaged = new Map(stuck.map(i => [`o/r#${i.number}`, 'run']));
-  const below = await decide([...stuck, issue(40), issue(41)], { ...empty, triaged }, caps(4, { triagePerPass: 0 }),
-    item => (item.number === 41 ? plan('o/r#41') : item.number % 3 ? { none: true } : { refused: 'no' }), noPulls);
-  assert.deepEqual(below.slice(-2).map(s => s.action), ['skip', 'dispatch']);
-  // An item triaged already and over the cap reads as triaged already.
-  const again = await decide([issue(1), issue(2)], { ...empty, triaged: new Map([['o/r#2', 'run']]) }, caps(4, { triagePerPass: 1 }), none, noPulls);
-  assert.deepEqual(again.map(s => s.reason), ['no plan', 'triaged already with no plan, run']);
 });
 
 // The board as the first preview read it (tracker run 38590120618): 165
 // Todo items, upstream ones among them, one run in flight and no plans.
 // That pass would have triaged three tracker items in board order and gone
 // on to an upstream one. Its 157 issues are taken here as the sub-issues of
-// one live epic, as if the operator had put the backlog under one.
-test('the first preview, again: one triage, of the oldest P0 item of a followed repository', async () => {
+// one live epic, as if the operator had put the backlog under one, each
+// with a plan for itself.
+test('the first preview, again: the slots go to the oldest P0 items of followed repositories', async () => {
   const nodes = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'board-preview.json'), 'utf8'));
   const config = loadConfig(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
   const subs = nodes.filter(n => n.content.__typename === 'Issue').map(({ content: c, priority }) => ({
@@ -243,31 +226,49 @@ test('the first preview, again: one triage, of the oldest P0 item of a followed 
   }));
   const { items } = candidates([{ number: 1, live: true, priority: 'P0', subs }], 'o/t');
   assert.equal(items.length, 157);
-  const steps = await decide(items, { ...empty, inFlight: 1 }, config, none, noPulls);
+  const steps = await decide(items, { ...empty, inFlight: 1 }, config, own, noPulls);
   assert.equal(steps.length, 157);
   const started = steps.filter(s => s.action !== 'skip');
   const followed = item => config.followed.has(item.repository.toLowerCase());
   const first = items.filter(i => followed(i) && i.priority === 'P0')
     .sort((a, b) => Date.parse(a.created) - Date.parse(b.created))[0];
-  assert.deepEqual(started, [{ item: `${first.repository}#${first.number}`, action: 'triage', reason: 'no plan' }]);
+  assert.equal(started.length, config.wip - 1);
+  assert.deepEqual(started[0], { item: `${first.repository}#${first.number}`, action: 'dispatch', reason: `plan ${own(first).plan}` });
   for (const name of ['bootc-dev/bootc#2559', 'cgwalters-bot/cgwalters-bot#11']) {
     assert.equal(steps.find(s => s.item === name).reason, 'not a followed repository');
   }
   const outside = items.filter(i => !followed(i)).length;
   assert.ok(outside > 0);
   assert.equal(steps.filter(s => s.reason === 'not a followed repository').length, outside);
-  // Ten more are read and wait for the triage cap; the rest are not read.
-  assert.equal(steps.filter(s => s.reason === 'triage cap of 1 a pass reached').length, 10);
-  assert.equal(steps.filter(s => s.reason === 'limit of 10 items read past the triage cap reached').length,
-    items.filter(followed).length - 11);
+  // Once the slots are taken, the rest are not read.
+  assert.equal(steps.filter(s => /^work-in-progress cap/.test(s.reason)).length,
+    items.filter(followed).length - started.length);
 });
 
-test('a refused plan or an earlier triage takes no slot', async () => {
-  const steps = await decide([issue(1), issue(2), issue(3)], { ...empty, triaged: new Map([['o/r#2', 'run']]) }, caps(1),
+test('items without a plan, however many, do not keep a later plan from its slot', async () => {
+  const items = Array.from({ length: 30 }, (_, i) => issue(i + 1));
+  let probed = 0;
+  const steps = await decide(items, empty, caps(4), item => { probed++; return item.number === 30 ? plan('o/r#30') : { none: true }; }, noPulls);
+  assert.equal(probed, 30);
+  assert.ok(steps.slice(0, 29).every(s => s.action === 'skip' && s.reason === 'no plan'));
+  assert.equal(steps[29].action, 'dispatch');
+});
+
+test('each step is acted on as it is decided, before the next item is read', async () => {
+  const events = [];
+  await decide([issue(1), issue(2), issue(3)], empty, caps(4), item => {
+    events.push(`probe ${item.number}`);
+    return item.number === 2 ? { none: true } : own(item);
+  }, noPulls, async () => null, async step => { events.push(`${step.action} ${step.item}`); });
+  assert.deepEqual(events, ['probe 1', 'dispatch o/r#1', 'probe 2', 'skip o/r#2', 'probe 3', 'dispatch o/r#3']);
+});
+
+test('a refused plan or no plan takes no slot', async () => {
+  const steps = await decide([issue(1), issue(2), issue(3)], empty, caps(1),
     item => (item.number === 1 ? { refused: 'malformed' } : item.number === 2 ? { none: true } : plan('o/r#3')), noPulls);
   assert.deepEqual(steps.map(s => [s.action, s.reason]), [
     ['skip', 'plan refused: malformed'],
-    ['skip', 'triaged already with no plan, run'],
+    ['skip', 'no plan'],
     ['dispatch', 'plan https://github.com/o/r/issues/1#issuecomment-5'],
   ]);
 });
@@ -300,15 +301,6 @@ test('a plan edited after its record is a new plan', () => {
   const rec = { user: { login: BOT }, body: '<!-- agent-board-dispatch: 42@2026-10-14T10:00:00Z -->', html_url: 'rec', created_at: '2026-10-14T10:00:05Z' };
   assert.equal(findRecord([planAt('2026-10-14T10:00:00Z'), rec], writers, '42'), 'rec');
   assert.equal(findRecord([planAt('2026-10-14T11:00:00Z'), rec], writers, '42'), undefined);
-});
-
-test('the triage task asks for one implement plan in the job-plan format', () => {
-  const task = triageTask('o/r#1', 'https://github.com/o/r/issues/1', 'https://github.com/o/agent-board/blob/main/docs/job-plans.md');
-  assert.match(task, /o\/agent-board\/blob\/main\/docs\/job-plans.md/);
-  assert.match(task, /agent-board-plan/);
-  assert.match(task, /agent-board\/job-plan\/v1/);
-  assert.match(task, /"implement"/);
-  assert.match(task, /work is in another repository.*write no plan/);
 });
 
 // Stub agent-board binaries, made where each test runs, not in the tree.
@@ -362,7 +354,7 @@ test("a dry run's refusal is an answer; a hang or output not understood skips th
     item => item.number === 7 ? probePlan(HANGS, { ...CONFIG, timeoutMs: 1000 }, TOKEN, item) : none(), noPulls);
   assert.equal(steps[0].action, 'skip');
   assert.match(steps[0].reason, /^could not be read: agent-board dispatch \S+ --dry-run .*: timed out after 1 s; /);
-  assert.deepEqual(steps[1], { item: 'o/r#8', action: 'triage', reason: 'no plan' });
+  assert.deepEqual(steps[1], { item: 'o/r#8', action: 'skip', reason: 'no plan' });
 });
 
 // A census over the API as testdata/epics-schedule.json answers it: #1 and
@@ -389,11 +381,11 @@ test("the candidates are the open sub-issues of the operator's epics, by epic pr
   const epicOf = new Map(items.map(i => [`${i.repository}#${i.number}`, i.epic]));
   assert.deepEqual(steps.map(s => [s.item, epicOf.get(s.item), s.action, s.reason]), [
     // #3 is P0: its P2 items oldest first, then the one with no Priority.
-    ['o/r#12', 'o/t#3', 'triage', 'no plan'],
-    ['o/r#30', 'o/t#3', 'triage', 'no plan'],
-    ['o/r#31', 'o/t#3', 'triage', 'no plan'],
+    ['o/r#12', 'o/t#3', 'skip', 'no plan'],
+    ['o/r#30', 'o/t#3', 'skip', 'no plan'],
+    ['o/r#31', 'o/t#3', 'skip', 'no plan'],
     // #1 is P1: its P0 sub-issue comes after all of #3's.
-    ['o/r#10', 'o/t#1', 'triage', 'no plan'],
+    ['o/r#10', 'o/t#1', 'skip', 'no plan'],
     ['up/stream#5', 'o/t#1', 'skip', 'not a followed repository'],
   ]);
 });
@@ -413,7 +405,7 @@ const REPO_CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, 'agent-board
 const EPICS = REPO_CONFIG.epics.repository;
 const epicIssue = n => ({ number: n, state: 'open', updated_at: 't', html_url: `https://github.com/${EPICS}/issues/${n}`, repository_url: `https://api.github.com/repos/${EPICS}` });
 const labelled = login => [{ event: 'labeled', actor: { login }, label: { name: 'epic' } }];
-async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing') } = {}) {
+async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing'), issues = {} } = {}) {
   const calls = [];
   const out = [];
   const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD };
@@ -422,9 +414,12 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
     calls.push(`${init?.method ?? 'GET'} ${p}`);
     let body;
     if (p === '/graphql') {
-      body = JSON.parse(init.body).query.includes('projectV2')
+      const { query, variables } = JSON.parse(init.body);
+      body = query.includes('projectV2')
         ? board === null ? { errors: [{ message: 'Could not resolve to a ProjectV2' }] } : { data: { repositoryOwner: { projectV2: { items: { nodes: board, pageInfo: { hasNextPage: false } } } } } }
-        : { data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } };
+        : query.includes('closedByPullRequestsReferences')
+          ? { data: { repository: { issue: issues[variables.number] ?? metadata() } } }
+          : { data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } };
     } else if (p in rest) {
       body = rest[p];
     } else {
@@ -474,7 +469,23 @@ test('each line of a pass names the epic its item came from', async () => {
   assert.equal(error, undefined);
   assert.equal(out.length, 2);
   assert.match(out[0], /^\[dry-run\] 1 open sub-issue\(s\) of 1 live epic\(s\), taken by their epic's Priority/);
-  assert.equal(out[1], `[dry-run] ${EPICS}#40 (epic ${EPICS}#1) triage: no plan`);
+  assert.equal(out[1], `[dry-run] ${EPICS}#40 (epic ${EPICS}#1) skip: no plan`);
+});
+
+test('with --apply, items with no plan or a merged closer start nothing', async () => {
+  const NO_PLAN_BIN = stub('no-plan-apply', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
+  const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'merged-pr' }], pageInfo: { hasNextPage: false } } });
+  const { out, calls, error } = await runMain(['--apply'], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(40), epicIssue(41)],
+    [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
+    [`/repos/${EPICS}/pulls?state=open`]: [],
+  }, { bin: NO_PLAN_BIN, issues: { 41: merged } });
+  assert.equal(error, undefined);
+  assert.ok(out.some(line => /#40 .*skip: no plan$/.test(line)));
+  assert.ok(out.some(line => /#41 .*skip: probably done; close it\? merged-pr$/.test(line)));
+  assert.ok(calls.every(c => !c.startsWith('POST ') || c === 'POST /graphql'));
 });
 
 test('an epic the census cannot read fails the pass, and is not reported as no live epics', async () => {
@@ -505,4 +516,59 @@ test('epics past the census bound fail a pass that found no live one', async () 
   const { out, error } = await runMain(['--apply'], rest);
   assert.match(out[0], /^no live epics; 1 more epic\(s\) not read/);
   assert.match(error?.message ?? '', /0 epic\(s\) could not be read, 1 more epic\(s\) not read/);
+});
+
+// What the eligibility query says, here and through decide.
+for (const [name, data, reason] of [
+  ['an umbrella', metadata({ subIssues: { totalCount: 1 } }), /has sub-issues/],
+  ...['epic', 'question'].map(label => [`labelled ${label}`, metadata({ labels: { nodes: [{ name: label.toUpperCase() }], pageInfo: { hasNextPage: false } } }), new RegExp(`labelled ${label}`)]),
+  ['done by a merged pull request', metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'merged-pr' }], pageInfo: { hasNextPage: false } } }), /probably done; close it\? merged-pr/],
+  ['closed', metadata({ state: 'CLOSED' }), /not open/],
+]) {
+  test(`an issue ${name} is skipped before its plan is read, and takes no slot`, async () => {
+    const steps = await decide([issue(1), issue(2)], empty, caps(1), item => {
+      assert.equal(item.number, 2);
+      return plan('o/r#2');
+    }, noPulls, key => eligibility(post(key.endsWith('#1') ? data : metadata()), key));
+    assert.equal(steps[0].action, 'skip');
+    assert.match(steps[0].reason, reason);
+    assert.equal(steps[1].action, 'dispatch');
+  });
+}
+
+test('the status issue is skipped whatever the case of its name, and only in its repository', async () => {
+  const steps = await decide([issue(90, { repository: 'O/R' }), issue(90, { repository: 'o/p' })], empty,
+    caps(4, { statusRepository: 'o/r', statusIssue: 90 }), own, noPulls);
+  assert.deepEqual(steps.map(s => [s.action, s.reason]), [['skip', 'coordinator status issue'], ['dispatch', 'plan https://github.com/o/r/issues/1#issuecomment-6']]);
+});
+
+test("a plan's target gets the same checks, and one not followed is not read", async () => {
+  const inspected = [];
+  const inspect = key => { inspected.push(key); return key === 'o/p#2' ? 'probably done; close it? pr' : null; };
+  for (const [target, reason] of [['o/r#90', /: coordinator status issue$/], ['o/p#2', /: probably done/], ['else/where#3', /: not a followed repository$/]]) {
+    const [step] = await decide([issue(1)], empty, caps(4, { statusRepository: 'o/r', statusIssue: 90 }), () => plan(target), noPulls, inspect);
+    assert.equal(step.action, 'skip');
+    assert.match(step.reason, reason);
+  }
+  assert.deepEqual(inspected, ['o/r#1', 'o/r#1', 'o/p#2', 'o/r#1']);
+});
+
+test('open or unmerged closing references do not mark an issue done', async () => {
+  const data = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: false, url: 'open' }], pageInfo: { hasNextPage: false } } });
+  assert.equal(await eligibility(post(data), 'o/r#1'), null);
+});
+
+for (const data of [null, {}, metadata({ labels: { nodes: [], pageInfo: { hasNextPage: true } } }),
+  metadata({ closedByPullRequestsReferences: { nodes: [], pageInfo: { hasNextPage: true } } })]) {
+  test(`metadata not read in full fails closed: ${JSON.stringify(data)}`, async () => {
+    await assert.rejects(eligibility(post(data), 'o/r#1'), /eligibility/);
+  });
+}
+
+test('GraphQL errors fail closed, and the query names the repository and issue', async () => {
+  await assert.rejects(eligibility(async ({ query, variables }) => {
+    assert.deepEqual(variables, { owner: 'o', name: 'r', number: 1 });
+    assert.match(query, /closedByPullRequestsReferences\(first: 100, includeClosedPrs: true\)/);
+    return { data: { repository: { issue: metadata() } }, errors: [{ message: 'denied' }] };
+  }, 'o/r#1'), /not readable/);
 });

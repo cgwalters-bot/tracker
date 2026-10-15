@@ -187,13 +187,20 @@ epics` and starts nothing. Each candidate in a repository
 `schedule.repositories` in `.github/poll/agent-board.json` lists gets at most
 one step: `agent-board dispatch --apply` where it has an accepted
 implement
-[job plan](https://github.com/cgwalters-forge/agent-board/blob/main/docs/job-plans.md),
-else one `triage` run of `dispatch.yml` asked to write one. An item is skipped
+[job plan](https://github.com/cgwalters-forge/agent-board/blob/main/docs/job-plans.md);
+without a plan it is skipped as `no plan`, and a plan of another kind is left
+to be dispatched by hand, since the bot that posts a run's comments is an
+accepted planner and one run must not start the next. Umbrellas
+(issues with sub-issues), issues labelled `epic` or `question`, and the configured
+coordinator status issue are skipped. GitHub closing references to a merged PR
+are reported as "probably done; close it?" rather than dispatched. These checks
+also apply to a plan's target; unreadable or incomplete metadata skips the item.
+Each metadata query reads at most 100 labels and closing references.
+An item is skipped
 while a `dispatch.yml` run for it, or for the item its plan targets, is in
 flight or a pull request of the bot says `Refs` to it; while its plan has a
 dispatch record (agent-board's, by this job or by hand; a writer edits or
-replaces the plan to dispatch again); and, for triage, while a triage run for
-it is among the last hundred. Items of unlisted repositories, upstream ones
+replaces the plan to dispatch again). Items of unlisted repositories, upstream ones
 among them, are skipped as "not a followed repository", as is a plan whose
 target is in one: upstream work is the operator's to start.
 
@@ -205,10 +212,10 @@ and fails the pass, after the rest is done, so that a board the token cannot
 read is not taken for one with no live epics; so do open epics past the
 census's 50. Who added a sub-issue to a live epic is not checked. No step
 starts once `schedule.wip` runs of `dispatch.yml`, of any kind, are in
-flight; fix runs the poll job starts in the same pass count from the next. No more than
-`schedule.triagePerPass` (default 1) triage runs start in a pass, and once
-that many have, the pass stops reading items after ten more fresh ones turn
-out to have no plan, so a plan further down waits for a later pass. Each line
+flight; fix runs the poll job starts in the same pass count from the next.
+Every candidate in the bounded census can be probed, so unplanned items cannot
+starve plans farther down, and each step is taken as it is decided, so a pass
+the job's timeout stops has still started the plans ranked first. Each line
 of the run's summary is one item, the epic it was taken from, and what was,
 or would be, done.
 
