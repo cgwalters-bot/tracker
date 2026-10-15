@@ -1,0 +1,19 @@
+{
+  "pageSize": 100,
+  "requestTimeoutSeconds": 20,
+  "maxRequests": 500,
+  "collectionTimeoutSeconds": 420,
+  "pollFailures": 3,
+  "runTimeoutMinutes": 360,
+  "probeStaleMinutes": 45,
+  "epicStaleHours": 48,
+  "epicFailures": 3,
+  "approvedWaitHours": 2,
+  "decisionWaitHours": 24,
+  "eventLookbackHours": 24,
+  "pollWorkflow": "poll.yml",
+  "probeWorkflow": "broker-probe.yml",
+  "releaseRepository": "cgwalters-forge/agentic-job",
+  "wrapperRepository": "cgwalters-forge/actions",
+  "wrapperPath": ".github/workflows/cgwalters-agentic-job.yml"
+}
