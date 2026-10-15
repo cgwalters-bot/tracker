@@ -232,7 +232,9 @@ logic also forces a daily pass after a completed applied checkpoint. Pending
 plans do not get additional daily runs, so that refresh loop cannot complete
 until pinned apply and checkpointing are implemented. The coordinator fingerprints content rather than
 the epic's `updated_at`, so its own comments do not start another plan.
-Results carry a unique request marker; an obsolete run must finish before its request is replaced,
+Results carry a unique plain-text `Coordinator request: <id>` line (the
+add_comment handler strips HTML comments, so a hidden marker never arrives);
+an obsolete run must finish before its request is replaced,
 and a matching result hidden behind a newer writer's plan is not applied.
 
 Reporting uses the same triage/checkpoint mechanism on
