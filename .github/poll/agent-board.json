@@ -24,7 +24,7 @@
   "coordinator": {
     "reviewUrl": "https://cgwalters-forge.github.io/review/#",
     "planPool": "claude",
-    "statusPool": "mistral",
+    "statusPool": "openai",
     "statusIssue": 572,
     "statusHourUTC": 11
   },
