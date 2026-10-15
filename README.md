@@ -224,26 +224,25 @@ is not refused. Planning is
 comments as decisions. Its one comment carries an `agent-board-epic-plan`.
 `coordinator.planPool` in `agent-board.json` defaults to `claude`: epic
 planning must not inherit the triage toil pool.
-A later pass invokes `agent-board epic apply --dry-run`. **Epic mutations
-remain disabled even with `COORDINATOR=apply`:** the current CLI cannot pin
-the expected plan comment ID/version at its mutation boundary. Independently
-selecting the newest plan again could apply an obsolete destructive plan
-posted between reads. Enabling epic writes requires that upstream
-precondition, plus checkpointing that preserves concurrent operator changes
-to both epic intent and child scope. Until then a requested apply previews,
-reports this dependency as an error, and retains its pending checkpoint.
-Planning and status publication can be enabled independently of this missing
-capability by the existing COORDINATOR variable; there is no second control.
+A later pass invokes `agent-board epic apply --dry-run`, then `--apply` only
+with `COORDINATOR=apply`. Both calls pin the matched JSON request, comment ID
+and `updated_at`, preventing a newer or edited plan from substituting actions
+between reads. Exit 3 leaves the epic pending without counting a failure, so
+the next pass re-checks it. Success checkpoints the checked fingerprint, not
+a fresh census that might hide concurrent operator changes.
+An already-claimed response is not confirmation of completed actions: the
+coordinator retains pending and reports an error asking for claim inspection.
+Plan pinning does not guard concurrent epic-intent or child-body edits at the
+mutation boundary; that still requires upstream observation preconditions.
 Ordering is only Priority, with no Ready step.
 Epics are selected by Priority (P0 first, as the scheduler ranks them), then issue number.
 Changed intent, sub-issue text or board facts trigger planning; the decision
 logic also forces a daily pass after a completed applied checkpoint. Pending
-plans do not get additional daily runs, so that refresh loop cannot complete
-until pinned apply and checkpointing are implemented. The coordinator fingerprints content rather than
+plans do not get additional daily runs. The coordinator fingerprints content rather than
 the epic's `updated_at`, so its own comments do not start another plan.
 Results carry a unique `request` in their fenced JSON (not a plain-text line
 or hidden HTML marker). Plans use the optional `agent-board-epic-plan` field;
-the poll builds the configured agent-board branch head, which includes #75,
+the poll builds the configured agent-board branch head, which includes #77's pinned apply,
 so no release upgrade is needed. Status blocks contain exactly
 `{"request":"<id>","prose":"..."}`, with prose of 1 to 4000 characters.
 Only an exact request match from a trusted writer at or after the pending

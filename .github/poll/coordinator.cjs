@@ -402,9 +402,23 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
       if (step.action === 'apply') {
         const url = `https://github.com/${config.epicsRepository}/issues/${epic.number}`;
         const file = writeFile('epic-config.json', JSON.stringify(await applyConfig(post, config)));
+        // Pin the checked plan: a newer or edited comment must not substitute
+        // destructive actions between preview and agent-board's write claim.
+        const args = ['epic', 'apply', url, '--config', file,
+          '--expect-request', resultJSON(step.comment, 'agent-board-epic-plan').request,
+          '--expect-comment', String(step.comment.id), '--expect-updated-at', step.comment.updated_at];
         try {
-          board(['epic', 'apply', url, '--config', file, '--dry-run']);
+          board([...args, '--dry-run']);
+          if (apply) {
+            const result = board([...args, '--apply']);
+            // A retained claim can follow a partial/ambiguous failure. Exit 0
+            // then means no retry, not confirmation that all actions completed.
+            if (result?.stdout?.split(/\r?\n/).includes('Already claimed; nothing changed.')) {
+              throw new Error('epic plan already claimed; inspect agent-board claim before resetting pending');
+            }
+          }
         } catch (err) {
+          if (err.status === 3) { counts.wait++; continue; }
           const refusal = planRefusal(err, `${url}#issuecomment-${step.comment.id}`);
           if (!refusal) throw err;
           // The plan itself is bad: a failed run like one that posted none,
@@ -415,13 +429,8 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
           if (apply) await save(get, config, epic.number, old, { ...old.state, pending: null, failures: (old.state.failures ?? 0) + 1, refusal });
           continue;
         }
+        if (apply) await save(get, config, epic.number, old, { applied: step.fingerprint, at: new Date(now).toISOString(), pending: null });
         counts.apply++;
-        // The current CLI reselects the newest plan inside apply and cannot
-        // require the comment ID/version we checked. Another run can post a
-        // stale destructive plan between these reads. A nonce and a busy-run
-        // preflight reduce that race but do not close it: do not grant writes
-        // until agent-board enforces the expected plan at its write boundary.
-        if (apply) throw new Error('epic mutations disabled: agent-board epic apply needs an expected comment ID/version precondition');
         // Only one epic is planned/previewed per pass.
         break;
       }
