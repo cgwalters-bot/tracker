@@ -37,7 +37,7 @@ concurrency:
 
 jobs:
   # The board scheduler (#401): starts the run an accepted plan on an open
-  # sub-issue of a live epic proposes, or a triage run to write one, up to the cap in
+  # sub-issue of a live epic proposes, if it is an implement one, up to the cap in
   # agent-board.json's `schedule`; .github/poll/schedule.cjs and the README
   # say how. It only previews unless the repository variable BOARD_DISPATCH
   # is `apply`, so it can be compared with the runs still started by hand

@@ -66,8 +66,8 @@ and are not brought up from here.
 ## Dispatching a run
 
 The board scheduler starts the work of live epics by itself (an accepted
-job plan goes out with `agent-board dispatch`, an item without one gets a
-triage run), once `BOARD_DISPATCH` is `apply`, and the poll starts the fix
+implement plan goes out with `agent-board dispatch`; an item without one
+is skipped), once `BOARD_DISPATCH` is `apply`, and the poll starts the fix
 rounds. Anything else is started by
 hand: write the sentences particular to the task in a file and name the
 target. Run it on the default branch, which the wrapper requires. The task

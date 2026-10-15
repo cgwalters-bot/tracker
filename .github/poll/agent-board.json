@@ -34,7 +34,6 @@
     "project": 1,
     "wip": 8,
     "priorityField": "Priority",
-    "triagePerPass": 1,
     "repositories": [
       "cgwalters-forge/tracker",
       "cgwalters-forge/agentic-job",
