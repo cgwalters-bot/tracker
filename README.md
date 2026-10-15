@@ -23,8 +23,9 @@ Only comments by the `cgwalters` login count as answers. The bot reads
 everyone else's comments, its own included, as input to weigh, never as
 instructions.
 
-The bot runs from [cgwalters-bot/homegit](https://github.com/cgwalters-bot/homegit);
-`bin/bot-board question` opens these issues. The
+The bot's workflows here, or
+[agent-board](https://github.com/cgwalters-forge/agent-board)'s `ask create`
+by hand, open these issues. The
 [review app](https://github.com/cgwalters-forge/review) is a UI over the same queue.
 
 [docs/bring-up.md](docs/bring-up.md) says how to start a coordinator on a
@@ -315,7 +316,7 @@ the bot, edited in place, on the issue `.github/usage/config.json` names, in a
 repository GitHub must say is private. It joins the tailnet as the agent job
 does and reads the inference broker's `/usage` (the variable `INFERENCE_URL`,
 else the organization's tailnet setting). It holds the claude and openai pools,
-paced as homegit's `bin/bot-capacity` paces them (the config's `pacing`), but
+paced as homegit's frozen `bin/bot-capacity` paced them (the config's `pacing`), but
 read from the windows the broker sees in the providers' answers: claude's is
 therefore the account as the broker sees it, not Claude Code's status line on
 a machine. Mistral has its counters and the monthly allowance of
