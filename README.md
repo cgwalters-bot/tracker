@@ -275,6 +275,38 @@ items. Test with `node --test .github/poll/schedule.test.cjs`.
 
 ## The epic census
 
+### Read-only supervisor
+
+`supervisor.yml` runs `just supervisor` every fifteen minutes only when the
+repository variable `SUPERVISOR=observe` is set; it is off otherwise. It does
+not run an agent or make corrective writes. `health.json` is a list of checks
+with `id`, `status` (`ok`, `warn`, `fail`), evidence links and a suggested
+action; each check also has one summary line. All thresholds and collection
+bounds are in `.github/supervisor/config.json`, with repository identities
+in that file and the existing poll configuration, never dispatcher inputs.
+
+The job token reads this repository. For cross-repository/private board
+observations, provision `SUPERVISOR_READ_TOKEN` with read-only contents,
+Actions, issues, pull requests and project access to the configured sources.
+Do not use the bot's write token. Missing access and truncated listings are
+warnings, not healthy observations. API requests have deadlines and a total
+budget and a seven-minute collection deadline; the job has a ten-minute limit.
+These bounds prevent a stalled API or
+oversized census from exhausting a runner. The JSON artifact contains links
+and fixed actions, not issue bodies, titles, private decisions or logs.
+
+The pass reuses the epic census and authenticated coordinator checkpoints.
+Recent PR/queue activity is sampled from the 100 most recently updated PRs
+per followed repository; it is not a historical audit. Infrastructure findings
+are warnings from probe/label time overlap, not proof that a retry is safe.
+Decisions currently cover open public question issues assigned to the operator,
+excluding ones with an authenticated operator reply; the private decision
+document is not published or interpreted. Loop detection uses checkpoint
+failures and pending-operation staleness, not speculative interpretation of agent prose.
+Steps 2–4 of the supervisor proposal (agent, privilege and review-site health)
+remain out of scope. Test the reduced recorded-shape snapshots offline with
+`just test-supervisor`.
+
 After the scheduler, the `board` job runs `.github/poll/epics.cjs`, the first
 part of the coordinator for the operator's epics
 ([#572](https://github.com/cgwalters-forge/tracker/issues/572)). It only
