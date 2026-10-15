@@ -22,6 +22,7 @@
     "repository": "cgwalters-forge/tracker"
   },
   "coordinator": {
+    "reviewUrl": "https://cgwalters-forge.github.io/review/#",
     "planPool": "claude",
     "statusPool": "mistral",
     "statusIssue": 572,

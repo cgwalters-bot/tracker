@@ -342,6 +342,18 @@ per child repository. Child bodies are left for the planner to read. Operator
 comments are newest first, capped at 4,000 UTF-8 bytes each; older comments
 are dropped to fit, with an omitted count and history link. The final byte
 limit still refuses oversized epic bodies/census before recording a pending run.
+Status prose is Markdown, normally limited to eight lines and 2,000 characters: a
+plain link to the configured `coordinator.reviewUrl` Decisions page (no count, as
+the status cannot see every source Decisions merges), one line per live epic with health, merges and blockers,
+optional linked failure clusters, and one linked pool usage line. Larger censuses
+get one line per live or unread epic plus three, at most the census's 50 epics
+plus three lines, with 300
+additional characters per extra line (15,500 maximum); unread epics
+must be identified as unavailable. Decisions
+remain the live list, not repeated asks in the status. Activity is sampled
+(30 runs, five recently updated PRs per repository, ten blockers per epic), not
+exhaustive history. Usage is marked stale after three hours by the snapshot's
+`updated_at`; missing or invalid timestamps are stale too.
 Coordinator failures retain their own error summary but do not fail the board
 scheduler job. The controller panel reads the coordinator's errors independently.
 

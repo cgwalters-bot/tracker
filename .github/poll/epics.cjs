@@ -251,7 +251,7 @@ async function main() {
   console.log(summary(config.epicsRepository, entries, note));
 }
 
-module.exports = { canonical, census, fingerprint, loadEpicsConfig, main, operatorComments, pagedUpTo, provenance, readBoard, readComments, subIssue, summary, summaryLine };
+module.exports = { MAX_EPICS, canonical, census, fingerprint, loadEpicsConfig, main, operatorComments, pagedUpTo, provenance, readBoard, readComments, subIssue, summary, summaryLine };
 
 if (require.main === module) {
   main().catch(err => {
