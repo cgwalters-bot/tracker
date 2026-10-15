@@ -223,14 +223,16 @@ test('dispatch.yml gives an agent without skills the full implement profile', ()
   assert.equal(run('', 'implement-full', 'vibe'), null);
 });
 
-test('workflows follow our own repositories at main and pin the rest', () => {
+test('workflows follow our own repositories at main, review.yml excepted, and pin the rest', () => {
   const owner = CONFIG.dispatchRepo.split('/')[0];
   const dir = path.join(__dirname, '../workflows');
   let seen = 0;
   for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.yml'))) {
     for (const [, ref] of fs.readFileSync(path.join(dir, file), 'utf8').matchAll(/^\s*(?:- )?uses:\s*(\S+)/gm)) {
       seen++;
-      if (ref.startsWith(`${owner}/`)) assert.match(ref, /^[\w.-]+\/[\w.\/-]+@main$/, `${file}: ${ref}`);
+      // Except review.yml: its verdict is the only gate on .github/ here,
+      // so the wrapper it calls moves only by a reviewed change to the pin.
+      if (ref.startsWith(`${owner}/`)) assert.match(ref, file === 'review.yml' ? /^[\w.-]+\/[\w.\/-]+@[0-9a-f]{40}$/ : /^[\w.-]+\/[\w.\/-]+@main$/, `${file}: ${ref}`);
       else assert.match(ref, /^[\w.-]+\/[\w.\/-]+@[0-9a-f]{40}$/, `${file}: ${ref}`);
     }
   }
