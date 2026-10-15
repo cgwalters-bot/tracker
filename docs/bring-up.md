@@ -193,12 +193,20 @@ ruleset's id with `gh api repos/OWNER/REPO/rulesets` and run
 `jq '{name, target, enforcement, conditions, rules, bypass_actors}' FILE | gh api -X PUT repos/OWNER/REPO/rulesets/ID --input -`
 (`-X POST repos/OWNER/REPO/rulesets` where it no longer exists).
 
+## Operator comment wake
+
+Set the repository variable `COMMENT_WAKE=enabled` to wake `poll.yml` on a
+new comment by the `operator` in `.github/poll/agent-board.json` on an open
+issue here. It is off when the variable is absent or has any other value.
+PR comments, edits, closed issues and bot replies do not wake it. The login
+is read from the default branch, never a dispatcher input; comment text is
+not passed to the workflow. The wake dispatches one normal poll, using its
+existing authority and concurrency group, so a running pass is not cancelled
+and bursts coalesce into at most one pending pass. Existing scheduler and
+coordinator apply switches still govern writes. A local watcher is not needed.
+The pass reads current forge state, not a queued copy of the comment.
+
 ## Still only on the machine
 
 Credentials, by design: the token file, the environment file and the
-broker's policy on the inference host. And noticing cgwalters' comments
-as they come: nothing on the forge wakes on one yet. The epic coordinator
-reads the operator's comments on epics at its next poll pass, whose schedule
-GitHub may delay; an answer to a question waits until someone looks. The
-plan in [#507](https://github.com/cgwalters-forge/tracker/issues/507) is a
-workflow here on `issue_comment`.
+broker's policy on the inference host.

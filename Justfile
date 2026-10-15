@@ -22,6 +22,10 @@ test-poll:
 coordinator *args:
     node .github/poll/coordinator.cjs "$@"
 
+# Only a validated login can become a single-line Actions output.
+comment-wake-config:
+    jq -er '"operator=\(.operator | select(type == "string") | select(test("^[A-Za-z0-9][A-Za-z0-9-]{0,38}\\z")))"' .github/poll/agent-board.json >> "$GITHUB_OUTPUT"
+
 poll *args:
     node .github/poll/poll.cjs "$@"
 
