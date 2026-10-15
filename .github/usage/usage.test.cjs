@@ -46,6 +46,7 @@ test('the broker answer becomes the pools and Mistral counters of bot-usage/v1',
   assert.deepEqual(snap.mistral, {
     requests: 8,
     tokens: 3900,
+    observed_at: new Date(NOW).toISOString(),
     since: '2026-10-05T00:00:00.000Z',
     allowance: { limit_usd: 300, resets_at: '2026-11-01T00:00:00.000Z' },
   });
@@ -162,8 +163,47 @@ test('a pool the broker has no reading of keeps the last one until its window re
   assert.deepEqual(carryPools(snapshot(load(), CONFIG, null, later), { pools: { claude: { ...previous.pools.claude, used_percent: 1 } } }, CONFIG, later).pools.claude.used_percent, previous.pools.claude.used_percent);
   const afterReset = Date.parse('2026-10-11T00:00:01Z');
   assert.equal(carryPools(snapshot(restarted(), CONFIG, null, afterReset), previous, CONFIG, afterReset).pools.claude, null);
+  // One pool seen again since the restart, the other carried.
+  const partial = restarted();
+  partial.codex = load().codex;
+  const mixed = carryPools(snapshot(partial, CONFIG, null, later), previous, CONFIG, later);
+  assert.equal(mixed.pools.openai.computed_at, new Date(later).toISOString());
+  assert.equal(mixed.pools.claude.observed_at, previous.pools.claude.observed_at);
   assert.equal(previousSnapshot(render(previous, 'x')).updated_at, previous.updated_at);
+});
+
+test('each weekly number keeps its own observation time, not the newer short window', () => {
+  const broker = load();
+  broker.anthropic.unified_5h.observed_at = NOW / 1000;
+  broker.codex.primary.observed_at = NOW / 1000;
+  const before = snapshot(load(), CONFIG, null, NOW);
+  const after = snapshot(broker, CONFIG, null, NOW + HOUR);
+  for (const name of ['claude', 'openai']) {
+    assert.equal(after.pools[name].observed_at, before.pools[name].observed_at);
+    assert.equal(after.pools[name].computed_at, new Date(NOW + HOUR).toISOString());
+    assert.ok(after.pools[name].allowed_percent > before.pools[name].allowed_percent);
+  }
   for (const body of [undefined, '', `${MARKER}\n\`\`\`json\n{nope\n\`\`\``]) assert.equal(previousSnapshot(body), null);
+});
+
+test('both providers discard a pre-reset hold and pace a new week from its reset', () => {
+  const week = 7 * 24 * HOUR;
+  for (const name of ['claude', 'openai']) {
+    const broker = load();
+    const reset = NOW + HOUR;
+    if (name === 'claude') Object.assign(broker.anthropic.unified_7d, { utilization: 1, reset: reset / 1000 });
+    else Object.assign(broker.codex.secondary, { used_percent: 100, reset_after_seconds: reset / 1000 - broker.codex.secondary.observed_at });
+    assert.equal(snapshot(broker, CONFIG, null, reset - 1).pools[name].hold, true);
+    for (const now of [reset, reset + 1]) assert.equal(snapshot(broker, CONFIG, null, now).pools[name], null);
+    if (name === 'claude') Object.assign(broker.anthropic.unified_7d, { utilization: 0, reset: (reset + week) / 1000, observed_at: reset / 1000 });
+    else Object.assign(broker.codex.secondary, { used_percent: 0, reset_after_seconds: week / 1000, observed_at: reset / 1000 });
+    const fresh = snapshot(broker, CONFIG, null, reset).pools[name];
+    assert.equal(fresh.allowed_percent, 0);
+    assert.equal(fresh.used_percent, 0);
+    assert.equal(fresh.hold, false);
+    assert.equal(fresh.next_dispatch_at, null);
+    close(snapshot(broker, CONFIG, null, reset + HOUR).pools[name].allowed_percent, 95 / 168);
+  }
 });
 
 // A fake GitHub: the repository, the issue's comments, the token's
@@ -211,15 +251,20 @@ test('publish looks only where the review app reads, and does not add a comment 
   assert.deepEqual(gh.calls.filter(c => c.method === 'GET').map(c => c.path), [`/repos/${CONFIG.repo}`, `/repos/${CONFIG.repo}/issues/${CONFIG.issue}/comments?per_page=100`]);
 });
 
-test('publish leaves the last snapshot alone when there is no pool reading to replace it with', async () => {
+test('publish carries pools until their windows reset, then clears the holds and still publishes Mistral', async () => {
   const gh = github();
   await publishWith(gh, snapshot(restarted(), CONFIG, null, NOW));
-  assert.deepEqual(gh.writes(), []);
-  // With a previous snapshot to carry from, it writes.
+  assert.equal(gh.writes().length, 1);
   const previous = { id: 9, html_url: 'u', user: { login: CONFIG.bot }, body: render(snapshot(load(), CONFIG, null, NOW), 'x') };
   const again = github({ comments: [previous] });
   await publishWith(again, snapshot(restarted(), CONFIG, null, NOW + HOUR));
   close(previousSnapshot(again.writes()[0].body.body).pools.claude.used_percent, 81);
+  const afterReset = Date.parse('2026-10-20T00:00:00Z');
+  const reset = github({ comments: [previous] });
+  await publishWith(reset, snapshot(restarted(), CONFIG, null, afterReset));
+  const published = previousSnapshot(reset.writes()[0].body.body);
+  assert.deepEqual(published.pools, { claude: null, openai: null });
+  assert.equal(published.mistral.observed_at, new Date(afterReset).toISOString());
 });
 
 test('readBroker reads /usage at the root of the broker, bounded', async t => {

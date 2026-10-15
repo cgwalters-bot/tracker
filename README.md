@@ -368,10 +368,30 @@ therefore the account as the broker sees it, not Claude Code's status line on
 a machine. Mistral has its counters and the monthly allowance of
 `.github/agentic-job/pools.json`, with this month's tokens and the
 allowance's `prices` (USD per million tokens, by model) when those are
-configured, for the review app's estimate of the spend. A broker it cannot read fails the run and
+configured, for the review app's estimate of the spend. Mistral's counters are
+observed when `/usage` is fetched, not subscription usage from a provider billing API.
+Claude's `unified_7d` utilization and absolute reset are response headers;
+OpenAI's `secondary` used percentage, window length and reset-after seconds
+are response headers too (reset-after is relative to that header's observation,
+not the publisher's clock). The broker does not poll the providers when `/usage`
+is fetched. Thus successful publisher runs need not mean fresh provider data.
+Each weekly meter uses that window's `observed_at`, never a newer short
+window's timestamp; `computed_at` dates the pace calculation. Pace is recomputed
+from the window start (reset minus duration) on every publication.
+A broker it cannot read fails the run and
 leaves the last snapshot, and its time, as they were. The broker keeps its
 readings in memory, so after a restart it has none until a run goes through
 it: a pool without a reading keeps the last one published, with its own
-time, until that window resets, and with neither pool the comment is not
-touched. `just publish-usage --dry-run` prints the comment (without carrying
-anything over); test with `just test-usage`.
+time, until that window resets, and is null after it, never the old comment's
+hold. A reset does not prove zero usage: until a new provider header arrives
+the pool is unknown, not zero. Fresh Mistral counters are published even if
+both subscription pools are unknown. Consumers must accept this case and use
+each pool's observation time for staleness, not the envelope's `updated_at`.
+The existing fifteen-minute schedule bounds normal publication delay after
+a reset to one tick; GitHub may delay or drop scheduled runs, so this is not
+an hourly delivery guarantee or an exact reset-time wakeup.
+There is no operator-machine credential or status-line reader in this hosted
+path. Machine-only readings must stay out of it. Live provider refresh needs
+a broker-side source; the review site's null-pool handling and staleness logic
+live outside this repository. `just publish-usage --dry-run` prints the comment
+(without carrying anything over); test with `just test-usage`.
