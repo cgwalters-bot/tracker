@@ -232,10 +232,17 @@ logic also forces a daily pass after a completed applied checkpoint. Pending
 plans do not get additional daily runs, so that refresh loop cannot complete
 until pinned apply and checkpointing are implemented. The coordinator fingerprints content rather than
 the epic's `updated_at`, so its own comments do not start another plan.
-Results carry a unique plain-text `Coordinator request: <id>` line (the
-add_comment handler strips HTML comments, so a hidden marker never arrives);
+Results carry a unique `request` in their fenced JSON (not a plain-text line
+or hidden HTML marker). Plans use the optional `agent-board-epic-plan` field;
+the poll builds the configured agent-board branch head, which includes #75,
+so no release upgrade is needed. Status blocks contain exactly
+`{"request":"<id>","prose":"..."}`, with prose of 1 to 4000 characters.
+Only an exact request match from a trusted writer at or after the pending
+timestamp counts;
 an obsolete run must finish before its request is replaced,
 and a matching result hidden behind a newer writer's plan is not applied.
+Pending runs briefed with the old line fail once and retry normally; no
+checkpoints need resetting.
 
 Reporting uses the same triage/checkpoint mechanism on
 `coordinator.statusIssue` in the epic repository. Its `coordinator.statusPool`

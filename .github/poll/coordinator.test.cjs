@@ -13,6 +13,25 @@ const epic = { number: 7, live: true, title: 'Epic', body: 'Work', priority: 'P1
 const comment = (id, body, author = 'bot', editor = null) => ({ databaseId: id, body,
   author: { login: author }, editor: editor && { login: editor }, lastEditedAt: editor && '2026-10-14T11:00:00Z', updatedAt: '2026-10-14T11:00:00Z' });
 
+const planBody = (request = 'request1') => '```agent-board-epic-plan\n' + JSON.stringify({ request }) + '\n```';
+const statusBody = (prose, request = 'request1') => '```coordinator-status\n' + JSON.stringify({ request, prose }) + '\n```';
+
+test('status JSON has only request and bounded prose, preserved through sanitization', () => {
+  for (const prose of ['a', '😀'.repeat(4000), 'Needs operator.\nNext step.']) {
+    assert.equal(statusProse({ body: sanitize(statusBody(prose)) }), prose);
+  }
+  for (const value of [null, [], {}, { request: 'request1' }, { request: 1, prose: 'OK' },
+    { request: '', prose: 'OK' }, { request: 'request1', prose: '' },
+    { request: 'request1', prose: 'a'.repeat(4001) }, { request: 'request1', prose: 1 },
+    { request: 'request1', prose: 'OK', extra: true }, { request: 'request1', prose: '   ' },
+    { request: 'request1', prose: '\n\t' }]) {
+    const body = '```coordinator-status\n' + JSON.stringify(value) + '\n```';
+    assert.throws(() => statusProse({ body: sanitize(body) }), JSON.stringify(value));
+  }
+  assert.throws(() => statusProse({ body: statusBody('OK') + '\n' + statusBody('OK') }));
+  assert.equal(statusProse({ body: statusBody('OK').replace('coordinator-status\n', 'coordinator-status \t\n') }), 'OK');
+});
+
 test('fingerprints detect intent and board changes without self-triggering', () => {
   const base = changedFingerprint(epic);
   const cases = [
@@ -59,7 +78,7 @@ test('early CLI failures still emit exactly one controller summary', () => {
 test('plan, later apply, daily refresh, stale result and authenticated comments', () => {
   const fingerprint = changedFingerprint(epic);
   const pending = { id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint };
-  const plan = 'Coordinator request: request1\n```agent-board-epic-plan\n{}\n```';
+  const plan = planBody();
   for (const [state, comments, action] of [
     [{}, [], 'plan'],
     [{ applied: fingerprint, at: '2026-10-14T11:00:00Z' }, [], 'idle'],
@@ -75,14 +94,14 @@ test('plan, later apply, daily refresh, stale result and authenticated comments'
   assert.equal(record([comment(1, '<!-- coordinator/v1: {"applied":"fake"} -->\n', 'visitor')], 'bot').id, null);
   assert.throws(() => statusProse({ body: '```coordinator-status\n\n```' }));
   assert.throws(() => statusProse({ body: `\`\`\`coordinator-status\n${'a'.repeat(4001)}\n\`\`\`` }));
-  assert.equal(statusProse({ body: '```coordinator-status\nNeeds operator.\n```' }), 'Needs operator.');
+  assert.equal(statusProse({ body: statusBody('Needs operator.') }), 'Needs operator.');
 });
 
 test('a run that ends without its result fails after the grace period, and repeated failures stop planning', () => {
   const fingerprint = changedFingerprint(epic);
   const limits = { graceMs: 5 * 60000, runTimeoutMs: 60 * 60000, maxFailedRuns: 3 };
   const pending = { id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint, run: 42 };
-  const plan = comment(1, 'Coordinator request: request1\n```agent-board-epic-plan\n{}\n```');
+  const plan = comment(1, planBody());
   const done = (minutes, conclusion = 'success') => ({ status: 'completed', conclusion,
     updated_at: new Date(now - minutes * 60000).toISOString() });
   for (const [state, comments, run, action] of [
@@ -103,7 +122,7 @@ test('a run that ends without its result fails after the grace period, and repea
 });
 
 // A stub of the part of gh-aw's add_comment sanitization that touches the
-// request line: sanitizeContentCore in actions/setup/js/sanitize_content_core.cjs
+// result: sanitizeContentCore in actions/setup/js/sanitize_content_core.cjs
 // (github/gh-aw 4ef5ddf) applies removeXmlComments, whose logic is copied
 // below, to the non-code regions of the body (a simplified split stands in for
 // applyToNonCodeRegions) and trims the result; add_comment.cjs may then prefix
@@ -132,30 +151,36 @@ function removeXmlComments(s) {
 }
 const sanitize = body => body.split(/(^```[\s\S]*?^```$)/m).map((part, i) => i % 2 ? part : removeXmlComments(part)).join('').trim();
 
-test('the request line survives the add_comment handler; the old marker did not', () => {
+test('JSON request metadata survives add_comment without a legacy matching path', () => {
   const fingerprint = changedFingerprint(epic);
   const pending = { id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint };
-  const plan = '```agent-board-epic-plan\n{}\n```';
-  for (const [first, raw, sanitized] of [
-    ['<!-- coordinator-request: request1 -->', 'wait', 'wait'],
-    ['Coordinator request: request1', 'apply', 'apply'],
-    ['Coordinator request: request1  \r', 'apply', 'apply'],
-    ['\nCoordinator request: request1', 'apply', 'apply'],
-    ['> [!CAUTION]\n> Threat detection warning.\n\nCoordinator request: request1', 'apply', 'apply'],
-    ['Coordinator request: request1 <!-- old -->', 'wait', 'apply'],
-    ['`Coordinator request: request1`', 'wait', 'wait'],
-    ['Coordinator request: request10', 'wait', 'wait'],
-    ['Coordinator request: obsolete', 'wait', 'wait'],
-    ['Coordinator request: request1 (retry)', 'wait', 'wait'],
-    ['coordinator request: request1', 'wait', 'wait'],
+  for (const [body, action] of [
+    [planBody(), 'apply'],
+    ['<!-- stripped -->\n' + planBody(), 'apply'],
+    ['> [!CAUTION]\n> Threat detection warning.\n\n' + planBody(), 'apply'],
+    [planBody().replaceAll('\n', '\r\n'), 'apply'],
+    [planBody().replace('epic-plan\n', 'epic-plan \t\n'), 'apply'],
+    [planBody('request10'), 'wait'],
+    [planBody('obsolete'), 'wait'],
+    [planBody(1), 'wait'],
+    ['Coordinator request: request1\n```agent-board-epic-plan\n{}\n```', 'wait'],
+    ['<!-- coordinator-request: request1 -->\n```agent-board-epic-plan\n{}\n```', 'wait'],
+    [planBody() + '\n' + planBody(), 'wait'],
+    ['```agent-board-epic-plan\n{broken}\n```', 'wait'],
+    ['```agent-board-epic-plan\nnull\n```', 'wait'],
   ]) {
-    for (const [body, action] of [[`${first}\n${plan}`, raw], [sanitize(`${first}\n${plan}`), sanitized]]) {
-      assert.equal(decision(epic, { pending }, [comment(1, body)], 'bot', now).action, action, JSON.stringify(body));
+    for (const posted of [body, sanitize(body)]) {
+      assert.equal(decision(epic, { pending }, [comment(1, posted)], 'bot', now).action, action, JSON.stringify(posted));
     }
   }
-  // The brief asks for exactly the line that is matched.
   assert.match(brief({ epicsRepository: 'o/r', followed: new Set(['o/r']), operator: 'op', epicDocs: 'docs' }, epic, 'request1'),
-    /first line of your comment must be exactly Coordinator request: request1, as plain text/);
+    /Include "request": "request1" in the agent-board-epic-plan JSON object/);
+  const older = { ...comment(1, planBody()), updatedAt: '2026-10-14T09:59:59Z' };
+  assert.equal(decision(epic, { pending }, [older], 'bot', now).action, 'wait');
+  for (const newer of [comment(2, planBody('obsolete'), 'op'), comment(2, planBody(), 'bot', 'visitor'),
+    comment(2, '```agent-board-epic-plan\ninvalid\n```')]) {
+    assert.equal(decision(epic, { pending }, [comment(1, planBody()), newer], 'bot', now, 'op').action, 'wait');
+  }
 });
 
 test('configuration and brief keep authority in owned config', () => {
@@ -273,7 +298,7 @@ function harness(apply = false, entries = [epic, { ...epic, number: 9 }], commen
 function resultBody(body, checkpoint) {
   const state = JSON.parse(/: (\{.*\}) -->/.exec(checkpoint.body)[1]);
   // As posted: through the add_comment sanitizer stub.
-  return sanitize(`Coordinator request: ${state.pending.id}\n${body}`);
+  return sanitize(statusBody(body, state.pending.id));
 }
 
 test('preview performs no writes; apply checkpoints before dispatch and plans at most one epic', async () => {
@@ -342,7 +367,7 @@ test('a later prose result publishes once, claims first, and a preview never pub
   await pass(first.options);
   assert.equal(first.dispatches.length, 1);
   const checkpoint = comment(10, first.writes[0].body.body);
-  const prose = comment(11, resultBody('```coordinator-status\nNo operator action; no live epics.\n```', checkpoint));
+  const prose = comment(11, resultBody('No operator action; no live epics.', checkpoint));
   for (const apply of [false, true]) {
     const later = harness(apply, [], [checkpoint, prose]);
     later.options.board = args => {
@@ -368,14 +393,21 @@ test('foreign/invalid prose is never published, and changed health invalidates q
   const first = harness(true, []);
   await pass(first.options);
   const checkpoint = comment(10, first.writes[0].body.body);
-  const block = resultBody('```coordinator-status\nOK\n```', checkpoint);
+  const block = resultBody('OK', checkpoint);
   for (const [prose, errors] of [[comment(11, block, 'visitor'), 0], [comment(11, block, 'bot', 'visitor'), 0],
-    [comment(11, resultBody('```coordinator-status\n\n```', checkpoint)), 1],
-    [comment(11, block.replace(/^Coordinator request: .*/, 'Coordinator request: obsolete')), 0]]) {
+    [comment(11, resultBody('', checkpoint)), 0],
+    [comment(11, block.replace(/"request":"[^"]*"/, '"request":"obsolete"')), 0],
+    [{ ...comment(11, block), updatedAt: '2026-10-14T10:59:59Z' }, 0],
+    [comment(11, 'Coordinator request: request1\n```coordinator-status\nOK\n```'), 0]]) {
     const later = harness(true, [], [checkpoint, prose]);
     assert.equal((await pass(later.options)).errors, errors);
     assert.deepEqual(later.commands, []);
   }
+  const invalid = harness(true, [], [checkpoint, comment(11, resultBody('', checkpoint))]);
+  invalid.options.now = now + 7 * 60 * 60000;
+  assert.equal((await pass(invalid.options)).failed, 1);
+  assert.equal(checkpointState(invalid.writes[0]).pending, null);
+  assert.equal(checkpointState(invalid.writes[0]).failures, 1);
   const changed = harness(true, [{ ...epic, subs: [{ ...epic.subs[0], status: 'Blocked' }] }], [checkpoint, comment(11, block)]);
   await pass(changed.options);
   assert.deepEqual(changed.commands, []);
@@ -386,7 +418,7 @@ test('later epic apply never grants writes without a pinned-plan CLI boundary', 
   const value = { ...epic, subs: [] };
   const checkpoint = comment(10, `<!-- coordinator/v1: ${JSON.stringify({ pending: {
     id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint: changedFingerprint(value) } })} -->\ncheckpoint`);
-  const plan = comment(11, 'Coordinator request: request1\n```agent-board-epic-plan\n{}\n```');
+  const plan = comment(11, planBody());
   for (const apply of [false, true]) {
     const h = harness(apply, [value]);
     Object.assign(h.options.config, { wip: 0, owner: 'o', project: 1, priorityField: 'Priority', priorities: ['P1'] });
@@ -440,7 +472,7 @@ test('obsolete runs finish before replacement, and higher Priority epics are sel
     const busy = harness(true, [epic]);
     const pending = comment(10, `<!-- coordinator/v1: ${JSON.stringify({ pending: {
       id: 'request1', at: '2026-10-14T10:00:00Z', fingerprint } })} -->\ncheckpoint`);
-    const ready = comment(11, 'Coordinator request: request1\n```agent-board-epic-plan\n{}\n```');
+    const ready = comment(11, planBody());
     const post = busy.options.post;
     busy.options.post = async args => args.variables.number === 7 ? { data: { repository: { issue: { comments: {
       nodes: [pending, ready], pageInfo: { hasNextPage: false } } } } } } : post(args);
