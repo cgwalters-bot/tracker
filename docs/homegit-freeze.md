@@ -1,0 +1,162 @@
+# homegit is frozen
+
+[cgwalters-bot/homegit](https://github.com/cgwalters-bot/homegit) ran the bot
+from one workstation. It is frozen: nothing is added to it, and once the
+steps below are done it is archived. This is cutover line 6 of
+[tracker#528](https://github.com/cgwalters-forge/tracker/issues/528), from
+its 14 Oct research comment, re-checked on 15 Oct against homegit `c027d9f`
+(unchanged since 13 Oct), tracker `d572933`, actions `951f34c`, agent-board
+`8ad9f0a` and praxis-credential-broker `45fbb14`.
+
+## What still used it, and what replaces it
+
+| homegit piece | Replacement | State |
+|---|---|---|
+| `bin/bot-runs` (dispatch, watching runs, pool choice) | `dispatch.yml` and `pools.json` here, `agent-board dispatch` and `request dispatch` ([bring-up.md](bring-up.md)) | moved |
+| `bin/bot-board` (status updates, item edits, questions) | agent-board's `project status-update`, `item add`/`edit`, `ask create`/`resolve` | moved; `archive-done`, `handback` and `state-get`/`put` dropped |
+| `bin/bot-capacity`, `bin/bot-heartbeat` | `pools.json` pacing and `usage.yml` here | moved |
+| `dotfiles/.config/opencode/` and `dotfiles/.config/AGENTS.md`, which every opencode run reads: the actions wrapper still defaults `AGENT_CONFIG_REPO` to homegit | agenthome's `opencode/` ([agenthome#6](https://github.com/cgwalters-forge/agenthome/pull/6), open), then the wrapper's default ([actions#35](https://github.com/cgwalters-forge/actions/issues/35), open) | pending that pull request and that issue, not the operator; step 3 waits for them |
+| `bot-supervisor.service`, `bot-sweep.service`/`.timer` on the workstation, running `bin/bot-supervisor` and `bin/bot-sweep` from a homegit checkout | `poll.yml` here: its board job and agent-board's poll | pending an operator step (1) |
+| praxis-credential-broker quadlets in `dotfiles/.config/containers/systemd/praxis-credential-broker/` | the broker repository's `contrib/quadlet` | pending an operator step (2) |
+| `.github/workflows/controller-report.yml` and `crates/sched`, a read-only report scheduled hourly (last run 15 Oct 13:23 UTC) | none: agent-board took the scheduler over (operator notes, 7 Oct) | dropped; archiving stops it (3) |
+| everything else: the local workers, `bot-reconcile`, `bot-pr`, notifications, the skills, docs and personal dotfiles | listed in the research comment | dropped |
+
+## The operator's steps, in order
+
+Each needs the operator's machine or credentials, so they are listed here
+for the operator; tracker#582's operator actions do not exist yet.
+
+**1. Stop the workstation controller** once the hosted poll has run a day
+without failing. While both run, the sweep's `bot-watch --apply` and the
+poll act on the same pull requests. The poll last failed at 17:11 UTC on
+15 Oct. This prints the conclusions of the last day's polls; go ahead only
+if it shows nothing but `success` and `cancelled`:
+
+```sh
+gh run list -R cgwalters-forge/tracker --workflow poll.yml -L 1000 \
+    --created ">=$(date -u -d '24 hours ago' +%FT%TZ)" \
+    --json conclusion --jq 'group_by(.conclusion) | map({(.[0].conclusion): length}) | add'
+```
+
+Then, on the workstation. The supervisor's unit kills every process in its
+cgroup, local `bot-claude` jobs included, so first check none is running:
+
+```sh
+systemd-cgls --user -u bot-supervisor.service
+systemctl --user disable --now bot-supervisor.service bot-sweep.timer
+systemctl --user stop bot-sweep.service
+systemctl --user list-units --all 'bot-*'   # nothing active
+```
+
+Keep `~/.config/bot-supervisor.env` and the token file it names:
+[bring-up.md](bring-up.md) starts every shell from them.
+
+**2. Run the broker from its own repository's quadlets.** The two copies
+differ. homegit's (last changed 1 Oct) runs the upstream
+`ghcr.io/praxis-proxy/ai` image pinned by digest with a `praxis.yaml`
+mounted from the broker checkout, publishes ports 18080 and 18083 on
+`100.121.0.115` itself and is limited to `ConditionHost=xenon`. The broker's
+(12 Oct) runs its own `-gateway:main` image with the Claude token as a
+Podman secret, follows `:main` with `AutoUpdate=registry`, and publishes
+only `127.0.0.1:18080`: the tailnet address and the run registration policy
+are drop-ins. 18083 is gone, replaced by the `/anthropic` routes on 18080.
+The broker's `INTERNALS.md` ("Quadlet" and "Xenon") is the reference, and
+says Xenon already runs its copy. See which copy is running:
+
+```sh
+systemctl --user cat praxis-credential-broker-pod.service praxis-credential-broker-praxis.service |
+    grep -E 'SourcePath|PublishPort|Image=|run-token-policy'
+```
+
+If `SourcePath` is under the broker checkout's `contrib/quadlet`, and the
+output has `PublishPort=100.121.0.115:18080:8081` and the policy's
+`Volume=`, its copy is running: skip to the check at the end. Otherwise
+homegit's is, installed in `~/.config/containers/systemd/praxis-credential-broker/`
+(if `SourcePath` names another directory, set `OLD` to it). Pull the broker
+checkout only now: homegit's gateway reads its `praxis.yaml`. Write
+`~/.config/praxis-credential-broker/run-token-policy.yaml` first, listing
+this repository's dispatch workflow as the broker's "Run tokens" section
+says, without `unproven`. Then stop the pod, store the secrets
+`podman secret ls` does not list yet, swap the units and start it:
+
+```sh
+B=~/src/github/cgwalters-bot/praxis-credential-broker
+OLD=~/.config/containers/systemd/praxis-credential-broker
+git -C $B pull --ff-only
+diff -ru "$OLD" $B/contrib/quadlet
+systemctl --user stop praxis-credential-broker-pod.service
+podman secret ls
+bash $B/scripts/init-secrets               # if praxis-credential-broker-agent-channel is missing
+bash $B/scripts/init-anthropic-token       # if praxis-credential-broker-anthropic-oauth is missing
+bash $B/scripts/init-mistral-key           # if praxis-credential-broker-mistral-api-key is missing
+rm "$OLD"/praxis-credential-broker*.pod "$OLD"/praxis-credential-broker*.container \
+    "$OLD"/praxis-credential-broker*.volume && rmdir "$OLD"
+cd ~/.config/containers/systemd
+ln -s $B/contrib/quadlet/* .
+mkdir -p praxis-credential-broker.pod.d praxis-credential-broker-praxis.container.d
+cat > praxis-credential-broker.pod.d/tailnet.conf <<'EOF'
+[Pod]
+PublishPort=100.121.0.115:18080:8081
+
+[Service]
+ExecStartPre=/usr/bin/tailscale wait --timeout=30s
+ExecStartPre=/usr/bin/tailscale ip --4 --assert=100.121.0.115
+EOF
+cat > praxis-credential-broker-praxis.container.d/run-token-policy.conf <<'EOF'
+[Container]
+Volume=%h/.config/praxis-credential-broker/run-token-policy.yaml:/etc/praxis-credential-broker/run-token-policy.yaml:ro,Z
+EOF
+# The mistral pool uses /mistral.
+cat > praxis-credential-broker-praxis.container.d/mistral-api-key.conf <<'EOF'
+[Container]
+Secret=praxis-credential-broker-mistral-api-key,target=/run/secrets/mistral/api-key,uid=65532,gid=65532,mode=0400
+EOF
+QUADLET_UNIT_DIRS=~/.config/containers/systemd /usr/libexec/podman/quadlet -dryrun -user
+systemctl --user daemon-reload
+systemctl --user start praxis-credential-broker-pod.service
+```
+
+Check: `curl -fsS http://100.121.0.115:18080/healthz`, then a dispatched
+run that reaches inference.
+
+**3. Point homegit's README here, then archive it**, once
+[agenthome#6](https://github.com/cgwalters-forge/agenthome/pull/6) has
+merged and the wrapper defaults to agenthome
+([actions#35](https://github.com/cgwalters-forge/actions/issues/35)), or
+this repository's variables `AGENT_CONFIG_REPO=cgwalters-forge/agenthome`
+and `AGENT_CONFIG_PATH=opencode` are set: until then opencode runs read
+their configuration from homegit, which archiving would freeze. Archiving
+makes it read-only and stops `controller-report`. Close homegit's open pull
+requests, put the text below at the top of its `README.md` and push it, then:
+
+```sh
+gh pr list -R cgwalters-bot/homegit
+gh pr close N -R cgwalters-bot/homegit --comment 'homegit is frozen: see cgwalters-forge/tracker#528.'
+gh repo archive cgwalters-bot/homegit --yes
+```
+
+After that, dispatch a run here to drop `cgwalters-bot/homegit` from
+`.github/agentic-job/dispatch.toml` and `fix.toml`: no run can push to it.
+
+## The README pointer
+
+```markdown
+**Frozen.** This repository no longer runs anything and is archived.
+cgwalters-bot's work is coordinated from
+[cgwalters-forge/tracker](https://github.com/cgwalters-forge/tracker); the
+cutover is [tracker#528](https://github.com/cgwalters-forge/tracker/issues/528),
+and [docs/homegit-freeze.md](https://github.com/cgwalters-forge/tracker/blob/main/docs/homegit-freeze.md)
+says what replaced each part of this repository:
+
+- [agent-board](https://github.com/cgwalters-forge/agent-board), the board's
+  CLI, for `bin/bot-board`, `bot-reconcile` and the scheduler;
+- [agentic-job](https://github.com/cgwalters-forge/agentic-job), runs in CI
+  with safe outputs, for `bin/bot-runs` and the local workers;
+- [agenthome](https://github.com/cgwalters-forge/agenthome), the agents'
+  configuration and standing rules, for `dotfiles/.config/opencode` and
+  `AGENTS.md`.
+
+The broker's Quadlet units are in
+[praxis-credential-broker](https://github.com/cgwalters-bot/praxis-credential-broker/tree/main/contrib/quadlet).
+cgwalters' own dotfiles stay in [cgwalters/homegit](https://github.com/cgwalters/homegit).
+```

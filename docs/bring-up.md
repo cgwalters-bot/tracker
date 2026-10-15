@@ -13,8 +13,9 @@ is on the forge, and what is not yet is listed at the end.
 [cgwalters-bot/homegit](https://github.com/cgwalters-bot/homegit), whose
 `bin/bot-runs`, `bin/bot-board`, `bin/bot-git` and `bin/bot-capacity` did
 this from one machine, is frozen history: nothing here needs a checkout of
-it. A change to a repository, this one's notes included, is a dispatched
-run's pull request, not a commit made on the machine.
+it ([homegit-freeze.md](homegit-freeze.md) lists what replaced it). A
+change to a repository, this one's notes included, is a dispatched run's
+pull request, not a commit made on the machine.
 
 ## What to clone
 
