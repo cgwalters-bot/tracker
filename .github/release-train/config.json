@@ -1,0 +1,46 @@
+{
+  "release": {
+    "repository": "cgwalters-forge/agentic-job",
+    "fork": "cgwalters-bot/agentic-job",
+    "workflow": "release.yml"
+  },
+  "tracking": "cgwalters-forge/tracker",
+  "threshold": 5,
+  "intervalHours": 24,
+  "labels": {
+    "urgent": "P0",
+    "breaking": "breaking",
+    "tracking": "release-train",
+    "stalled": "needs-human"
+  },
+  "wrappers": {
+    "repository": "cgwalters-forge/actions",
+    "fork": "cgwalters-bot/actions-1",
+    "files": [
+      ".github/workflows/cgwalters-agentic-job.yml",
+      ".github/workflows/cgwalters-review.yml",
+      "README.md"
+    ]
+  },
+  "callers": [
+    {
+      "repository": "cgwalters-forge/tracker",
+      "fork": "cgwalters-bot/tracker",
+      "files": [
+        ".github/workflows/review.yml",
+        ".github/poll/poll.test.cjs"
+      ]
+    },
+    {
+      "repository": "cgwalters-forge/agent-board",
+      "fork": "cgwalters-bot/agent-board",
+      "files": [
+        ".github/workflows/review.yml",
+        ".github/agentic-job/test_review.py"
+      ]
+    }
+  ],
+  "pageSize": 100,
+  "maxRequests": 200,
+  "requestTimeoutSeconds": 20
+}
