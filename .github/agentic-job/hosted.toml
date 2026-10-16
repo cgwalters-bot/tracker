@@ -43,8 +43,13 @@ allow-sockets = [
 
 [setup]
 # The egress proxy runs in a Python environment of its own, behind
-# nftables rules; podman is what an agent builds containers with.
-packages = ["python3-venv", "nftables", "podman", "uidmap", "git", "just", "nodejs", "npm", "curl", "tar", "unzip"]
+# nftables rules. Otherwise only what the ubuntu-26.04 image lacks: it has
+# podman and uidmap, which an agent builds containers with, git, curl, tar
+# and unzip, and Node with npm in /usr/local/bin, first on the sandbox
+# user's PATH and where `npm install -g` puts the agent. Ubuntu's npm would
+# add some 350 node-* packages, a minute of setup and a mirror to flake on
+# (#660). Another image may need them back.
+packages = ["python3-venv", "nftables", "just"]
 
 # Uncomment this table only after the wrapper upgrades to the agentic-job
 # release containing #602: v0.2.0 rejects it and would break every dispatch.
