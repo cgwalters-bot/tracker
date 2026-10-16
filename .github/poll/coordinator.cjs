@@ -5,7 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { CONFIG: POLL, request } = require('./poll.cjs');
 const { heldBy } = require('./broker.cjs');
-const { agentBoard, rank, readRuns, openPullRefs, pullIssues } = require('./schedule.cjs');
+const { agentBoard, planInterval, rank, readPace, readRuns, openPullRefs, pullIssues } = require('./schedule.cjs');
 const { MAX_EPICS, canonical, census, loadEpicsConfig, readComments, operatorComments } = require('./epics.cjs');
 const { previousSnapshot } = require('../usage/usage.cjs');
 
@@ -587,6 +587,14 @@ async function main(argv) {
     if (apply) {
       const held = await heldBy({ token, repo: process.env.GITHUB_REPOSITORY, login: POLL.author, api: request, log });
       if (held) { log(`held: broker outage ${held.url}`); apply = false; }
+    }
+    // In the scheduler's fill mode an idle epic is planned again sooner
+    // (tracker#672). A pace not read keeps the configured interval.
+    if (config.fill) {
+      const pace = await readPace(post, config.planPool, Date.now())
+        .catch(err => ({ fill: false, mode: `normal (usage not read: ${err.message.slice(0, 300)})` }));
+      config.minPlanIntervalMs = planInterval(config.minPlanIntervalMs, pace);
+      log(`mode: ${pace.mode}; minimum planning interval ${config.minPlanIntervalMs / 60000} minutes`);
     }
     const snapshot = await census(p => get('GET', p), post, config);
     const result = await pass({ config, ...snapshot, now: Date.now(), apply, get, post,

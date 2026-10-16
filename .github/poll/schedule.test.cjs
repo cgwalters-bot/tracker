@@ -5,8 +5,9 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
+const { FILL_QUERY, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, paceMode, planInterval, probePlan, pullIssues, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
 const { census } = require('./epics.cjs');
+const { render } = require('../usage/usage.cjs');
 
 const BOT = 'cgwalters-bot';
 const issue = (number, extra = {}) => ({ repository: 'o/r', number, content_kind: 'issue', url: `https://github.com/o/r/issues/${number}`, ...extra });
@@ -410,7 +411,8 @@ const labelled = login => [{ event: 'labeled', actor: { login }, label: { name: 
 // `schedule` is merged into the repository's own schedule config.
 // `outage` is the open outage issues an applying pass reads first.
 const OUTAGE = '/repos/configured/tracker/issues?state=open&labels=outage&per_page=100';
-async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing'), issues = {}, schedule, outage = [] } = {}) {
+// `graphql(query, variables)` answers a GraphQL request first, if it returns one.
+async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing'), issues = {}, schedule, outage = [], graphql = () => undefined } = {}) {
   const calls = [];
   const sent = [];
   const out = [];
@@ -431,11 +433,11 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
     let body;
     if (p === '/graphql') {
       const { query, variables } = JSON.parse(init.body);
-      body = query.includes('projectV2')
+      body = graphql(query, variables) ?? (query.includes('projectV2')
         ? board === null ? { errors: [{ message: 'Could not resolve to a ProjectV2' }] } : { data: { repositoryOwner: { projectV2: { items: { nodes: board, pageInfo: { hasNextPage: false } } } } } }
         : query.includes('closedByPullRequestsReferences')
           ? { data: { repository: { issue: issues[variables.number] ?? metadata() } } }
-          : { data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } };
+          : { data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } });
     } else if (call in rest) {
       body = rest[call];
     } else if (p in rest) {
@@ -1252,4 +1254,206 @@ test("with --apply, at the cap the issue is labelled needs-human, and nothing is
   assert.equal(error, undefined);
   assert.ok(out.some(line => /#41 .*needs-human: 3 run\(s\) ended without a merged PR/.test(line)), out.join('\n'));
   assert.deepEqual(sent, [[`POST /repos/${EPICS}/issues/41/labels`, { labels: ['needs-human'] }]]);
+});
+
+test('schedule.fill is off unless set, bounded, and needs triage', () => {
+  const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
+  const parse = extra => loadConfig(JSON.stringify({ ...base, schedule: { owner: 'o', project: 1, wip: 4, repositories: ['o/r'], triage: 1, ...extra } }));
+  assert.equal(parse({}).fill, 0);
+  assert.equal(parse({ fill: 20 }).fill, 20);
+  for (const fill of [-1, 21, '2', 1.5]) assert.throws(() => parse({ fill }), /schedule.fill must be/);
+  assert.throws(() => parse({ fill: 2, triage: 0 }), /schedule.fill needs schedule.triage/);
+});
+
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+const NOW = Date.parse('2026-10-16T21:45:00Z');
+// A snapshot of the weekly window with `gone` of it elapsed at NOW.
+const usageAt = (used, gone, extra = {}, updated = NOW) => ({ schema: 'bot-usage/v1', updated_at: new Date(updated).toISOString(),
+  pools: { claude: { used_percent: used, window_minutes: WEEK_MS / 60000, resets_at: new Date(NOW + (1 - gone) * WEEK_MS).toISOString(), observed_at: new Date(NOW - 3600 * 1000).toISOString(), target_percent: 95, hold: false, ...extra } } });
+
+test('fill mode is a pool used less than its pace allows, and nothing it does not know', () => {
+  // With 56% of the week gone, a target of 95% allows 53.2%.
+  assert.deepEqual(paceMode(usageAt(50, 0.56), 'claude', NOW), { fill: true, mode: 'fill (claude 50% used, pace allows 53%)' });
+  // The poll of the issue, 54% used: under the window gone, but over the pace.
+  assert.deepEqual(paceMode(usageAt(54, 0.56), 'claude', NOW), { fill: false, mode: 'normal (claude 54% used, pace allows 53%)' });
+  assert.deepEqual(paceMode(usageAt(54, 0.56, { target_percent: 100 }), 'claude', NOW), { fill: true, mode: 'fill (claude 54% used, pace allows 56%)' });
+  assert.equal(paceMode(usageAt(50, 0.56, { hold: true }), 'claude', NOW).mode, 'normal (claude 50% used, pace allows 53%, held)');
+  // Not known: no snapshot, another pool, a stale snapshot, a window reset since.
+  for (const [snap, pool, why] of [[null, 'claude', /no usage reading of the claude pool/], [usageAt(10, 0.5), 'mistral', /no usage reading of the mistral pool/],
+    [usageAt(10, 0.5, {}, NOW - 4 * 3600 * 1000), 'claude', /the usage snapshot is from /], [usageAt(10, 1.01), 'claude', /no current window/],
+    [usageAt(10, 0.5, { resets_at: 'soon' }), 'claude', /no current window/], [usageAt(10, 0.5, { target_percent: undefined }), 'claude', /no current window/],
+    // A carried reading the broker has not renewed for over a day, or none.
+    [usageAt(10, 0.5, { observed_at: new Date(NOW - 31 * 3600 * 1000).toISOString() }), 'claude', /no reading of the claude pool observed in the last day, the last at /],
+    [usageAt(10, 0.5, { observed_at: undefined }), 'claude', /no reading of the claude pool observed in the last day\)$/]]) {
+    const pace = paceMode(snap, pool, NOW);
+    assert.equal(pace.fill, false);
+    assert.match(pace.mode, why);
+  }
+});
+
+test("in fill mode the coordinator's planning interval is an hour, if that is shorter", () => {
+  assert.equal(planInterval(180 * 60000, { fill: true }), 60 * 60000);
+  assert.equal(planInterval(30 * 60000, { fill: true }), 30 * 60000);
+  assert.equal(planInterval(180 * 60000, { fill: false }), 180 * 60000);
+  assert.equal(planInterval(180 * 60000, null), 180 * 60000);
+});
+
+// An issue as FILL_QUERY answers it, opened by `login`, on board 1 of o.
+const openIssue = (number, login, extra = {}, board = {}) => ({ number, url: `https://github.com/o/r/issues/${number}`, body: 'b', createdAt: `2026-09-${String(number).padStart(2, '0')}T00:00:00Z`,
+  author: { login }, parent: null, labels: { nodes: [], pageInfo: { hasNextPage: false } },
+  projectItems: { nodes: [{ project: { number: 1, owner: { login: 'o' } }, status: { name: board.status ?? 'Todo' }, priority: board.priority ? { name: board.priority } : null }] }, ...extra });
+const FILL_CONFIG = { operator: 'op', planner: BOT, owner: 'o', project: 1, fill: 3 };
+
+test("fill mode's candidates are the operator's and bot's unparented issues, by board priority, then age, at most schedule.fill", () => {
+  const nodes = [
+    openIssue(1, 'op'), openIssue(2, BOT, {}, { priority: 'P1' }), openIssue(3, 'op', {}, { priority: 'P0' }), openIssue(4, 'OP'),
+    // A stranger's, a child's, one held for a person, one with labels past a page, one the epics gave.
+    openIssue(5, 'visitor', {}, { priority: 'P0' }), openIssue(6, 'op', { parent: { number: 9 } }),
+    openIssue(7, 'op', { labels: { nodes: [{ name: 'Needs-Design' }], pageInfo: { hasNextPage: false } } }),
+    openIssue(8, 'op', { labels: { nodes: [{ name: 'needs-human' }], pageInfo: { hasNextPage: false } } }),
+    openIssue(9, 'op', { labels: { nodes: [], pageInfo: { hasNextPage: true } } }), openIssue(10, 'op', {}, { priority: 'P0' }),
+    // Only issues on this board: one on another board, or none, is a control issue or not tracked.
+    openIssue(11, 'op', { projectItems: { nodes: [{ project: { number: 2, owner: { login: 'o' } }, priority: { name: 'P0' } }] } }),
+    openIssue(12, BOT, { projectItems: { nodes: [] } }),
+  ];
+  const items = fillItems([{ repository: 'o/r', nodes }], { ...FILL_CONFIG, fill: 5 }, new Set(['o/r#10']));
+  assert.deepEqual(items.map(i => [i.number, i.priority ?? null]), [[3, 'P0'], [2, 'P1'], [1, null], [4, null]]);
+  assert.ok(items.every(i => i.fill && i.content_kind === 'issue' && i.repository === 'o/r'));
+  assert.equal(fillItems([{ repository: 'o/r', nodes }], FILL_CONFIG, new Set()).length, 3);
+});
+
+test("epics, questions and the status issue take none of fill mode's places", () => {
+  const label = name => ({ labels: { nodes: [{ name }], pageInfo: { hasNextPage: false } } });
+  // Epics and the status issue are the operator's, on the board, unparented, and ranked ahead.
+  const nodes = [openIssue(10, 'op', label('epic'), { priority: 'P1' }), openIssue(11, 'op', label('Epic'), { priority: 'P2' }),
+    openIssue(12, 'op', label('question'), { priority: 'P0' }), openIssue(13, 'op', {}, { priority: 'P0' }), openIssue(14, BOT, {}, { priority: 'P0' }),
+    openIssue(20, 'op'), openIssue(21, BOT)];
+  // As main gives it: the census's epics (13) and the status issue (14).
+  const items = fillItems([{ repository: 'o/r', nodes }], { ...FILL_CONFIG, fill: 2 }, new Set(['o/r#13', 'o/r#14']));
+  assert.deepEqual(items.map(i => i.number), [20, 21]);
+});
+
+test('in fill mode an issue outside any epic is asked of a triage run first, and goes on once answered not done', async () => {
+  const fresh = issue(1, { fill: true, body: 'x'.repeat(300) });
+  const answered = issue(2, { fill: true });
+  const done = issue(3, { fill: true });
+  const verdicts = { 1: null, 2: { verdict: 'not-done', url: 'q2' }, 3: { verdict: 'done', url: 'q3', evidence: 'e3', request: 'r3' } };
+  const steps = await decide([fresh, answered, done], empty, caps(4, { triage: 2, filling: true }), own, noPulls, async () => null, async () => {},
+    async item => verdicts[item.number]);
+  assert.deepEqual(steps.map(s => [s.item, s.action, s.reason]), [
+    ['o/r#1', 'triage', 'outside any epic; asking a triage run'],
+    ['o/r#2', 'dispatch', 'plan https://github.com/o/r/issues/1#issuecomment-5'],
+    ['o/r#3', 'close', 'triage found it done, e3'],
+  ]);
+  // An epic's sub-issue is taken before them, whatever their priority.
+  const order = await decide([issue(4, { fill: true, priority: 'P0' }), issue(5, { priority: 'P3' })], empty, caps(4, { filling: true }), own, noPulls,
+    async () => null, async () => {}, async () => ({ verdict: 'partly' }));
+  assert.deepEqual(order.map(s => s.item), ['o/r#5', 'o/r#4']);
+});
+
+test('in fill mode a triage or research plan is dispatched, alone, out of the triage budget; otherwise by hand', async () => {
+  const items = [issue(1), issue(2), issue(3), issue(4)];
+  const kinds = { 1: 'triage', 2: 'research', 3: 'review', 4: 'triage' };
+  const probe = item => own(item) && { ...own(item), kind: kinds[item.number], extras: ['o/r#9'] };
+  const steps = await decide(items, empty, caps(8, { triage: 2, filling: true }), probe, noPulls);
+  assert.deepEqual(steps.map(s => [s.item, s.action, s.batch]), [['o/r#1', 'dispatch', false], ['o/r#2', 'dispatch', false], ['o/r#3', 'skip', undefined], ['o/r#4', 'skip', undefined]]);
+  assert.match(steps[0].reason, /, for triage$/);
+  assert.match(steps[2].reason, /is for review, which is dispatched by hand$/);
+  assert.match(steps[3].reason, /is for triage; the triage limit of 2 a pass is reached$/);
+  // Not in fill mode, each is a person's, as before.
+  const normal = await decide(items, empty, caps(8, { triage: 2 }), probe, noPulls);
+  assert.ok(normal.every(s => s.action === 'skip' && /dispatched by hand$/.test(s.reason)));
+});
+
+test('with a mode, the idle line says it, and a pass that started something how many slots it filled', () => {
+  const started = [{ item: 'o/r#1', action: 'dispatch', reason: 'plan' }, { item: 'o/r#2', action: 'triage', reason: 'x' }, { item: 'o/r#3', action: 'skip', reason: 'no plan' }];
+  assert.equal(idleLine(started, 8, 'fill (claude 50% used, pace allows 53%)'), 'filled: 2 of 8 free slot(s); mode: fill (claude 50% used, pace allows 53%)');
+  assert.equal(idleLine(started, 8), null);
+  assert.equal(idleLine(started, 0, 'fill (x)'), null);
+  assert.equal(idleLine([{ item: 'o/r#3', action: 'skip', reason: 'no plan' }], 3, 'normal (y)'), 'idle: 3 slot(s) free and nothing started; mode: normal (y); skipped: no plan 1');
+});
+
+// main in fill mode: the one live epic's work is exhausted (its sub-issue has
+// the bot's pull request open), and two unparented issues of the operator's
+// and the bot's are open, among others that are not taken. #50 is asked of a
+// triage run; #51's run answered not done, so its plan is dispatched.
+const usageConfig = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'usage', 'config.json'), 'utf8'));
+const snapIso = ms => new Date(ms).toISOString();
+async function fillMain(used) {
+  const now = Date.now();
+  const snap = { schema: 'bot-usage/v1', updated_at: new Date(now).toISOString(), pools: { claude: {
+    used_percent: used, window_minutes: WEEK_MS / 60000, resets_at: new Date(now + 0.44 * WEEK_MS).toISOString(), observed_at: snapIso(now), target_percent: 95, hold: false } } };
+  const usageComment = { databaseId: 7, updatedAt: snap.updated_at, body: render(snap, 'test'), author: { login: usageConfig.bot } };
+  const at = (number, login, extra = {}) => ({ ...openIssue(number, login, extra), url: `https://github.com/${EPICS}/issues/${number}` });
+  const nodes = [
+    at(50, REPO_CONFIG.operator, { body: 'Make the thing do the other thing. '.repeat(10), createdAt: '2026-09-01T00:00:00Z' }),
+    at(51, REPO_CONFIG.bot, { createdAt: '2026-08-01T00:00:00Z' }),
+    at(52, 'visitor'), at(53, REPO_CONFIG.operator, { parent: { number: 1 } }),
+    at(54, REPO_CONFIG.operator, { labels: { nodes: [{ name: 'needs-design' }], pageInfo: { hasNextPage: false } } }),
+  ];
+  // All on the configured board; #50 is P1 there, #51 older with no Priority.
+  const board = { project: { number: REPO_CONFIG.schedule.project, owner: { login: REPO_CONFIG.schedule.owner } }, status: { name: 'Todo' } };
+  for (const n of nodes) n.projectItems.nodes = [board];
+  nodes[0].projectItems.nodes = [{ ...board, priority: { name: 'P1' } }];
+  // The live epic and the coordinator's status issue: the operator's, unlabelled, on the board ahead of both.
+  for (const n of [1, REPO_CONFIG.coordinator.statusIssue]) nodes.push({ ...at(n, REPO_CONFIG.operator), projectItems: { nodes: [{ ...board, priority: { name: 'P0' } }] } });
+  // The supervisor's requests issue, say: the operator's, on no board.
+  nodes.push({ ...at(55, REPO_CONFIG.operator), projectItems: { nodes: [] } });
+  const fillReads = [];
+  const graphql = (query, variables) => {
+    if (query === FILL_QUERY) {
+      fillReads.push(`${variables.owner}/${variables.name}`);
+      return { data: { repository: { issues: { nodes: `${variables.owner}/${variables.name}` === EPICS ? nodes : [] } } } };
+    }
+    if (query.includes('comments(') && `${variables.owner}/${variables.name}` === usageConfig.repo && variables.number === usageConfig.issue) {
+      return { data: { repository: { issue: { comments: { nodes: [usageComment], pageInfo: { hasNextPage: false } } } } } };
+    }
+    return undefined;
+  };
+  // A dry run that finds an implement plan on whichever issue it is given.
+  const bin = stub(`fill-plan-${used}`, `const n = /(\\d+)$/.exec(process.argv[3])[1];
+process.stdout.write(JSON.stringify({ body: { ref: 'main', inputs: { repo: '${EPICS}', item: n, kind: 'implement', task: 'Do it.' } } }));
+process.stderr.write('Dry run: request for the plan in https://github.com/${EPICS}/issues/' + n + '#issuecomment-' + n + '0 by ${REPO_CONFIG.operator}; nothing was sent.\\n');`);
+  const question = { id: 1, user: { login: REPO_CONFIG.bot }, created_at: '2026-10-15T00:00:00Z', html_url: 'q51', body: '<!-- schedule-triage/v1: {"request":"r51"} -->\nasked' };
+  const answer = { id: 2, user: { login: REPO_CONFIG.bot }, created_at: '2026-10-15T01:00:00Z', html_url: 'a51', body: 'Not done.\n```schedule-triage\n{"request":"r51","verdict":"not-done"}\n```' };
+  const result = await runMain([], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(41)],
+    [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
+    [`/repos/${EPICS}/pulls?state=open`]: [{ user: { login: REPO_CONFIG.bot }, body: `Refs ${EPICS}#41`, html_url: `https://github.com/${EPICS}/pull/60`, base: { repo: { full_name: EPICS } } }],
+    [`GET /repos/${EPICS}/issues/50/comments`]: [],
+    [`GET /repos/${EPICS}/issues/51/comments`]: [question, answer],
+  }, { bin, graphql, schedule: { fill: 3 } });
+  return { ...result, fillReads };
+}
+
+test('fill mode: with the epics exhausted, the two unparented issues fill free slots, a triage run first', async () => {
+  const { out, error, fillReads } = await fillMain(40);
+  assert.equal(error, undefined, out.join('\n'));
+  const mode = 'fill (claude 40% used, pace allows 53%)';
+  assert.deepEqual(out.filter(l => !/ open sub-issue\(s\) of /.test(l)), [
+    `[dry-run] mode: ${mode}; 2 issue(s) outside any epic, taken after the epics' by board Priority, then age`,
+    `[dry-run] ${EPICS}#41 (epic ${EPICS}#1) skip: a pull request is open, https://github.com/${EPICS}/pull/60`,
+    `[dry-run] ${EPICS}#50 (outside any epic) triage: outside any epic; asking a triage run`,
+    `[dry-run] ${EPICS}#51 (outside any epic) dispatch: plan https://github.com/${EPICS}/issues/51#issuecomment-510`,
+    `[dry-run] filled: 2 of ${REPO_CONFIG.schedule.wip} free slot(s); mode: ${mode}`,
+  ]);
+  // Every scheduled repository is read, once.
+  assert.deepEqual(fillReads.sort(), [...REPO_CONFIG.schedule.repositories].map(r => r.toLowerCase()).sort());
+});
+
+test('over pace, no issue outside an epic is read, and the idle line says the mode', async () => {
+  const { out, error, fillReads } = await fillMain(70);
+  assert.equal(error, undefined, out.join('\n'));
+  assert.deepEqual(fillReads, []);
+  const mode = 'normal (claude 70% used, pace allows 53%)';
+  assert.equal(out[0], `[dry-run] mode: ${mode}`);
+  assert.equal(out.at(-1), `[dry-run] idle: ${REPO_CONFIG.schedule.wip} slot(s) free and nothing started; mode: ${mode}; skipped: a pull request is open 1`);
+});
+
+test("a fill-mode triage run's task says the issue is outside any epic", () => {
+  const task = triageTask({ planDocs: 'https://x/docs' }, { url: 'https://github.com/o/r/issues/1', fill: true }, 'r1');
+  assert.match(task, /outside any epic/);
+  assert.ok(!task.includes('no accepted job plan'));
 });
