@@ -345,25 +345,47 @@ action; each check also has one summary line. All thresholds and collection
 bounds are in `.github/supervisor/config.json`, with repository identities
 in that file and the existing poll configuration, never dispatcher inputs.
 
-The job token reads this repository. For cross-repository/private board
-observations, provision `SUPERVISOR_READ_TOKEN` with read-only contents,
-Actions, issues, pull requests and project access to the configured sources.
-Do not use the bot's write token. Missing access and truncated listings are
-warnings, not healthy observations. API requests have deadlines and a total
+The job token reads this repository and the followed public ones. The usage
+snapshot (`pace`) is on a private repository, `.github/usage/config.json`'s,
+which it cannot read: provision `SUPERVISOR_READ_TOKEN` with read-only
+Issues on that repository, and read-only Actions, Checks (or a classic
+token's `repo` read), contents, issues and pull requests on this one and the
+followed ones. That token also lifts the job token's 1000 requests an hour
+for the repository, which four passes an hour come near. Do not use the
+bot's write token. Missing access and truncated listings are warnings, not
+healthy observations, and fail once they have lasted
+`unavailableFailHours`: each pass reads the previous pass's `health.json`
+artifact for since when. API requests have deadlines and a total
 budget and a seven-minute collection deadline; the job has a ten-minute limit.
 These bounds prevent a stalled API or
 oversized census from exhausting a runner. The JSON artifact contains links
 and fixed actions, not issue bodies, titles, private decisions or logs.
 
 The pass reuses the epic census and authenticated coordinator checkpoints.
-Recent PR/queue activity is sampled from the 100 most recently updated PRs
-per followed repository; it is not a historical audit. Infrastructure findings
+Recent PR/queue activity is every PR updated within `eventLookbackHours`,
+up to `maxPages` GraphQL pages per followed repository; it is not a
+historical audit. A removal from the queue because the PR merged is not
+counted. Infrastructure findings
 are warnings from probe/label time overlap, not proof that a retry is safe.
-A broker probe switched off (`BROKER_OUTAGE` unset) is a warning, not a failure.
+A broker probe switched off (`BROKER_OUTAGE` unset) is no observation: a warning that fails after an hour.
 Decisions currently cover open public question issues assigned to the operator,
 excluding ones with an authenticated operator reply; the private decision
 document is not published or interpreted. Loop detection uses checkpoint
 failures and pending-operation staleness, not speculative interpretation of agent prose.
+
+The checks the controller ran by hand: `idle`, the board job's log of the
+last `idlePasses` scheduler passes each ending `idle: N slot(s) free and
+nothing started`; `stuck`, a plan the latest pass skipped as dispatched
+already whose recorded run ended with its PR (the branch
+`implementBranchPrefix` names after the run) merged or none; `pace`, a
+pool's used share of its window beyond `paceMarginPercent` points from the
+share elapsed; `failures`, the newest dispatch run of a kind and target that
+failed with a secret-shaped string, an `E0NN` safe-output refusal or missing
+data naming a closed blocker, from its failed jobs' annotations;
+`held`, `needs-human` on the bot's PR past `holdWaitHours`; `unqueued`, an
+approved PR whose merge state is clean, out of the queue past
+`unqueuedWaitHours`; `unclosed`, the bot's merged implement PR whose run's
+issue is open past `unclosedWaitHours`, unless it says it is part of it.
 
 **The agent and the executor** (D14) are off until the repository variable
 `SUPERVISOR` is `apply` and `agent.requests` and `agent.log` in

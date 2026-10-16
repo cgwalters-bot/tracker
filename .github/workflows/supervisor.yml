@@ -29,6 +29,8 @@ jobs:
       actions: read
       issues: read
       pull-requests: read
+      # The annotations of failed dispatch jobs, which say why they failed.
+      checks: read
     outputs:
       act: ${{ steps.trigger.outputs.act }}
       repo: ${{ steps.trigger.outputs.repo }}
