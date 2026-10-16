@@ -82,6 +82,19 @@ const VERDICTS = new Set(['done', 'partly', 'not-done', 'needs-design']);
 const closedLine = request => `<!-- schedule-triage/v1-closed: ${request} -->`;
 // A question unanswered this long is listed again, as its run likely failed.
 const ANSWER_MS = 24 * 3600 * 1000;
+// The bound on `schedule.retries`, the runs a plan may get after its first.
+const RETRY_LIMIT = 2;
+// The hidden line this job's record of a retry carries after agent-board's
+// marker, naming the plan's comment; each one is an attempt (readOutcome).
+const RETRY_RE = /^<!-- schedule-retry\/v1: (\d+) -->$/;
+// The first line of this job's comment closing an issue whose run's pull
+// request merged, naming the run, so a reopened issue is not closed again.
+const doneLine = run => `<!-- schedule-outcome/v1-closed: ${run} -->`;
+// agentic-job's status comment on a run's item (its workflow/status.cjs):
+// its own text, then the agent's quoted reason after ` Its reason:`, then
+// these two hidden lines, last.
+const STATUS_END = run => `\n\n<!-- agentic-job-run: ${run} -->\n\n<!-- agentic-job-status -->`;
+const STATUS_REASON = ' Its reason:';
 
 // GitHub names are case-insensitive; the board, a plan and a run name may
 // spell one differently.
@@ -136,6 +149,13 @@ function loadConfig(text) {
   config.batch = s.batch ?? 0;
   if (!Number.isSafeInteger(config.batch) || config.batch < 0 || config.batch > BATCH_LIMIT) {
     throw new Error(`agent-board.json: schedule.batch must be 0 to ${BATCH_LIMIT}`);
+  }
+  // Runs a recorded plan may get after its first ended without a merged pull
+  // request (readOutcome); 0, the default, is off: a recorded plan is then
+  // only skipped, as dispatched already, whatever its run did.
+  config.retries = s.retries ?? 0;
+  if (!Number.isSafeInteger(config.retries) || config.retries < 0 || config.retries > RETRY_LIMIT) {
+    throw new Error(`agent-board.json: schedule.retries must be 0 to ${RETRY_LIMIT}`);
   }
   if (!login.test(config.operator ?? '') || !login.test(config.planner ?? '') || !/^[\w.-]+\/[\w.-]+$/.test(config.caller ?? '')) {
     throw new Error('agent-board.json: operator, bot and dispatchRepo are required');
@@ -262,6 +282,85 @@ async function batchReleased(get, post, primary, key) {
   return !nodes.some(p => p.state === 'OPEN');
 }
 
+// What became of a recorded plan's run (tracker#645), for decide: the run
+// agent-board's record links, and its pull request or why it had none, from
+// agentic-job's status comment for that run on the run's target. `found` is
+// probePlan's, `targetComments` the target's comments. Each part is taken
+// only from who could have written it, so that no visitor's comment and no
+// agent's text closes an issue or names its run:
+// - the record is a writer's (findRecord), and only an implement run of the
+//   caller on the plan's target counts;
+// - the status comment is the planner's (the run's SAFE_OUTPUTS_PAT, on a
+//   target in another repository) or the caller's job token's, ending with
+//   that run's marker; only its own text, before the agent's quoted reason,
+//   may name the pull request, and that must be the planner's;
+// - a blocker comes from the agent's reason, which only a run that handed
+//   back missing data has: at most one, in a followed repository. The worst
+//   a steered one does is hold the item until that issue closes.
+// An attempt is the record, and each retry record this job wrote for the plan
+// since it last changed (agent-board's rule for a record's plan). null is not
+// known, which keeps the skip as dispatched already: a batched extra's record,
+// one without a run link, or a run whose status comment a later run on the
+// same item has replaced.
+async function readOutcome(get, config, found, targetComments) {
+  const lines = (found.record?.body ?? '').split('\n');
+  if (BATCH_RE.test((lines[1] ?? '').trimEnd())) return null;
+  const caller = config.caller.replace(/\./g, '\\.');
+  const id = [...String(found.record?.body ?? '').matchAll(new RegExp(`https://github\\.com/${caller}/actions/runs/(\\d+)`, 'gi'))].at(-1)?.[1];
+  if (!id) return null;
+  const run = await get(`/repos/${config.caller}/actions/runs/${id}`);
+  const title = RUN_TITLE_RE.exec(run?.display_title ?? '');
+  if (title?.[1] !== 'implement' || keyOf(title[2], title[3]) !== found.target) return null;
+  const writers = new Set([config.operator, config.planner].map(w => w.toLowerCase()));
+  const mine = found.comments.filter(c => writers.has(c.user?.login?.toLowerCase()));
+  const changed = Date.parse(found.comments.find(c => String(c.id) === found.commentId)?.updated_at ?? '') || 0;
+  const attempt = 1 + mine.filter(c => (Date.parse(c.created_at) || 0) >= changed
+    && (c.body ?? '').split('\n').slice(0, 2).some(l => RETRY_RE.exec(l.trimEnd())?.[1] === found.commentId)).length;
+  const base = { run: run.html_url, runId: id, attempt };
+  if (run.status !== 'completed') return { ...base, outcome: 'running' };
+  const authors = new Set([config.planner.toLowerCase()]);
+  if (found.target.split('#')[0] === config.caller.toLowerCase()) authors.add('github-actions[bot]');
+  const status = targetComments.find(c => authors.has(c.user?.login?.toLowerCase()) && String(c.body ?? '').endsWith(STATUS_END(id)));
+  const text = status ? status.body.slice(0, -STATUS_END(id).length) : '';
+  const cut = text.indexOf(STATUS_REASON);
+  const own = cut < 0 ? text : text.slice(0, cut);
+  // A run cancelled was stopped by a person or a newer run: not retried.
+  if (run.conclusion === 'cancelled') return null;
+  // Only a run that ended well has a result: a failed one's text carries the
+  // check's refusal, whose file names and errors the agent can choose, and
+  // could name some merged pull request of the planner's.
+  const result = run.conclusion === 'success' && own.startsWith('✅ ')
+    && [...own.matchAll(/ Result: (https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+))/g)].at(-1);
+  if (result) {
+    const pull = await get(`/repos/${result[2]}/pulls/${result[3]}`);
+    if (pull?.user?.login?.toLowerCase() === config.planner.toLowerCase()) {
+      const at = { ...base, pull: pull.html_url };
+      if (pull.merged_at) {
+        const closed = mine.some(c => (c.body ?? '').split('\n')[0].trimEnd() === doneLine(id));
+        return { ...at, outcome: closed ? 'reopened' : 'merged', partOf: /^\s*part of\b/im.test(pull.body ?? '') };
+      }
+      return { ...at, outcome: pull.state === 'open' ? 'open' : 'closed' };
+    }
+  }
+  // A run that ended well with no status comment left is not known to have
+  // made nothing.
+  if (!status && run.conclusion === 'success') return null;
+  const reason = (own.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').replace(/\s+/g, ' ').trim() || `it concluded ${run.conclusion}`).slice(0, 500);
+  let blocker;
+  if (cut >= 0 && own.includes('required data was missing')) {
+    for (const m of text.slice(cut).matchAll(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/(?:issues|pull)\/(\d+)|\b([\w.-]+\/[\w.-]+)#(\d+)/g)) {
+      const key = keyOf(m[1] ?? m[3], m[2] ?? m[4]);
+      if (key === found.target || key === found.self || !config.followed.has(key.split('#')[0])) continue;
+      const [repo, n] = key.split('#');
+      const issue = await get(`/repos/${repo}/issues/${n}`);
+      if (!['open', 'closed'].includes(issue?.state)) throw new Error(`blocker ${key} not readable`);
+      blocker = { key, open: issue.state === 'open', pull: Boolean(issue.pull_request), id: issue.id };
+      break;
+    }
+  }
+  return { ...base, outcome: 'failed', reason, ...(blocker ? { blocker } : {}) };
+}
+
 // The order items are taken in, for the summary.
 const order = field => `by their epic's ${field}, then their own (P0 first, unset last), then oldest first`;
 // P0, P1, ... by the number; any other value, or none, after them all.
@@ -302,9 +401,10 @@ function candidates(entries, repository) {
 // issue is not to be worked on, if it is not. `act(step)` is called with each
 // step as it is decided, so that what a pass has decided is done even if the
 // job's timeout stops it partway down a long board. `triaged(item)` is
-// readTriage's answer for an item, asked only with `triage` on.
-async function decide(items, { inFlight, busy: running }, { wip, followed, statusIssue, statusRepository, triage = 0 }, probe, pullFor,
-  inspect = async () => null, act = async () => {}, triaged = async () => null) {
+// readTriage's answer for an item, asked only with `triage` on. `ended(found)`
+// is readOutcome's answer for a recorded plan, asked only with `retries` on.
+async function decide(items, { inFlight, busy: running }, { wip, followed, statusIssue, statusRepository, triage = 0, retries = 0 }, probe, pullFor,
+  inspect = async () => null, act = async () => {}, triaged = async () => null, ended = async () => null) {
   let free = wip - inFlight;
   let questions = triage;
   const isFollowed = key => followed.has(key.split('#')[0]);
@@ -323,7 +423,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
   for (const item of byPriority(items)) {
     const name = `${item.repository}#${item.number}`;
     // A quiet skip is counted in the idle line but not listed on every pass.
-    const skip = (reason, quiet) => push({ item: name, action: 'skip', reason, ...(quiet ? { quiet } : {}) });
+    const skip = (reason, quiet, extra = {}) => push({ item: name, action: 'skip', reason, ...(quiet ? { quiet } : {}), ...extra });
     const key = keyOf(item.repository, item.number);
     // A guess, probably done or no plan, is asked once of a triage run rather
     // than held as a skip on every pass. The answer: done closes the issue;
@@ -356,7 +456,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
     if (item.content_kind !== 'issue') { await skip('not an issue'); continue; }
     if (statusRepository && key === keyOf(statusRepository, statusIssue)) { await skip('coordinator status issue'); continue; }
     if (item.status === 'Blocked') { await skip('blocked by coordinator plan (board Status: Blocked)'); continue; }
-    let found, unbatched, cleared = false;
+    let found, unbatched, retry, cleared = false;
     try {
       const holding = await held(key);
       if (holding) { await skip(holding); continue; }
@@ -381,7 +481,47 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
         continue;
       }
       if (!found.plan) { await skip(`plan refused: ${found.refused}`); continue; }
-      if (found.recorded) { await skip(`plan ${found.plan} was dispatched already, ${found.recorded}`); continue; }
+      if (found.recorded) {
+        // With `retries` on, the recorded plan's run decides (tracker#645):
+        // skipped as dispatched already for ever, a done issue stayed open
+        // and a failed one was never started again.
+        const out = retries ? await ended(found) : null;
+        if (!out) { await skip(`plan ${found.plan} was dispatched already, ${found.recorded}`); continue; }
+        const as = { outcome: out.outcome };
+        const pull = out.pull && shortRef(out.pull);
+        if (out.outcome === 'running') { await skip(`a run is in flight, ${out.run}`, false, as); continue; }
+        if (out.outcome === 'open') { await skip(`PR open: ${pull}`, false, as); continue; }
+        if (out.outcome === 'closed') { await skip(`its run's PR ${pull} was closed unmerged; edit or replace the plan to dispatch it again`, false, as); continue; }
+        if (out.outcome === 'reopened') { await skip(`reopened after its run's PR ${pull} merged`, true, as); continue; }
+        if (out.outcome === 'merged') {
+          const guess = `its run's PR ${pull} merged as part of it`;
+          // A pull request that says it is part of the issue may not have
+          // done all of it: that is a triage run's question, not a close.
+          if (!out.partOf) await push({ item: name, action: 'done', reason: `its run's PR ${pull} merged`, pull: out.pull, run: out.run, runId: out.runId, ...as });
+          else if (!triage) await skip(guess, false, as);
+          else {
+            if (record === undefined) record = await triaged(item);
+            if (!record) await ask(guess, pull);
+            else if (!await answered(record)) await skip(`${guess}; triage answered ${record.verdict}, ${record.url}`, true, as);
+          }
+          continue;
+        }
+        // Failed, or ended without a pull request. A blocker the run named
+        // is waited on, not retried against: linked when it is an issue, so
+        // eligibility holds the item until it closes and the plan's next
+        // attempt starts then.
+        if (out.blocker?.open) {
+          if (out.blocker.pull) await skip(`its run ${out.run} needs ${out.blocker.key}, which is open`, false, as);
+          else await push({ item: name, action: 'block', reason: `its run ${out.run} needs ${out.blocker.key}; linking it as blocked by`, blocker: out.blocker, ...as });
+          continue;
+        }
+        const reason = out.blocker ? `${out.reason}; ${out.blocker.key}, which it needed, is closed now` : out.reason;
+        if (out.attempt > retries) {
+          await push({ item: name, action: 'needs-human', reason: `${out.attempt} run(s) ended without a merged PR, the last ${out.run}: ${reason}`, ...as });
+          continue;
+        }
+        retry = { attempt: out.attempt + 1, of: retries + 1, run: out.run, runId: out.runId, reason };
+      }
       const targetHeld = await held(found.target);
       if (targetHeld) { await skip(`its plan's ${found.target}: ${targetHeld}`); continue; }
       // A tracker issue's plan may point at another repository: the same
@@ -405,7 +545,8 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       // job would not take on its own would be done anyway. Each gets the
       // checks the item had; if one fails the item runs alone, without
       // --batch, rather than wait on an extra agent-board keeps choosing.
-      for (const extra of found.extras ?? []) {
+      // A retry runs alone: its extras were the first run's to do.
+      for (const extra of retry ? [] : found.extras ?? []) {
         unbatched = !isFollowed(extra) ? 'not a followed repository'
           : blockedTargets.has(extra) ? 'blocked by coordinator plan (board Status: Blocked)'
             : statusRepository && extra === keyOf(statusRepository, statusIssue) ? 'coordinator status issue'
@@ -416,14 +557,17 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       await skip(`could not be read: ${err.message.slice(0, 2500)}`);
       continue;
     }
-    await push(unbatched
-      ? { item: name, action: 'dispatch', reason: `plan ${found.plan}; alone, as batched ${unbatched}`, batch: false }
-      : { item: name, action: 'dispatch', reason: `plan ${found.plan}` });
+    await push(retry
+      ? { item: name, action: 'retry', reason: `plan ${found.plan}; attempt ${retry.attempt} of ${retry.of}, as its run ${retry.run} ended without a merged PR: ${retry.reason}`,
+        outcome: 'failed', retry, found }
+      : unbatched
+        ? { item: name, action: 'dispatch', reason: `plan ${found.plan}; alone, as batched ${unbatched}`, batch: false }
+        : { item: name, action: 'dispatch', reason: `plan ${found.plan}` });
     busy.set(found.target, 'started in this pass');
     busy.set(key, 'started in this pass');
     // A batched run holds its extras too; with --apply their records say so
     // as well, but a dry run writes none.
-    if (!unbatched) for (const extra of found.extras ?? []) busy.set(extra, `batched with ${name} in this pass`);
+    if (!unbatched && !retry) for (const extra of found.extras ?? []) busy.set(extra, `batched with ${name} in this pass`);
     free--;
   }
   return steps;
@@ -506,16 +650,15 @@ function triageTask(config, item, request, pull) {
 
 // The line a pass that started nothing with slots free ends with, so a
 // stall shows: how many items were skipped for each reason, the reason's
-// names and links left out.
+// names and links left out, and how the recorded plans' runs ended.
 function idleLine(steps, free) {
-  if (free <= 0 || steps.some(s => s.action === 'dispatch' || s.action === 'triage')) return null;
-  const counts = new Map();
-  for (const s of steps.filter(s => s.action === 'skip')) {
-    const why = s.reason.replace(/https:\/\/\S+/g, '').replace(/[\w.-]+\/[\w.-]+#\d+/g, '#N').split(/[,:;(]/)[0].replace(/\s+/g, ' ').trim();
-    counts.set(why, (counts.get(why) ?? 0) + 1);
-  }
-  const by = [...counts].sort((a, b) => b[1] - a[1]).map(([why, n]) => `${why} ${n}`).join(', ');
-  return `idle: ${free} slot(s) free and nothing started${by ? `; skipped: ${by}` : ''}`;
+  if (free <= 0 || steps.some(s => ['dispatch', 'triage', 'retry'].includes(s.action))) return null;
+  const tally = list => [...list.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map())]
+    .sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ');
+  const by = tally(steps.filter(s => s.action === 'skip').map(s =>
+    s.reason.replace(/https:\/\/\S+/g, '').replace(/[\w.-]+\/[\w.-]+#\d+/g, '#N').split(/[,:;(]/)[0].replace(/\s+/g, ' ').trim()));
+  const ended = tally(steps.filter(s => s.outcome).map(s => s.outcome));
+  return `idle: ${free} slot(s) free and nothing started${by ? `; skipped: ${by}` : ''}${ended ? `; recorded runs: ${ended}` : ''}`;
 }
 
 // One agent-board call. Its stdin is closed, so nothing it might ask waits
@@ -584,8 +727,11 @@ async function probePlan(bin, config, token, item) {
   // batched task appends each extra's after this line (batch.rs `brief`),
   // and an extra's are its own, nothing the item waits on.
   const brief = String(JSON.parse(run.stdout).body.inputs.task ?? '').split('\n\n---\n\nBatched run: ')[0];
-  return { ...found, brief,
-    recorded: await findRecord(comments, [config.operator, config.planner], found.commentId, self, released) };
+  const recorded = await findRecord(comments, [config.operator, config.planner], found.commentId, self, released);
+  // The record and the issue's comments are readOutcome's, with `retries` on,
+  // and the request a retry sends is the dry run's, with its own brief.
+  return { ...found, brief, recorded, self, comments, record: recorded && comments.find(c => c.html_url === recorded),
+    dispatchBody: JSON.parse(run.stdout).body };
 }
 
 // A child relationship is not permission to implement an umbrella or a
@@ -672,7 +818,8 @@ async function eligibility(post, key, brief = '', get, board = {}, cleared = fal
   }
   if (issue.state !== 'OPEN') return 'not open';
   if (issue.subIssues.totalCount > 0) return 'umbrella: has sub-issues';
-  const label = issue.labels.nodes.find(l => ['epic', 'question'].includes(l.name.toLowerCase()));
+  // needs-human: a person's, as readOutcome's attempts ran out.
+  const label = issue.labels.nodes.find(l => ['epic', 'question', 'needs-human'].includes(l.name.toLowerCase()));
   if (label) return `labelled ${label.name.toLowerCase()}`;
   const crossed = issue.timelineItems.nodes.map(e => e.source)
     .filter(p => p?.repository?.owner?.login?.toLowerCase() === owner.toLowerCase());
@@ -773,6 +920,58 @@ async function main(argv) {
       throw err;
     }
   };
+  // What decide makes of a recorded plan's run (readOutcome).
+  const outcomeStep = async (step, item) => {
+    const at = issuePath(item);
+    if (step.action === 'done') {
+      // Closed first, as on a done answer; the comment's first line keeps a
+      // reopened issue from being closed again for the same run.
+      await request(token, 'PATCH', at, { state: 'closed', state_reason: 'completed' });
+      await request(token, 'POST', `${at}/comments`,
+        { body: `${doneLine(step.runId)}\nBoard scheduler: closed, as the pull request of [its run](${step.run}) merged: ${step.pull}. Reopen it if that is wrong.` });
+      return;
+    }
+    if (step.action === 'needs-human') {
+      await request(token, 'POST', `${at}/labels`, { labels: ['needs-human'] });
+      return;
+    }
+    if (step.action === 'block') {
+      await request(token, 'POST', `${at}/dependencies/blocked_by`, { issue_id: step.blocker.id });
+      return;
+    }
+    // A retry: a record of the same plan, as agent-board writes one, with
+    // this job's retry line, so the plan stays held whatever happens next;
+    // then the old record loses its marker, as agent-board frees one; then
+    // the run, with the brief and why it is run again.
+    const { found, retry } = step;
+    const lines = found.record.body.split('\n');
+    const rec = await request(token, 'POST', `${at}/comments`, { body: `${lines[0].trimEnd()}\n<!-- schedule-retry/v1: ${found.commentId} -->\n`
+      // The last run by its number, not its link, which names this record's run.
+      + `Board scheduler: dispatching the plan in ${found.plan} again, attempt ${retry.attempt} of ${retry.of}, as its last run, ${retry.runId}, ended without a merged pull request.` });
+    const edit = text => request(token, 'PATCH', `/repos/${item.repository}/issues/comments/${rec.id}`, { body: `${rec.body} ${text}` });
+    await request(token, 'PATCH', `/repos/${item.repository}/issues/comments/${found.record.id}`,
+      { body: `${lines.slice(1).join('\n')}\n\nBoard scheduler: superseded by ${rec.html_url}.` });
+    const task = `${found.brief}\n\nThis is attempt ${retry.attempt} of ${retry.of}. The last run, ${retry.run}, ended without a merged pull request; its status: ${retry.reason}`;
+    const body = { ref: found.dispatchBody.ref, inputs: { ...found.dispatchBody.inputs, task } };
+    const url = `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`;
+    let started;
+    try {
+      // The run's id comes back only where the API knows return_run_details,
+      // as agent-board asks for it; without it the next pass knows no run.
+      started = await request(dispatchToken, 'POST', url, { ...body, return_run_details: true })
+        .catch(err => (/HTTP 422/.test(err.message) ? request(dispatchToken, 'POST', url, body) : Promise.reject(err)));
+    } catch (err) {
+      // Held as agent-board holds an ambiguous dispatch: not tried again.
+      await edit(`It was not dispatched, or not knowingly (${err.message.slice(0, 300)}); edit or replace the plan to dispatch it.`).catch(() => {});
+      throw err;
+    }
+    const id = started?.workflow_run_id;
+    await edit(Number.isSafeInteger(id) ? `[run](https://github.com/${config.caller}/actions/runs/${id}).` : 'GitHub named no run.');
+  };
+  const ended = async found => {
+    const [repo, n] = found.target.split('#');
+    return readOutcome(get, config, found, found.target === found.self ? found.comments : await paged(token, `/repos/${repo}/issues/${n}/comments`));
+  };
   const byName = new Map(items.map(i => [`${i.repository}#${i.number}`, i]));
   let errors = 0;
   const issuePath = item => `/repos/${item.repository}/issues/${item.number}`;
@@ -791,7 +990,7 @@ async function main(argv) {
       }
       if (step.action !== 'dispatch') {
         try {
-          await triageStep(step, item);
+          await (['done', 'needs-human', 'block', 'retry'].includes(step.action) ? outcomeStep : triageStep)(step, item);
           log(`${name} ${step.action}: ${step.reason}`);
         } catch (err) {
           errors++;
@@ -812,13 +1011,13 @@ async function main(argv) {
         errors++;
         log(`${name} ${step.action} error: ${err.message}`);
       }
-    }, triaged);
+    }, triaged, ended);
   const idle = idleLine(steps, config.wip - state.inFlight);
   if (idle) log(idle);
   if (errors || unread || note) throw new Error(`${errors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, rank, readDryRun, readRefusal, readRuns, readTriage, triageRecord, triageTask };
+module.exports = { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, rank, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });
