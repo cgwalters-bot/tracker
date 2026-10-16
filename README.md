@@ -297,6 +297,33 @@ extra's, and a run whose status comment a later run replaced keep the old
 skip. Editing or replacing the plan starts the attempts again. The idle line
 also counts the recorded runs by outcome.
 
+`schedule.fill` (0 to 20; 0, off, if unset; needs `schedule.triage`) fills
+slots the epics leave free while the pool is under its pace
+([#672](https://github.com/cgwalters-forge/tracker/issues/672)). The pace is
+the usage snapshot below, for `coordinator.planPool`: fill mode is its paced
+window's used share below the pace the usage job holds it to (its target of
+the share of that window gone), and is off when the
+snapshot is missing or over three hours old, its reading of the pool was
+observed over a day ago (30 hours, as the coordinator's daily planning run renews it; with no epic to plan, fill mode stays off until some run does), or it holds the pool. In fill mode the
+pass also takes up to `schedule.fill` open issues of the scheduled
+repositories, after every epic sub-issue, by board priority, then age: only
+issues the operator or the bot opened (in a public repository a stranger's
+would spend the pool), on the board (so that no control issue, such as the
+supervisor's requests or a broker outage, is closed by a triage answer), with
+no parent, not an epic or the coordinator's status issue, and no `epic`,
+`question`, `needs-human` or `needs-design` label. Only the 100 oldest
+open issues of each repository are read, and the first `schedule.fill` are
+taken whether or not they can move, so one held in a skip, such as a triage
+answer of needs design, keeps its place until it is labelled. Each gets the checks a sub-issue gets (an open pull request or a
+dispatched plan skips it), and is asked of a triage run first, within the
+`schedule.triage` budget, so a stale one is closed; its plan is dispatched once
+the run answers not done. A triage or research plan is dispatched in fill mode
+too, alone and out of the same per-pass budget, instead of being left to a
+person. The coordinator's minimum planning interval is at most an hour in fill
+mode. The pass prints `mode: fill (...)` or `mode: normal (...)` with the
+figures, and its last line says it, as `idle: ...` or `filled: N of M free
+slot(s)`.
+
 `schedule.batch` (0 to 5; 0, off, if unset) is passed as agent-board's
 `dispatch --batch N`, so one implement run and its pull request also do up to
 N small sibling sub-issues that have their own accepted plans

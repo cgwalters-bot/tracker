@@ -85,6 +85,21 @@ const closedLine = request => `<!-- schedule-triage/v1-closed: ${request} -->`;
 const ANSWER_MS = 24 * 3600 * 1000;
 // The bound on `schedule.retries`, the runs a plan may get after its first.
 const RETRY_LIMIT = 2;
+// The bound on `schedule.fill`, the issues outside any epic a pass in fill
+// mode reads (fillItems); each costs an eligibility query and a comments read.
+const FILL_LIMIT = 20;
+// A usage snapshot older than this says nothing of the pace: its publisher
+// (usage.yml, every fifteen minutes) has stopped, so fill mode is off.
+const PACE_FRESH_MS = 3 * 3600 * 1000;
+// A pool's reading older than this is not known (paceMode).
+// A day, and slack for the daily planning run that renews it to start.
+const OBSERVED_FRESH_MS = 30 * 3600 * 1000;
+// The coordinator's minimum planning interval in fill mode, if shorter.
+const FILL_PLAN_INTERVAL_MS = 3600 * 1000;
+// Labels that keep an issue out of fill mode's candidates: a person's, and
+// those eligibility refuses (an epic, a question), which would otherwise
+// take places before the cap and leave none for issues that can run.
+const FILL_HELD_LABELS = new Set(['needs-human', 'needs-design', 'epic', 'question']);
 // The hidden line this job's record of a retry carries after agent-board's
 // marker, naming the plan's comment; each one is an attempt (readOutcome).
 const RETRY_RE = /^<!-- schedule-retry\/v1: (\d+) -->$/;
@@ -158,6 +173,14 @@ function loadConfig(text) {
   if (!Number.isSafeInteger(config.retries) || config.retries < 0 || config.retries > RETRY_LIMIT) {
     throw new Error(`agent-board.json: schedule.retries must be 0 to ${RETRY_LIMIT}`);
   }
+  // Issues outside any epic a pass may take while the plan pool is under
+  // its pace (paceMode, fillItems); 0, the default, is off. Each is asked of
+  // a triage run first, so it needs `triage` on.
+  config.fill = s.fill ?? 0;
+  if (!Number.isSafeInteger(config.fill) || config.fill < 0 || config.fill > FILL_LIMIT) {
+    throw new Error(`agent-board.json: schedule.fill must be 0 to ${FILL_LIMIT}`);
+  }
+  if (config.fill && !config.triage) throw new Error('agent-board.json: schedule.fill needs schedule.triage');
   if (!login.test(config.operator ?? '') || !login.test(config.planner ?? '') || !/^[\w.-]+\/[\w.-]+$/.test(config.caller ?? '')) {
     throw new Error('agent-board.json: operator, bot and dispatchRepo are required');
   }
@@ -367,7 +390,8 @@ const order = field => `by their epic's ${field}, then their own (P0 first, unse
 // P0, P1, ... by the number; any other value, or none, after them all.
 const rank = p => { const m = /^P(\d{1,3})$/.exec(p ?? ''); return m ? Number(m[1]) : Infinity; };
 const age = item => Date.parse(item.created ?? '') || Infinity; // Two unknowns tie: Infinity - Infinity is NaN, hence `|| 0` below.
-const ahead = (a, b) => (rank(a.epicPriority) - rank(b.epicPriority) || 0) || (rank(a.priority) - rank(b.priority) || 0) || (age(a) - age(b) || 0);
+// An epic's sub-issues come before fill mode's issues outside any epic.
+const ahead = (a, b) => (Number(Boolean(a.fill)) - Number(Boolean(b.fill))) || (rank(a.epicPriority) - rank(b.epicPriority) || 0) || (rank(a.priority) - rank(b.priority) || 0) || (age(a) - age(b) || 0);
 const byPriority = items => [...items].sort(ahead);
 
 // The candidates of a census (epics.cjs's `census`): the open sub-issues of
@@ -392,6 +416,98 @@ function candidates(entries, repository) {
   return { items: [...byKey.values()], live: live.length, unread: entries.filter(e => e.error).length };
 }
 
+// Whether a pool is under its pace (tracker#672), from the usage snapshot
+// (usage.cjs's bot-usage/v1): its paced window's used share below the pace
+// the usage job holds it to, its target of the share of that window gone.
+// That is fill mode; anything not known, a snapshot
+// gone stale or a pool held included, is not. A reading the snapshot carried
+// over a broker restart is a lower bound, which use outside the broker
+// could leave far behind, so one observed over a day ago is not known
+// either; a daily planning pass of the coordinator runs on the pool and
+// renews it, but with no epic due one fill mode stays off until a run does. { fill, mode } with the figures.
+function paceMode(snapshot, pool, now) {
+  const p = snapshot?.pools?.[pool];
+  const updated = Date.parse(snapshot?.updated_at ?? '');
+  const off = why => ({ fill: false, mode: `normal (${why})` });
+  if (!p || !Number.isFinite(updated)) return off(`no usage reading of the ${pool} pool`);
+  if (now - updated > PACE_FRESH_MS) return off(`the usage snapshot is from ${snapshot.updated_at}`);
+  const window = p.window_minutes * 60000;
+  const reset = Date.parse(p.resets_at ?? '');
+  const observed = Date.parse(p.observed_at ?? '');
+  if (!(now - observed <= OBSERVED_FRESH_MS)) return off(`no reading of the ${pool} pool observed in the last day${p.observed_at ? `, the last at ${p.observed_at}` : ''}`);
+  if (![p.used_percent, p.target_percent, window, reset].every(Number.isFinite) || window <= 0 || reset <= now) return off(`no current window of the ${pool} pool`);
+  const gone = 100 * Math.min(1, Math.max(0, (now - (reset - window)) / window));
+  const allowed = (p.target_percent * gone) / 100;
+  const figures = `${pool} ${Math.round(p.used_percent)}% used, pace allows ${Math.round(allowed)}%`;
+  if (p.hold) return off(`${figures}, held`);
+  return p.used_percent < allowed ? { fill: true, mode: `fill (${figures})` } : off(figures);
+}
+
+// The pace as the bot's usage comment says it, read as the coordinator reads
+// it: only the bot's own comment, unedited by anyone else, counts.
+async function readPace(post, pool, now) {
+  const { operatorComments, readComments } = require('./epics.cjs');
+  const { MARKER, previousSnapshot } = require('../usage/usage.cjs');
+  const usage = require('../usage/config.json');
+  const comment = operatorComments(await readComments(post, usage.repo, usage.issue), usage.bot).filter(c => c.body.startsWith(MARKER)).at(-1);
+  return paceMode(previousSnapshot(comment?.body), pool, now);
+}
+
+// The coordinator's minimum planning interval: shorter in fill mode, so an
+// epic whose work ran out is planned again sooner.
+const planInterval = (ms, pace) => (pace?.fill ? Math.min(ms, FILL_PLAN_INTERVAL_MS) : ms);
+
+// One followed repository's oldest open issues, with their board fields.
+const FILL_QUERY = `query($owner: String!, $name: String!, $field: String!) {
+  repository(owner: $owner, name: $name) {
+    issues(states: OPEN, first: 100, orderBy: { field: CREATED_AT, direction: ASC }) {
+      nodes {
+        number url body createdAt author { login } parent { number }
+        labels(first: 100) { nodes { name } pageInfo { hasNextPage } }
+        projectItems(first: 20) { nodes {
+          project { number owner { ... on Organization { login } ... on User { login } } }
+          status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          priority: fieldValueByName(name: $field) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+        } }
+      }
+    }
+  }
+}`;
+
+// Fill mode's candidates (tracker#672): open issues of the followed
+// repositories outside any epic, `config.fill` of them at most, by board
+// priority, then age. `answers` are FILL_QUERY's, one a repository, `taken`
+// the keys the epics gave already, the epics and the status issue included.
+// Only issues the operator or the bot
+// opened: in a public repository anyone can open one, and a stranger's
+// would otherwise spend the pool and have a run write a pull request from
+// its text. An issue with a parent is its parent's, epic or umbrella; one
+// labelled needs-human or needs-design waits on a person, and one labelled
+// epic or question is never run (FILL_HELD_LABELS). One with a plan
+// dispatched already, or an open pull request, is skipped by decide, as an
+// epic's sub-issue is. Only issues on the board: the
+// repositories' control issues (the supervisor's requests, a session's, a
+// broker outage) are the operator's or the bot's too, and a triage run's
+// done answer would close them. Each is given a triage run first (decide).
+function fillItems(answers, config, taken) {
+  const writers = new Set([config.operator, config.planner].map(w => w.toLowerCase()));
+  const items = [];
+  for (const { repository, nodes } of answers) {
+    for (const n of nodes ?? []) {
+      const key = keyOf(repository, n.number);
+      if (taken.has(key) || n.parent || !writers.has(n.author?.login?.toLowerCase())) continue;
+      // More labels than one page may hide a held one.
+      if (n.labels?.pageInfo?.hasNextPage !== false || n.labels.nodes.some(l => FILL_HELD_LABELS.has(l.name.toLowerCase()))) continue;
+      const on = (n.projectItems?.nodes ?? []).find(i => i.project?.number === config.project
+        && i.project?.owner?.login?.toLowerCase() === config.owner.toLowerCase());
+      if (!on) continue;
+      items.push({ repository, number: n.number, content_kind: 'issue', url: n.url, body: n.body, created: n.createdAt,
+        status: on.status?.name, priority: on.priority?.name, fill: true });
+    }
+  }
+  return byPriority(items).slice(0, config.fill);
+}
+
 // One step for each item. `probe(item)` says what agent-board would do with
 // it: { plan, target, recorded? }, { none: true } or { refused: reason }.
 // `pullFor(key)` names the bot's open pull request for an item, if any. A
@@ -404,7 +520,10 @@ function candidates(entries, repository) {
 // job's timeout stops it partway down a long board. `triaged(item)` is
 // readTriage's answer for an item, asked only with `triage` on. `ended(found)`
 // is readOutcome's answer for a recorded plan, asked only with `retries` on.
-async function decide(items, { inFlight, busy: running }, { wip, followed, statusIssue, statusRepository, triage = 0, retries = 0 }, probe, pullFor,
+// `filling` is fill mode (paceMode), in which an item with `fill` set, from
+// outside any epic, is asked of a triage run before its plan is dispatched,
+// and a triage or research plan is dispatched too.
+async function decide(items, { inFlight, busy: running }, { wip, followed, statusIssue, statusRepository, triage = 0, retries = 0, filling = false }, probe, pullFor,
   inspect = async () => null, act = async () => {}, triaged = async () => null, ended = async () => null) {
   let free = wip - inFlight;
   let questions = triage;
@@ -473,6 +592,13 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
         ineligible = await inspect(key, '', true);
       }
       if (ineligible) { await skip(ineligible); continue; }
+      // An issue outside any epic may be stale or overtaken (agentic-job#970):
+      // a triage run closes it, or writes or confirms its plan, first.
+      if (item.fill) {
+        if (record === undefined) record = await triaged(item);
+        if (!record) { await ask('outside any epic'); continue; }
+        if (await answered(record)) continue;
+      }
       found = await probe(item);
       if (found.none) {
         if (!triage) { await skip('no plan'); continue; }
@@ -534,7 +660,14 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       // a run that writes another plan, and the bot that posts a run's
       // comments is an accepted planner: such chains are a person's to start.
       // Review and fix runs are the pull request events' and the poll's.
-      if (found.kind !== 'implement') { await skip(`plan ${found.plan} is for ${found.kind}, which is dispatched by hand`); continue; }
+      // In fill mode a triage or research plan is dispatched, as the pool has
+      // runs to spare, but out of the same per-pass budget as triage
+      // questions: that bounds such a chain to `triage` runs a pass, each
+      // plan once (its record), and each run takes a slot.
+      if (found.kind !== 'implement') {
+        if (!filling || !['triage', 'research'].includes(found.kind)) { await skip(`plan ${found.plan} is for ${found.kind}, which is dispatched by hand`); continue; }
+        if (questions <= 0) { await skip(`plan ${found.plan} is for ${found.kind}; the triage limit of ${triage} a pass is reached`); continue; }
+      }
       if (found.target !== key || found.brief) {
         const targetIneligible = statusRepository && found.target === keyOf(statusRepository, statusIssue)
           ? 'coordinator status issue' : await inspect(found.target, found.brief, cleared && found.target === key);
@@ -547,7 +680,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       // checks the item had; if one fails the item runs alone, without
       // --batch, rather than wait on an extra agent-board keeps choosing.
       // A retry runs alone: its extras were the first run's to do.
-      for (const extra of retry ? [] : found.extras ?? []) {
+      for (const extra of retry || found.kind !== 'implement' ? [] : found.extras ?? []) {
         unbatched = !isFollowed(extra) ? 'not a followed repository'
           : blockedTargets.has(extra) ? 'blocked by coordinator plan (board Status: Blocked)'
             : statusRepository && extra === keyOf(statusRepository, statusIssue) ? 'coordinator status issue'
@@ -558,17 +691,20 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       await skip(`could not be read: ${err.message.slice(0, 2500)}`);
       continue;
     }
-    await push(retry
-      ? { item: name, action: 'retry', reason: `plan ${found.plan}; attempt ${retry.attempt} of ${retry.of}, as its run ${retry.run} ended without a merged PR: ${retry.reason}`,
-        outcome: 'failed', retry, found }
-      : unbatched
-        ? { item: name, action: 'dispatch', reason: `plan ${found.plan}; alone, as batched ${unbatched}`, batch: false }
-        : { item: name, action: 'dispatch', reason: `plan ${found.plan}` });
+    if (found.kind !== 'implement') questions--;
+    await push(found.kind !== 'implement'
+      ? { item: name, action: 'dispatch', reason: `plan ${found.plan}, for ${found.kind}`, batch: false }
+      : retry
+        ? { item: name, action: 'retry', reason: `plan ${found.plan}; attempt ${retry.attempt} of ${retry.of}, as its run ${retry.run} ended without a merged PR: ${retry.reason}`,
+          outcome: 'failed', retry, found }
+        : unbatched
+          ? { item: name, action: 'dispatch', reason: `plan ${found.plan}; alone, as batched ${unbatched}`, batch: false }
+          : { item: name, action: 'dispatch', reason: `plan ${found.plan}` });
     busy.set(found.target, 'started in this pass');
     busy.set(key, 'started in this pass');
     // A batched run holds its extras too; with --apply their records say so
     // as well, but a dry run writes none.
-    if (!unbatched && !retry) for (const extra of found.extras ?? []) busy.set(extra, `batched with ${name} in this pass`);
+    if (!unbatched && !retry && found.kind === 'implement') for (const extra of found.extras ?? []) busy.set(extra, `batched with ${name} in this pass`);
     free--;
   }
   return steps;
@@ -639,7 +775,8 @@ function triageTask(config, item, request, pull) {
   return [
     `The board scheduler asks whether ${item.url} is done.`,
     pull ? `It guessed so from the merged pull request ${pull}, which closes it or says it implements it.`
-      : 'It has no accepted job plan, so nothing would start on it.',
+      : item.fill ? 'It is an open issue outside any epic, taken while the pool has runs to spare; it may be stale or overtaken by other work, and any plan on it is dispatched only after your answer.'
+        : 'It has no accepted job plan, so nothing would start on it.',
     `Compare what the issue asks for with ${pull ? 'that pull request and ' : ''}the pull requests merged since the issue was opened.`,
     'Post one comment on the issue that leads with the conclusion and ends with this block, the verdict one of the four:',
     '', `${fence}schedule-triage`, JSON.stringify({ request, verdict: 'done | partly | not-done | needs-design' }), fence, '',
@@ -651,15 +788,19 @@ function triageTask(config, item, request, pull) {
 
 // The line a pass that started nothing with slots free ends with, so a
 // stall shows: how many items were skipped for each reason, the reason's
-// names and links left out, and how the recorded plans' runs ended.
-function idleLine(steps, free) {
-  if (free <= 0 || steps.some(s => ['dispatch', 'triage', 'retry'].includes(s.action))) return null;
+// names and links left out, and how the recorded plans' runs ended. With
+// `mode` (paceMode's, where `schedule.fill` is on) it is said, and a pass
+// that started something with slots free says how many it filled.
+function idleLine(steps, free, mode) {
+  const started = steps.filter(s => ['dispatch', 'triage', 'retry'].includes(s.action)).length;
+  if (free <= 0) return null;
+  if (started) return mode ? `filled: ${started} of ${free} free slot(s); mode: ${mode}` : null;
   const tally = list => [...list.reduce((m, k) => m.set(k, (m.get(k) ?? 0) + 1), new Map())]
     .sort((a, b) => b[1] - a[1]).map(([k, n]) => `${k} ${n}`).join(', ');
   const by = tally(steps.filter(s => s.action === 'skip').map(s =>
     s.reason.replace(/https:\/\/\S+/g, '').replace(/[\w.-]+\/[\w.-]+#\d+/g, '#N').split(/[,:;(]/)[0].replace(/\s+/g, ' ').trim()));
   const ended = tally(steps.filter(s => s.outcome).map(s => s.outcome));
-  return `idle: ${free} slot(s) free and nothing started${by ? `; skipped: ${by}` : ''}${ended ? `; recorded runs: ${ended}` : ''}`;
+  return `idle: ${free} slot(s) free and nothing started${mode ? `; mode: ${mode}` : ''}${by ? `; skipped: ${by}` : ''}${ended ? `; recorded runs: ${ended}` : ''}`;
 }
 
 // One agent-board call. Its stdin is closed, so nothing it might ask waits
@@ -875,7 +1016,7 @@ async function main(argv) {
 
   const get = p => request(token, 'GET', p);
   const { entries, note } = await census(get, body => request(token, 'POST', '/graphql', body), config);
-  const { items, live, unread } = candidates(entries, config.epicsRepository);
+  const { items: epicItems, live, unread } = candidates(entries, config.epicsRepository);
   // An epic not read may be live, and a board the token lost would leave
   // every epic so: that fails the pass, after what could be read is done,
   // rather than pass as an idle one. So do epics past the census's bound,
@@ -884,7 +1025,35 @@ async function main(argv) {
   const failed = entries.filter(e => e.error).map(e => `${config.epicsRepository}#${e.number}: ${e.error}`);
   const unreadNote = (unread ? `; ${unread} epic(s) not read (${failed.slice(0, 3).join(' | ').slice(0, 1000)})` : '')
     + (note ? `; ${note}` : '');
-  if (!live) {
+  // Fill mode (tracker#672): with `schedule.fill` on and the plan pool
+  // under its pace, issues outside any epic are candidates too. Neither an
+  // unreadable pace nor a repository not read fails the pass: fill mode is
+  // only what is left over, and the line says why it is off.
+  let pace = null;
+  let fill = [];
+  if (config.fill) {
+    const gql = body => request(token, 'POST', '/graphql', body);
+    pace = await readPace(gql, config.triagePool, Date.now())
+      .catch(err => ({ fill: false, mode: `normal (usage not read: ${err.message.slice(0, 300)})` }));
+    const answers = [];
+    for (const repository of pace.fill ? config.followed : []) {
+      const [owner, name] = repository.split('/');
+      try {
+        const out = await gql({ query: FILL_QUERY, variables: { owner, name, field: config.priorityField } });
+        const nodes = out.data?.repository?.issues?.nodes;
+        if (out.errors?.length || !Array.isArray(nodes)) throw new Error('open issues not readable');
+        answers.push({ repository, nodes });
+      } catch (err) {
+        log(`fill: ${repository} not read: ${err.message.slice(0, 300)}`);
+      }
+    }
+    const taken = new Set([...epicItems.map(i => keyOf(i.repository, i.number)), ...entries.map(e => keyOf(config.epicsRepository, e.number))]);
+    if (config.statusRepository) taken.add(keyOf(config.statusRepository, config.statusIssue));
+    fill = fillItems(answers, config, taken);
+    log(`mode: ${pace.mode}${pace.fill ? `; ${fill.length} issue(s) outside any epic, taken after the epics' by board ${config.priorityField}, then age` : ''}`);
+  }
+  const items = [...epicItems, ...fill];
+  if (!live && !fill.length) {
     log(`no live epics${unreadNote}; nothing started`);
     if (unread || note) throw new Error(`${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
     return;
@@ -899,9 +1068,9 @@ async function main(argv) {
     if (!listed.has(repo)) listed.set(repo, openPullRefs(await paged(token, `/repos/${repo}/pulls?state=open`), config.planner));
     return listed.get(repo).get(key);
   };
-  log(`${items.length} open sub-issue(s) of ${live} live epic(s)${unreadNote}, taken ${order(config.priorityField)};`
+  log(`${epicItems.length} open sub-issue(s) of ${live} live epic(s)${unreadNote}, taken ${order(config.priorityField)};`
     + ` ${state.inFlight} of ${config.wip} run(s) in flight;`
-    + ` accepted implement plans only; items of ${config.followed.size} followed repositories only`);
+    + ` accepted implement plans only${pace?.fill ? ', and triage and research ones' : ''}; items of ${config.followed.size} followed repositories only`);
 
   // The record is written before the run is dispatched, so a pass cut off
   // between the two does not ask twice; a dispatch that fails takes it back.
@@ -984,11 +1153,11 @@ async function main(argv) {
   const triaged = async item => readTriage(await paged(token, `${issuePath(item)}/comments`), [config.operator, config.planner], item.body);
   // Each step is taken as it is decided, so a pass the job's timeout stops
   // has still started what it got to, the items ranked first.
-  const steps = await decide(items, state, config, item => probePlan(bin, config, token, item), pullFor,
+  const steps = await decide(items, state, { ...config, filling: Boolean(pace?.fill) }, item => probePlan(bin, config, token, item), pullFor,
     (key, brief, cleared) => eligibility(body => request(token, 'POST', '/graphql', body), key, brief, get, config, cleared), async step => {
       const item = byName.get(step.item);
       // Each line names the epic its item was taken from.
-      const name = `${step.item} (epic ${item.epic})`;
+      const name = `${step.item} (${item.fill ? 'outside any epic' : `epic ${item.epic}`})`;
       if (step.quiet) return;
       if (step.action === 'skip' || !apply) {
         log(`${name} ${step.action}: ${step.reason}`);
@@ -1018,12 +1187,12 @@ async function main(argv) {
         log(`${name} ${step.action} error: ${err.message}`);
       }
     }, triaged, ended);
-  const idle = idleLine(steps, config.wip - state.inFlight);
+  const idle = idleLine(steps, config.wip - state.inFlight, pace?.mode);
   if (idle) log(idle);
   if (errors || unread || note) throw new Error(`${errors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, rank, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask };
+module.exports = { FILL_QUERY, RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, paceMode, planInterval, probePlan, pullIssues, rank, readDryRun, readOutcome, readPace, readRefusal, readRuns, readTriage, triageRecord, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });
