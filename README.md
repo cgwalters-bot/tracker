@@ -154,9 +154,16 @@ connection and one unauthenticated GET, each bounded to ten seconds; any
 HTTP response is reachable, not a claim that inference works. It creates one
 bot-owned `outage` issue here, updates it while down, and comments and
 closes it on recovery. Tailnet join or reporting failures fail the workflow,
-not a false broker recovery. There are no ACL or credential changes. A fix
-round that an outage interrupts is still charged: refunding it is for
-agent-board, which owns the rounds (#603). Test with `just test-poll`.
+not a false broker recovery. There are no ACL or credential changes.
+
+While the bot's `outage` issue is open and was refreshed in the last hour,
+the poll, the board scheduler and the coordinator only preview, so no agent
+run starts and merges wait too; a stale one (the probe stopped) does not
+hold. A fix or continuation run that failed inside an outage window, from 30
+minutes before the issue opened until it closed, waits and gets its round
+back once the issue closes (agent-board#110, `brokerOutage` in
+`.github/poll/agent-board.json`). Both do nothing until `BROKER_OUTAGE=apply`.
+Test with `just test-poll`.
 
 Its limits. Marking ready, fixing and `needs-human` apply only to what a
 dispatch run opened, a `dispatch/` branch of the bot's fork, since

@@ -6,13 +6,26 @@ const path = require('node:path');
 const { test } = require('node:test');
 const { execFileSync } = require('node:child_process');
 const { CONFIG, poll } = require('./poll.cjs');
+const { MARKER } = require('./broker.cjs');
 
 const env = { AGENT_BOARD: '/trusted/agent-board', POLL_STATE: '/trusted/state.json' };
 
-test('one actor, preview by default, with only repository-owned configuration', () => {
+// No outage issue is open.
+const none = async () => [];
+const api = issues => async (token, method, p) => {
+  assert.equal(token, 'bot-token');
+  assert.equal(method, 'GET');
+  assert.equal(p, '/repos/configured/repo/issues?state=open&labels=outage&per_page=100');
+  return issues;
+};
+const outage = (over = {}) => ({ number: 9, html_url: 'https://github.com/configured/repo/issues/9', user: { login: CONFIG.author },
+  body: `${MARKER}\nBroker unreachable`, updated_at: new Date().toISOString(), ...over });
+const applyEnv = { ...env, GH_TOKEN: 'bot-token', GITHUB_REPOSITORY: 'configured/repo' };
+
+test('one actor, preview by default, with only repository-owned configuration', async () => {
   for (const [argv, mode] of [[[], '--dry-run'], [['--dry-run'], '--dry-run'], [['--apply'], '--apply']]) {
     let calls = 0;
-    const result = poll(argv, env, (binary, args, options) => {
+    const result = await poll(argv, env, (binary, args, options) => {
       calls++;
       assert.equal(binary, env.AGENT_BOARD);
       assert.deepEqual(args, ['poll', mode, '--config', '.github/poll/agent-board.json', '--state', env.POLL_STATE]);
@@ -21,30 +34,70 @@ test('one actor, preview by default, with only repository-owned configuration', 
       assert.equal(options.maxBuffer, 4 * 1024 * 1024);
       assert.deepEqual(options.stdio, ['ignore', 'pipe', 'pipe']);
       return { status: 0, stdout: 'next-due-seconds=300\n', stderr: '' };
-    });
+    }, argv[0] === '--apply' ? none : () => assert.fail('a preview reads no outage'));
     assert.equal(calls, 1);
     assert.equal(result.status, 0);
     assert.equal(result.again, true);
   }
   for (const args of [['--other'], ['--apply', '--dry-run'], ['--apply', '--apply']]) {
-    assert.throws(() => poll(args, env), /usage/);
+    await assert.rejects(poll(args, env), /usage/);
   }
-  assert.throws(() => poll([], {}), /required/);
+  await assert.rejects(poll([], {}), /required/);
 });
 
-test('failed, timed out, truncated or malformed passes fail and keep the chain alive', () => {
+test('an open, fresh outage issue makes an applying pass a preview on a copy of the state', async t => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-held-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const state = path.join(dir, 'state.json');
+  fs.writeFileSync(state, '{"saved":true}');
+  const input = { ...applyEnv, POLL_STATE: state, RUNNER_TEMP: dir };
+  let args;
+  const result = await poll(['--apply'], input, (_binary, a) => {
+    args = a;
+    assert.equal(fs.readFileSync(a.at(-1), 'utf8'), '{"saved":true}');
+    fs.writeFileSync(a.at(-1), '{"advanced":true}');
+    return { status: 0, stdout: 'next-due-seconds=300\n' };
+  }, api([outage()]));
+  assert.equal(args[1], '--dry-run');
+  assert.notEqual(args.at(-1), state);
+  assert.equal(fs.readFileSync(state, 'utf8'), '{"saved":true}');
+  assert.ok(result.stdout.startsWith('held: broker outage https://github.com/configured/repo/issues/9; this pass previews only\n'));
+  assert.equal(result.status, 0);
+  assert.equal(result.again, false);
+});
+
+test('an outage issue that is not the bot\'s, not marked or stale does not hold', async () => {
+  const stale = new Date(Date.now() - 61 * 60_000).toISOString();
+  for (const issue of [outage({ user: { login: 'visitor' } }), outage({ body: 'Broker unreachable' }), outage({ updated_at: stale })]) {
+    let args;
+    const result = await poll(['--apply'], applyEnv, (_binary, a) => { args = a; return { status: 0, stdout: 'next-due-seconds=600\n' }; }, api([issue]));
+    assert.deepEqual(args.slice(1), ['--apply', '--config', '.github/poll/agent-board.json', '--state', env.POLL_STATE]);
+    assert.doesNotMatch(result.stdout, /^held:/m);
+  }
+  const result = await poll(['--apply'], applyEnv, () => ({ status: 0, stdout: 'next-due-seconds=600\n' }), api([outage({ updated_at: stale })]));
+  assert.match(result.stdout, /^outage issue #9 is stale; not holding$/m);
+});
+
+test('an outage issue that cannot be read fails the pass and starts nothing', async () => {
+  const result = await poll(['--apply'], applyEnv, () => assert.fail('spawned'), async () => { throw new Error('GET: HTTP 502'); });
+  assert.equal(result.status, 1);
+  assert.equal(result.again, true);
+  assert.match(result.stderr, /HTTP 502/);
+});
+
+test('failed, timed out, truncated or malformed passes fail and keep the chain alive', async () => {
   for (const result of [
     { status: 1 }, { status: null, error: new Error('timeout') },
     { status: 0, stdout: '' }, { status: 0, stdout: 'next-due-seconds=0\n' },
     { status: 0, stdout: 'next-due-seconds=21601\n' },
     { status: 1, stdout: 'next-due-seconds=600\n' },
   ]) {
-    const output = poll([], env, () => result);
+    const output = await poll([], env, () => result);
     assert.equal(output.status, 1);
     assert.equal(output.again, true);
   }
   for (const due of [600, 21600]) {
-    const output = poll([], env, () => ({ status: 0, stdout: `next-due-seconds=300\nnext-due-seconds=${due}\n` }));
+    const output = await poll([], env, () => ({ status: 0, stdout: `next-due-seconds=300\nnext-due-seconds=${due}\n` }));
     assert.equal(output.status, 0);
     assert.equal(output.again, false);
   }
@@ -66,12 +119,12 @@ test('adapter emits escaped summary and only its own workflow output', t => {
   assert.doesNotMatch(text, /<script>/);
 });
 
-test('real child buffer overflow fails and keeps the chain alive', t => {
+test('real child buffer overflow fails and keeps the chain alive', async t => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-overflow-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const fake = path.join(dir, 'agent-board');
   fs.writeFileSync(fake, '#!/usr/bin/env node\nprocess.stdout.write("x".repeat(5 * 1024 * 1024));\n', { mode: 0o700 });
-  const result = poll([], { ...process.env, AGENT_BOARD: fake, POLL_STATE: path.join(dir, 'state') });
+  const result = await poll([], { ...process.env, AGENT_BOARD: fake, POLL_STATE: path.join(dir, 'state') });
   assert.equal(result.status, 1);
   assert.equal(result.again, true);
 });
@@ -87,6 +140,8 @@ test('configuration follows every dispatch target and preserves pool policy', ()
   // round on a pool whose conflict runs have returned without a new head.
   assert.equal(c.toilFixPool, 'openai');
   assert.equal(c.kindPools.triage, 'mistral');
+  // agent-board's refund reads the same issue as the hold: the probe's, here.
+  assert.deepEqual(c.brokerOutage, { repository: c.dispatchRepo, author: c.bot, leadSeconds: 1800 });
   const pools = require('../agentic-job/pools.json');
   for (const pool of [...c.fixPools, c.toilFixPool, ...Object.values(c.kindPools)]) assert.ok(pools[pool], pool);
 });
