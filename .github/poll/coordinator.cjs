@@ -593,6 +593,6 @@ async function main(argv) {
   }
 }
 
-module.exports = { applyConfig, brief, changedFingerprint, dailyDue, decision, health, loadConfig, pass, record, reportPull, statusProse };
+module.exports = { MARKER, applyConfig, brief, changedFingerprint, dailyDue, decision, health, loadConfig, pass, record, reportPull, statusProse };
 
 if (require.main === module) main(process.argv.slice(2)).catch(err => { console.error(err.message); process.exitCode = 1; });

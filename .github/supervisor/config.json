@@ -15,5 +15,13 @@
   "probeWorkflow": "broker-probe.yml",
   "releaseRepository": "cgwalters-forge/agentic-job",
   "wrapperRepository": "cgwalters-forge/actions",
-  "wrapperPath": ".github/workflows/cgwalters-agentic-job.yml"
+  "wrapperPath": ".github/workflows/cgwalters-agentic-job.yml",
+  "agent": {
+    "pool": "claude",
+    "cooldownHours": 4,
+    "requests": null,
+    "log": null,
+    "variables": { "BOARD_DISPATCH": ["off"], "COORDINATOR": ["off"] },
+    "kinds": ["research"]
+  }
 }

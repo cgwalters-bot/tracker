@@ -1,16 +1,27 @@
-# Read-only deterministic health pass. No agent, dispatch, or corrective writes.
+# The controller's supervisor (#626). A deterministic, read-only health pass
+# every fifteen minutes; when a check fails, or on the daily pass, an agent
+# reads the report and asks for typed actions; an executor holding the bot's
+# token performs only the ones .github/supervisor/actions.cjs admits and logs
+# each in the supervisor log issue. The agent and the executor are off until
+# the repository variable SUPERVISOR is `apply`; the health pass always runs.
 name: supervisor
 on:
   schedule:
     - cron: '*/15 * * * *'
+    # The daily pass, which runs the agent even with every check passing.
+    # Its string is repeated in the health job's DAILY below.
+    - cron: '7 11 * * *'
   workflow_dispatch:
 permissions: {}
-concurrency:
-  group: supervisor
-  cancel-in-progress: false
+# Per job, not for the workflow: an agent run lasts up to hours, and a
+# workflow-wide group would hold the health passes, the daily one included,
+# behind it. trigger.cjs keeps two agent runs from overlapping.
 jobs:
   health:
-    if: ${{ vars.SUPERVISOR == 'observe' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    concurrency:
+      group: supervisor-health
+      cancel-in-progress: false
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
@@ -18,6 +29,14 @@ jobs:
       actions: read
       issues: read
       pull-requests: read
+    outputs:
+      act: ${{ steps.trigger.outputs.act }}
+      repo: ${{ steps.trigger.outputs.repo }}
+      item: ${{ steps.trigger.outputs.item }}
+      task: ${{ steps.trigger.outputs.task }}
+      agent: ${{ steps.trigger.outputs.agent }}
+      model: ${{ steps.trigger.outputs.model }}
+      budget: ${{ steps.trigger.outputs.budget }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -36,3 +55,63 @@ jobs:
           name: supervisor-health
           path: health.json
           retention-days: 2
+      # Decides from health.json and this workflow's own recent runs; the job
+      # token reads them. Without SUPERVISOR=apply it only previews.
+      - name: Whether the agent runs
+        id: trigger
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DAILY: ${{ github.event.schedule == '7 11 * * *' }}
+        run: just supervisor-trigger
+
+  # The agent: a research run of the shared wrapper on the requests issue,
+  # whose one checked add_comment carries the typed requests. Its token is
+  # the wrapper's read-only job token; the bot's token reaches only apply,
+  # which posts that comment, as for every dispatch.
+  agent:
+    needs: health
+    if: ${{ vars.SUPERVISOR == 'apply' && needs.health.outputs.act == 'true' }}
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read
+      id-token: write
+    with:
+      task: ${{ needs.health.outputs.task }}
+      repo: ${{ needs.health.outputs.repo }}
+      item: ${{ needs.health.outputs.item }}
+      kind: research
+      agent: ${{ needs.health.outputs.agent }}
+      model: ${{ needs.health.outputs.model }}
+      budget: ${{ needs.health.outputs.budget }}
+      apply-environment: agent-apply
+    secrets:
+      SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
+
+  # Runs no agent-produced code: it parses the requests as data.
+  execute:
+    needs: agent
+    if: ${{ vars.SUPERVISOR == 'apply' && needs.agent.outputs.result-url != '' }}
+    concurrency:
+      group: supervisor-execute
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    environment: agent-apply
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - name: Perform the validated requests
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          RESULT_URL: ${{ needs.agent.outputs.result-url }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: just supervisor-execute

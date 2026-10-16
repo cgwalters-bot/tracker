@@ -21,6 +21,10 @@ const actions = {
   release: 'Review the release before updating the wrapper pin.',
 };
 
+// A probe that is switched off (BROKER_OUTAGE unset) leaves skipped runs: no
+// observation, not a failed one, or every pass would wake the agent.
+const probes = data => data.items.filter(r => r.conclusion !== 'skipped');
+
 function evaluate(snapshot, now = Date.now(), cfg = config) {
   const age = date => (now - Date.parse(date)) / 3600000;
   return Object.entries(actions).map(([id, action]) => {
@@ -35,7 +39,7 @@ function evaluate(snapshot, now = Date.now(), cfg = config) {
         break;
       }
       case 'runs': bad = data.items.filter(r => r.status !== 'completed' && age(r.run_started_at || r.created_at) * 60 > cfg.runTimeoutMinutes); break;
-      case 'broker': bad = data.items.slice(0, 1).filter(r => r.conclusion !== 'success' || age(r.updated_at) * 60 > cfg.probeStaleMinutes); break;
+      case 'broker': bad = probes(data).slice(0, 1).filter(r => r.conclusion !== 'success' || age(r.updated_at) * 60 > cfg.probeStaleMinutes); break;
       case 'epics': bad = data.items.filter(e => e.missing || e.failures >= cfg.epicFailures || (e.pending && age(e.pending.at) > cfg.epicStaleHours)); break;
       case 'dispatch': bad = data.items.filter(i => i.state === 'closed' || i.hasPR || i.umbrella); break;
       case 'queue': case 'dependabot': bad = data.items.filter(e => e.event === 'removed_from_merge_queue' && age(e.created_at) <= cfg.eventLookbackHours); break;
@@ -44,7 +48,7 @@ function evaluate(snapshot, now = Date.now(), cfg = config) {
       case 'decisions': bad = data.items.filter(i => age(i.created_at) > cfg.decisionWaitHours); break;
       case 'release': bad = data.items.filter(i => i.latest !== i.pin); break;
     }
-    if (id === 'broker' && !data.items.length) return { id, status: 'warn', evidence: [], suggested_action: actions[id] };
+    if (id === 'broker' && !probes(data).length) return { id, status: 'warn', evidence: [], suggested_action: actions[id] };
     return { id, status: bad.length ? (id === 'infrastructure' || bad.every(i => i.missing) ? 'warn' : 'fail') : 'ok', evidence: [...new Set(bad.map(i => i.html_url).filter(Boolean))], suggested_action: bad.length ? action : 'None.' };
   });
 }
