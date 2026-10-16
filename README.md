@@ -564,3 +564,32 @@ path. Machine-only readings must stay out of it. Live provider refresh needs
 a broker-side source; the review site's null-pool handling and staleness logic
 live outside this repository. `just publish-usage --dry-run` prints the comment
 (without carrying anything over); test with `just test-usage`.
+
+## The release train
+
+`.github/workflows/release-train.yml` cuts agentic-job's releases and moves
+the pins after them (#650), in the order the controller did by hand: the
+version bump PR, `release.yml` once it merges, the pin bump of the actions
+wrappers once the release is out, then the `review.yml` pin bumps of the
+callers once that merges. The repositories, files, threshold and labels are
+in `.github/release-train/config.json`. A release is due when at least
+`threshold` PRs merged since the last one and that was `intervalHours` ago,
+or at once when one of them is labelled `P0`; the bump is minor if one is
+labelled `breaking`, a patch otherwise. The PRs come from the bot's forks
+with the release notes for the callers' interface changes, and go through
+each repository's review and queue; the train only waits for them.
+
+It is off unless the repository variable `RELEASE_TRAIN` is `dry-run`,
+which prints each hourly pass's step, or `apply`, which takes it with
+`CGWALTERS_BOT_PAT`: that token needs to open issues here, push to the bot's
+forks (named in the configuration: a fork need not share its parent's name)
+with the workflows permission, as the pins are in workflow files, open PRs
+upstream and run agentic-job's `release.yml`. Each release
+has one tracking issue here, opened by the bot and labelled
+`release-train`, with a comment per step. A step it cannot take (a PR closed
+unmerged, a failed `release.yml`, a file whose pin it cannot find) labels
+the issue `needs-human`, which halts the train until the label goes; closing
+the issue drops that release: a later train for the same version ignores
+its closed PRs, halts on one still open, and does not start while main has
+a version bump that was never released. Test with `just test-release-train`;
+`just release-train` is a dry pass with the token in `GH_TOKEN`.

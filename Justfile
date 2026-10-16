@@ -5,13 +5,21 @@
 set positional-arguments
 
 # Every test of the scripts under .github.
-test: test-poll test-usage test-session test-tools test-config test-supervisor
+test: test-poll test-usage test-session test-tools test-config test-supervisor test-release-train
 
 test-supervisor:
     node --test .github/supervisor/*.test.cjs
 
 supervisor:
     node .github/supervisor/health.cjs
+
+test-release-train:
+    node --test .github/release-train/*.test.cjs
+
+# One pass of the release train (release-train.yml); without --apply it
+# prints the step it would take. GH_TOKEN is the bot's token.
+release-train *args:
+    node .github/release-train/train.cjs "$@"
 
 test-tools:
     node --test .github/agentic-job/tools.test.cjs
