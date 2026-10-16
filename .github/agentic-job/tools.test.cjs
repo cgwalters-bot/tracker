@@ -23,9 +23,13 @@ test('tools opt-in is staged without breaking the deployed v0.2.0 parser', () =>
     'dispatchers must not select pre-lockdown setup code');
 });
 
-test('installer prerequisites are installed for every target', () => {
+// The installer's other prerequisites (git, curl, tar, unzip, Node and npm)
+// come with the ubuntu-26.04 image; the distro's npm would pull in some 350
+// node-* packages for nothing (#660).
+test('setup installs what the image lacks and not the distro Node', () => {
   const packages = JSON.parse(config.match(/^packages = (\[[^\n]+\])$/m)[1]);
-  for (const tool of ['git', 'just', 'nodejs', 'npm', 'curl', 'tar', 'unzip']) {
-    assert.ok(packages.includes(tool), `missing installer prerequisite: ${tool}`);
+  assert.ok(packages.includes('just'), 'missing installer prerequisite: just');
+  for (const tool of ['nodejs', 'npm']) {
+    assert.ok(!packages.includes(tool), `the image's Node is used, not the distro's ${tool}`);
   }
 });
