@@ -91,6 +91,25 @@ test('configuration follows every dispatch target and preserves pool policy', ()
   for (const pool of [...c.fixPools, c.toilFixPool, ...Object.values(c.kindPools)]) assert.ok(pools[pool], pool);
 });
 
+// apply cannot push to a repository the bot owns unless that repository opts
+// in with accept-owner-branches (#517), so a run there fails after its work
+// is done. homegit (#641) and praxis-credential-broker came off for this.
+test('no repository the bot owns is a dispatch or fix target unless it opts in', () => {
+  const { bot } = require('./agent-board.json');
+  // Bot-owned repositories whose default branch has accept-owner-branches
+  // naming them, in lowercase; add one only after checking that file is there.
+  const optedIn = new Set([]);
+  for (const name of ['dispatch.toml', 'fix.toml']) {
+    const bounds = fs.readFileSync(path.join(__dirname, '../agentic-job', name), 'utf8');
+    const repos = JSON.parse(/^repos = (\[.*\])$/m.exec(bounds.split(/^\[/m)[0])[1]);
+    for (const repo of repos) {
+      if (optedIn.has(repo.toLowerCase())) continue;
+      assert.notEqual(repo.split('/')[0].toLowerCase(), bot.toLowerCase(),
+        `${repo} in ${name} is owned by ${bot}: apply cannot push there without its accept-owner-branches; see docs/bring-up.md`);
+    }
+  }
+});
+
 test('blocked fixes can explain themselves without a push or extra write authority', () => {
   const bounds = fs.readFileSync(path.join(__dirname, '../agentic-job/fix.toml'), 'utf8');
   const outputs = bounds.split('[outputs]')[1].split('[unprotected_files]')[0];

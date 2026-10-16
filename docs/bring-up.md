@@ -81,7 +81,22 @@ gh workflow run dispatch.yml -R cgwalters-forge/tracker \
 
 `KIND` is implement, review, fix, triage or research; `N` is an issue, or a
 pull request for review and fix; `OWNER/REPO` must be listed in
-`.github/agentic-job/dispatch.toml` (`fix.toml` for a fix). The standing
+`.github/agentic-job/dispatch.toml` (`fix.toml` for a fix).
+
+Runs push as `cgwalters-bot`, and apply pushes a branch to a repository
+that account owns only if the repository's default branch has
+`.github/agentic-job/accept-owner-branches` naming it
+(`acceptsOwnerBranches` in agentic-job's
+[`workflow/push.cjs`](https://github.com/cgwalters-forge/agentic-job/blob/main/workflow/push.cjs));
+otherwise apply fails with "owns ... and has no fork of it to push to"
+(#517). So no `cgwalters-bot/*` repository is a dispatch or fix target,
+and a test in `.github/poll/poll.test.cjs` keeps it so.
+`cgwalters-bot/praxis-credential-broker` is local-only: its work is pushed
+by hand as branches in the repository itself. To make it a target, its
+owner adds that file to it by hand, then adds it back to both lists and to
+the test's exemption.
+
+The standing
 instructions of each kind are not part of the brief: `dispatch.yml` puts
 `.github/agentic-job/profiles/KIND.md` before it, so they change by a pull
 request here and a brief says only what this item needs. An implement run
