@@ -137,6 +137,7 @@ gh repo archive cgwalters-bot/homegit --yes
 
 After that, dispatch a run here to drop `cgwalters-bot/homegit` from
 `.github/agentic-job/dispatch.toml` and `fix.toml`: no run can push to it.
+That is done (#641): homegit is frozen, so it is no longer a dispatch or fix target.
 
 ## The README pointer
 
