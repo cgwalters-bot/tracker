@@ -1333,6 +1333,12 @@ test("epics, questions and the status issue take none of fill mode's places", ()
   assert.deepEqual(items.map(i => i.number), [20, 21]);
 });
 
+test("a plan under review, assigned to the operator and labelled needs-human, takes no fill place, nor once approved", () => {
+  const labels = names => ({ labels: { nodes: names.map(name => ({ name })), pageInfo: { hasNextPage: false } }, assignees: { nodes: [{ login: 'op' }] } });
+  const nodes = [openIssue(30, 'op', labels(['needs-human']), { priority: 'P0' }), openIssue(31, 'op', labels(['needs-human', 'epic']), { priority: 'P0' }), openIssue(32, 'op')];
+  assert.deepEqual(fillItems([{ repository: 'o/r', nodes }], FILL_CONFIG, new Set()).map(i => i.number), [32]);
+});
+
 test('in fill mode an issue outside any epic is asked of a triage run first, and goes on once answered not done', async () => {
   const fresh = issue(1, { fill: true, body: 'x'.repeat(300) });
   const answered = issue(2, { fill: true });
