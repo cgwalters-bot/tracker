@@ -16,7 +16,8 @@ test('tools opt-in is staged without breaking the deployed v0.2.0 parser', () =>
   assert.match(table, /^repository = "https:\/\/[^"\s]+"$/m);
   assert.match(table, /^revision = "[0-9a-f]{40}"$/m);
   assert.match(table, /^recipe = "install-tools"$/m);
-  assert.doesNotMatch(dispatch, /^\s+(?:config|agent-config):/m,
+  // config.test.cjs: only acp-experiment, selected, names another file.
+  assert.deepEqual(dispatch.match(/^\s+(?:config|agent-config): .*$/gm), ['      config: ${{ steps.config.outputs.config }}', '      config: ${{ needs.profile.outputs.config }}'],
     'dispatch must retain the wrapper default hosted.toml path');
   assert.doesNotMatch(dispatch, /^\s+(?:tools|tools-repository|tools-revision):/m,
     'dispatchers must not select pre-lockdown setup code');

@@ -9,6 +9,9 @@
 # the runner configuration in hosted.toml there, the wrapper's default paths.
 # The `pool` input picks the agent and model from the closed set in pools.json
 # there; empty leaves them to the repository variables AGENT and AGENT_MODEL.
+# The `config` input picks the runner configuration from a closed set too:
+# `hosted` leaves the wrapper's default, `acp-experiment` is the child-agent
+# experiment's acp-experiment.toml there.
 # Ours too is the standing brief of each kind, profiles/KIND.md there: the
 # `profile` job puts it before the task, so a dispatch carries only what is
 # particular to its item. The wrapper adds its own line on top, which says
@@ -16,7 +19,7 @@
 # The wrapper is followed at its main (#544): our own repositories are not
 # pinned by commit, third-party actions are. It sets the agentic-job ref.
 name: dispatch
-run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.pool && format(' ({0})', inputs.pool) || '' }}
+run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.pool && format(' ({0})', inputs.pool) || '' }}${{ inputs.config == 'acp-experiment' && ' [acp-experiment]' || '' }}
 
 on:
   workflow_dispatch:
@@ -42,6 +45,11 @@ on:
         description: "Inference pool: claude, openai or mistral (.github/agentic-job/pools.json); empty uses the variables AGENT and AGENT_MODEL"
         type: string
         default: ''
+      config:
+        description: "Runner configuration: hosted, the wrapper's default, or acp-experiment, a Vibe child agent for the run's agent to drive (.github/agentic-job/acp-experiment.toml)"
+        type: choice
+        options: [hosted, acp-experiment]
+        default: hosted
 
 permissions: {}
 concurrency:
@@ -62,6 +70,7 @@ jobs:
       model: ${{ steps.pool.outputs.model }}
       budget: ${{ steps.pool.outputs.budget }}
       skilled: ${{ steps.pool.outputs.skilled }}
+      config: ${{ steps.config.outputs.config }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,6 +106,21 @@ jobs:
           echo "skilled=${skilled}" >> "$GITHUB_OUTPUT"
           [[ -z "$POOL" ]] && { printf "agent=\nmodel=\nbudget=\n" >> "$GITHUB_OUTPUT"; exit 0; }
           jq -r --arg pool "$POOL" '.[$pool] | "agent=\(.agent)\nmodel=\(.model)\nbudget=\(.budget)"' "$pools" >> "$GITHUB_OUTPUT"
+      # The runner configuration's path, from the closed set alone: a path
+      # a dispatcher typed could name any file of this repository as the
+      # run's configuration, the bounds files included. Empty for hosted, so
+      # that a normal run's configuration stays the wrapper's default.
+      - name: Resolve the runner configuration
+        id: config
+        env:
+          CONFIG: ${{ inputs.config }}
+        run: |
+          case "$CONFIG" in
+            hosted) path= ;;
+            acp-experiment) path=.github/agentic-job/acp-experiment.toml ;;
+            *) echo "::error::unknown config '${CONFIG}'; expected hosted or acp-experiment"; exit 1 ;;
+          esac
+          echo "config=${path}" >> "$GITHUB_OUTPUT"
       - name: Put the profile before the task
         id: compose
         env:
@@ -143,6 +167,7 @@ jobs:
       agent: ${{ needs.profile.outputs.agent }}
       model: ${{ needs.profile.outputs.model }}
       budget: ${{ needs.profile.outputs.budget || '500' }}
+      config: ${{ needs.profile.outputs.config }}
       # agentic-job's implement skill and diff-reviewer subagent, so that a
       # run reviews its own change before it hands it back (#543) and
       # profiles/implement.md need not spell the procedure out. The wrapper
