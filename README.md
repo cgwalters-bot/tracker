@@ -320,6 +320,24 @@ Steps 2–4 of the supervisor proposal (agent, privilege and review-site health)
 remain out of scope. Test the reduced recorded-shape snapshots offline with
 `just test-supervisor`.
 
+The staged typed-request boundary in `.github/supervisor/actions.cjs` rejects
+unknown actions, extra fields, unlisted repositories, malformed numeric targets
+and variable names or values outside a caller-supplied policy. This stops
+prompt-injected issue/log text from becoming arbitrary executor API arguments.
+It validates at most ten JSON Lines requests in 32 KiB, as one batch before
+returning any actions. It has no CLI, token access or mutation path and is not
+enabled by `SUPERVISOR=observe`.
+
+This is preparation, not an applying supervisor. The shared runner must support
+the `supervisor_action` safe-output type and authenticated artifact handoff
+before an executor can be connected. Its policy must come from the default
+branch, never dispatch inputs: organization, exact repositories, log issue,
+variable-to-allowed-values map, dispatch kinds and pools. The executor still
+needs target-type and bot-ownership checks (especially checkpoint resets and
+log edits), linked action logging, and failure/replay handling. Conditional
+agent invocation, the daily pass and the review site's last-run panel remain
+unimplemented; no write token should be provisioned for this staged boundary.
+
 After the scheduler, the `board` job runs `.github/poll/epics.cjs`, the first
 part of the coordinator for the operator's epics
 ([#572](https://github.com/cgwalters-forge/tracker/issues/572)). It only

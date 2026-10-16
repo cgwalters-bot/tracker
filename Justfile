@@ -8,7 +8,7 @@ set positional-arguments
 test: test-poll test-usage test-session test-tools test-supervisor
 
 test-supervisor:
-    node --test .github/supervisor/health.test.cjs
+    node --test .github/supervisor/*.test.cjs
 
 supervisor:
     node .github/supervisor/health.cjs
