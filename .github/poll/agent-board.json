@@ -34,6 +34,7 @@
     "project": 1,
     "wip": 8,
     "batch": 2,
+    "triage": 2,
     "priorityField": "Priority",
     "repositories": [
       "cgwalters-forge/tracker",
