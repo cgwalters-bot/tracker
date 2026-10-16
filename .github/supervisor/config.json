@@ -18,9 +18,9 @@
   "wrapperPath": ".github/workflows/cgwalters-agentic-job.yml",
   "agent": {
     "pool": "claude",
-    "cooldownHours": 4,
-    "requests": null,
-    "log": null,
+    "cooldownHours": 1,
+    "requests": { "repository": "cgwalters-forge/tracker", "issue": 656 },
+    "log": { "repository": "cgwalters-forge/operator", "issue": 2 },
     "variables": { "BOARD_DISPATCH": ["off"], "COORDINATOR": ["off"] },
     "kinds": ["research"]
   }

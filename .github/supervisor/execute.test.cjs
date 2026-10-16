@@ -3,7 +3,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { execute, extract } = require('./execute.cjs');
-const { policyFrom } = require('./actions.cjs');
+const { policyFrom, validateBatch } = require('./actions.cjs');
 
 const settings = {
   bot: 'bot', dispatchRepo: 'example/control', dispatchWorkflow: 'dispatch.yml',
@@ -209,4 +209,21 @@ test('a comment without a block asks for nothing; two blocks are refused', async
 test('stays off until the requests and log issues are configured', () => {
   assert.equal(policyFrom({ agent: { ...cfg.agent, log: null } }, settings, {}), null);
   assert.equal(policyFrom({ agent: { ...cfg.agent, requests: null } }, settings, {}), null);
+});
+
+// The shipped configuration, not a fixture: it must turn the agent on, with
+// the requests issue in this repository (the agent's item) and a log the
+// validator can address, inside the scheduler's owner. The agent may rewrite
+// the log (edit_log), so it must never be the private decisions issue.
+test('the repository configuration parses and yields a policy', () => {
+  const shipped = JSON.parse(require('node:fs').readFileSync(require.resolve('./config.json'), 'utf8'));
+  const board = require('../poll/agent-board.json');
+  const shippedPolicy = policyFrom(shipped, board, require('../agentic-job/pools.json'));
+  assert.ok(shippedPolicy);
+  assert.deepEqual(validateBatch('', shippedPolicy), []);
+  assert.equal(shippedPolicy.requests.repository, board.dispatchRepo);
+  assert.ok(Number.isSafeInteger(shippedPolicy.requests.issue) && shippedPolicy.requests.issue > 0);
+  assert.equal(shippedPolicy.log.repository.split('/')[0], shippedPolicy.organization);
+  assert.ok(!(shippedPolicy.log.repository === board.decisions.repository && shippedPolicy.log.issue === board.decisions.issue));
+  assert.ok(shipped.agent.cooldownHours > 0);
 });
