@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
-const { canonical, fingerprint, loadEpicsConfig, main, operatorComments, pagedUpTo, provenance, readBoard, readComments, subIssue, summary } = require('./epics.cjs');
+const { approvedPlan, canonical, census, fingerprint, loadEpicsConfig, main, operatorComments, pagedUpTo, provenance, readBoard, readComments, subIssue, summary } = require('./epics.cjs');
 
 const OP = 'cgwalters';
 const BOT = 'cgwalters-bot';
@@ -36,6 +36,46 @@ test('an epic is live only if the operator applied its label last', () => {
     [[{ event: 'labeled', actor: null, label: { name: 'epic' } }], { live: false, why: 'labelled by an unknown account, not the operator' }],
   ];
   for (const [timeline, expected] of cases) assert.deepEqual(provenance(timeline, OP), expected, JSON.stringify(timeline));
+});
+
+// tracker#675: a plan is filed assigned to the operator and labelled
+// needs-human; the operator's epic label after that approves it.
+test('an approved plan is a live epic the operator labelled after needs-human, assigned to the operator', () => {
+  const plan = { labels: [{ name: 'needs-human' }, { name: 'epic' }], assignees: [{ login: 'CGWalters' }] };
+  const filed = [ev('labeled', BOT, 'needs-human')];
+  assert.equal(approvedPlan([...filed, ev('labeled', OP)], plan, OP), true);
+  // Removed and added again before the approval still counts.
+  assert.equal(approvedPlan([...filed, ev('unlabeled', OP, 'needs-human'), ev('labeled', OP, 'needs-human'), ev('labeled', OP)], plan, OP), true);
+  // needs-human added to a live epic later holds it: it is not undone.
+  assert.equal(approvedPlan([ev('labeled', OP), ev('labeled', OP, 'needs-human')], plan, OP), false);
+  assert.equal(approvedPlan([...filed, ev('labeled', OP), ev('unlabeled', OP, 'needs-human'), ev('labeled', OP, 'needs-human')], plan, OP), false);
+  // Not assigned to the operator, no longer labelled, or no label event seen.
+  assert.equal(approvedPlan([...filed, ev('labeled', OP)], { ...plan, assignees: [{ login: BOT }] }, OP), false);
+  assert.equal(approvedPlan([...filed, ev('labeled', OP)], { ...plan, assignees: [] }, OP), false);
+  assert.equal(approvedPlan([...filed, ev('labeled', OP)], { ...plan, labels: [{ name: 'epic' }] }, OP), false);
+  assert.equal(approvedPlan([ev('labeled', OP)], plan, OP), false);
+});
+
+test('a plan under review is not in the census; once the operator labels it epic it is live and approved', async () => {
+  const config = { epicsRepository: 'o/r', operator: OP, owner: 'o', project: 1, priorityField: 'Priority', followed: new Set(['o/r']) };
+  const issue = (n, labels) => ({ number: n, state: 'open', title: 't', body: 'b', html_url: `https://github.com/o/r/issues/${n}`,
+    labels: labels.map(name => ({ name })), assignees: [{ login: OP }] });
+  // As GitHub answers labels=epic: the plan under review (#4, needs-human only) is not listed.
+  let epics = [];
+  const timelines = { 5: [ev('labeled', BOT, 'needs-human'), ev('labeled', OP)], 6: [ev('labeled', BOT, 'needs-human'), ev('labeled', BOT)] };
+  const get = async p => {
+    if (p.startsWith('/repos/o/r/issues?')) return epics;
+    const n = /issues\/(\d+)\/timeline/.exec(p)?.[1];
+    return n ? timelines[n] : [];
+  };
+  const post = async ({ query }) => query.includes('projectV2')
+    ? { data: { repositoryOwner: { projectV2: { items: { nodes: [], pageInfo: { hasNextPage: false } } } } } }
+    : { data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } };
+  assert.deepEqual((await census(get, post, config)).entries, []);
+  // #5 approved by the operator; #6 labelled epic by the bot is no approval.
+  epics = [issue(5, ['needs-human', 'epic']), issue(6, ['needs-human', 'epic'])];
+  const { entries } = await census(get, post, config);
+  assert.deepEqual(entries.map(e => [e.number, e.live, e.approved ?? false]), [[5, true, true], [6, false, false]]);
 });
 
 test('only the operator\'s comments, last edited by the operator, count', () => {

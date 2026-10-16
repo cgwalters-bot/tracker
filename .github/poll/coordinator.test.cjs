@@ -366,6 +366,42 @@ test('preview performs no writes; apply checkpoints before dispatch and plans at
   assert.equal(live.dispatches[1].inputs.item, '7');
 });
 
+test('an approved plan loses needs-human as it is planned, before its claim; a preview only says so', async () => {
+  const approved = { ...epic, approved: true };
+  const preview = harness(false, [approved]);
+  assert.equal((await pass(preview.options)).plan, 1);
+  assert.deepEqual(preview.writes, []);
+  assert.ok(preview.lines.includes('o/r#7 approved: would remove needs-human'));
+  const live = harness(true, [approved]);
+  assert.equal((await pass(live.options)).errors, 0);
+  const epicWrites = live.writes.filter(w => !w.p.includes('/99/'));
+  assert.deepEqual(epicWrites.map(w => [w.method, w.p]), [['DELETE', '/repos/o/r/issues/7/labels/needs-human'], ['POST', '/repos/o/r/issues/7/comments']]);
+  assert.equal(live.dispatches.at(-1).inputs.item, '7');
+  assert.match(live.dispatches.at(-1).inputs.task, /first sub-issue delivers that contract/);
+  assert.doesNotMatch(brief({ epicsRepository: 'o/r', followed: new Set(), operator: 'op' }, epic, 'id', { priorities: ['P1'] }), /contract/);
+  // Already removed (404) still plans; any other failure stops before the claim.
+  for (const [status, planned] of [[404, true], [403, false]]) {
+    const h = harness(true, [approved]);
+    const get = h.options.get;
+    h.options.get = async (method, p, body) => {
+      if (method === 'DELETE') throw new Error(`DELETE ${p}: HTTP ${status} no`);
+      return get(method, p, body);
+    };
+    const counts = await pass(h.options);
+    assert.equal(counts.errors, planned ? 0 : 1);
+    assert.equal(h.writes.some(w => w.p === '/repos/o/r/issues/7/comments'), planned);
+  }
+  // Not approved (or not live: the census leaves a plan under review out): no label is touched.
+  const plain = harness(true, [epic, { number: 4, live: false, why: 'unlabelled by op' }]);
+  await pass(plain.options);
+  assert.ok(!plain.writes.some(w => w.method === 'DELETE'));
+  // A waiting epic is not planned this pass, so it keeps the label until it is.
+  const full = harness(true, [approved]);
+  full.options.config.wip = 0;
+  await pass(full.options);
+  assert.ok(!full.writes.some(w => w.method === 'DELETE'));
+});
+
 test('status brief points to Decisions without sampled asks and supplies linked activity and stale usage', async () => {
   for (const age of [0, 3 * 3600000, 3 * 3600000 + 1, null]) {
     const h = harness(true, [{ ...epic, subs: [{ ...epic.subs[0], status: 'Blocked' }] }, { ...epic, live: false, number: 10 }]);

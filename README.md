@@ -368,6 +368,25 @@ items. Test with `node --test .github/poll/schedule.test.cjs`.
 
 ## The epic census
 
+### Plans for review
+
+Design-level work is planned with the operator before any of it runs
+([#675](https://github.com/cgwalters-forge/tracker/issues/675)): work started
+without an agreed target has gone the wrong way. A planning session (the
+controller and a subagent working from local clones, iterating with the
+operator) files its plan as an issue in this repository, assigned to the
+operator and labelled `needs-human`. Its body leads with the example
+contract, the workflow YAML or command a user would actually write, then the
+design, the slices in order, risks and open questions
+([#674](https://github.com/cgwalters-forge/tracker/issues/674) is one). The
+operator's comments ask for revisions. While it has no `epic` label it is a
+plan under review: the census does not read it, so neither the coordinator
+nor the scheduler, fill mode included, touches it. The operator adding `epic`
+is the approval; as for any epic, only the configured operator's label
+counts. The coordinator then removes `needs-human` and plans it: the slices
+become sub-issues, the example contract the first where there is one, and the
+scheduler runs them as for any epic.
+
 ### Supervisor
 
 `supervisor.yml` runs `just supervisor` every fifteen minutes on the default
@@ -509,6 +528,11 @@ Plan pinning does not guard concurrent epic-intent or child-body edits at the
 mutation boundary; that still requires upstream observation preconditions.
 Ordering is only Priority, with no Ready step.
 Epics are selected by Priority (P0 first, as the scheduler ranks them), then issue number.
+An approved plan (see Plans for review above), a live epic assigned to the
+operator whose `needs-human` label is older than the operator's `epic`
+label, loses `needs-human` in the pass that dispatches its planning run, and
+not before; a preview logs `approved: would remove needs-human`. A
+`needs-human` the operator adds to a live epic later is left alone.
 Changed intent, sub-issue text or board facts trigger planning; the decision
 logic also forces a daily pass after a completed applied checkpoint. Pending
 plans do not get additional daily runs. The coordinator fingerprints content rather than

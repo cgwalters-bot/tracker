@@ -21,6 +21,7 @@ const { loadConfig } = require('./schedule.cjs');
 
 const CONFIG_FILE = path.join(__dirname, 'agent-board.json');
 const LABEL = 'epic';
+const REVIEW_LABEL = 'needs-human';
 // Bounds on one census, which shares the bot token's budget with the
 // scheduler: past these it says so rather than read on.
 const MAX_EPICS = 50;
@@ -53,6 +54,21 @@ function provenance(timeline, operator) {
   if (last.event === 'unlabeled') return { live: false, why: `unlabelled by ${who}` };
   if (lower(last.actor?.login) !== lower(operator)) return { live: false, why: `labelled by ${who}, not the operator` };
   return { live: true };
+}
+
+// A plan under review (tracker#675) is an issue assigned to the operator and
+// labelled `needs-human`; the operator approves it by adding `epic`, which
+// makes it live. Approved: live (see provenance), still labelled and assigned
+// so, and its last `needs-human` label event older than the operator's
+// `epic` one. The coordinator then removes `needs-human` as it plans the
+// epic. The order is what bounds that write: the operator adding
+// `needs-human` to a live epic later, to hold it, is not undone.
+function approvedPlan(timeline, issue, operator) {
+  const labels = (issue.labels ?? []).map(l => lower(l.name ?? l));
+  if (!labels.includes(REVIEW_LABEL) || !(issue.assignees ?? []).some(a => lower(a.login) === lower(operator))) return false;
+  const last = name => timeline.findLastIndex(e => (e.event === 'labeled' || e.event === 'unlabeled') && lower(e.label?.name) === name);
+  const held = last(REVIEW_LABEL);
+  return held >= 0 && timeline[held].event === 'labeled' && held < last(LABEL);
 }
 
 // The operator's comments that count, by agent-board's rule for plans
@@ -225,8 +241,10 @@ async function census(get, post, config) {
     const entry = { number: epic.number };
     entries.push(entry);
     try {
-      Object.assign(entry, provenance(await pagedUpTo(get, `/repos/${repo}/issues/${epic.number}/timeline`), config.operator));
+      const timeline = await pagedUpTo(get, `/repos/${repo}/issues/${epic.number}/timeline`);
+      Object.assign(entry, provenance(timeline, config.operator));
       if (!entry.live) continue;
+      if (approvedPlan(timeline, epic, config.operator)) entry.approved = true;
       // Read once, when the first epic is live; a failure is kept, not
       // retried for each epic after it.
       const board = await (boardRead ??= readBoard(post, config));
@@ -251,7 +269,7 @@ async function main() {
   console.log(summary(config.epicsRepository, entries, note));
 }
 
-module.exports = { MAX_EPICS, canonical, census, fingerprint, loadEpicsConfig, main, operatorComments, pagedUpTo, provenance, readBoard, readComments, subIssue, summary, summaryLine };
+module.exports = { MAX_EPICS, REVIEW_LABEL, approvedPlan, canonical, census, fingerprint, loadEpicsConfig, main, operatorComments, pagedUpTo, provenance, readBoard, readComments, subIssue, summary, summaryLine };
 
 if (require.main === module) {
   main().catch(err => {
