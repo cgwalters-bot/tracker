@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { agentBoard, candidates, decide, eligibility, findRecord, loadConfig, main, openPullRefs, probePlan, readDryRun, readRefusal, readRuns } = require('./schedule.cjs');
+const { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, loadConfig, main, openPullRefs, probePlan, pullIssues, readDryRun, readRefusal, readRuns } = require('./schedule.cjs');
 const { census } = require('./epics.cjs');
 
 const BOT = 'cgwalters-bot';
@@ -279,7 +279,7 @@ test('a refused plan or no plan takes no slot', async () => {
 test("agent-board's dry run and refusals are read", () => {
   const stdout = JSON.stringify({ method: 'POST', url: 'u', body: { ref: 'main', inputs: { task: 't', repo: 'Up/Stream', item: '7', kind: 'implement', pool: null } } });
   assert.deepEqual(readDryRun(`${stdout}\n`, 'Dry run: request for the plan in https://github.com/o/r/issues/1#issuecomment-42 by cgwalters; nothing was sent.\n'),
-    { plan: 'https://github.com/o/r/issues/1#issuecomment-42', commentId: '42', target: 'up/stream#7', kind: 'implement' });
+    { plan: 'https://github.com/o/r/issues/1#issuecomment-42', commentId: '42', target: 'up/stream#7', kind: 'implement', extras: [] });
   assert.throws(() => readDryRun(stdout, ''), /named no plan comment/);
   assert.deepEqual(readRefusal('error: no plan on this issue from an accepted writer\n'), { none: true });
   assert.deepEqual(readRefusal('error: newest plan https://x was last edited by collaborator, who may not write plans\n'),
@@ -287,22 +287,22 @@ test("agent-board's dry run and refusals are read", () => {
   assert.deepEqual(readRefusal(''), { refused: 'unknown' });
 });
 
-test("only a writer's record of the same plan comment counts", () => {
+test("only a writer's record of the same plan comment counts", async () => {
   const record = (login, id, rest = '') => ({ user: { login }, body: `<!-- agent-board-dispatch: ${id}@2026-10-14T10:00:00Z -->${rest}\nDispatched`, html_url: `rec-${login}-${id}` });
   const writers = ['cgwalters', BOT];
-  assert.equal(findRecord([record('visitor', 42), record('cgwalters', 41), record('cgwalters', 420)], writers, '42'), undefined);
-  assert.equal(findRecord([record('CGWalters-Bot', 42)], writers, '42'), 'rec-CGWalters-Bot-42');
+  assert.equal(await findRecord([record('visitor', 42), record('cgwalters', 41), record('cgwalters', 420)], writers, '42'), undefined);
+  assert.equal(await findRecord([record('CGWalters-Bot', 42)], writers, '42'), 'rec-CGWalters-Bot-42');
   // Only as the first line, as agent-board reads it.
-  assert.equal(findRecord([{ user: { login: BOT }, body: 'quote\n<!-- agent-board-dispatch: 42@t -->' }], writers, '42'), undefined);
-  assert.equal(findRecord([record(BOT, 42, ' extra')], writers, '42'), undefined);
+  assert.equal(await findRecord([{ user: { login: BOT }, body: 'quote\n<!-- agent-board-dispatch: 42@t -->' }], writers, '42'), undefined);
+  assert.equal(await findRecord([record(BOT, 42, ' extra')], writers, '42'), undefined);
 });
 
-test('a plan edited after its record is a new plan', () => {
+test('a plan edited after its record is a new plan', async () => {
   const writers = ['cgwalters', BOT];
   const planAt = updated => ({ id: 42, user: { login: 'cgwalters' }, body: 'plan', updated_at: updated });
   const rec = { user: { login: BOT }, body: '<!-- agent-board-dispatch: 42@2026-10-14T10:00:00Z -->', html_url: 'rec', created_at: '2026-10-14T10:00:05Z' };
-  assert.equal(findRecord([planAt('2026-10-14T10:00:00Z'), rec], writers, '42'), 'rec');
-  assert.equal(findRecord([planAt('2026-10-14T11:00:00Z'), rec], writers, '42'), undefined);
+  assert.equal(await findRecord([planAt('2026-10-14T10:00:00Z'), rec], writers, '42'), 'rec');
+  assert.equal(await findRecord([planAt('2026-10-14T11:00:00Z'), rec], writers, '42'), undefined);
 });
 
 // Stub agent-board binaries, made where each test runs, not in the tree.
@@ -682,4 +682,117 @@ test('a pointer target outside the candidate list respects the configured board 
   assert.match(step.reason, /blocked by/);
   assert.equal(await eligibility(post(target), 'o/p#7', '', undefined, { owner: 'other', project: 3 }), null);
   await assert.rejects(eligibility(post(metadata({ projectItems: { nodes: [], pageInfo: { hasNextPage: true } } })), 'o/r#1'), /board metadata/);
+});
+
+// Batching (#631): agent-board's `dispatch --batch N`, from `schedule.batch`.
+test('schedule.batch is off unless set, and bounded by agent-board', () => {
+  const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
+  const parse = extra => loadConfig(JSON.stringify({ ...base, schedule: { owner: 'o', project: 1, wip: 4, repositories: ['o/r'], ...extra } }));
+  assert.equal(parse({}).batch, 0);
+  assert.equal(parse({ batch: 5 }).batch, 5);
+  for (const batch of [-1, 6, '2', 1.5]) assert.throws(() => parse({ batch }), /schedule.batch/);
+});
+
+test('--batch is passed only when on', async () => {
+  // GARBLED fails to parse, and the error names the command it ran.
+  await assert.rejects(probePlan(GARBLED, { ...CONFIG, batch: 2 }, TOKEN, ITEM), /--planner cgwalters-bot --batch 2: output not understood/);
+  await assert.rejects(probePlan(GARBLED, CONFIG, TOKEN, ITEM), /--planner cgwalters-bot: output not understood/);
+});
+
+test("a dry run's batched issues are held for the rest of the pass", async () => {
+  const stdout = JSON.stringify({ body: { inputs: { repo: 'o/r', item: '1', kind: 'implement' } } });
+  const stderr = 'Not batched: o/r#4: no plan\nBatched: o/r#2 from the plan in https://x\nBatched: O/R#3 from the plan in https://y\n'
+    + 'Dry run: request for the plan in https://github.com/o/r/issues/1#issuecomment-42 by op; nothing was sent.\n';
+  const found = readDryRun(stdout, stderr);
+  assert.deepEqual(found.extras, ['o/r#2', 'o/r#3']);
+  const steps = await decide([issue(1), issue(2), issue(3), issue(4)], empty, caps(4),
+    item => (item.number === 1 ? found : own(item)), noPulls);
+  assert.deepEqual(steps.map(s => [s.item, s.action, s.reason]), [
+    ['o/r#1', 'dispatch', 'plan https://github.com/o/r/issues/1#issuecomment-42'],
+    ['o/r#2', 'skip', 'a run is in flight, batched with o/r#1 in this pass'],
+    ['o/r#3', 'skip', 'a run is in flight, batched with o/r#1 in this pass'],
+    ['o/r#4', 'dispatch', 'plan https://github.com/o/r/issues/1#issuecomment-5'],
+  ]);
+});
+
+test("a batched pull request names each issue it closes, once, in its own repository", () => {
+  const pull = { html_url: 'https://github.com/o/r/pull/9', user: { login: BOT },
+    body: 'Batch\n\nCloses #2\nfixes O/P#4\nCloses #2\nsee Closes #5 inline\nRefs o/r#1' };
+  assert.deepEqual(pullIssues(pull), ['o/r#1', 'o/r#2', 'o/p#4']);
+  assert.deepEqual([...openPullRefs([pull], BOT).keys()], ['o/r#1', 'o/r#2', 'o/p#4']);
+  // The base repository, where the API gives it, over the URL.
+  assert.deepEqual(pullIssues({ base: { repo: { full_name: 'o/q' } }, body: 'Closes #3' }), ['o/q#3']);
+  // No repository to read a bare #N in: not guessed.
+  assert.deepEqual(pullIssues({ body: 'Closes #3' }), []);
+  // Bounded, whoever wrote it.
+  assert.equal(pullIssues({ html_url: pull.html_url, body: Array.from({ length: 50 }, (_, i) => `Closes #${i + 1}`).join('\n') }).length, 10);
+});
+
+test("an extra's batch record is released as agent-board releases it", async () => {
+  const writers = ['cgwalters', BOT];
+  const rec = primary => ({ user: { login: BOT }, created_at: '2026-10-15T10:00:00Z', html_url: `rec-${primary}`,
+    body: `<!-- agent-board-dispatch: 42@2026-10-15T10:00:00Z -->\n<!-- agent-board-batch: ${primary} -->\nDispatched` });
+  const asked = [];
+  const released = answer => async primary => { asked.push(primary); return answer; };
+  assert.equal(await findRecord([rec('O/R#1')], writers, '42', 'o/r#2', released(true)), undefined);
+  assert.deepEqual(asked, ['o/r#1']);
+  assert.equal(await findRecord([rec('o/r#1')], writers, '42', 'o/r#2', released(false)), 'rec-o/r#1');
+  // A record naming the issue itself, or a malformed batch line, holds without asking.
+  asked.length = 0;
+  assert.equal(await findRecord([rec('o/r#2')], writers, '42', 'o/r#2', released(true)), 'rec-o/r#2');
+  assert.equal(await findRecord([rec('o/r#1 x')], writers, '42', 'o/r#2', released(true)), 'rec-o/r#1 x');
+  assert.deepEqual(asked, []);
+  // A released record does not hide another that holds.
+  const plain = { ...rec('x'), body: '<!-- agent-board-dispatch: 42@t -->', html_url: 'plain' };
+  assert.equal(await findRecord([rec('o/r#1'), plain], writers, '42', 'o/r#2', released(true)), 'plain');
+  // Unreadable fails, so the item is skipped and the record holds.
+  await assert.rejects(findRecord([rec('o/r#1')], writers, '42', 'o/r#2', async () => { throw new Error('boom'); }), /boom/);
+});
+
+test('a batch is over once its primary is closed and nothing open closes the extra', async () => {
+  const get = state => async p => (p === '/repos/o/r/issues/1' ? { state } : undefined);
+  const closers = (...states) => async () => ({ data: { repository: { issue: { closedByPullRequestsReferences: { nodes: states.map(state => ({ state })) } } } } });
+  assert.equal(await batchReleased(get('open'), closers(), 'o/r#1', 'o/r#2'), false);
+  assert.equal(await batchReleased(get('closed'), closers('MERGED'), 'o/r#1', 'o/r#2'), true);
+  assert.equal(await batchReleased(get('closed'), closers('OPEN'), 'o/r#1', 'o/r#2'), false);
+  await assert.rejects(batchReleased(get(undefined), closers(), 'o/r#1', 'o/r#2'), /not readable/);
+  await assert.rejects(batchReleased(get('closed'), async () => ({ errors: [{}] }), 'o/r#1', 'o/r#2'), /not readable/);
+});
+
+test('an extra the tracker would not take sends its item alone, without --batch', async () => {
+  const found = plan('o/r#1', { extras: ['o/r#2', 'o/r#3'] });
+  const run = (items, inspect = async () => null, pullFor = noPulls, state = empty) =>
+    decide(items, state, caps(4), item => (item.number === 1 ? found : none()), pullFor, inspect);
+  const alone = async (...args) => { const [step] = await run(...args); assert.equal(step.batch, false); return step.reason; };
+  assert.match(await alone([issue(1), issue(3, { status: 'Blocked' })]), /alone, as batched o\/r#3: blocked by coordinator plan/);
+  assert.match(await alone([issue(1)], async () => null, async key => (key === 'o/r#2' ? 'pr9' : undefined)), /o\/r#2: a pull request is open, pr9/);
+  assert.match(await alone([issue(1)], async key => (key === 'o/r#3' ? 'labelled question' : null)), /o\/r#3: labelled question/);
+  // An extra that cannot be read leaves it out too, rather than the item.
+  assert.match(await alone([issue(1)], async key => { if (key === 'o/r#2') throw new Error('exceeds 100'); return null; }),
+    /o\/r#2: could not be read: exceeds 100/);
+  assert.match(await alone([issue(1)], undefined, noPulls, { inFlight: 0, busy: new Map([['o/r#2', 'run7']]) }), /o\/r#2: a run is in flight, run7/);
+  const [outside] = await decide([issue(1)], empty, caps(4), () => plan('o/r#1', { extras: ['x/y#2'] }), noPulls);
+  assert.match(outside.reason, /x\/y#2: not a followed repository/);
+  // An alone item does not hold the extras it left out.
+  const steps = await run([issue(1), issue(2)], async key => (key === 'o/r#3' ? 'not open' : null));
+  assert.equal(steps[1].reason, 'no plan');
+  // All fit: batched, no flag.
+  const [batched] = await run([issue(1)]);
+  assert.equal(batched.batch, undefined);
+});
+
+test("only the item's own brief is read for its dependencies", async () => {
+  const task = 'Fix it.\n\n---\n\nBatched run: this run also does the issues below.\n\n## o/r#2\n\nDepends on #9.';
+  const output = { body: { inputs: { repo: 'o/r', item: '7', kind: 'implement', task } } };
+  const binary = stub('batched-plan', `process.stdout.write(${JSON.stringify(JSON.stringify(output))}); process.stderr.write('Batched: o/r#2 from the plan in https://x\\nDry run: request for the plan in https://github.com/o/r/issues/7#issuecomment-42 by op');`);
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('[]', { status: 200 });
+  try {
+    const found = await probePlan(binary, { ...CONFIG, batch: 2 }, TOKEN, ITEM);
+    assert.equal(found.brief, 'Fix it.');
+    assert.deepEqual(found.extras, ['o/r#2']);
+    assert.equal(found.recorded, undefined);
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
 });

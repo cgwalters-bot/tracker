@@ -39,6 +39,21 @@ const RUNNING = new Set(['queued', 'in_progress', 'waiting', 'requested', 'pendi
 const RUN_TITLE_RE = /^(implement|triage|research|review|fix) ([\w.-]+\/[\w.-]+)#(\d+)(?: |$)/;
 // The line agentic-job's apply ends a run's pull request with.
 const REFS_RE = /^Refs ([\w.-]+\/[\w.-]+#\d+)\s*$/gm;
+// The lines a batched run's pull request closes each issue it did with
+// (agent-board's docs/job-plans.md#batching asks for `Closes #N`), as
+// GitHub reads closing keywords, one to a line.
+const CLOSES_RE = /^(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?) (?:([\w.-]+\/[\w.-]+))?#(\d+)\s*$/gim;
+// Issues read from one pull request's body, at most: a batch is agent-board's
+// BATCH_LIMIT of 5 extras and its primary, and a body listing hundreds could
+// otherwise fill the coordinator's status brief past its byte limit.
+const PULL_ISSUES = 10;
+// agent-board's `dispatch --batch` bound (BATCH_LIMIT in its batch.rs).
+const BATCH_LIMIT = 5;
+// The hidden second line of an extra's record in a batch, naming the batch's
+// primary issue: `<!-- agent-board-batch: OWNER/REPO#N -->`.
+const BATCH_RE = /^<!-- agent-board-batch: ([\w.-]+\/[\w.-]+)#(\d+) -->$/;
+// agent-board's dry run names each issue it would add to the run.
+const BATCHED_RE = /^Batched: ([\w.-]+\/[\w.-]+#\d+) from the plan in /gm;
 // What agent-board says, on the last line of stderr, of an issue without a
 // writer's plan, and, on stderr of a dry run, of the plan it read.
 const NO_PLAN = 'no plan on this issue';
@@ -89,6 +104,12 @@ function loadConfig(text) {
   const t = s.timeoutSeconds ?? AGENT_BOARD_TIMEOUT_S;
   if (!Number.isSafeInteger(t) || t < 1 || t > 600) throw new Error('agent-board.json: schedule.timeoutSeconds must be 1 to 600');
   config.timeoutMs = t * 1000;
+  // Extra small sibling issues one implement run may also do (agent-board's
+  // `dispatch --batch`); 0, the default, is off.
+  config.batch = s.batch ?? 0;
+  if (!Number.isSafeInteger(config.batch) || config.batch < 0 || config.batch > BATCH_LIMIT) {
+    throw new Error(`agent-board.json: schedule.batch must be 0 to ${BATCH_LIMIT}`);
+  }
   if (!login.test(config.operator ?? '') || !login.test(config.planner ?? '') || !/^[\w.-]+\/[\w.-]+$/.test(config.caller ?? '')) {
     throw new Error('agent-board.json: operator, bot and dispatchRepo are required');
   }
@@ -115,15 +136,28 @@ function readRuns(runs) {
   return { inFlight, busy };
 }
 
-// The items the bot's open pull requests were made for, from the `Refs`
-// line. Only the bot's: a visitor's pull request saying `Refs` must not be
-// able to hold an item back.
+// The issues a pull request was made for: its `Refs` line, then those it
+// closes, a bare `#N` being in its own repository. A batched run's pull
+// request has one `Refs` and a closing line for each issue it did, so it is
+// one pull request with several issues. At most PULL_ISSUES, keys lowercase.
+function pullIssues(pull) {
+  const body = pull.body ?? '';
+  const own = pull.base?.repo?.full_name ?? /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\//.exec(pull.html_url ?? '')?.[1];
+  const keys = new Set([...body.matchAll(REFS_RE)].map(m => m[1].toLowerCase()));
+  for (const m of body.matchAll(CLOSES_RE)) {
+    const repo = m[1] ?? own;
+    if (repo) keys.add(keyOf(repo, m[2]));
+  }
+  return [...keys].slice(0, PULL_ISSUES);
+}
+
+// The items the bot's open pull requests were made for. Only the bot's: a
+// visitor's pull request must not be able to hold an item back.
 function openPullRefs(pulls, bot) {
   const refs = new Map();
   for (const pull of pulls) {
     if (pull.user?.login?.toLowerCase() !== bot.toLowerCase()) continue;
-    for (const m of (pull.body ?? '').matchAll(REFS_RE)) {
-      const key = m[1].toLowerCase();
+    for (const key of pullIssues(pull)) {
       if (!refs.has(key)) refs.set(key, pull.html_url);
     }
   }
@@ -132,12 +166,14 @@ function openPullRefs(pulls, bot) {
 
 // The plan a successful dry run read: the comment it is in and the item its
 // run would work on, which need not be the board item (a tracker issue's
-// plan may target the upstream repository it points to).
+// plan may target the upstream repository it points to), and the issues it
+// would batch with it.
 function readDryRun(stdout, stderr) {
   const inputs = JSON.parse(stdout).body.inputs;
   const from = PLAN_FROM_RE.exec(stderr);
   if (!from || !inputs?.repo || !inputs?.item) throw new Error('agent-board dry run named no plan comment or target');
-  return { plan: from[1], commentId: from[2], target: keyOf(inputs.repo, inputs.item), kind: inputs.kind };
+  const extras = [...String(stderr).matchAll(BATCHED_RE)].map(m => m[1].toLowerCase()).slice(0, BATCH_LIMIT);
+  return { plan: from[1], commentId: from[2], target: keyOf(inputs.repo, inputs.item), kind: inputs.kind, extras };
 }
 
 // agent-board's refusal: an issue with no plan, or why it will not
@@ -155,16 +191,48 @@ function readRefusal(stderr) {
 // not give; a record made before the comment last changed is of an earlier
 // version, which a writer has edited to dispatch again. Should this ever
 // disagree, `--apply` still refuses a recorded plan, which is then skipped.
-function findRecord(comments, writers, commentId) {
+//
+// agent-board's release rule (batch.rs `held`): an extra's record, whose
+// second line names another issue as its batch's primary, stops holding the
+// plan once `released(primaryKey)` says so, which is when the primary is
+// closed and no open pull request closes this issue: the batch is over and
+// did not finish it. Without this, an extra left undone would never be
+// scheduled again. A record naming this issue `self` holds, as one without
+// that line does.
+async function findRecord(comments, writers, commentId, self, released = async () => false) {
   const trusted = new Set(writers.map(w => w.toLowerCase()));
   const plan = comments.find(c => String(c.id) === commentId);
   const changed = Date.parse(plan?.updated_at ?? '') || 0;
   for (const c of comments) {
     if (!trusted.has(c.user?.login?.toLowerCase())) continue;
-    const m = RECORD_RE.exec((c.body ?? '').split('\n')[0].trimEnd());
-    if (m?.[1] === commentId && !(Date.parse(c.created_at) < changed)) return c.html_url;
+    const lines = (c.body ?? '').split('\n');
+    const m = RECORD_RE.exec(lines[0].trimEnd());
+    if (m?.[1] !== commentId || Date.parse(c.created_at) < changed) continue;
+    const batch = BATCH_RE.exec((lines[1] ?? '').trimEnd());
+    const primary = batch && keyOf(batch[1], batch[2]);
+    if (primary && primary !== self && await released(primary)) continue;
+    return c.html_url;
   }
   return undefined;
+}
+
+// Whether an extra's record is released (see findRecord). An answer that
+// cannot be read throws, which skips the item, so the record holds.
+const OPEN_CLOSERS_QUERY = `query($owner: String!, $name: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) { issue(number: $number) {
+    closedByPullRequestsReferences(first: 10, includeClosedPrs: false) { nodes { state } }
+  } }
+}`;
+async function batchReleased(get, post, primary, key) {
+  const [repo, number] = primary.split('#');
+  const state = (await get(`/repos/${repo}/issues/${number}`))?.state;
+  if (!['open', 'closed'].includes(state)) throw new Error(`batch primary ${primary} not readable`);
+  if (state === 'open') return false;
+  const [owner, name] = key.split('#')[0].split('/');
+  const out = await post({ query: OPEN_CLOSERS_QUERY, variables: { owner, name, number: Number(key.split('#')[1]) } });
+  const nodes = out.data?.repository?.issue?.closedByPullRequestsReferences?.nodes;
+  if (out.errors?.length || !Array.isArray(nodes)) throw new Error(`closing pull requests of ${key} not readable`);
+  return !nodes.some(p => p.state === 'OPEN');
 }
 
 // The order items are taken in, for the summary.
@@ -231,7 +299,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
     if (item.content_kind !== 'issue') { await skip('not an issue'); continue; }
     if (statusRepository && key === keyOf(statusRepository, statusIssue)) { await skip('coordinator status issue'); continue; }
     if (item.status === 'Blocked') { await skip('blocked by coordinator plan (board Status: Blocked)'); continue; }
-    let found;
+    let found, unbatched;
     try {
       const holding = await held(key);
       if (holding) { await skip(holding); continue; }
@@ -259,13 +327,31 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
           ? 'coordinator status issue' : await inspect(found.target, found.brief);
         if (targetIneligible) { await skip(`its plan's ${found.target}: ${targetIneligible}`); continue; }
       }
+      // agent-board picks a batch's extras by their labels, dependencies and
+      // closing pull requests only, so an extra the coordinator holds
+      // (Status: Blocked), one with a run or bot pull request, or one this
+      // job would not take on its own would be done anyway. Each gets the
+      // checks the item had; if one fails the item runs alone, without
+      // --batch, rather than wait on an extra agent-board keeps choosing.
+      for (const extra of found.extras ?? []) {
+        unbatched = !isFollowed(extra) ? 'not a followed repository'
+          : blockedTargets.has(extra) ? 'blocked by coordinator plan (board Status: Blocked)'
+            : statusRepository && extra === keyOf(statusRepository, statusIssue) ? 'coordinator status issue'
+              : await held(extra) ?? await inspect(extra).catch(err => `could not be read: ${err.message.slice(0, 300)}`);
+        if (unbatched) { unbatched = `${extra}: ${unbatched}`; break; }
+      }
     } catch (err) {
       await skip(`could not be read: ${err.message.slice(0, 2500)}`);
       continue;
     }
-    await push({ item: name, action: 'dispatch', reason: `plan ${found.plan}` });
+    await push(unbatched
+      ? { item: name, action: 'dispatch', reason: `plan ${found.plan}; alone, as batched ${unbatched}`, batch: false }
+      : { item: name, action: 'dispatch', reason: `plan ${found.plan}` });
     busy.set(found.target, 'started in this pass');
     busy.set(key, 'started in this pass');
+    // A batched run holds its extras too; with --apply their records say so
+    // as well, but a dry run writes none.
+    if (!unbatched) for (const extra of found.extras ?? []) busy.set(extra, `batched with ${name} in this pass`);
     free--;
   }
   return steps;
@@ -307,9 +393,13 @@ function failure(args, why, stderr, env) {
   return err;
 }
 
-function dispatchArgs(config) {
+// The same for a dry run and --apply, so a preview shows the batch a run
+// would take. --batch only when on, so an agent-board without it still runs,
+// and not for a step decide() sends alone.
+function dispatchArgs(config, batch = true) {
   return ['--caller', config.caller, '--workflow', config.workflow,
-    '--operator', config.operator, '--planner', config.planner];
+    '--operator', config.operator, '--planner', config.planner,
+    ...(config.batch && batch ? ['--batch', String(config.batch)] : [])];
 }
 
 // agent-board's dry run reads the plan and prints the request it would
@@ -327,8 +417,14 @@ async function probePlan(bin, config, token, item) {
     throw failure(args, `output not understood: ${err.message}`, run.stderr, env);
   }
   const comments = await paged(token, `/repos/${item.repository}/issues/${item.number}/comments`);
-  return { ...found, brief: JSON.parse(run.stdout).body.inputs.task,
-    recorded: findRecord(comments, [config.operator, config.planner], found.commentId) };
+  const self = keyOf(item.repository, item.number);
+  const released = primary => batchReleased(p => request(token, 'GET', p), body => request(token, 'POST', '/graphql', body), primary, self);
+  // Only the item's own brief is checked for its dependencies and branches: a
+  // batched task appends each extra's after this line (batch.rs `brief`),
+  // and an extra's are its own, nothing the item waits on.
+  const brief = String(JSON.parse(run.stdout).body.inputs.task ?? '').split('\n\n---\n\nBatched run: ')[0];
+  return { ...found, brief,
+    recorded: await findRecord(comments, [config.operator, config.planner], found.commentId, self, released) };
 }
 
 // A child relationship is not permission to implement an umbrella or a
@@ -492,7 +588,7 @@ async function main(argv) {
         // agent-board records the plan on the issue before it sends, and
         // refuses one recorded already, so a plan starts one run however
         // many passes see it.
-        const { stdout } = agentBoard(bin, ['dispatch', item.url, '--apply', ...dispatchArgs(config)],
+        const { stdout } = agentBoard(bin, ['dispatch', item.url, '--apply', ...dispatchArgs(config, step.batch !== false)],
           { env: { GH_TOKEN: token, DISPATCH_TOKEN: dispatchToken }, timeoutMs: config.timeoutMs });
         log(`${name} dispatch: ${step.reason}; ${stdout.trim().split('\n').join(', ')}`);
       } catch (err) {
@@ -505,7 +601,7 @@ async function main(argv) {
   if (errors || unread || note) throw new Error(`${errors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { agentBoard, candidates, decide, eligibility, findRecord, loadConfig, main, openPullRefs, probePlan, rank, readDryRun, readRefusal, readRuns };
+module.exports = { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, loadConfig, main, openPullRefs, probePlan, pullIssues, rank, readDryRun, readRefusal, readRuns };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });

@@ -244,6 +244,19 @@ replaces the plan to dispatch again). Items of unlisted repositories, upstream o
 among them, are skipped as "not a followed repository", as is a plan whose
 target is in one: upstream work is the operator's to start.
 
+`schedule.batch` (0 to 5; 0, off, if unset) is passed as agent-board's
+`dispatch --batch N`, so one implement run and its pull request also do up to
+N small sibling sub-issues that have their own accepted plans
+([batching](https://github.com/cgwalters-forge/agent-board/blob/main/docs/job-plans.md#batching)).
+Each extra the dry run names gets the checks its item had (runs, bot pull
+requests, board Status `Blocked`, eligibility); if one fails, the item runs
+alone, without `--batch`. Only the item's own part of a batched brief is read
+for its dependencies. The issues a run batches are held for the rest of the pass, and an extra's
+record is released by agent-board's rule: once its batch's primary issue is
+closed and no open pull request closes it, it may be scheduled again. A bot
+pull request holds every issue it `Refs` or closes, and the coordinator's
+status names a batched pull request once, with its issues.
+
 Candidates are taken by their epic's board field `schedule.priorityField`
 (default `Priority`), then by their own, which the coordinator sets, P0 first,
 then oldest first; a sub-issue of two epics is taken once, from the one that
