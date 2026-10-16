@@ -21,6 +21,15 @@ test-release-train:
 release-train *args:
     node .github/release-train/train.cjs "$@"
 
+# After `supervisor`: whether the agent runs, from health.json (supervisor.yml).
+supervisor-trigger:
+    node .github/supervisor/trigger.cjs
+
+# Performs the agent's validated requests; GH_TOKEN is the bot's, RESULT_URL
+# the agent's comment.
+supervisor-execute:
+    node .github/supervisor/execute.cjs
+
 test-tools:
     node --test .github/agentic-job/tools.test.cjs
 

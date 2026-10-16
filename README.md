@@ -334,11 +334,12 @@ items. Test with `node --test .github/poll/schedule.test.cjs`.
 
 ## The epic census
 
-### Read-only supervisor
+### Supervisor
 
-`supervisor.yml` runs `just supervisor` every fifteen minutes only when the
-repository variable `SUPERVISOR=observe` is set; it is off otherwise. It does
-not run an agent or make corrective writes. `health.json` is a list of checks
+`supervisor.yml` runs `just supervisor` every fifteen minutes on the default
+branch. Its scheduled runs used to be skipped: the job also required the
+repository variable `SUPERVISOR=observe`, which was never set. The health pass
+only reads, so it now always runs. `health.json` is a list of checks
 with `id`, `status` (`ok`, `warn`, `fail`), evidence links and a suggested
 action; each check also has one summary line. All thresholds and collection
 bounds are in `.github/supervisor/config.json`, with repository identities
@@ -358,31 +359,44 @@ The pass reuses the epic census and authenticated coordinator checkpoints.
 Recent PR/queue activity is sampled from the 100 most recently updated PRs
 per followed repository; it is not a historical audit. Infrastructure findings
 are warnings from probe/label time overlap, not proof that a retry is safe.
+A broker probe switched off (`BROKER_OUTAGE` unset) is a warning, not a failure.
 Decisions currently cover open public question issues assigned to the operator,
 excluding ones with an authenticated operator reply; the private decision
 document is not published or interpreted. Loop detection uses checkpoint
 failures and pending-operation staleness, not speculative interpretation of agent prose.
-Steps 2–4 of the supervisor proposal (agent, privilege and review-site health)
-remain out of scope. Test the reduced recorded-shape snapshots offline with
+
+**The agent and the executor** (D14) are off until the repository variable
+`SUPERVISOR` is `apply` and `agent.requests` and `agent.log` in
+`config.json` name a public requests issue in this repository and the
+bot-authored supervisor log issue in the operator repository. The agent
+runs when a check fails, at most once per `agent.cooldownHours` unless it is
+the daily pass (the `7 11 * * *` schedule). It is a `research` run of the
+shared wrapper on the requests issue, with
+`.github/supervisor/playbook.md`, the policy and `health.json` as its
+task, the pool `agent.pool` and the wrapper's read-only job token. Its one
+comment carries a `supervisor-actions` block of typed requests.
+
+The `execute` job holds `CGWALTERS_BOT_PAT` in the `agent-apply`
+environment and runs no agent code. It executes only on a run's first
+attempt, and accepts only the bot's comment, unedited, on the requests
+issue that this run's apply reports. It validates the whole
+batch with `actions.cjs`: the closed action list, the scheduler's
+repositories, the variable/value allowlist, dispatch kinds from config and
+pools from `pools.json`; outside those repositories, only the log issue.
+Comment bodies and reasons must be plain prose, with no `<!--` and no
+fences, so they cannot forge the bot's checkpoints, plans or verdicts.
+Then it reads every target: checkpoints must be the bot's coordinator
+records with no pending operation, the log issue the bot's, dispatch
+targets open issues, queue targets open pull requests, variables this
+repository's, and runs not the supervisor's own. Only after all of these checks does it write. It stops
+at the first failed write and comments one line per action, with a link
+and no agent text, on the log issue. Anything off the list is the operator's
+decision, which the agent asks for as a comment on the log issue. Test with
 `just test-supervisor`.
 
-The staged typed-request boundary in `.github/supervisor/actions.cjs` rejects
-unknown actions, extra fields, unlisted repositories, malformed numeric targets
-and variable names or values outside a caller-supplied policy. This stops
-prompt-injected issue/log text from becoming arbitrary executor API arguments.
-It validates at most ten JSON Lines requests in 32 KiB, as one batch before
-returning any actions. It has no CLI, token access or mutation path and is not
-enabled by `SUPERVISOR=observe`.
-
-This is preparation, not an applying supervisor. The shared runner must support
-the `supervisor_action` safe-output type and authenticated artifact handoff
-before an executor can be connected. Its policy must come from the default
-branch, never dispatch inputs: organization, exact repositories, log issue,
-variable-to-allowed-values map, dispatch kinds and pools. The executor still
-needs target-type and bot-ownership checks (especially checkpoint resets and
-log edits), linked action logging, and failure/replay handling. Conditional
-agent invocation, the daily pass and the review site's last-run panel remain
-unimplemented; no write token should be provisioned for this staged boundary.
+The agent cannot read the private decisions document (its token reads only
+this repository), and the review site's last-run panel is
+cgwalters-forge/review's to build; both are left from #626.
 
 After the scheduler, the `board` job runs `.github/poll/epics.cjs`, the first
 part of the coordinator for the operator's epics

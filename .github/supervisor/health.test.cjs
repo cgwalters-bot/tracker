@@ -25,6 +25,8 @@ test('threshold boundaries and stale probe', () => {
   assert.equal(status('poll', [{ status: 'completed', conclusion: 'success' }, ...snapshots.poll]), 'ok');
   assert.equal(status('runs', [{ status: 'in_progress', run_started_at: new Date(now - config.runTimeoutMinutes * 60000).toISOString() }]), 'ok');
   assert.equal(status('broker', [{ conclusion: 'success', updated_at: '2026-10-12T00:00:00Z' }]), 'fail');
+  assert.equal(status('broker', [{ conclusion: 'skipped', updated_at: snapshots.now }]), 'warn');
+  assert.equal(status('broker', [{ conclusion: 'skipped', updated_at: snapshots.now }, ...snapshots.broker]), 'fail');
   assert.equal(status('queue', [{ event: 'removed_from_merge_queue', created_at: '2026-10-12T00:00:00Z' }]), 'ok');
   assert.equal(status('epics', [{ missing: true }]), 'warn');
   assert.equal(status('epics', [{ missing: true }, { failures: config.epicFailures }]), 'fail');
