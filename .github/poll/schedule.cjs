@@ -1017,7 +1017,7 @@ async function main(argv) {
   if (errors || unread || note) throw new Error(`${errors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, rank, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask };
+module.exports = { RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, rank, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });

@@ -10,5 +10,12 @@
   "infrastructure": [{"infrastructure":true}],
   "dependabot": [{"event":"removed_from_merge_queue","created_at":"2026-10-15T10:00:00Z"}],
   "decisions": [{"created_at":"2026-10-12T00:00:00Z"}],
-  "release": [{"pin":"v0.2.0","latest":"v0.4.0"}]
+  "release": [{"pin":"v0.2.0","latest":"v0.4.0"}],
+  "idle": [{"idle":true},{"idle":true}],
+  "stuck": [{"ended":true,"pull":"merged"}],
+  "pace": [{"used_percent":90,"window_minutes":10080,"resets_at":"2026-10-20T12:00:00Z"}],
+  "failures": [{"reason":"refused"}],
+  "held": [{"labeledAt":"2026-10-14T00:00:00Z"}],
+  "unqueued": [{"approvedAt":"2026-10-15T10:00:00Z","clean":true,"queued":false}],
+  "unclosed": [{"mergedAt":"2026-10-15T10:00:00Z","issueState":"open"}]
 }
