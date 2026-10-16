@@ -223,8 +223,29 @@ accepted planner and one run must not start the next. Umbrellas
 coordinator status issue are skipped. GitHub closing references to a merged PR
 are reported as "probably done by OWNER/REPO#N; close it?" rather than dispatched.
 Open closing PRs and PR cross-references from the same organization stop a
-dispatch as `PR open: OWNER/REPO#N`, regardless of author. Merged cross-references
-also count without a closing keyword; closed, unmerged PRs do not.
+dispatch as `PR open: OWNER/REPO#N`, regardless of author. A merged
+cross-reference counts as probably done only when a line of its body starting
+`Refs`, `Implements` or a closing keyword names the issue: a PR that only mentions it, such as the
+one whose run filed it as a follow-up, does not. Closed, unmerged PRs do not count.
+
+`schedule.triage` (0 to 5; 0, off, if unset) turns those two guesses,
+probably done and `no plan`, into questions rather than skips that stall the
+board ([#636](https://github.com/cgwalters-forge/tracker/issues/636)). Each
+pass asks at most that many: an item gets one `kind: triage` run (in
+`coordinator.planPool`, taking a slot) that compares the issue with the
+candidate PR and later merged ones and answers in a `schedule-triage` block:
+done (the next pass closes the issue, linking the answer), partly or not done
+(with an implement plan for what is left, which is then dispatched as any plan),
+or needs design. A `no plan` item whose body has under 200 non-space
+characters gets no run, only a needs-design record. A bot comment records each
+question before the run starts, so it is asked once; unanswered, needs-design
+and answered items without a plan are then counted but not listed on each pass,
+until an unanswered question is a day old. Delete the record to ask again; a
+needs-design one lapses when the body changes. Only the bot's or the operator's
+comments count as records or answers, so a visitor cannot close an issue; an
+issue reopened after the scheduler closed it goes on as not done. When a pass
+starts nothing with slots free under `schedule.wip`, its last line is `idle:`
+with the count of items skipped for each reason.
 Native open dependencies, board Status `Blocked`, and explicit `blocked by`,
 `depends on`, or `waiting on/for` references in the issue body or accepted job
 plan brief stop work as `blocked by`. Closed prerequisites do not block.

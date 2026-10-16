@@ -10,7 +10,8 @@
 // `schedule.repositories` of agent-board.json gets at most one step: the
 // job its newest accepted plan comment proposes (`agent-board dispatch
 // --apply`, agent-board's docs/job-plans.md), if it is an implement one.
-// Without a plan it is skipped. Candidates are taken by
+// Without a plan it is skipped, unless `schedule.triage` is on (see
+// readTriage). Candidates are taken by
 // their epic's `schedule.priorityField` on the board, then their own, P0
 // first, then oldest first. No step starts once `schedule.wip` dispatch.yml
 // runs are in flight, counting those already going. A dry run, the
@@ -20,6 +21,7 @@
 // pure and are what schedule.test.cjs covers.
 'use strict';
 
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
@@ -63,6 +65,23 @@ const PLAN_FROM_RE = /request for the plan in (https:\/\/github\.com\/\S+#issuec
 const RECORD_RE = /^<!-- agent-board-dispatch: (\d+)@\S+ -->$/;
 // agent-board's refusal of a plan it has a record of, which takes no step.
 const RECORDED_RE = /has a dispatch record already/;
+// eligibility's guess that a merged pull request did an issue.
+const PROBABLY_DONE = 'probably done by ';
+// The bound on `schedule.triage`, triage runs and needs-design records a pass.
+const TRIAGE_LIMIT = 5;
+// Fewer non-space characters than this in an issue's body is too little to
+// plan from, so no run is spent on it. A crude bar: the triage run is what
+// judges a longer body, and may answer needs-design too.
+const CONCRETE_CHARS = 200;
+// The hidden first line of this job's record of a triage question, and the
+// fenced block the run answers it with (readTriage).
+const TRIAGE_RE = /^<!-- schedule-triage\/v1: (\{[^\n]*\}) -->$/;
+const VERDICT_RE = /^```schedule-triage[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gm;
+const VERDICTS = new Set(['done', 'partly', 'not-done', 'needs-design']);
+// The first line of this job's comment closing an issue on a done answer.
+const closedLine = request => `<!-- schedule-triage/v1-closed: ${request} -->`;
+// A question unanswered this long is listed again, as its run likely failed.
+const ANSWER_MS = 24 * 3600 * 1000;
 
 // GitHub names are case-insensitive; the board, a plan and a run name may
 // spell one differently.
@@ -104,6 +123,14 @@ function loadConfig(text) {
   const t = s.timeoutSeconds ?? AGENT_BOARD_TIMEOUT_S;
   if (!Number.isSafeInteger(t) || t < 1 || t > 600) throw new Error('agent-board.json: schedule.timeoutSeconds must be 1 to 600');
   config.timeoutMs = t * 1000;
+  // Triage runs, and needs-design records, a pass may start (readTriage);
+  // 0, the default, is off. They write implement plans, as the coordinator's
+  // planning runs do, so they use its pool.
+  config.triage = s.triage ?? 0;
+  if (!Number.isSafeInteger(config.triage) || config.triage < 0 || config.triage > TRIAGE_LIMIT) {
+    throw new Error(`agent-board.json: schedule.triage must be 0 to ${TRIAGE_LIMIT}`);
+  }
+  config.triagePool = all.coordinator?.planPool ?? 'claude';
   // Extra small sibling issues one implement run may also do (agent-board's
   // `dispatch --batch`); 0, the default, is off.
   config.batch = s.batch ?? 0;
@@ -255,7 +282,7 @@ function candidates(entries, repository) {
     for (const s of epic.subs) {
       if (s.state !== 'open') continue;
       const item = {
-        repository: s.repository, number: s.number, content_kind: 'issue', url: s.url, priority: s.priority,
+        repository: s.repository, number: s.number, content_kind: 'issue', url: s.url, priority: s.priority, body: s.body,
         created: s.created, status: s.status, epic: `${repository}#${epic.number}`, epicPriority: epic.priority,
       };
       const key = keyOf(s.repository, s.number);
@@ -274,10 +301,12 @@ function candidates(entries, repository) {
 // the config's `wip`, `followed` and status issue. `inspect(key)` says why an
 // issue is not to be worked on, if it is not. `act(step)` is called with each
 // step as it is decided, so that what a pass has decided is done even if the
-// job's timeout stops it partway down a long board.
-async function decide(items, { inFlight, busy: running }, { wip, followed, statusIssue, statusRepository }, probe, pullFor,
-  inspect = async () => null, act = async () => {}) {
+// job's timeout stops it partway down a long board. `triaged(item)` is
+// readTriage's answer for an item, asked only with `triage` on.
+async function decide(items, { inFlight, busy: running }, { wip, followed, statusIssue, statusRepository, triage = 0 }, probe, pullFor,
+  inspect = async () => null, act = async () => {}, triaged = async () => null) {
   let free = wip - inFlight;
+  let questions = triage;
   const isFollowed = key => followed.has(key.split('#')[0]);
   const steps = [];
   const push = async step => { steps.push(step); await act(step); };
@@ -293,21 +322,64 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
   };
   for (const item of byPriority(items)) {
     const name = `${item.repository}#${item.number}`;
-    const skip = reason => push({ item: name, action: 'skip', reason });
+    // A quiet skip is counted in the idle line but not listed on every pass.
+    const skip = (reason, quiet) => push({ item: name, action: 'skip', reason, ...(quiet ? { quiet } : {}) });
     const key = keyOf(item.repository, item.number);
+    // A guess, probably done or no plan, is asked once of a triage run rather
+    // than held as a skip on every pass. The answer: done closes the issue;
+    // otherwise its plan, if the run wrote one, goes on as any plan does.
+    // That is a run starting a run, which the kind check below otherwise
+    // keeps to a person: it is one implement plan per question, a question
+    // asked once per issue and at most `triage` a pass. The run reads the
+    // issue's text, anyone's, which may steer that plan as it may any plan
+    // a run writes from an issue; the implement run's pull request still
+    // needs its review to merge.
+    const ask = async (guess, pull) => {
+      if (questions <= 0) return skip(guess);
+      questions--;
+      if (!pull && !concrete(item.body)) return push({ item: name, action: 'design', reason: `${guess}; too little in its body to plan, recording needs design` });
+      busy.set(key, 'started in this pass');
+      free--;
+      return push({ item: name, action: 'triage', reason: `${guess}; asking a triage run`, ...(pull ? { pull } : {}) });
+    };
+    // What a recorded question says of the item: true once a step is taken,
+    // false when it answered not (or not all) done, so the item goes on.
+    const answered = async record => {
+      if (record.verdict === 'done') await push({ item: name, action: 'close', reason: `triage found it done, ${record.evidence}`, evidence: record.evidence, request: record.request });
+      else if (!record.verdict) await skip(`triage asked, ${record.stale ? 'no answer in a day, ' : ''}${record.url}`, !record.stale);
+      else if (record.verdict === 'needs-design') await skip(`needs design, ${record.url}`, true);
+      else return false;
+      return true;
+    };
+    let record;
     if (!isFollowed(key)) { await skip('not a followed repository'); continue; }
     if (item.content_kind !== 'issue') { await skip('not an issue'); continue; }
     if (statusRepository && key === keyOf(statusRepository, statusIssue)) { await skip('coordinator status issue'); continue; }
     if (item.status === 'Blocked') { await skip('blocked by coordinator plan (board Status: Blocked)'); continue; }
-    let found, unbatched;
+    let found, unbatched, cleared = false;
     try {
       const holding = await held(key);
       if (holding) { await skip(holding); continue; }
       if (free <= 0) { await skip(`work-in-progress cap of ${wip} reached`); continue; }
-      const ineligible = await inspect(key);
+      let ineligible = await inspect(key);
+      // Answered not done, the guess is set aside, and the checks after it
+      // in eligibility are made, here and for the item's own plan below.
+      if (ineligible?.startsWith(PROBABLY_DONE) && triage) {
+        record = await triaged(item);
+        if (!record) { await ask(ineligible, ineligible.slice(PROBABLY_DONE.length).split(';')[0]); continue; }
+        if (await answered(record)) continue;
+        cleared = true;
+        ineligible = await inspect(key, '', true);
+      }
       if (ineligible) { await skip(ineligible); continue; }
       found = await probe(item);
-      if (found.none) { await skip('no plan'); continue; }
+      if (found.none) {
+        if (!triage) { await skip('no plan'); continue; }
+        if (record === undefined) record = await triaged(item);
+        if (!record) { await ask('no plan'); continue; }
+        if (!await answered(record)) await skip(`no plan since triage answered ${record.verdict}, ${record.url}`, true);
+        continue;
+      }
       if (!found.plan) { await skip(`plan refused: ${found.refused}`); continue; }
       if (found.recorded) { await skip(`plan ${found.plan} was dispatched already, ${found.recorded}`); continue; }
       const targetHeld = await held(found.target);
@@ -324,7 +396,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       if (found.kind !== 'implement') { await skip(`plan ${found.plan} is for ${found.kind}, which is dispatched by hand`); continue; }
       if (found.target !== key || found.brief) {
         const targetIneligible = statusRepository && found.target === keyOf(statusRepository, statusIssue)
-          ? 'coordinator status issue' : await inspect(found.target, found.brief);
+          ? 'coordinator status issue' : await inspect(found.target, found.brief, cleared && found.target === key);
         if (targetIneligible) { await skip(`its plan's ${found.target}: ${targetIneligible}`); continue; }
       }
       // agent-board picks a batch's extras by their labels, dependencies and
@@ -355,6 +427,95 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
     free--;
   }
   return steps;
+}
+
+const concrete = body => String(body ?? '').replace(/\s+/g, '').length >= CONCRETE_CHARS;
+const bodyHash = body => crypto.createHash('sha256').update(String(body ?? '')).digest('hex').slice(0, 16);
+
+// The triage question this job recorded on an item, and its answer
+// (tracker#636). The record is a writer's comment whose first line is
+// `<!-- schedule-triage/v1: {"request": ID, ...} -->`, written before the run
+// is dispatched, so an item is asked once however many passes see it; to ask
+// again, delete it. A needs-design record, which no run answers, lapses when
+// the body changes, as does a needs-design answer. The answer is a writer's
+// comment made after the record, with one `schedule-triage` fenced block of
+// `{"request": ID, "verdict": ...}`; only the run's bot or the operator can
+// post that, so no visitor's comment closes an issue, and the request ID
+// keeps an older answer from being taken for this question. The run's own
+// judgement can still be steered by the issue's text: the worst it does is
+// close an open issue, with a comment linking its evidence, which reopening
+// undoes: a done answer this job closed on once reads as `reopened`, which
+// lets the item go on as not done. `comments` are REST issue comments, oldest first.
+function readTriage(comments, writers, body, now = Date.now()) {
+  const trusted = new Set(writers.map(w => w.toLowerCase()));
+  const mine = comments.filter(c => trusted.has(c.user?.login?.toLowerCase()));
+  let record;
+  for (const c of mine) {
+    const m = TRIAGE_RE.exec((c.body ?? '').split('\n')[0].trimEnd());
+    if (!m) continue;
+    try {
+      const state = JSON.parse(m[1]);
+      if (typeof state.request === 'string' && state.request) record = { ...state, url: c.html_url, at: Date.parse(c.created_at) || 0 };
+    } catch { /* not a record */ }
+  }
+  if (!record) return null;
+  const lapsed = () => record.body !== undefined && record.body !== bodyHash(body);
+  if (record.design) return lapsed() ? null : { url: record.url, verdict: 'needs-design' };
+  for (const c of mine.toReversed()) {
+    if ((Date.parse(c.created_at) || 0) < record.at) continue;
+    if ((c.body ?? '').split('\n')[0].trimEnd() === closedLine(record.request)) return { url: record.url, verdict: 'reopened' };
+    const blocks = [...(c.body ?? '').matchAll(VERDICT_RE)];
+    if (blocks.length !== 1) continue;
+    let answer;
+    try { answer = JSON.parse(blocks[0][1]); } catch { continue; }
+    if (answer?.request !== record.request || !VERDICTS.has(answer.verdict)) continue;
+    if (answer.verdict === 'needs-design' && lapsed()) return null;
+    return { url: record.url, request: record.request, verdict: answer.verdict, evidence: c.html_url };
+  }
+  return { url: record.url, stale: now - record.at > ANSWER_MS };
+}
+
+// The record's comment, its first line readTriage's. A needs-design one
+// keeps the body's hash, to lapse when the body is written up.
+function triageRecord(request, step, body) {
+  const state = step.action === 'design' ? { request, design: true, body: bodyHash(body) } : { request, body: bodyHash(body) };
+  const text = step.action === 'design'
+    ? 'Board scheduler: this issue has no job plan, and its body is too short to write one from. It needs design: say what to change and how to check it, and the next pass asks a triage run to plan it.'
+    : `Board scheduler: ${step.reason.split(';')[0]}. A triage run is asked whether this is done; it answers here. Delete this comment to ask again.`;
+  return `<!-- schedule-triage/v1: ${JSON.stringify(state)} -->\n${text}`;
+}
+
+// The triage run's task. Only URLs and fixed text: the issue and the pull
+// requests are the run's to read, as data.
+function triageTask(config, item, request, pull) {
+  const fence = '```';
+  // eligibility names the pull request OWNER/REPO#N; the run gets its URL.
+  if (pull) pull = pull.replace(/^([\w.-]+\/[\w.-]+)#(\d+)$/, 'https://github.com/$1/pull/$2');
+  return [
+    `The board scheduler asks whether ${item.url} is done.`,
+    pull ? `It guessed so from the merged pull request ${pull}, which closes it or says it implements it.`
+      : 'It has no accepted job plan, so nothing would start on it.',
+    `Compare what the issue asks for with ${pull ? 'that pull request and ' : ''}the pull requests merged since the issue was opened.`,
+    'Post one comment on the issue that leads with the conclusion and ends with this block, the verdict one of the four:',
+    '', `${fence}schedule-triage`, JSON.stringify({ request, verdict: 'done | partly | not-done | needs-design' }), fence, '',
+    '- done: link the evidence for each part the issue asks for; the scheduler then closes the issue.',
+    `- partly or not-done: say exactly what is left and, in the same comment, an accepted implement job plan for it as ${config.planDocs} describes, so the scheduler can start it.`,
+    '- needs-design: say what is missing before it can be planned.',
+  ].join('\n');
+}
+
+// The line a pass that started nothing with slots free ends with, so a
+// stall shows: how many items were skipped for each reason, the reason's
+// names and links left out.
+function idleLine(steps, free) {
+  if (free <= 0 || steps.some(s => s.action === 'dispatch' || s.action === 'triage')) return null;
+  const counts = new Map();
+  for (const s of steps.filter(s => s.action === 'skip')) {
+    const why = s.reason.replace(/https:\/\/\S+/g, '').replace(/[\w.-]+\/[\w.-]+#\d+/g, '#N').split(/[,:;(]/)[0].replace(/\s+/g, ' ').trim();
+    counts.set(why, (counts.get(why) ?? 0) + 1);
+  }
+  const by = [...counts].sort((a, b) => b[1] - a[1]).map(([why, n]) => `${why} ${n}`).join(', ');
+  return `idle: ${free} slot(s) free and nothing started${by ? `; skipped: ${by}` : ''}`;
 }
 
 // One agent-board call. Its stdin is closed, so nothing it might ask waits
@@ -450,13 +611,29 @@ const ELIGIBILITY_QUERY = `query($owner: String!, $name: String!, $number: Int!)
     }
     timelineItems(first: 100, itemTypes: [CROSS_REFERENCED_EVENT]) {
       nodes { ... on CrossReferencedEvent { source { ... on PullRequest {
-        state merged url repository { owner { login } }
+        state merged url body repository { nameWithOwner owner { login } }
       } } } } pageInfo { hasNextPage }
     }
   } }
 }`;
 
 const shortRef = url => url.replace('https://github.com/', '').replace(/\/(?:pull|issues)\//, '#');
+
+// Whether a pull request's body says it was made for issue `key`: a line
+// starting `Refs` (as agentic-job ends a run's pull request), `Implements`
+// or a closing keyword that names it. A merged pull request that only mentions an
+// issue, such as one whose run filed it as a follow-up, did not do it
+// (tracker#636); one that closes it is GitHub's closing reference instead.
+function madeFor(body, key, repository) {
+  for (const line of String(body ?? '').split('\n')) {
+    const m = /^\s*(?:refs|implements?|close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b[\s:]+(.*)$/i.exec(line);
+    if (!m) continue;
+    for (const r of m[1].matchAll(/https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/issues\/(\d+)|\b([\w.-]+\/[\w.-]+)#(\d+)|#(\d+)/g)) {
+      if (keyOf(r[1] ?? r[3] ?? repository ?? '', r[2] ?? r[4] ?? r[5]) === key) return true;
+    }
+  }
+  return false;
+}
 
 // Only explicit dependency clauses count; arbitrary mentions are not blockers.
 function dependencies(text, repository) {
@@ -472,7 +649,9 @@ function dependencies(text, repository) {
   return [...refs];
 }
 
-async function eligibility(post, key, brief = '', get, board = {}) {
+// `cleared`: a triage run answered that the merged pull request did not do
+// it all (readTriage), so that is no reason to skip it.
+async function eligibility(post, key, brief = '', get, board = {}, cleared = false) {
   const [repository, number] = key.split('#');
   const [owner, name] = repository.split('/');
   const out = await post({ query: ELIGIBILITY_QUERY, variables: { owner, name, number: Number(number) } });
@@ -495,12 +674,12 @@ async function eligibility(post, key, brief = '', get, board = {}) {
   if (issue.subIssues.totalCount > 0) return 'umbrella: has sub-issues';
   const label = issue.labels.nodes.find(l => ['epic', 'question'].includes(l.name.toLowerCase()));
   if (label) return `labelled ${label.name.toLowerCase()}`;
-  const pulls = [...refs.nodes, ...issue.timelineItems.nodes.map(e => e.source)
-    .filter(p => p?.repository?.owner?.login?.toLowerCase() === owner.toLowerCase())];
-  const open = pulls.find(p => p.state === 'OPEN');
+  const crossed = issue.timelineItems.nodes.map(e => e.source)
+    .filter(p => p?.repository?.owner?.login?.toLowerCase() === owner.toLowerCase());
+  const open = [...refs.nodes, ...crossed].find(p => p.state === 'OPEN');
   if (open) return `PR open: ${shortRef(open.url)}`;
-  const merged = pulls.find(p => p.merged);
-  if (merged) return `probably done by ${shortRef(merged.url)}; close it?`;
+  const merged = [...refs.nodes, ...crossed.filter(p => madeFor(p.body, key, p.repository?.nameWithOwner))].find(p => p.merged);
+  if (merged && !cleared) return `${PROBABLY_DONE}${shortRef(merged.url)}; close it?`;
   const blocked = issue.blockedBy.nodes.find(i => i.state === 'OPEN');
   if (blocked) return `blocked by ${shortRef(blocked.url)}`;
   for (const ref of dependencies(`${issue.body ?? ''}\n${brief}`, repository)) {
@@ -571,17 +750,53 @@ async function main(argv) {
     + ` ${state.inFlight} of ${config.wip} run(s) in flight;`
     + ` accepted implement plans only; items of ${config.followed.size} followed repositories only`);
 
+  // The record is written before the run is dispatched, so a pass cut off
+  // between the two does not ask twice; a dispatch that fails takes it back.
+  const triageStep = async (step, item) => {
+    if (step.action === 'close') {
+      // Closed first: a comment saying so on an issue left open would read
+      // as reopened. If the comment fails, the answer on the issue is the evidence.
+      await request(token, 'PATCH', issuePath(item), { state: 'closed', state_reason: 'completed' });
+      await request(token, 'POST', `${issuePath(item)}/comments`,
+        { body: `${closedLine(step.request)}\nBoard scheduler: closed, as a triage run found this done: ${step.evidence}. Reopen it if that is wrong.` });
+      return;
+    }
+    const id = crypto.randomUUID();
+    const rec = await request(token, 'POST', `${issuePath(item)}/comments`, { body: triageRecord(id, step, item.body) });
+    if (step.action === 'design') return;
+    try {
+      const { default_branch: ref } = await request(dispatchToken, 'GET', `/repos/${config.caller}`);
+      await request(dispatchToken, 'POST', `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`, { ref, inputs: {
+        kind: 'triage', repo: item.repository, item: String(item.number), pool: config.triagePool, task: triageTask(config, item, id, step.pull) } });
+    } catch (err) {
+      await request(token, 'DELETE', `/repos/${item.repository}/issues/comments/${rec.id}`).catch(() => {});
+      throw err;
+    }
+  };
   const byName = new Map(items.map(i => [`${i.repository}#${i.number}`, i]));
   let errors = 0;
+  const issuePath = item => `/repos/${item.repository}/issues/${item.number}`;
+  const triaged = async item => readTriage(await paged(token, `${issuePath(item)}/comments`), [config.operator, config.planner], item.body);
   // Each step is taken as it is decided, so a pass the job's timeout stops
   // has still started what it got to, the items ranked first.
-  await decide(items, state, config, item => probePlan(bin, config, token, item), pullFor,
-    (key, brief) => eligibility(body => request(token, 'POST', '/graphql', body), key, brief, get, config), async step => {
+  const steps = await decide(items, state, config, item => probePlan(bin, config, token, item), pullFor,
+    (key, brief, cleared) => eligibility(body => request(token, 'POST', '/graphql', body), key, brief, get, config, cleared), async step => {
       const item = byName.get(step.item);
       // Each line names the epic its item was taken from.
       const name = `${step.item} (epic ${item.epic})`;
+      if (step.quiet) return;
       if (step.action === 'skip' || !apply) {
         log(`${name} ${step.action}: ${step.reason}`);
+        return;
+      }
+      if (step.action !== 'dispatch') {
+        try {
+          await triageStep(step, item);
+          log(`${name} ${step.action}: ${step.reason}`);
+        } catch (err) {
+          errors++;
+          log(`${name} ${step.action} error: ${err.message.slice(0, 2500)}`);
+        }
         return;
       }
       try {
@@ -597,11 +812,13 @@ async function main(argv) {
         errors++;
         log(`${name} ${step.action} error: ${err.message}`);
       }
-    });
+    }, triaged);
+  const idle = idleLine(steps, config.wip - state.inFlight);
+  if (idle) log(idle);
   if (errors || unread || note) throw new Error(`${errors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, loadConfig, main, openPullRefs, probePlan, pullIssues, rank, readDryRun, readRefusal, readRuns };
+module.exports = { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, rank, readDryRun, readRefusal, readRuns, readTriage, triageRecord, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });

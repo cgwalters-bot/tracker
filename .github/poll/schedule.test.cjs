@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, loadConfig, main, openPullRefs, probePlan, pullIssues, readDryRun, readRefusal, readRuns } = require('./schedule.cjs');
+const { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, readDryRun, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
 const { census } = require('./epics.cjs');
 
 const BOT = 'cgwalters-bot';
@@ -409,11 +409,14 @@ const epicIssue = n => ({ number: n, state: 'open', updated_at: 't', html_url: `
 const labelled = login => [{ event: 'labeled', actor: { login }, label: { name: 'epic' } }];
 async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing'), issues = {} } = {}) {
   const calls = [];
+  const sent = [];
   const out = [];
   const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD };
   globalThis.fetch = async (u, init) => {
     const p = u.replace('https://api.github.com', '').replace(/[?&]per_page=100&page=1$/, '');
-    calls.push(`${init?.method ?? 'GET'} ${p}`);
+    const call = `${init?.method ?? 'GET'} ${p}`;
+    calls.push(call);
+    if (init?.body && p !== '/graphql') sent.push([call, JSON.parse(init.body)]);
     let body;
     if (p === '/graphql') {
       const { query, variables } = JSON.parse(init.body);
@@ -422,6 +425,8 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
         : query.includes('closedByPullRequestsReferences')
           ? { data: { repository: { issue: issues[variables.number] ?? metadata() } } }
           : { data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } };
+    } else if (call in rest) {
+      body = rest[call];
     } else if (p in rest) {
       body = rest[p];
     } else {
@@ -442,7 +447,7 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
     console.log = saved.log;
     for (const k of ['GH_TOKEN', 'AGENT_BOARD']) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
   }
-  return { out, calls, error };
+  return { out, calls, sent, error };
 }
 const LIST = `/repos/${EPICS}/issues?state=open&labels=epic`;
 
@@ -467,27 +472,46 @@ test('each line of a pass names the epic its item came from', async () => {
     [`/repos/${EPICS}/issues/1/sub_issues`]: [sub],
     [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
     [`/repos/${EPICS}/pulls?state=open`]: [],
+    [`/repos/${EPICS}/issues/40/comments`]: [],
   }, { bin: NO_PLAN_BIN, board: [{ status: { name: 'Todo' }, priority: { name: 'P1' }, content: { url: sub.html_url } }] });
   assert.equal(error, undefined);
-  assert.equal(out.length, 2);
+  assert.equal(out.length, 3);
   assert.match(out[0], /^\[dry-run\] 1 open sub-issue\(s\) of 1 live epic\(s\), taken by their epic's Priority/);
-  assert.equal(out[1], `[dry-run] ${EPICS}#40 (epic ${EPICS}#1) skip: no plan`);
+  assert.equal(out[1], `[dry-run] ${EPICS}#40 (epic ${EPICS}#1) design: no plan; too little in its body to plan, recording needs design`);
+  // Nothing started with slots free: the pass says so, and why.
+  assert.equal(out[2], `[dry-run] idle: ${REPO_CONFIG.schedule.wip} slot(s) free and nothing started`);
 });
 
-test('with --apply, items with no plan or a merged closer start nothing', async () => {
+test('with --apply, a probably done item gets a triage run, and a stub with no plan a needs-design record', async () => {
   const NO_PLAN_BIN = stub('no-plan-apply', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
-  const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'merged-pr' }], pageInfo: { hasNextPage: false } } });
-  const { out, calls, error } = await runMain(['--apply'], {
+  const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
+  const DISPATCHES = `/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/dispatches`;
+  const { out, calls, sent, error } = await runMain(['--apply'], {
     [LIST]: [epicIssue(1)],
     [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
     [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(40), epicIssue(41)],
     [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
     [`/repos/${EPICS}/pulls?state=open`]: [],
+    [`GET /repos/${EPICS}/issues/40/comments`]: [],
+    [`GET /repos/${EPICS}/issues/41/comments`]: [],
+    [`POST /repos/${EPICS}/issues/40/comments`]: { id: 400 },
+    [`POST /repos/${EPICS}/issues/41/comments`]: { id: 410 },
+    [`GET /repos/${REPO_CONFIG.dispatchRepo}`]: { default_branch: 'main' },
+    [`POST ${DISPATCHES}`]: null,
   }, { bin: NO_PLAN_BIN, issues: { 41: merged } });
   assert.equal(error, undefined);
-  assert.ok(out.some(line => /#40 .*skip: no plan$/.test(line)));
-  assert.ok(out.some(line => /#41 .*skip: probably done by merged-pr; close it\?$/.test(line)));
-  assert.ok(calls.every(c => !c.startsWith('POST ') || c === 'POST /graphql'));
+  assert.ok(out.some(line => /#40 .*design: no plan; too little in its body to plan/.test(line)));
+  assert.ok(out.some(line => /#41 .*triage: probably done by o\/r#9; close it\?; asking a triage run$/.test(line)));
+  // Each record is written before its run is asked for, and the run is a triage one on the item.
+  const writes = sent.map(([c]) => c);
+  assert.deepEqual(writes, [`POST /repos/${EPICS}/issues/40/comments`, `POST /repos/${EPICS}/issues/41/comments`, `POST ${DISPATCHES}`]);
+  assert.match(sent[0][1].body, /"design":true/);
+  const [, record] = sent[1];
+  const request = JSON.parse(/^<!-- schedule-triage\/v1: (.*) -->$/m.exec(record.body)[1]).request;
+  const { inputs } = sent[2][1];
+  assert.deepEqual({ ...inputs, task: undefined }, { kind: 'triage', repo: EPICS, item: '41', pool: REPO_CONFIG.coordinator.planPool, task: undefined });
+  assert.ok(inputs.task.includes(request) && inputs.task.includes('https://github.com/o/r/pull/9'));
+  assert.ok(calls.every(c => !c.startsWith('PATCH ')));
 });
 
 test('an epic the census cannot read fails the pass, and is not reported as no live epics', async () => {
@@ -579,7 +603,13 @@ for (const [name, extra, brief, responses, expected] of [
   ['open closer', { closedByPullRequestsReferences: { nodes: [{ state: 'OPEN', url: 'https://github.com/o/r/pull/6' }], pageInfo: { hasNextPage: false } } }, '', [], 'PR open: o/r#6'],
   ...['OPEN', 'MERGED', 'CLOSED'].map(state => [
     `body cross-reference ${state}`, { timelineItems: { nodes: [{ source: { state, merged: state === 'MERGED', url: 'https://github.com/o/p/pull/6', repository: { owner: { login: 'O' } } } }], pageInfo: { hasNextPage: false } } }, '', [],
-    state === 'OPEN' ? 'PR open: o/p#6' : state === 'MERGED' ? 'probably done by o/p#6; close it?' : null,
+    // A merged one that only mentions the issue is no guess that it is done.
+    state === 'OPEN' ? 'PR open: o/p#6' : null,
+  ]),
+  ...[['Refs o/r#1', 'probably done by o/p#6; close it?'], ['Implements: https://github.com/o/r/issues/1', 'probably done by o/p#6; close it?'],
+    ['Follow-ups, left for later:\n- #1\n- o/r#1', null], ['Refs o/r#10', null], ['Refs #1', null], ['Fixes https://github.com/o/r/issues/1', 'probably done by o/p#6; close it?']].map(([body, expected]) => [
+    `merged cross-reference saying ${JSON.stringify(body)}`,
+    { timelineItems: { nodes: [{ source: { state: 'MERGED', merged: true, body, url: 'https://github.com/o/p/pull/6', repository: { nameWithOwner: 'o/p', owner: { login: 'o' } } } }], pageInfo: { hasNextPage: false } } }, '', [], expected,
   ]),
   ['foreign cross-reference', { timelineItems: { nodes: [{ source: { state: 'OPEN', repository: { owner: { login: 'other' } } } }], pageInfo: { hasNextPage: false } } }, '', [], null],
   ['native dependency', { blockedBy: { nodes: [{ state: 'OPEN', url: 'https://github.com/o/p/issues/9' }], pageInfo: { hasNextPage: false } } }, '', [], 'blocked by o/p#9'],
@@ -795,4 +825,163 @@ test("only the item's own brief is read for its dependencies", async () => {
   } finally {
     globalThis.fetch = savedFetch;
   }
+});
+
+// Guesses asked of a triage run (#636), with `schedule.triage` on.
+const LONG = 'Change the scheduler so that it does one concrete thing, and test it this way. '.repeat(4);
+const guessed = key => (key === 'o/r#1' ? 'probably done by o/p#6; close it?' : null);
+
+test('schedule.triage is off unless set, and bounded', () => {
+  const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
+  const parse = extra => loadConfig(JSON.stringify({ ...base, schedule: { owner: 'o', project: 1, wip: 4, repositories: ['o/r'], ...extra } }));
+  assert.equal(parse({}).triage, 0);
+  assert.equal(parse({ triage: 5 }).triage, 5);
+  for (const triage of [-1, 6, '2', 1.5]) assert.throws(() => parse({ triage }), /schedule.triage/);
+});
+
+test('off, a guess is a skip as before', async () => {
+  const steps = await decide([issue(1), issue(2)], empty, caps(4), none, noPulls, guessed, undefined, () => assert.fail('read'));
+  assert.deepEqual(steps.map(s => s.reason), ['probably done by o/p#6; close it?', 'no plan']);
+});
+
+test('a probably done issue gets a triage run, which takes a slot and the budget', async () => {
+  const run = (wip, triage) => decide([issue(1), issue(2, { body: LONG })], empty, caps(wip, { triage }), none, noPulls, guessed, undefined, async () => null);
+  const steps = await run(4, 1);
+  assert.deepEqual(steps.map(s => [s.action, s.reason]), [
+    ['triage', 'probably done by o/p#6; close it?; asking a triage run'],
+    // The budget is spent: the next guess is a skip as before.
+    ['skip', 'no plan'],
+  ]);
+  assert.equal(steps[0].pull, 'o/p#6');
+  assert.deepEqual((await run(1, 2)).map(s => [s.action, s.reason]), [
+    ['triage', 'probably done by o/p#6; close it?; asking a triage run'],
+    ['skip', 'work-in-progress cap of 1 reached'],
+  ]);
+  // A run started holds its item for the rest of the pass.
+  assert.deepEqual((await decide([issue(1), issue(1)], empty, caps(4, { triage: 2 }), none, noPulls, guessed, undefined, async () => null))
+    .map(s => s.action), ['triage', 'skip']);
+});
+
+test('a "no plan" issue with a concrete body is planned; a stub is recorded needs design, taking no slot', async () => {
+  const steps = await decide([issue(2, { body: LONG }), issue(3, { body: 'tbd' }), issue(4, { body: LONG })], empty, caps(1, { triage: 3 }),
+    none, noPulls, undefined, undefined, async () => null);
+  assert.deepEqual(steps.map(s => [s.item, s.action, s.reason]), [
+    ['o/r#2', 'triage', 'no plan; asking a triage run'],
+    ['o/r#3', 'skip', 'work-in-progress cap of 1 reached'],
+    ['o/r#4', 'skip', 'work-in-progress cap of 1 reached'],
+  ]);
+  const design = await decide([issue(3, { body: 'tbd' }), issue(2, { body: LONG })], empty, caps(1, { triage: 3 }),
+    none, noPulls, undefined, undefined, async () => null);
+  assert.deepEqual(design.map(s => s.action), ['design', 'triage']);
+});
+
+test('an answered question: done closes, not done lets the plan go on, unanswered or needs design is quiet', async () => {
+  const answers = {
+    1: { url: 'rec1', verdict: 'done', evidence: 'ev1' },
+    2: { url: 'rec2', verdict: 'partly' },
+    3: { url: 'rec3' },
+    4: { url: 'rec4', verdict: 'needs-design' },
+    5: { url: 'rec5', stale: true },
+    6: { url: 'rec6', verdict: 'not-done' },
+  };
+  const items = [1, 2, 3, 4, 5, 6].map(n => issue(n));
+  const steps = await decide(items, empty, caps(8, { triage: 1 }), item => (item.number === 2 ? own(item) : none()), noPulls,
+    (key, brief, cleared) => (!cleared && /#[1-5]$/.test(key) ? 'probably done by o/p#6; close it?' : null), undefined, async item => answers[item.number]);
+  assert.deepEqual(steps.map(s => [s.item, s.action, s.reason, s.quiet ?? false]), [
+    ['o/r#1', 'close', 'triage found it done, ev1', false],
+    // The guess no longer holds it: its plan, which the run wrote, starts.
+    ['o/r#2', 'dispatch', `plan ${own(issue(2)).plan}`, false],
+    ['o/r#3', 'skip', 'triage asked, rec3', true],
+    ['o/r#4', 'skip', 'needs design, rec4', true],
+    // A question a day old with no answer is listed again, not asked again.
+    ['o/r#5', 'skip', 'triage asked, no answer in a day, rec5', false],
+    ['o/r#6', 'skip', 'no plan since triage answered not-done, rec6', true],
+  ]);
+  assert.equal(steps[0].evidence, 'ev1');
+  const [reopened] = await decide([issue(7)], empty, caps(8, { triage: 1 }), own, noPulls, (key, brief, cleared) => (cleared ? null : 'probably done by o/p#6; close it?'),
+    undefined, async () => ({ url: 'rec7', verdict: 'reopened' }));
+  assert.equal(reopened.action, 'dispatch');
+});
+
+test('only a writer’s record and answer count, for the same request, after the record', () => {
+  const writers = ['cgwalters', BOT];
+  const at = m => `2026-10-16T10:${String(m).padStart(2, '0')}:00Z`;
+  const comment = (login, body, m, url) => ({ user: { login }, body, created_at: at(m), html_url: url });
+  const record = (login, m, extra = {}) => comment(login, `<!-- schedule-triage/v1: ${JSON.stringify({ request: 'r1', ...extra })} -->\nasked`, m, `rec-${login}`);
+  const answer = (login, m, verdict, request = 'r1') => comment(login, `Done.\n\n\`\`\`schedule-triage\n${JSON.stringify({ request, verdict })}\n\`\`\`\n`, m, `ans-${login}-${m}`);
+  assert.equal(readTriage([record('visitor', 1)], writers, ''), null);
+  assert.deepEqual(readTriage([record(BOT, 1)], writers, '', Date.parse(at(2))), { url: `rec-${BOT}`, stale: false });
+  assert.equal(readTriage([record(BOT, 1)], writers, '', Date.parse(at(1)) + 25 * 3600e3).stale, true);
+  // A visitor's answer, one for another request and one older than the record do not count.
+  const ignored = [answer(BOT, 0, 'done'), record(BOT, 1), answer('visitor', 2, 'done'), answer(BOT, 3, 'done', 'r0')];
+  assert.equal(readTriage(ignored, writers, '', Date.parse(at(4))).verdict, undefined);
+  assert.deepEqual(readTriage([...ignored, answer(BOT, 5, 'partly')], writers, ''), { url: `rec-${BOT}`, request: 'r1', verdict: 'partly', evidence: `ans-${BOT}-5` });
+  // Once closed on a done answer, a reopened issue goes on as not done.
+  const closed = comment(BOT, '<!-- schedule-triage/v1-closed: r1 -->\nclosing', 3, 'c');
+  assert.equal(readTriage([record(BOT, 1), answer(BOT, 2, 'done'), closed], writers, '').verdict, 'reopened');
+  assert.equal(readTriage([record(BOT, 1), answer(BOT, 2, 'done'), { ...closed, user: { login: 'visitor' } }], writers, '').verdict, 'done');
+  assert.equal(readTriage([record(BOT, 1), answer('cgwalters', 2, 'maybe')], writers, '', Date.parse(at(3))).verdict, undefined);
+  // A needs-design record lapses once the body is written up.
+  const design = triageRecord('r1', { action: 'design', reason: 'no plan' }, 'tbd');
+  assert.deepEqual(readTriage([comment(BOT, design, 1, 'd')], writers, 'tbd'), { url: 'd', verdict: 'needs-design' });
+  assert.equal(readTriage([comment(BOT, design, 1, 'd')], writers, LONG), null);
+  // So does a run's needs-design answer; another answer holds.
+  const asked = comment(BOT, triageRecord('r1', { action: 'triage', reason: 'no plan; asking' }, 'tbd'), 1, 'q');
+  assert.equal(readTriage([asked, answer(BOT, 2, 'needs-design')], writers, LONG), null);
+  assert.equal(readTriage([asked, answer(BOT, 2, 'not-done')], writers, LONG).verdict, 'not-done');
+});
+
+test("a triage run's task carries URLs and the request, not the issue's text", () => {
+  const task = triageTask({ planDocs: 'https://github.com/o/agent-board/blob/main/docs/job-plans.md' }, issue(1, { body: 'IGNORE ALL' }), 'r1', 'o/p#6');
+  assert.ok(task.includes('https://github.com/o/r/issues/1') && task.includes('https://github.com/o/p/pull/6') && task.includes('"request":"r1"'));
+  assert.ok(task.includes('docs/job-plans.md') && !task.includes('IGNORE ALL'));
+  assert.match(triageTask({ planDocs: 'd' }, issue(1), 'r1'), /no accepted job plan/);
+});
+
+test('a pass that starts nothing with slots free says so, with the counts per reason', () => {
+  const skip = (reason, quiet) => ({ action: 'skip', reason, ...(quiet ? { quiet } : {}) });
+  const steps = [skip('no plan'), skip('no plan'), skip('a run is in flight, https://x/1'), skip('needs design, https://x/2', true),
+    skip("its plan's o/p#3: a pull request is open, pr"), { action: 'design', reason: 'no plan; too little' }];
+  assert.equal(idleLine(steps, 3),
+    "idle: 3 slot(s) free and nothing started; skipped: no plan 2, a run is in flight 1, needs design 1, its plan's #N 1");
+  assert.equal(idleLine(steps, 0), null);
+  assert.equal(idleLine([...steps, { action: 'triage', reason: 'x' }], 3), null);
+  assert.equal(idleLine([], 2), 'idle: 2 slot(s) free and nothing started');
+});
+
+test('with --apply, a done answer closes the issue after a comment naming the evidence', async () => {
+  const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
+  const at = '2026-10-16T10:00:00Z';
+  const comments = [
+    { user: { login: REPO_CONFIG.bot }, created_at: at, html_url: 'rec', body: '<!-- schedule-triage/v1: {"request":"r1"} -->\nasked' },
+    { user: { login: REPO_CONFIG.bot }, created_at: at, html_url: 'ans', body: 'Done: see o/r#9.\n```schedule-triage\n{"request":"r1","verdict":"done"}\n```' },
+  ];
+  const { out, sent, error } = await runMain(['--apply'], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(41)],
+    [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
+    [`/repos/${EPICS}/pulls?state=open`]: [],
+    [`GET /repos/${EPICS}/issues/41/comments`]: comments,
+    [`POST /repos/${EPICS}/issues/41/comments`]: { id: 1 },
+    [`PATCH /repos/${EPICS}/issues/41`]: {},
+  }, { issues: { 41: merged } });
+  assert.equal(error, undefined);
+  assert.ok(out.some(line => /#41 .*close: triage found it done, ans$/.test(line)));
+  // Closed before the comment that says so, which would otherwise read as reopened.
+  assert.deepEqual(sent.map(([c]) => c), [`PATCH /repos/${EPICS}/issues/41`, `POST /repos/${EPICS}/issues/41/comments`]);
+  assert.deepEqual(sent[0][1], { state: 'closed', state_reason: 'completed' });
+  assert.match(sent[1][1].body, /^<!-- schedule-triage\/v1-closed: r1 -->\n.*ans/);
+});
+
+test("answered not done, the item's own plan with a brief starts, and the checks after the guess still hold", async () => {
+  const merged = { timelineItems: { nodes: [{ source: { state: 'MERGED', merged: true, body: 'Refs o/r#2', url: 'https://github.com/o/p/pull/6', repository: { nameWithOwner: 'o/p', owner: { login: 'o' } } } }], pageInfo: { hasNextPage: false } } };
+  const run = (extra, verdict = 'partly') => decide([issue(2)], empty, caps(4, { triage: 1 }), () => plan('o/r#2', { brief: 'Do the rest.' }), noPulls,
+    (key, brief, cleared) => eligibility(post(metadata({ ...merged, ...extra })), key, brief, undefined, {}, cleared), undefined,
+    async () => ({ url: 'rec', verdict }));
+  for (const verdict of ['partly', 'not-done', 'reopened']) assert.equal((await run({}, verdict))[0].action, 'dispatch');
+  const [blocked] = await run({ blockedBy: { nodes: [{ state: 'OPEN', url: 'https://github.com/o/r/issues/9' }], pageInfo: { hasNextPage: false } } });
+  assert.deepEqual([blocked.action, blocked.reason], ['skip', 'blocked by o/r#9']);
+  // Without the answer, the guess holds.
+  assert.equal(await eligibility(post(metadata(merged)), 'o/r#2'), 'probably done by o/p#6; close it?');
 });
