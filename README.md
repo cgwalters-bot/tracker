@@ -267,6 +267,29 @@ replaces the plan to dispatch again). Items of unlisted repositories, upstream o
 among them, are skipped as "not a followed repository", as is a plan whose
 target is in one: upstream work is the operator's to start.
 
+`schedule.retries` (0 to 2; 0, off, if unset) acts on what a recorded plan's
+run did instead of skipping it as dispatched already for ever
+([#645](https://github.com/cgwalters-forge/tracker/issues/645)). The run is
+the one the record links, and its result is agentic-job's status comment for
+that run on the run's target: only the bot's (or, on this repository, the
+job token's), and only its own text of a run that ended well, not the
+agent's quoted reason or a check's refusal, may name the pull request, which
+must be the bot's. A cancelled run keeps the old skip. A merged pull request closes the
+issue with a comment linking it (an issue reopened after that is left
+alone); one whose body says `Part of` is a triage question instead, with
+`schedule.triage` on. An open one is skipped as `PR open`; one closed unmerged
+is left to a person. A run that failed or ended without a pull request is
+dispatched again, alone, with the status in its brief: the scheduler posts a
+record of the same plan with a `schedule-retry` line, removes the old
+record's marker and starts the run, at most `schedule.retries` times; then
+the issue is labelled `needs-human`, which the scheduler skips. A run that
+handed back missing data naming an issue of a followed repository gets that
+issue as a native blocked-by link (a pull request is only waited on), and the
+plan runs again once it closes. A record without a run link, a batched
+extra's, and a run whose status comment a later run replaced keep the old
+skip. Editing or replacing the plan starts the attempts again. The idle line
+also counts the recorded runs by outcome.
+
 `schedule.batch` (0 to 5; 0, off, if unset) is passed as agent-board's
 `dispatch --batch N`, so one implement run and its pull request also do up to
 N small sibling sub-issues that have their own accepted plans

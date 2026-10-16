@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, readDryRun, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
+const { agentBoard, batchReleased, candidates, decide, eligibility, findRecord, idleLine, loadConfig, main, openPullRefs, probePlan, pullIssues, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
 const { census } = require('./epics.cjs');
 
 const BOT = 'cgwalters-bot';
@@ -407,11 +407,16 @@ const REPO_CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, 'agent-board
 const EPICS = REPO_CONFIG.epics.repository;
 const epicIssue = n => ({ number: n, state: 'open', updated_at: 't', html_url: `https://github.com/${EPICS}/issues/${n}`, repository_url: `https://api.github.com/repos/${EPICS}` });
 const labelled = login => [{ event: 'labeled', actor: { login }, label: { name: 'epic' } }];
-async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing'), issues = {} } = {}) {
+// `schedule` is merged into the repository's own schedule config.
+async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing'), issues = {}, schedule } = {}) {
   const calls = [];
   const sent = [];
   const out = [];
-  const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD };
+  const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD, read: fs.readFileSync };
+  if (schedule) {
+    const text = JSON.stringify({ ...REPO_CONFIG, schedule: { ...REPO_CONFIG.schedule, ...schedule } });
+    fs.readFileSync = (file, ...rest) => (String(file).endsWith('agent-board.json') ? text : saved.read(file, ...rest));
+  }
   globalThis.fetch = async (u, init) => {
     const p = u.replace('https://api.github.com', '').replace(/[?&]per_page=100&page=1$/, '');
     const call = `${init?.method ?? 'GET'} ${p}`;
@@ -445,6 +450,7 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
   } finally {
     globalThis.fetch = saved.fetch;
     console.log = saved.log;
+    fs.readFileSync = saved.read;
     for (const k of ['GH_TOKEN', 'AGENT_BOARD']) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
   }
   return { out, calls, sent, error };
@@ -984,4 +990,239 @@ test("answered not done, the item's own plan with a brief starts, and the checks
   assert.deepEqual([blocked.action, blocked.reason], ['skip', 'blocked by o/r#9']);
   // Without the answer, the guess holds.
   assert.equal(await eligibility(post(metadata(merged)), 'o/r#2'), 'probably done by o/p#6; close it?');
+});
+
+// tracker#645: a recorded plan's run, read from its record and agentic-job's
+// status comment on its target, decides instead of a skip as dispatched already.
+const OUT_CONFIG = { caller: 'o/t', operator: 'op', planner: BOT, followed: new Set(['o/r', 'o/p']) };
+const runUrl = id => `https://github.com/o/t/actions/runs/${id}`;
+const RECORD = { id: 500, user: { login: BOT }, created_at: '2026-10-14T10:00:05Z', html_url: 'rec',
+  body: `<!-- agent-board-dispatch: 42@2026-10-14T10:00:00Z -->\nDispatched the plan in https://github.com/o/r/issues/7#issuecomment-42: [run](${runUrl(77)}).` };
+const statusOf = (text, login = BOT, id = 77) => ({ user: { login }, body: `${text}\n\n<!-- agentic-job-run: ${id} -->\n\n<!-- agentic-job-status -->` });
+const foundWith = (comments, extra = {}) => ({ plan: 'p', commentId: '42', target: 'o/r#7', self: 'o/r#7', record: RECORD, comments: [RECORD, ...comments], ...extra });
+const runOf = extra => ({ html_url: runUrl(77), display_title: 'implement o/r#7 (claude)', status: 'completed', conclusion: 'success', ...extra });
+// Answers GETs by path; anything else read fails the test.
+const reads = answers => async p => { if (p in answers) return answers[p]; assert.fail(`read ${p}`); };
+const PR9 = 'https://github.com/o/r/pull/9';
+const opened = `✅ [dispatch](${runUrl(77)}) ended well and opened pull request #9. Result: ${PR9}`;
+
+test('schedule.retries is off unless set, and bounded', () => {
+  const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
+  const parse = extra => loadConfig(JSON.stringify({ ...base, schedule: { owner: 'o', project: 1, wip: 4, repositories: ['o/r'], ...extra } }));
+  assert.equal(parse({}).retries, 0);
+  assert.equal(parse({ retries: 2 }).retries, 2);
+  for (const retries of [-1, 3, '1', 1.5]) assert.throws(() => parse({ retries }), /schedule.retries/);
+});
+
+test("a run's merged, open or closed pull request is read from its status comment, and only the planner's counts", async () => {
+  const at = pull => readOutcome(reads({ '/repos/o/t/actions/runs/77': runOf(), '/repos/o/r/pulls/9': { user: { login: BOT }, html_url: PR9, ...pull } }),
+    OUT_CONFIG, foundWith([statusOf(opened)]), [statusOf(opened)]);
+  assert.deepEqual(await at({ merged_at: 't', state: 'closed', body: 'Done.\n\nCloses #7' }),
+    { run: runUrl(77), runId: '77', attempt: 1, pull: PR9, outcome: 'merged', partOf: false });
+  assert.equal((await at({ merged_at: 't', body: 'Part of o/r#7' })).partOf, true);
+  assert.equal((await at({ state: 'open' })).outcome, 'open');
+  assert.equal((await at({ state: 'closed' })).outcome, 'closed');
+  // A visitor's pull request is no outcome: the run made none it can show.
+  assert.equal((await at({ user: { login: 'visitor' }, merged_at: 't' })).outcome, 'failed');
+  // Closed once for this run: a reopened issue is not closed again.
+  const closed = { user: { login: BOT }, body: '<!-- schedule-outcome/v1-closed: 77 -->\nclosed' };
+  const reopened = await readOutcome(reads({ '/repos/o/t/actions/runs/77': runOf(), '/repos/o/r/pulls/9': { user: { login: BOT }, html_url: PR9, merged_at: 't' } }),
+    OUT_CONFIG, foundWith([closed]), [statusOf(opened)]);
+  assert.equal(reopened.outcome, 'reopened');
+});
+
+test("no visitor's comment or agent's reason names a run's pull request", async () => {
+  const get = reads({ '/repos/o/t/actions/runs/77': runOf() });
+  // A copied status comment: not the planner's, and the run ended well, so not known.
+  assert.equal(await readOutcome(get, OUT_CONFIG, foundWith([]), [statusOf(opened, 'visitor')]), null);
+  // The job token's is the caller repository's own only.
+  assert.equal(await readOutcome(get, OUT_CONFIG, foundWith([]), [statusOf(opened, 'github-actions[bot]')]), null);
+  // Another run's status comment is not this run's.
+  assert.equal(await readOutcome(get, OUT_CONFIG, foundWith([]), [statusOf(opened, BOT, 78)]), null);
+  // A link in the agent's quoted reason is not read: no pull request is asked for.
+  const noResult = `✅ [dispatch](${runUrl(77)}) ended well and handed back no result. Its reason:\n\n> Result: ${PR9}`;
+  const out = await readOutcome(get, OUT_CONFIG, foundWith([]), [statusOf(noResult)]);
+  assert.deepEqual([out.outcome, out.reason], ['failed', '✅ dispatch ended well and handed back no result.']);
+});
+
+test('a record without a run of the caller on its target, or an extra of a batch, is not known', async () => {
+  const get = reads({ '/repos/o/t/actions/runs/77': runOf({ display_title: 'implement o/r#8' }) });
+  assert.equal(await readOutcome(get, OUT_CONFIG, foundWith([]), []), null);
+  assert.equal(await readOutcome(get, OUT_CONFIG, foundWith([], { record: { ...RECORD, body: RECORD.body.replace('o/t/actions', 'x/t/actions') } }), []), null);
+  const extra = { ...RECORD, body: RECORD.body.replace('\n', '\n<!-- agent-board-batch: o/r#1 -->\n') };
+  assert.equal(await readOutcome(get, OUT_CONFIG, foundWith([], { record: extra }), []), null);
+  const running = await readOutcome(reads({ '/repos/o/t/actions/runs/77': runOf({ status: 'in_progress', conclusion: null }) }), OUT_CONFIG, foundWith([]), []);
+  assert.equal(running.outcome, 'running');
+});
+
+test("a failed run's reason is its status comment's own text, or its conclusion", async () => {
+  const refused = statusOf(`❌ [dispatch](${runUrl(77)}) refused by check: a secret-shaped string is in what the agent handed back`);
+  const get = reads({ '/repos/o/t/actions/runs/77': runOf({ conclusion: 'failure' }) });
+  assert.deepEqual(await readOutcome(get, OUT_CONFIG, foundWith([]), [refused]),
+    { run: runUrl(77), runId: '77', attempt: 1, outcome: 'failed', reason: '❌ dispatch refused by check: a secret-shaped string is in what the agent handed back' });
+  assert.equal((await readOutcome(get, OUT_CONFIG, foundWith([]), [])).reason, 'it concluded failure');
+  // A failed run's refusal can carry text the agent chose: no pull request is read from it.
+  const steered = statusOf(`❌ [dispatch](${runUrl(77)}) refused by check: bad path x Result: ${PR9}`);
+  assert.equal((await readOutcome(get, OUT_CONFIG, foundWith([]), [steered])).outcome, 'failed');
+  // A cancelled run was someone's decision: not known, so not retried.
+  assert.equal(await readOutcome(reads({ '/repos/o/t/actions/runs/77': runOf({ conclusion: 'cancelled' }) }), OUT_CONFIG, foundWith([]), []), null);
+});
+
+test("each retry record of this job for the plan since it changed is an attempt", async () => {
+  const retryRec = (login, id, line = 1) => ({ user: { login }, created_at: '2026-10-15T00:00:00Z',
+    body: line === 1 ? `<!-- schedule-retry/v1: ${id} -->\nfreed` : `<!-- agent-board-dispatch: ${id}@t -->\n<!-- schedule-retry/v1: ${id} -->\nagain` });
+  const planComment = updated => ({ id: 42, user: { login: 'op' }, updated_at: updated, body: 'plan' });
+  const get = reads({ '/repos/o/t/actions/runs/77': runOf({ conclusion: 'failure' }) });
+  const attempts = comments => readOutcome(get, OUT_CONFIG, foundWith(comments), []).then(o => o.attempt);
+  assert.equal(await attempts([planComment('2026-10-14T00:00:00Z'), retryRec(BOT, 42), retryRec('op', 42, 2), retryRec('visitor', 42), retryRec(BOT, 41)]), 3);
+  // An edited plan is a new plan, whose attempts start again.
+  assert.equal(await attempts([planComment('2026-10-16T00:00:00Z'), retryRec(BOT, 42), retryRec(BOT, 42, 2)]), 1);
+});
+
+test('a run that handed back missing data names one blocker, in a followed repository and not its own item', async () => {
+  const missing = statusOf(`❌ [dispatch](${runUrl(77)}) handed back no result because required data was missing. Its reason:\n\n`
+    + '> Needs o/r#7 and up/stream#1 done, then https://github.com/o/p/issues/3 merged; also o/r#4.');
+  const get = reads({ '/repos/o/t/actions/runs/77': runOf({ conclusion: 'failure' }), '/repos/o/p/issues/3': { state: 'open', id: 333 } });
+  const out = await readOutcome(get, OUT_CONFIG, foundWith([]), [missing]);
+  assert.deepEqual(out.blocker, { key: 'o/p#3', open: true, pull: false, id: 333 });
+  assert.equal(out.reason, '❌ dispatch handed back no result because required data was missing.');
+  // Any other failure names none, whatever its text.
+  const other = statusOf(`❌ [dispatch](${runUrl(77)}) failed (agent, check, apply: failure/skipped/skipped). Its reason:\n\n> see o/p#3`);
+  assert.equal((await readOutcome(get, OUT_CONFIG, foundWith([]), [other])).blocker, undefined);
+});
+
+const RECORDED = plan('o/r#1', { recorded: 'rec' });
+const decideOn = (out, extra = {}, items = [issue(1)]) => decide(items, empty, caps(extra.wip ?? 4, { retries: 2, ...extra }),
+  item => (item.number === 1 ? RECORDED : own(item)), noPulls, undefined, undefined, async () => null, async () => out);
+const failed = (attempt, extra = {}) => ({ run: 'run77', runId: '77', attempt, outcome: 'failed', reason: 'refused by check', ...extra });
+
+test('off, a recorded plan is skipped as dispatched already, and its run is not read', async () => {
+  const steps = await decide([issue(1)], empty, caps(4), () => RECORDED, noPulls, undefined, undefined, undefined, () => assert.fail('read'));
+  assert.match(steps[0].reason, /dispatched already, rec$/);
+});
+
+test("a recorded plan whose run's pull request merged closes the issue; one part of it asks a triage run", async () => {
+  const merged = { run: 'run77', runId: '77', attempt: 1, pull: PR9, outcome: 'merged', partOf: false };
+  assert.deepEqual((await decideOn(merged)).map(s => [s.action, s.reason, s.pull, s.outcome]), [['done', "its run's PR o/r#9 merged", PR9, 'merged']]);
+  const partOf = { ...merged, partOf: true };
+  assert.deepEqual((await decideOn(partOf, { triage: 1 })).map(s => [s.action, s.reason, s.pull]),
+    [['triage', "its run's PR o/r#9 merged as part of it; asking a triage run", 'o/r#9']]);
+  assert.deepEqual((await decideOn(partOf)).map(s => [s.action, s.reason]), [['skip', "its run's PR o/r#9 merged as part of it"]]);
+  assert.deepEqual((await decideOn({ ...merged, outcome: 'open' })).map(s => [s.action, s.reason]), [['skip', 'PR open: o/r#9']]);
+});
+
+test('a recorded plan whose run failed is dispatched again with the reason, taking a slot, until the attempts run out', async () => {
+  const steps = await decideOn(failed(1), { wip: 1 }, [issue(1), issue(2)]);
+  assert.deepEqual(steps.map(s => [s.item, s.action, s.reason]), [
+    ['o/r#1', 'retry', `plan ${RECORDED.plan}; attempt 2 of 3, as its run run77 ended without a merged PR: refused by check`],
+    ['o/r#2', 'skip', 'work-in-progress cap of 1 reached'],
+  ]);
+  assert.deepEqual(steps[0].retry, { attempt: 2, of: 3, run: 'run77', runId: '77', reason: 'refused by check' });
+  assert.equal(steps[0].found, RECORDED);
+  assert.equal((await decideOn(failed(2)))[0].action, 'retry');
+  const [capped] = await decideOn(failed(3));
+  assert.deepEqual([capped.action, capped.reason], ['needs-human', '3 run(s) ended without a merged PR, the last run77: refused by check']);
+  assert.equal((await decideOn(failed(2), { retries: 1 }))[0].action, 'needs-human');
+  // A retry gets the checks a dispatch gets.
+  const held = await decide([issue(1)], { ...empty, busy: new Map([['o/r#1', 'run78']]) }, caps(4, { retries: 2 }), () => RECORDED, noPulls,
+    undefined, undefined, undefined, async () => failed(1));
+  assert.match(held[0].reason, /in flight, run78/);
+});
+
+test("a run's open blocker is linked as blocked by, and the plan runs again once it closes", async () => {
+  const blocker = open => failed(1, { blocker: { key: 'o/p#3', open, pull: false, id: 333 } });
+  const [block] = await decideOn(blocker(true));
+  assert.deepEqual([block.action, block.reason, block.blocker.id], ['block', 'its run run77 needs o/p#3; linking it as blocked by', 333]);
+  // Linked, eligibility holds the item while it is open.
+  const linked = metadata({ blockedBy: { nodes: [{ state: 'OPEN', url: 'https://github.com/o/p/issues/3' }], pageInfo: { hasNextPage: false } } });
+  assert.equal(await eligibility(post(linked), 'o/r#1'), 'blocked by o/p#3');
+  const [again] = await decideOn(blocker(false));
+  assert.equal(again.action, 'retry');
+  assert.match(again.reason, /refused by check; o\/p#3, which it needed, is closed now$/);
+  // An open pull request cannot be linked: it is waited on.
+  const [waits] = await decideOn(failed(1, { blocker: { key: 'o/p#4', open: true, pull: true, id: 444 } }));
+  assert.deepEqual([waits.action, waits.reason], ['skip', 'its run run77 needs o/p#4, which is open']);
+});
+
+test('an issue labelled needs-human is not taken', async () => {
+  const labelledHuman = metadata({ labels: { nodes: [{ name: 'needs-human' }], pageInfo: { hasNextPage: false } } });
+  assert.equal(await eligibility(post(labelledHuman), 'o/r#1'), 'labelled needs-human');
+});
+
+test('the idle line counts how the recorded plans’ runs ended', () => {
+  const steps = [{ action: 'skip', reason: 'PR open: o/r#9', outcome: 'open' }, { action: 'done', reason: 'x', outcome: 'merged' },
+    { action: 'needs-human', reason: 'y', outcome: 'failed' }, { action: 'skip', reason: 'no plan' }];
+  assert.equal(idleLine(steps, 2), 'idle: 2 slot(s) free and nothing started; skipped: PR open 1, no plan 1; recorded runs: open 1, merged 1, failed 1');
+  assert.equal(idleLine([...steps, { action: 'retry', reason: 'z', outcome: 'failed' }], 2), null);
+});
+
+// main over the stubbed API, with retries on: the repository's own target, so
+// the caller's job token's status comment counts.
+const recordedMain = async (status, rest = {}, earlier = []) => {
+  const dry = { method: 'POST', url: 'u', body: { ref: 'main', inputs: { task: 'Do it.', repo: EPICS, item: '41', kind: 'implement', pool: 'claude' } } };
+  const bin = stub(`recorded-${Object.keys(rest).length}-${status.body.length}`, `process.stdout.write(${JSON.stringify(JSON.stringify(dry))}); `
+    + `process.stderr.write('Dry run: request for the plan in https://github.com/${EPICS}/issues/41#issuecomment-42 by ${REPO_CONFIG.operator}; nothing was sent.\\n');`);
+  const caller = REPO_CONFIG.dispatchRepo;
+  const record = { id: 500, user: { login: REPO_CONFIG.bot }, created_at: '2026-10-14T10:00:05Z', html_url: 'rec',
+    body: `<!-- agent-board-dispatch: 42@2026-10-14T10:00:00Z -->\nDispatched: [run](https://github.com/${caller}/actions/runs/77).` };
+  const plan42 = { id: 42, user: { login: REPO_CONFIG.operator }, updated_at: '2026-10-14T10:00:00Z', created_at: '2026-10-14T10:00:00Z', body: 'plan' };
+  return runMain(['--apply'], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(41)],
+    [`/repos/${caller}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
+    [`/repos/${EPICS}/pulls?state=open`]: [],
+    [`GET /repos/${EPICS}/issues/41/comments`]: [plan42, record, ...earlier, status],
+    [`GET /repos/${caller}/actions/runs/77`]: { html_url: `https://github.com/${caller}/actions/runs/77`, display_title: `implement ${EPICS}#41 (claude)`, status: 'completed', conclusion: 'failure' },
+    ...rest,
+  }, { bin, schedule: { retries: 2 } });
+};
+
+test('with --apply, a failed run is dispatched again: a new record first, the old one freed, the brief with the reason', async () => {
+  const caller = REPO_CONFIG.dispatchRepo;
+  const DISPATCHES = `/repos/${caller}/actions/workflows/dispatch.yml/dispatches`;
+  const status = statusOf(`❌ [dispatch](https://github.com/${caller}/actions/runs/77) refused by check: a secret-shaped string`, 'github-actions[bot]');
+  const { out, sent, error } = await recordedMain(status, {
+    [`POST /repos/${EPICS}/issues/41/comments`]: { id: 600, html_url: 'rec2', body: 'new record' },
+    [`PATCH /repos/${EPICS}/issues/comments/500`]: {},
+    [`POST ${DISPATCHES}`]: { workflow_run_id: 88 },
+    [`PATCH /repos/${EPICS}/issues/comments/600`]: {},
+  });
+  assert.equal(error, undefined);
+  assert.ok(out.some(line => /#41 .*retry: plan .*attempt 2 of 3, .*refused by check: a secret-shaped string$/.test(line)), out.join('\n'));
+  assert.deepEqual(sent.map(([c]) => c), [`POST /repos/${EPICS}/issues/41/comments`, `PATCH /repos/${EPICS}/issues/comments/500`,
+    `POST ${DISPATCHES}`, `PATCH /repos/${EPICS}/issues/comments/600`]);
+  // The same plan's marker, so it stays held, and this job's retry line, which counts the attempt.
+  assert.match(sent[0][1].body, /^<!-- agent-board-dispatch: 42@2026-10-14T10:00:00Z -->\n<!-- schedule-retry\/v1: 42 -->\n.*attempt 2 of 3, as its last run, 77,/);
+  assert.ok(!sent[0][1].body.includes('actions/runs/77'));
+  assert.ok(!sent[1][1].body.includes('agent-board-dispatch'));
+  const { ref, inputs, return_run_details: details } = sent[2][1];
+  assert.deepEqual([ref, details, inputs.repo, inputs.item, inputs.kind, inputs.pool], ['main', true, EPICS, '41', 'implement', 'claude']);
+  assert.match(inputs.task, /^Do it\.\n\nThis is attempt 2 of 3\. The last run, .*runs\/77, ended without a merged pull request; its status: ❌ dispatch refused by check: a secret-shaped string$/);
+  assert.equal(sent[3][1].body, `new record [run](https://github.com/${caller}/actions/runs/88).`);
+});
+
+test('with --apply, a merged run closes the issue, linking its pull request', async () => {
+  const caller = REPO_CONFIG.dispatchRepo;
+  const pr = `https://github.com/${EPICS}/pull/9`;
+  const status = statusOf(`✅ [dispatch](https://github.com/${caller}/actions/runs/77) ended well and opened pull request #9. Result: ${pr}`, REPO_CONFIG.bot);
+  const merged = await recordedMain(status, {
+    [`GET /repos/${caller}/actions/runs/77`]: { html_url: `https://github.com/${caller}/actions/runs/77`, display_title: `implement ${EPICS}#41`, status: 'completed', conclusion: 'success' },
+    [`GET /repos/${EPICS}/pulls/9`]: { user: { login: REPO_CONFIG.bot }, html_url: pr, merged_at: 't', state: 'closed', body: 'Done.' },
+    [`PATCH /repos/${EPICS}/issues/41`]: {},
+    [`POST /repos/${EPICS}/issues/41/comments`]: { id: 1 },
+  });
+  assert.equal(merged.error, undefined);
+  assert.deepEqual(merged.sent.map(([c]) => c), [`PATCH /repos/${EPICS}/issues/41`, `POST /repos/${EPICS}/issues/41/comments`]);
+  assert.match(merged.sent[1][1].body, new RegExp(`^<!-- schedule-outcome/v1-closed: 77 -->\n.*merged: ${pr}\\.`));
+});
+
+test("with --apply, at the cap the issue is labelled needs-human, and nothing is dispatched", async () => {
+  const caller = REPO_CONFIG.dispatchRepo;
+  const status = statusOf(`❌ [dispatch](https://github.com/${caller}/actions/runs/77) failed (agent, check, apply: failure/skipped/skipped).`, REPO_CONFIG.bot);
+  const freed = n => ({ user: { login: REPO_CONFIG.bot }, created_at: '2026-10-15T00:00:00Z', body: `<!-- schedule-retry/v1: 42 -->\nfreed ${n}` });
+  const { out, sent, error } = await recordedMain(status, { [`POST /repos/${EPICS}/issues/41/labels`]: [] }, [freed(1), freed(2)]);
+  assert.equal(error, undefined);
+  assert.ok(out.some(line => /#41 .*needs-human: 3 run\(s\) ended without a merged PR/.test(line)), out.join('\n'));
+  assert.deepEqual(sent, [[`POST /repos/${EPICS}/issues/41/labels`, { labels: ['needs-human'] }]]);
 });
