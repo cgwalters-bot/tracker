@@ -213,9 +213,13 @@ ruleset's id with `gh api repos/OWNER/REPO/rulesets` and run
 
 ## Operator comment wake
 
-Set the repository variable `COMMENT_WAKE=enabled` to wake `poll.yml` on a
-new comment by the `operator` in `.github/poll/agent-board.json` on an open
-issue here. It is off when the variable is absent or has any other value.
+The workflow is off until the operator sets the repository variable
+`COMMENT_WAKE=enabled`; then it wakes `poll.yml` on a new comment by the
+`operator` in `.github/poll/agent-board.json` on an open issue here. It
+stays off while the variable is absent or has any other value. After
+setting it, the operator posts one comment on an open issue here and
+checks that it starts a `poll.yml` run (`gh run list -R
+cgwalters-forge/tracker -w poll.yml`).
 PR comments, edits, closed issues and bot replies do not wake it. The login
 is read from the default branch, never a dispatcher input; comment text is
 not passed to the workflow. The wake dispatches one normal poll, using its
@@ -224,7 +228,40 @@ and bursts coalesce into at most one pending pass. Existing scheduler and
 coordinator apply switches still govern writes. A local watcher is not needed.
 The pass reads current forge state, not a queued copy of the comment.
 
+## Recovery drill
+
+To show that the forge is enough, a person on a fresh machine holding only
+the credentials above brings up a coordinator from nothing:
+
+1. Clone this repository. It checks out the default branch, with
+   `docs/operator-notes.md` and this page in it.
+2. Install `gh` and agent-board as [What to clone](#what-to-clone) says,
+   and start a shell as [Credentials and settings](#credentials-and-settings)
+   says. `gh auth status` names the bot account and `agent-board --help`
+   runs.
+3. Read [operator-notes.md](operator-notes.md). Nothing below goes against
+   an instruction there.
+4. Run `gh workflow run poll.yml -R cgwalters-forge/tracker` and wait for
+   it with `scripts/wait-run RUN`. It succeeds, the `poll` job's log at
+   "Restore the state of the last pass" says `State from run N` rather
+   than starting afresh, and the board job's summary previews the epics
+   and pull requests the board and `gh pr list` show as open.
+5. Dispatch one research run, `gh workflow run dispatch.yml -R
+   cgwalters-forge/tracker -f kind=research -f repo=cgwalters-forge/tracker
+   -f item=507 -f task="$(cat BRIEFFILE)"`, with a brief asking for a short
+   check of this page. The run succeeds and leaves its one comment on the
+   item.
+
+The result of a drill is recorded as a dated comment on
+[#507](https://github.com/cgwalters-forge/tracker/issues/507), with the
+links to the runs.
+
 ## Still only on the machine
 
 Credentials, by design: the token file, the environment file and the
 broker's policy on the inference host.
+Dispatch briefs written before
+[#508](https://github.com/cgwalters-forge/tracker/issues/508) were on tmpfs
+and are lost. Each later task's text reaches `dispatch.yml` as its `task`
+input, and can be read back from that run's log only while GitHub keeps
+the log.
