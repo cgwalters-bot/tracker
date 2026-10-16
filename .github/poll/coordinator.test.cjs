@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
-const { changedFingerprint, dailyDue, decision, health, loadConfig, pass, record, statusProse, brief, applyConfig } = require('./coordinator.cjs');
+const { changedFingerprint, dailyDue, decision, health, loadConfig, pass, record, reportPull, statusProse, brief, applyConfig } = require('./coordinator.cjs');
 
 const now = Date.parse('2026-10-14T11:00:00Z');
 const epic = { number: 7, live: true, title: 'Epic', body: 'Work', priority: 'P1',
@@ -951,4 +951,16 @@ test('a deleted run counts as finished, and a settled checkpoint is not looked u
   await pass(stale.options);
   assert.deepEqual(stale.lookups, []);
   assert.equal(checkpointState(stale.writes.find(w => w.p.endsWith('/comments/10'))).pending, null);
+});
+
+test("a batched pull request is reported once, with its issues; others' issues are not listed", () => {
+  const entries = [{ number: 7, subs: [{ repository: 'O/R', number: 9 }] }];
+  const body = 'Refs o/r#8\n\nCloses #8\nCloses #9';
+  const pull = { number: 3, html_url: 'https://github.com/o/r/pull/3', user: { login: 'Bot' }, body };
+  const report = reportPull(pull, entries, 'bot');
+  assert.deepEqual(report.issues, ['https://github.com/o/r/issues/8', 'https://github.com/o/r/issues/9']);
+  assert.deepEqual(report.epics, [7]);
+  const visitor = reportPull({ ...pull, user: { login: 'visitor' } }, entries, 'bot');
+  assert.deepEqual(visitor.issues, []);
+  assert.deepEqual(visitor.epics, [7]);
 });
