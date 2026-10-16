@@ -75,6 +75,14 @@ packages = ["python3-venv", "nftables", "podman", "uidmap", "git", "just", "node
 "cgwalters-forge/agent-board" = ["cargo"]
 "cgwalters-forge/tracker" = ["cargo"]
 
+# The window each broker model is given, which Vibe compacts at three
+# quarters of (agentic-job's docs/harness.md). Without an entry a model gets
+# 32k, compacted at 24k, at which a GLM research task compacted 18 times and
+# lost its findings (agentic-job#821). GLM-5.3 documents 1M, but what the
+# broker's provider serves is unconfirmed, so this stays at 128k until it is.
+[agent.context-windows]
+"zai-glm-5-3" = 131072
+
 # Inert for ordinary runs. Before enabling session.json, the operator must
 # name tailnet logins and browser origins here. Empty lists fail closed.
 # Logins stop other tailnet users prompting the agent; origins stop another
