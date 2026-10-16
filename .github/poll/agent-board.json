@@ -2,6 +2,7 @@
   "source": "https://github.com/cgwalters-forge/agent-board",
   "branch": "main",
   "operator": "cgwalters",
+  "operatorComments": { "repositories": ["bootc-dev/*"] },
   "bot": "cgwalters-bot",
   "mergeAuthors": ["dependabot[bot]"],
   "dispatchRepo": "cgwalters-forge/tracker",

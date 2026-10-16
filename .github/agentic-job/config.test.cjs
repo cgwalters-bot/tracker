@@ -87,12 +87,44 @@ test('misctool is a dispatch and fix target with matching workflow-edit bounds',
     assert.equal(bounds.length, 2, name);
     for (const repos of bounds) assert.ok(repos.includes('cgwalters-forge/misctool'), name);
   }
-  for (let i = 0; i < 2; i++) assert.deepEqual([...dispatchLists[i]].sort(), [...fixLists[i]].sort());
+  // Less bootc-dev/*, which fix has and dispatch has not (D17, below).
+  for (let i = 0; i < 2; i++) assert.deepEqual([...dispatchLists[i]].sort(), fixLists[i].filter(r => r !== 'bootc-dev/*').sort());
 });
 
 test('dispatch.toml and fix.toml open complete work ready', () => {
   assert.match(outputs('dispatch.toml'), /^create_pull_request = \{ max = 1, ready_when_complete = true \}$/m);
   assert.match(outputs('fix.toml'), /^push_to_pull_request_branch = \{ max = 1, branches = \["dispatch\/\*\*"\], replacement_max_commits = 5, ready_when_complete = true \}$/m);
+});
+
+// D17 (docs/operator-notes.md, 2026-10-17): bootc-dev is open to
+// comment-only kinds and to fix, and to nothing else; comment.toml is
+// dispatch.toml's targets with no pull request.
+const repos = name => JSON.parse(/^repos = (\[.*\])$/m.exec(read(name).split(/^\[/m)[0])[1]);
+test('only triage, research and fix may target bootc-dev', () => {
+  assert.match(fs.readFileSync(path.join(__dirname, '../../docs/operator-notes.md'), 'utf8'),
+    /^D17 \(which bootc-dev runs .*\*\*B\*\*\. .*Fix rounds run on the bot's own bootc-dev pull requests.*Triage and research answers may also be posted/m);
+  assert.deepEqual(repos('comment.toml'), [...repos('dispatch.toml'), 'bootc-dev/*']);
+  assert.deepEqual(repos('fix.toml').filter(r => r.startsWith('bootc-dev')), ['bootc-dev/*']);
+  assert.ok(!repos('dispatch.toml').some(r => r.startsWith('bootc-dev')));
+  assert.deepEqual([...outputs('comment.toml').matchAll(/^([a-z_]+) = /gm)].map(m => m[1]),
+    ['add_comment', 'noop', 'missing_tool', 'missing_data']);
+  assert.doesNotMatch(read('comment.toml'), /^\[unprotected_files\]/m);
+  for (const name of ['dispatch.toml', 'fix.toml']) assert.doesNotMatch(read(name).split(/^\[unprotected_files\]$/m)[1], /bootc-dev/);
+  assert.deepEqual(dispatch.match(/^ {6}allow: .*$/gm), [
+    "      allow: ${{ (inputs.kind == 'triage' || inputs.kind == 'research') && '.github/agentic-job/comment.toml' || '.github/agentic-job/dispatch.toml' }}",
+  ]);
+});
+
+test('agentic-job policy admits bootc-dev only for comments and fixes', { skip: !agenticJob && 'agentic-job is not installed' }, () => {
+  const policy = (file, kind, outputs, ...args) => spawnSync('agentic-job', ['policy', '--allow', path.join(__dirname, file),
+    '--repo', 'bootc-dev/bootc', '--clone-url', 'https://github.com/bootc-dev/bootc',
+    '--kind', kind, '--outputs', outputs, '--max-outputs', '3', ...args], { stdio: 'pipe' }).status;
+  assert.equal(policy('comment.toml', 'analysis', 'add_comment,noop', '--base', 'main'), 0);
+  assert.notEqual(policy('comment.toml', 'branch', 'create_pull_request,noop', '--base', 'main'), 0);
+  assert.notEqual(policy('dispatch.toml', 'analysis', 'add_comment,noop', '--base', 'main'), 0);
+  assert.notEqual(policy('dispatch.toml', 'branch', 'create_pull_request,noop', '--base', 'main'), 0);
+  assert.equal(policy('fix.toml', 'branch', 'push_to_pull_request_branch,noop', '--base', 'dispatch/x', '--pull-request', '1',
+    '--head', '0'.repeat(40), '--output-repo', 'bootc-dev/bootc'), 0);
 });
 
 // The policy job's own reading of the bounds, so a spelling it ignores fails.
