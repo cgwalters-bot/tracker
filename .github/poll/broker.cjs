@@ -1,6 +1,9 @@
 // Probes the inference broker from the dispatch tailnet path and keeps one
-// `outage` issue open while it is unreachable (#603). Refunding the fix round
-// an outage interrupts belongs to agent-board, which owns the rounds.
+// `outage` issue open while it is unreachable (#603). While that issue is
+// open and fresh (heldBy), the poll, the board scheduler and the coordinator
+// only preview, so no agent run starts against a broker that is down.
+// agent-board gives back the round of a run an outage failed, reading the
+// same issue (`brokerOutage` in agent-board.json).
 'use strict';
 
 const net = require('node:net');
@@ -38,11 +41,33 @@ async function probe(value, timeout = 10000) {
   } catch { return false; }
 }
 
+// The bot's open outage issue, if any. Anyone who can open an issue can add
+// a label and the marker, so only the probe's own login counts.
+async function find({ token, repo, login, api }) {
+  const issues = await api(token, 'GET', `/repos/${repo}/issues?state=open&labels=outage&per_page=100`);
+  if (issues.length === 100) throw new Error('Outage issue scan reached its bound');
+  return issues.find(i => !i.pull_request && i.user?.login === login && i.body?.startsWith(MARKER)) ?? null;
+}
+
+// Whether an outage holds agent runs: { url, number } of the open issue, or
+// null. The probe rewrites the issue every 15 minutes while the broker is
+// down, so one not updated for `staleMinutes` means the probe stopped (say,
+// BROKER_OUTAGE unset after it opened); it does not hold, lest a forgotten
+// issue stop every run for good. A failed read throws: it is not "no outage".
+async function heldBy({ token, repo, login, api, now = Date.now(), staleMinutes = 60, log = () => {} }) {
+  const issue = await find({ token, repo, login, api });
+  if (!issue) return null;
+  const updated = Date.parse(issue.updated_at);
+  if (!(now - updated <= staleMinutes * 60_000)) {
+    log(`outage issue #${issue.number} is stale; not holding`);
+    return null;
+  }
+  return { url: issue.html_url, number: issue.number };
+}
+
 async function publish({ token, repo, login, up, api, now = new Date().toISOString() }) {
   const path = `/repos/${repo}/issues`;
-  const issues = await api(token, 'GET', `${path}?state=open&labels=outage&per_page=100`);
-  if (issues.length === 100) throw new Error('Outage issue scan reached its bound');
-  const issue = issues.find(i => !i.pull_request && i.user?.login === login && i.body?.startsWith(MARKER));
+  const issue = await find({ token, repo, login, api });
   const body = `${MARKER}\nBroker ${up ? 'reachable again' : 'unreachable'} from the dispatch tailnet path at ${now}.\nTCP plus one unauthenticated HTTP request; any HTTP response counts as reachable.`;
   if (up) {
     if (issue) {
@@ -71,6 +96,6 @@ async function main() {
   if (!up) process.exitCode = 1;
 }
 
-module.exports = { probe, publish };
+module.exports = { MARKER, heldBy, probe, publish };
 
 if (require.main === module) main().catch(err => { console.error(err.message); process.exitCode = 1; });

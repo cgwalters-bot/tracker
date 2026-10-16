@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const http = require('node:http');
 const net = require('node:net');
-const { probe, publish } = require('./broker.cjs');
+const { MARKER, heldBy, probe, publish } = require('./broker.cjs');
 
 test('probe accepts any HTTP response without credentials or redirects', async t => {
   let status = 401;
@@ -50,4 +50,25 @@ test('outage issue is created, updated in place, then closed on recovery', async
   assert.equal(writes.filter(w => w.path.endsWith('/issues')).length, 1);
   assert.equal(writes.filter(w => w.method === 'PATCH' && w.body.body).length, 1);
   assert.equal(writes.at(-1).body.state, 'closed');
+});
+
+test('only the bot\'s fresh, marked, open outage issue holds', async () => {
+  const now = Date.parse('2026-10-16T12:00:00Z');
+  const issue = (over = {}) => ({ number: 7, html_url: 'https://github.com/configured/repo/issues/7', user: { login: 'configured-bot' },
+    body: `${MARKER}\nBroker unreachable`, updated_at: '2026-10-16T11:50:00Z', ...over });
+  const lines = [];
+  const held = issues => heldBy({ token: 'token', repo: 'configured/repo', login: 'configured-bot', now, log: line => lines.push(line),
+    api: async (token, method, path) => {
+      assert.deepEqual([token, method, path], ['token', 'GET', '/repos/configured/repo/issues?state=open&labels=outage&per_page=100']);
+      return issues;
+    } });
+  assert.deepEqual(await held([issue()]), { url: 'https://github.com/configured/repo/issues/7', number: 7 });
+  for (const other of [
+    issue({ user: { login: 'visitor' } }), issue({ pull_request: {} }), issue({ body: 'Broker unreachable' }),
+    issue({ updated_at: '2026-10-16T10:59:00Z' }),
+  ]) assert.equal(await held([other]), null);
+  assert.deepEqual(lines, ['outage issue #7 is stale; not holding']);
+  assert.equal(await held([]), null);
+  await assert.rejects(held(Array.from({ length: 100 }, () => issue({ user: { login: 'visitor' } }))), /bound/);
+  await assert.rejects(heldBy({ token: 'token', repo: 'configured/repo', login: 'configured-bot', api: async () => { throw new Error('HTTP 502'); } }), /HTTP 502/);
 });

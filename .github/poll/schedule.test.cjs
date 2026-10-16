@@ -408,16 +408,22 @@ const EPICS = REPO_CONFIG.epics.repository;
 const epicIssue = n => ({ number: n, state: 'open', updated_at: 't', html_url: `https://github.com/${EPICS}/issues/${n}`, repository_url: `https://api.github.com/repos/${EPICS}` });
 const labelled = login => [{ event: 'labeled', actor: { login }, label: { name: 'epic' } }];
 // `schedule` is merged into the repository's own schedule config.
-async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing'), issues = {}, schedule } = {}) {
+// `outage` is the open outage issues an applying pass reads first.
+const OUTAGE = '/repos/configured/tracker/issues?state=open&labels=outage&per_page=100';
+async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missing'), issues = {}, schedule, outage = [] } = {}) {
   const calls = [];
   const sent = [];
   const out = [];
-  const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD, read: fs.readFileSync };
+  const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD, GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY, read: fs.readFileSync };
   if (schedule) {
     const text = JSON.stringify({ ...REPO_CONFIG, schedule: { ...REPO_CONFIG.schedule, ...schedule } });
     fs.readFileSync = (file, ...rest) => (String(file).endsWith('agent-board.json') ? text : saved.read(file, ...rest));
   }
   globalThis.fetch = async (u, init) => {
+    if (u === `https://api.github.com${OUTAGE}`) {
+      calls.push(`GET ${OUTAGE}`);
+      return new Response(JSON.stringify(outage), { status: 200 });
+    }
     const p = u.replace('https://api.github.com', '').replace(/[?&]per_page=100&page=1$/, '');
     const call = `${init?.method ?? 'GET'} ${p}`;
     calls.push(call);
@@ -442,6 +448,7 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
   console.log = line => out.push(line);
   process.env.GH_TOKEN = 'test-token';
   process.env.AGENT_BOARD = bin;
+  process.env.GITHUB_REPOSITORY = 'configured/tracker';
   let error;
   try {
     await main(args);
@@ -451,7 +458,7 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
     globalThis.fetch = saved.fetch;
     console.log = saved.log;
     fs.readFileSync = saved.read;
-    for (const k of ['GH_TOKEN', 'AGENT_BOARD']) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
+    for (const k of ['GH_TOKEN', 'AGENT_BOARD', 'GITHUB_REPOSITORY']) if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k];
   }
   return { out, calls, sent, error };
 }
@@ -466,7 +473,7 @@ test('with no live epics a pass says so and starts nothing', async () => {
   assert.equal(error, undefined);
   assert.deepEqual(out, ['no live epics; nothing started']);
   // Nothing past the census is read, and nothing is written.
-  assert.deepEqual(calls, [`GET ${LIST}`, `GET /repos/${EPICS}/issues/2/timeline`]);
+  assert.deepEqual(calls, [`GET ${OUTAGE}`, `GET ${LIST}`, `GET /repos/${EPICS}/issues/2/timeline`]);
 });
 
 test('each line of a pass names the epic its item came from', async () => {
@@ -518,6 +525,26 @@ test('with --apply, a probably done item gets a triage run, and a stub with no p
   assert.deepEqual({ ...inputs, task: undefined }, { kind: 'triage', repo: EPICS, item: '41', pool: REPO_CONFIG.coordinator.planPool, task: undefined });
   assert.ok(inputs.task.includes(request) && inputs.task.includes('https://github.com/o/r/pull/9'));
   assert.ok(calls.every(c => !c.startsWith('PATCH ')));
+});
+
+test('with --apply during a broker outage, a pass previews and writes nothing', async () => {
+  const NO_PLAN_BIN = stub('no-plan-held', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
+  const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
+  const outage = [{ number: 9, html_url: 'https://github.com/configured/tracker/issues/9', user: { login: REPO_CONFIG.bot },
+    body: '<!-- tracker-broker-outage -->\nBroker unreachable', updated_at: new Date().toISOString() }];
+  const { out, calls, error } = await runMain(['--apply'], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(40), epicIssue(41)],
+    [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
+    [`/repos/${EPICS}/pulls?state=open`]: [],
+    [`GET /repos/${EPICS}/issues/40/comments`]: [],
+    [`GET /repos/${EPICS}/issues/41/comments`]: [],
+  }, { bin: NO_PLAN_BIN, issues: { 41: merged }, outage });
+  assert.equal(error, undefined);
+  assert.equal(out[0], 'held: broker outage https://github.com/configured/tracker/issues/9');
+  assert.ok(out.some(line => /^\[dry-run\] .*#41 .*triage: probably done/.test(line)), out.join('\n'));
+  assert.deepEqual(calls.filter(c => !c.startsWith('GET ') && c !== 'POST /graphql'), []);
 });
 
 test('an epic the census cannot read fails the pass, and is not reported as no live epics', async () => {

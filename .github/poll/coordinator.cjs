@@ -3,7 +3,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { request } = require('./poll.cjs');
+const { CONFIG: POLL, request } = require('./poll.cjs');
+const { heldBy } = require('./broker.cjs');
 const { agentBoard, rank, readRuns, openPullRefs, pullIssues } = require('./schedule.cjs');
 const { MAX_EPICS, canonical, census, loadEpicsConfig, readComments, operatorComments } = require('./epics.cjs');
 const { previousSnapshot } = require('../usage/usage.cjs');
@@ -581,8 +582,14 @@ async function main(argv) {
     const config = loadConfig(fs.readFileSync(CONFIG, 'utf8'));
     const get = (method, p, body) => request(token, method, p, body);
     const post = body => get('POST', '/graphql', body);
+    let apply = argv.includes('--apply');
+    // Its plan and status runs would fail while the broker is out (#603).
+    if (apply) {
+      const held = await heldBy({ token, repo: process.env.GITHUB_REPOSITORY, login: POLL.author, api: request, log });
+      if (held) { log(`held: broker outage ${held.url}`); apply = false; }
+    }
     const snapshot = await census(p => get('GET', p), post, config);
-    const result = await pass({ config, ...snapshot, now: Date.now(), apply: argv.includes('--apply'), get, post,
+    const result = await pass({ config, ...snapshot, now: Date.now(), apply, get, post,
       dispatch: (method, p, body) => request(process.env.DISPATCH_TOKEN || token, method, p, body),
       board: args => agentBoard(process.env.AGENT_BOARD, args, { timeoutMs: config.timeoutMs, env: { GH_TOKEN: token } }),
       writeFile: (name, content) => { const file = path.join(process.env.RUNNER_TEMP, name); fs.writeFileSync(file, content); return file; }, log });
@@ -593,6 +600,6 @@ async function main(argv) {
   }
 }
 
-module.exports = { MARKER, applyConfig, brief, changedFingerprint, dailyDue, decision, health, loadConfig, pass, record, reportPull, statusProse };
+module.exports = { MARKER, applyConfig, brief, changedFingerprint, dailyDue, decision, health, loadConfig, main, pass, record, reportPull, statusProse };
 
 if (require.main === module) main(process.argv.slice(2)).catch(err => { console.error(err.message); process.exitCode = 1; });

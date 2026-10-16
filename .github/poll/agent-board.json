@@ -8,6 +8,7 @@
   "dispatchWorkflow": "dispatch.yml",
   "reviewWorkflow": "review.yml",
   "decisions": { "repository": "cgwalters-forge/operator", "issue": 1 },
+  "brokerOutage": { "repository": "cgwalters-forge/tracker", "author": "cgwalters-bot", "leadSeconds": 1800 },
   "follow": [
     "cgwalters-forge/agentic-job",
     "cgwalters-forge/agent-board",

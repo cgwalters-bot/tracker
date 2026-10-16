@@ -4,9 +4,12 @@
 'use strict';
 
 const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const settings = require('./agent-board.json');
 const { readDecisions } = require('./decisions.cjs');
+const { heldBy } = require('./broker.cjs');
 
 const CONFIG = Object.freeze({
   author: settings.bot,
@@ -43,30 +46,51 @@ async function paged(token, path) {
   }
 }
 
-function poll(argv, env = process.env, run = spawnSync) {
+async function poll(argv, env = process.env, run = spawnSync, api = request) {
   if (argv.some(a => a !== '--apply' && a !== '--dry-run') || argv.length > 1) {
     throw new Error('usage: poll.cjs [--dry-run | --apply]');
   }
-  const mode = argv[0] ?? '--dry-run';
+  let mode = argv[0] ?? '--dry-run';
   if (!env.AGENT_BOARD || !env.POLL_STATE) throw new Error('AGENT_BOARD and POLL_STATE are required');
+  let state = env.POLL_STATE;
+  let notes = '';
+  let held = null;
+  if (mode === '--apply') {
+    // While the broker is out every fix run it starts fails and spends a
+    // round (#603), so a held pass only previews, merges included. Its
+    // preview runs on a copy, so the saved apply state is not advanced.
+    try {
+      held = await heldBy({ token: env.GH_TOKEN, repo: env.GITHUB_REPOSITORY, login: CONFIG.author, api,
+        log: line => { notes += `${line}\n`; } });
+    } catch (err) {
+      return { stdout: notes, stderr: `poll: outage issue not readable: ${err.message}\n`, again: true, status: 1 };
+    }
+    if (held) {
+      notes += `held: broker outage ${held.url}; this pass previews only\n`;
+      mode = '--dry-run';
+      state = path.join(fs.mkdtempSync(path.join(env.RUNNER_TEMP || os.tmpdir(), 'poll-held-')), 'poll-state.json');
+      if (fs.existsSync(env.POLL_STATE)) fs.copyFileSync(env.POLL_STATE, state);
+    }
+  }
   // A hung child or oversized PR-derived output must not exhaust the runner
   // or prevent it from scheduling the next pass.
   const result = run(env.AGENT_BOARD, [
-    'poll', mode, '--config', '.github/poll/agent-board.json', '--state', env.POLL_STATE,
+    'poll', mode, '--config', '.github/poll/agent-board.json', '--state', state,
   ], { env, encoding: 'utf8', timeout: 300_000, maxBuffer: 4 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
-  const stdout = result.stdout ?? '';
+  const stdout = notes + (result.stdout ?? '');
   const stderr = result.stderr ?? '';
   const due = [...stdout.matchAll(/^next-due-seconds=(\d+)$/gm)].at(-1)?.[1];
   // Titles and bodies are untrusted. Only the final, bounded numeric interval
   // is consumed, never an arbitrary output line or a command from the child.
   const valid = due !== undefined && Number(due) >= 300 && Number(due) <= 21600;
   const failed = Boolean(result.error || result.status !== 0 || !valid);
-  const again = failed || Number(due) === 300;
+  // A held pass does not restart the chain: the schedule brings the next.
+  const again = !held && (failed || Number(due) === 300);
   return { stdout, stderr, again, status: failed ? 1 : 0 };
 }
 
-function main(argv) {
-  const result = poll(argv);
+async function main(argv) {
+  const result = await poll(argv);
   const decisions = readDecisions(process.env, settings);
   const decisionLine = `decisions/v1 ${JSON.stringify(decisions)}\n`;
   result.stdout += decisionLine;
@@ -85,5 +109,5 @@ function main(argv) {
 module.exports = { CONFIG, paged, poolForKind, request, poll };
 
 if (require.main === module) {
-  try { main(process.argv.slice(2)); } catch (err) { console.error(`poll: ${err.message}`); process.exitCode = 1; }
+  main(process.argv.slice(2)).catch(err => { console.error(`poll: ${err.message}`); process.exitCode = 1; });
 }

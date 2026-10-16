@@ -26,6 +26,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { CONFIG: POLL, paged, request } = require('./poll.cjs');
+const { heldBy } = require('./broker.cjs');
 
 const CONFIG_FILE = path.join(__dirname, 'agent-board.json');
 // How many of dispatch.yml's newest runs are read: enough to hold every run
@@ -857,10 +858,15 @@ async function eligibility(post, key, brief = '', get, board = {}, cleared = fal
 async function main(argv) {
   const unknown = argv.filter(a => a !== '--apply');
   if (unknown.length) throw new Error(`usage: schedule.cjs [--apply] (unknown: ${unknown.join(' ')})`);
-  const apply = argv.includes('--apply');
+  let apply = argv.includes('--apply');
   const token = process.env.GH_TOKEN;
   const bin = process.env.AGENT_BOARD;
   if (!token || !bin) throw new Error('GH_TOKEN (the planner\'s token) and AGENT_BOARD (the binary) are required');
+  // A run started while the broker is out fails at once (#603); preview.
+  if (apply) {
+    const held = await heldBy({ token, repo: process.env.GITHUB_REPOSITORY, login: POLL.author, api: request, log: console.log });
+    if (held) { console.log(`held: broker outage ${held.url}`); apply = false; }
+  }
   const dispatchToken = process.env.DISPATCH_TOKEN || token;
   // Required here, not above: epics.cjs takes loadConfig from this module.
   const { census, loadEpicsConfig } = require('./epics.cjs');

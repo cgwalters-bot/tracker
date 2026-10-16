@@ -3,8 +3,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const { spawnSync } = require('node:child_process');
-const { changedFingerprint, dailyDue, decision, health, loadConfig, pass, record, reportPull, statusProse, brief, applyConfig } = require('./coordinator.cjs');
+const { changedFingerprint, dailyDue, decision, health, loadConfig, main, pass, record, reportPull, statusProse, brief, applyConfig } = require('./coordinator.cjs');
 
 const now = Date.parse('2026-10-14T11:00:00Z');
 const epic = { number: 7, live: true, title: 'Epic', body: 'Work', priority: 'P1',
@@ -963,4 +965,42 @@ test("a batched pull request is reported once, with its issues; others' issues a
   const visitor = reportPull({ ...pull, user: { login: 'visitor' } }, entries, 'bot');
   assert.deepEqual(visitor.issues, []);
   assert.deepEqual(visitor.epics, [7]);
+});
+
+test('an applying pass during a broker outage previews: no record, no dispatch', async () => {
+  const run = async outage => {
+    const calls = [];
+    const lines = [];
+    const saved = { fetch: globalThis.fetch, log: console.log, env: { ...process.env } };
+    globalThis.fetch = async (u, init) => {
+      const p = u.replace('https://api.github.com', '');
+      calls.push(`${init?.method ?? 'GET'} ${p}`);
+      const reply = body => new Response(JSON.stringify(body), { status: 200 });
+      if (p === '/repos/configured/tracker/issues?state=open&labels=outage&per_page=100') return reply(outage);
+      if (p.includes('/runs?')) return reply({ workflow_runs: [] });
+      if (p === '/graphql') return reply({ data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } });
+      if (init?.method === 'POST') return reply({ id: 1, body: '', html_url: 'https://github.com/c' });
+      return reply([]);
+    };
+    console.log = line => lines.push(line);
+    Object.assign(process.env, { GH_TOKEN: 'test-token', AGENT_BOARD: '/nonexistent', RUNNER_TEMP: os.tmpdir(), GITHUB_REPOSITORY: 'configured/tracker' });
+    delete process.env.GITHUB_STEP_SUMMARY;
+    try {
+      await main(['--apply']);
+    } finally {
+      globalThis.fetch = saved.fetch;
+      console.log = saved.log;
+      for (const k of Object.keys(process.env)) if (!(k in saved.env)) delete process.env[k];
+      Object.assign(process.env, saved.env);
+    }
+    return { writes: calls.filter(c => !c.startsWith('GET ') && c !== 'POST /graphql'), lines };
+  };
+  // Unheld, the daily status is due: a record, then its run.
+  const { bot } = JSON.parse(fs.readFileSync(path.join(__dirname, 'agent-board.json'), 'utf8'));
+  assert.ok((await run([])).writes.some(c => c.endsWith('/dispatches')));
+  const held = await run([{ number: 9, html_url: 'https://github.com/configured/tracker/issues/9', user: { login: bot },
+    body: '<!-- tracker-broker-outage -->\nBroker unreachable', updated_at: new Date().toISOString() }]);
+  assert.deepEqual(held.writes, []);
+  assert.equal(held.lines.filter(l => l.startsWith('held:')).join('\n'), 'held: broker outage https://github.com/configured/tracker/issues/9');
+  assert.match(held.lines.at(-1), /^coordinator\/v1 \{"mode":"preview",/);
 });
