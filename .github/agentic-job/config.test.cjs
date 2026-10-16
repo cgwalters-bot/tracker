@@ -19,6 +19,9 @@ test('acp-experiment.toml is hosted.toml and a child agent, and hosted.toml has 
   assert.doesNotMatch(hosted, /^\[child-agent\]/m);
   assert.match(own, /^\[child-agent\]\nname = "vibe"\nmodel = "zai-glm-5-3"\n/m);
   assert.match(own, /^\[limits\]\nmax-requests = 400\n/m);
+  // Every run on the mistral pool, main agent or child, gets GLM a window
+  // well over Vibe's 32k default (#651); the copy above holds both files to it.
+  assert.match(hosted, /^\[agent\.context-windows\]\n"zai-glm-5-3" = 131072\n/m);
   // The child's model is the mistral pool's, the one dispatch can select.
   assert.equal(require('./pools.json').mistral.model, 'zai-glm-5-3');
 });
@@ -57,6 +60,13 @@ test('agentic-job config takes acp-experiment.toml, and refuses it without the c
   const ok = check(path.join(__dirname, 'acp-experiment.toml'));
   assert.equal(ok.status, 0, String(ok.stderr));
   assert.match(String(ok.stdout), /^\[child-agent\]\nmodel = "zai-glm-5-3"\nname = "vibe"$/m);
+  assert.match(String(ok.stdout), /^\[agent\.context-windows\]\nzai-glm-5-3 = 131072$/m);
+  // `config` allows up to GLM-5.3's documented 1M (1,048,576) and no more.
+  const wide = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'config-')), 'wide.toml');
+  fs.writeFileSync(wide, experiment.replace(/^"zai-glm-5-3" = 131072$/m, '"zai-glm-5-3" = 1048577'));
+  const refused = check(wide);
+  assert.notEqual(refused.status, 0);
+  assert.match(String(refused.stderr), /agent\.context-windows: "zai-glm-5-3" = 1048577, not a number from 1 to 1048576/);
   const uncapped = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'config-')), 'uncapped.toml');
   fs.writeFileSync(uncapped, experiment.replace(/^max-requests = 400\n/m, ''));
   assert.match(String(check(uncapped).stderr), /child-agent needs limits\.max-requests/);
