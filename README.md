@@ -410,7 +410,24 @@ fences, so they cannot forge the bot's checkpoints, plans or verdicts.
 Then it reads every target: checkpoints must be the bot's coordinator
 records with no pending operation, the log issue the bot's, dispatch
 targets open issues, queue targets open pull requests, variables this
-repository's, and runs not the supervisor's own. Only after all of these checks does it write. It stops
+repository's, and runs not the supervisor's own. `close` needs the bot's
+implement PR merged into the default branch whose dispatch run names the
+issue, never an epic, and not one a person reopened since; `remove_label`
+removes only `needs-human`, only from the bot's PRs, and only when the bot
+added it after the linked implement run failed inside a failed broker probe's
+window; `enqueue` only the bot's clean, unheld PR whose newest approval is of
+the head it read and from the operator or review workflow identity. A dispatch's brief
+is fixed text, the issue URL and a reason from a fixed list, never the
+agent's prose: a triage run's plans are posted by the bot, which the
+scheduler accepts. Only plans are consumed from these runs, not scheduler
+triage verdicts: a prose `done` does not close an issue. Dispatches require no
+run in flight on the item, one per issue and on the kind's `kindPools` pool.
+Dispatches and hold removals are capped at `agent.maxDispatchesPerPass` a batch and
+`agent.maxDispatchesPerDay` a day, counted from the
+executor's run records in the log issue; without both caps none is
+admitted. A batch with a dispatch or hold removal is recorded on the log issue before
+anything is dispatched, so a dispatch counts even when its outcome is never
+logged. Only after all of these checks does it write. It stops
 at the first failed write and comments one line per action, with a link
 and no agent text, on the log issue. Anything off the list is the operator's
 decision, which the agent asks for as a comment on the log issue. Test with

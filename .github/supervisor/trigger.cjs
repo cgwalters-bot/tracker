@@ -44,9 +44,9 @@ async function decide(checks, { daily, policy, recent }) {
 }
 
 function compose(playbook, checks, policy, reason) {
-  const { organization, repositories, log, variables, kinds, pools: names } = policy;
+  const { organization, repositories, log, variables, kinds, pools: names, maxDispatchesPerPass, maxDispatchesPerDay } = policy;
   const task = `${playbook}\n## This pass\n\nWhy you run: ${reason}.\n\nPolicy:\n\n\`\`\`json\n${
-    JSON.stringify({ organization, repositories, log, variables, kinds, pools: names }, null, 2)}\n\`\`\`\n\nHealth report:\n\n\`\`\`json\n${
+    JSON.stringify({ organization, repositories, log, variables, kinds, pools: names, maxDispatchesPerPass, maxDispatchesPerDay }, null, 2)}\n\`\`\`\n\nHealth report:\n\n\`\`\`json\n${
     JSON.stringify(checks, null, 2)}\n\`\`\`\n`;
   if (Buffer.byteLength(task) > MAX_TASK_BYTES) throw new Error('supervisor task too large');
   return task;

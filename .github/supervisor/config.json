@@ -36,6 +36,8 @@
     "requests": { "repository": "cgwalters-forge/tracker", "issue": 656 },
     "log": { "repository": "cgwalters-forge/operator", "issue": 2 },
     "variables": { "BOARD_DISPATCH": ["off"], "COORDINATOR": ["off"] },
-    "kinds": ["research"]
+    "kinds": ["triage", "research"],
+    "maxDispatchesPerPass": 3,
+    "maxDispatchesPerDay": 10
   }
 }
