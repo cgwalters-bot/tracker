@@ -417,10 +417,10 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
   const sent = [];
   const out = [];
   const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD, GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY, read: fs.readFileSync };
-  if (schedule) {
-    const text = JSON.stringify({ ...REPO_CONFIG, schedule: { ...REPO_CONFIG.schedule, ...schedule } });
-    fs.readFileSync = (file, ...rest) => (String(file).endsWith('agent-board.json') ? text : saved.read(file, ...rest));
-  }
+  // Fill mode reads the usage snapshot and more issues, so a test opts in
+  // to it rather than following the repository's own setting.
+  const text = JSON.stringify({ ...REPO_CONFIG, schedule: { ...REPO_CONFIG.schedule, fill: 0, ...schedule } });
+  fs.readFileSync = (file, ...rest) => (String(file).endsWith('agent-board.json') ? text : saved.read(file, ...rest));
   globalThis.fetch = async (u, init) => {
     if (u === `https://api.github.com${OUTAGE}`) {
       calls.push(`GET ${OUTAGE}`);
