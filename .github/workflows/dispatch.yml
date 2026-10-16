@@ -5,7 +5,8 @@
 # runner and the model. This file keeps what is this repository's: the
 # trigger and its five inputs, the run name, the concurrency, the
 # environment that gates apply and which secret is the apply token; the
-# bounds are in .github/agentic-job (dispatch.toml, fix.toml for `fix`) and
+# bounds are in .github/agentic-job (dispatch.toml, comment.toml for
+# `triage` and `research`, fix.toml for `fix`) and
 # the runner configuration in hosted.toml there, the wrapper's default paths.
 # The `pool` input picks the agent and model from the closed set in pools.json
 # there; empty leaves them to the repository variables AGENT and AGENT_MODEL.
@@ -177,6 +178,11 @@ jobs:
       # the full profile instead (the profile job).
       skills: ${{ needs.profile.outputs.skilled == 'true' && (inputs.kind == 'implement' || inputs.kind == 'fix') }}
       apply-environment: agent-apply
+      # Comment-only kinds have bounds of their own, comment.toml, the only
+      # ones that admit bootc-dev besides fix.toml (D17,
+      # docs/operator-notes.md). The wrapper ignores `allow` for fix and
+      # takes its default fix.toml.
+      allow: ${{ (inputs.kind == 'triage' || inputs.kind == 'research') && '.github/agentic-job/comment.toml' || '.github/agentic-job/dispatch.toml' }}
     # The bot's token, an organization secret, named and never inherited.
     # The wrapper hands it to apply, in the environment above, and to the
     # status comment on an item of another repository; to nothing else.

@@ -1,0 +1,27 @@
+# Bounds for dispatch.yml's `triage` and `research` kinds, whose runs hand
+# back comments only. dispatch.toml's repositories, and besides them
+# bootc-dev's: the operator's comments there become runs, and by the
+# operator's decision D17 (docs/operator-notes.md, 2026-10-17) triage and
+# research may answer in the bootc-dev thread the comment came from. D17
+# names the organization, not repositories, as does agent-board.json's
+# operatorComments, hence the one glob. agent-board starts only fix,
+# triage and research runs from those comments (its docs/design.md,
+# operatorComments), triage or research on someone else's pull request
+# with a tracker issue as the item. Nothing else posts there:
+# implement and review keep dispatch.toml, which does not name bootc-dev,
+# and a fix there is fix.toml's. bootc-dev is external (docs/operator-notes.md,
+# 2026-10-09), so this file opens no pull request and exempts no protected
+# file anywhere.
+hosts = ["github.com"]
+# config.test.cjs keeps every name of dispatch.toml here.
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "bootc-dev/*"]
+bases = ["main"]
+max_outputs = 3
+max_patch_bytes = 1048576
+max_patch_files = 50
+
+[outputs]
+add_comment = { max = 1 }
+noop = { max = 1 }
+missing_tool = { max = 1 }
+missing_data = { max = 1 }

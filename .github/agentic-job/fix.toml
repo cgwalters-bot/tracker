@@ -10,8 +10,13 @@
 # ones a fix may target.
 hosts = ["github.com"]
 # Includes every repository the poll follows; misctool remains fixable by
-# hand but is not followed until it has a review workflow.
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool"]
+# hand but is not followed until it has a review workflow. bootc-dev/* by
+# the operator's decision D17 (docs/operator-notes.md, 2026-10-17), which
+# names the organization: fix rounds on the bot's own
+# pull requests there, from its fork. bootc-dev is external, so no other
+# head repository there accepts the push (no accept-owner-branches), and a
+# fix there may not edit `.github` or AGENTS.md (not listed below).
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576

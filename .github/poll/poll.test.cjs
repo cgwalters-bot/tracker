@@ -141,6 +141,11 @@ test('configuration follows review-enabled schedule targets and preserves pool p
   for (const repo of c.follow) assert.ok(fix.includes(`"${repo}"`), repo);
   assert.equal(c.dispatchWorkflow, 'dispatch.yml');
   assert.equal(c.reviewWorkflow, 'review.yml');
+  // agent-board starts only fix, triage and research runs from these, within
+  // the three a pass (its docs/design.md); comment.toml and fix.toml admit
+  // exactly those in bootc-dev (D17, docs/operator-notes.md).
+  assert.deepEqual(c.operatorComments, { repositories: ['bootc-dev/*'] });
+  assert.match(c.operator, /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/);
   // Conflicts share the first-round toil pool: do not spend a bounded fix
   // round on a pool whose conflict runs have returned without a new head.
   assert.equal(c.toilFixPool, 'openai');
@@ -196,6 +201,10 @@ test('workflow has one acting pass, respects dry-run, and isolates trusted apply
   assert.match(job, /GH_TOKEN: \$\{\{ secrets\./);
   assert.match(job, /DISPATCH_TOKEN: \$\{\{ github.token \}\}/);
   assert.match(job, /run: just build-agent-board/);
+  assert.match(job, /POLL_STATE: \$\{\{ runner.temp \}\}\/poll-state.json/);
+  assert.match(job, /\$\{\{ runner.temp \}\}\/poll-state.json\n/);
+  const justfile = fs.readFileSync(path.join(__dirname, '../../Justfile'), 'utf8');
+  assert.match(justfile, /poll \*args:\n +node \.github\/poll\/poll.cjs "\$@"/);
   assert.match(job, /runs-on: ubuntu-26.04/);
   assert.match(job, /if: \$\{\{ github.ref == format\('refs\/heads\/\{0\}', github.event.repository.default_branch\) \}\}/);
   assert.match(job, /persist-credentials: false/);
