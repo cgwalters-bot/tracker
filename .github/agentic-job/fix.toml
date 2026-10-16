@@ -23,8 +23,9 @@ max_patch_files = 50
 # review feedback is folded into the commit it corrects, never a commit of
 # its own. Each commit of the series is checked like a patch, and the push
 # is a force with a lease on the head the run was pinned to. A pull
-# request here is one to three commits.
-push_to_pull_request_branch = { max = 1, branches = ["dispatch/**"], replacement_max_commits = 5 }
+# request here is one to three commits. `ready_when_complete` as for
+# dispatch.toml's create_pull_request, whose comment says why.
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**"], replacement_max_commits = 5, ready_when_complete = true }
 # A blocked fix must explain itself without inventing a patch. Check pins
 # this comment to the run's pull request; no labels or other writes are added.
 add_comment = { max = 1 }
