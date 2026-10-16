@@ -100,8 +100,10 @@ hand, `gh workflow run poll.yml`; its `dry-run` input only prints. Each pass loo
 the repositories of `follow` in `.github/poll/agent-board.json` and takes at most
 one step for each:
 
-- a draft with no failed check is marked ready for review, which is what
-  starts the event review;
+- a draft with a checkpoint is continued, and one without gets `needs-human`:
+  apply opens complete work ready for review itself, which is what starts
+  the event review (`ready_when_complete` in `.github/agentic-job/dispatch.toml`
+  and `fix.toml`);
 - a head whose authenticated review requests changes, or with a failed required check,
   gets one `fix` run of `dispatch.yml`, its task carrying the review
   and the failed job's name and log link, at most once per head and twice per

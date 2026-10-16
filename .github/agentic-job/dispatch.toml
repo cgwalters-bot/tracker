@@ -8,7 +8,12 @@ max_patch_bytes = 1048576
 max_patch_files = 50
 
 [outputs]
-create_pull_request = { max = 1 }
+# `ready_when_complete`: apply opens complete work ready for review and only
+# a checkpoint or a run stopped at a limit as a draft (agentic-job's
+# docs/safe-outputs.md, "Ready or draft"). Without it every pull request is
+# a draft and the poll stops on each as "a draft with no checkpoint" (#646).
+# config.test.cjs keeps it set, here and in fix.toml.
+create_pull_request = { max = 1, ready_when_complete = true }
 add_comment = { max = 1 }
 noop = { max = 1 }
 missing_tool = { max = 1 }

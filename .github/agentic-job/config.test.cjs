@@ -63,3 +63,22 @@ test('agentic-job config takes acp-experiment.toml, and refuses it without the c
   assert.equal(execFileSync('agentic-job', ['config', '--from', path.join(__dirname, 'hosted.toml'), '--repo', 'o/r',
     '--string', 'agent.name=fake', '--integer', 'limits.timeout-minutes=75', '--boolean', 'limits.uncapped=true']).includes('child-agent'), false);
 });
+
+// Without `ready_when_complete` apply opens every pull request as a draft,
+// and the poll stops on each as "a draft with no checkpoint" (#646). The
+// other fields of each entry stay as they were.
+const outputs = name => read(name).split('[outputs]\n')[1].split(/^\[/m)[0];
+test('dispatch.toml and fix.toml open complete work ready', () => {
+  assert.match(outputs('dispatch.toml'), /^create_pull_request = \{ max = 1, ready_when_complete = true \}$/m);
+  assert.match(outputs('fix.toml'), /^push_to_pull_request_branch = \{ max = 1, branches = \["dispatch\/\*\*"\], replacement_max_commits = 5, ready_when_complete = true \}$/m);
+});
+
+// The policy job's own reading of the bounds, so a spelling it ignores fails.
+test('agentic-job policy keeps ready_when_complete from both bounds', { skip: !agenticJob && 'agentic-job is not installed' }, () => {
+  const policy = (file, type, ...args) => JSON.parse(execFileSync('agentic-job', ['policy', '--allow', path.join(__dirname, file),
+    '--repo', 'cgwalters-forge/tracker', '--clone-url', 'https://github.com/cgwalters-forge/tracker',
+    '--kind', 'branch', '--outputs', `${type},noop`, '--max-outputs', '3', ...args], { encoding: 'utf8' }));
+  assert.equal(policy('dispatch.toml', 'create_pull_request', '--base', 'main').safe_outputs.create_pull_request.ready_when_complete, true);
+  assert.equal(policy('fix.toml', 'push_to_pull_request_branch', '--base', 'dispatch/x', '--pull-request', '1',
+    '--head', '0'.repeat(40), '--output-repo', 'cgwalters-forge/tracker').safe_outputs.push_to_pull_request_branch.ready_when_complete, true);
+});
