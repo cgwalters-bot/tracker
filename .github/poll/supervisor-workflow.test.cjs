@@ -29,13 +29,12 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
   const board = JSON.parse(fs.readFileSync(path.join(root, '.github/poll/agent-board.json')));
   assert.deepEqual(config.agent.requests, { repository: 'cgwalters-forge/tracker', issue: 656 });
   assert.deepEqual(config.agent.log, { repository: 'cgwalters-forge/operator', issue: 2 });
-  // The only write enabled is one daily rewrite of the agent's own state
-  // issue, which the executor must keep apart from requests and log. Other
-  // caps stay zero until a week of preview has been compared (#712).
-  assert.equal(config.agent.maxDispatchesPerPass ?? 0, 0);
-  assert.equal(config.agent.maxDispatchesPerDay ?? 0, 0);
+  // The operator cut the controller over before a week of preview (17 Oct):
+  // small caps, which the executor enforces whatever the agent asks for.
+  assert.equal(config.agent.maxDispatchesPerPass, 2);
+  assert.equal(config.agent.maxDispatchesPerDay, 16);
   assert.deepEqual(config.agent.dailyCaps, {
-    comment: 0, create_issue: 0, close: 0, remove_needs_human: 0, replace_state: 1, status_update: 0,
+    comment: 20, create_issue: 6, close: 10, remove_needs_human: 6, replace_state: 48, status_update: 4,
   });
   assert.deepEqual(config.agent.state, { repository: 'cgwalters-forge/tracker', issue: 718 });
   for (const other of [config.agent.requests, config.agent.log]) {
