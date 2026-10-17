@@ -484,8 +484,8 @@ test('incomplete census never plans an epic, and dispatch failure retains its cl
   assert.equal(counts.errors, 1);
   const failed = harness(true);
   failed.options.dispatch = async method => { if (method === 'GET') return { workflow_runs: [] }; throw new Error('ambiguous write'); };
-  assert.equal((await pass(failed.options)).errors, 2);
-  assert.equal(failed.writes.length, 2);
+  assert.equal((await pass(failed.options)).errors, 3);
+  assert.equal(failed.writes.length, 3);
   assert.match(failed.writes[0].body.body, /pending/);
 });
 
@@ -646,13 +646,14 @@ test('confirmed apply reconciles after a transient census failure without reappl
   const h = refusalHarness(true, null);
   h.options.refresh = async () => { throw new Error('temporary census failure'); };
   assert.equal((await pass(h.options)).errors, 1);
-  const saved = checkpointState(h.writes.at(-1));
+  const savedWrite = h.writes.find(w => w.p.endsWith('/comments/10'));
+  const saved = checkpointState(savedWrite);
   assert.equal(saved.reconcile, true);
   assert.equal(saved.pending, null);
   const retry = harness(true, [epic]);
   retry.options.config.wip = 0;
   retry.options.post = async ({ variables }) => ({ data: { repository: { issue: { comments: {
-    nodes: variables.number === 7 ? [comment(10, h.writes.at(-1).body.body)] : [], pageInfo: { hasNextPage: false }
+    nodes: variables.number === 7 ? [comment(10, savedWrite.body.body)] : [], pageInfo: { hasNextPage: false }
   } } } } });
   assert.equal((await pass(retry.options)).errors, 0);
   assert.equal(retry.commands.length, 0);
@@ -757,7 +758,7 @@ test('agent-board failures that are not a refused plan leave it pending and unco
       const counts = await pass(h.options);
       assert.deepEqual([counts.failed, counts.errors], [0, 1], JSON.stringify(stderr));
       assert.equal(h.writes.some(w => w.p === '/repos/o/r/issues/comments/10'), false);
-      assert.equal(h.dispatches.some(d => d.inputs.item === '9'), false);
+       assert.equal(h.dispatches.some(d => d.inputs.item === '9'), apply);
     }
   }
   // A valid plan previews and applies successfully.
@@ -807,6 +808,74 @@ test('a retained claim after ambiguous apply does not checkpoint success on retr
     assert.equal(h.writes.some(w => w.p === '/repos/o/r/issues/comments/10'), false);
   }
   assert.ok(h.lines.some(l => l.includes('inspect agent-board claim')));
+});
+
+test('claimed plans recover only when all effects are present; partial failures let the next epic plan', async () => {
+  const actions = [
+    { type: 'create_sub_issue', repo: 'O/R', title: 'Created', body: 'Work' },
+    { type: 'set_priority', new: 1, value: 'P1' },
+    { type: 'close_sub_issue', issue: 'o/r#8', reason: 'Done' },
+    { type: 'rescope_sub_issue', issue: 'o/r#10', body: 'Revised', reason: 'Change' },
+  ];
+  const complete = [{ ...epic.subs[0], number: 12, title: 'Created', body: 'Work' },
+    { ...epic.subs[0], state: 'closed' }, { ...epic.subs[0], number: 10, body: 'Revised' }];
+  for (const [subs, missing] of [
+    [complete, null], [complete.slice(1), /action 1.*action 2/],
+    [[{ ...complete[0], body: 'Wrong' }, ...complete.slice(1)], /action 1/],
+    [[{ ...complete[0], priority: 'P2' }, ...complete.slice(1)], /action 1.*action 2/],
+    [[{ ...complete[0], onBoard: false }, ...complete.slice(1)], /action 1.*action 2/],
+    [[complete[0], { ...complete[1], state: 'open' }, complete[2]], /action 3/],
+    [[complete[0], complete[1], { ...complete[2], body: 'Old' }], /action 4/],
+    [[...complete, { ...complete[0], number: 13 }], /action 1/],
+  ]) {
+    const h = refusalHarness(true, null);
+    const post = h.options.post;
+    h.options.post = async args => {
+      const out = await post(args);
+      if (args.variables.number === 7) out.data.repository.issue.comments.nodes[1] = comment(11,
+        '```agent-board-epic-plan\n' + JSON.stringify({ request: 'request1', actions }) + '\n```');
+      return out;
+    };
+    h.options.refresh = async () => ({ entries: [{ ...epic, subs }], note: '' });
+    h.options.board = args => args.includes('--apply') ? { stdout: 'Already claimed; nothing changed.\n' } : { stdout: '' };
+    const counts = await pass(h.options);
+    assert.equal(counts.errors, missing ? 1 : 0, h.lines.join('\n'));
+    const saved = h.writes.filter(w => w.p.endsWith('/comments/10'));
+    if (missing) {
+      assert.equal(saved.length, 0);
+      assert.match(h.lines.join('\n'), missing);
+      assert.ok(h.dispatches.some(d => d.inputs.item === '9'));
+    } else {
+      assert.equal(counts.apply, 1);
+      assert.deepEqual([checkpointState(saved[0]).pending, checkpointState(saved[0]).reconcile], [null, true]);
+      assert.match(h.lines.join('\n'), /recovered: claimed plan effects confirmed/);
+    }
+  }
+});
+
+test('ambiguous epic dispatches and lost receipt checkpoints reserve their WIP slot', async () => {
+  for (const receipt of [false, true]) {
+    const h = harness(true, [epic, { ...epic, number: 9 }]);
+    h.options.config.wip = 1;
+    const post = h.options.post;
+    h.options.post = async args => args.variables.number === 99 ? { data: { repository: { issue: { comments: {
+      nodes: [comment(1, '<!-- coordinator-status/v1: {"failures":3} -->\ncheckpoint')], pageInfo: { hasNextPage: false } } } } } } : post(args);
+    h.options.dispatch = async (method, p, body) => {
+      if (method === 'GET') return { workflow_runs: [] };
+      h.dispatches.push(body);
+      if (receipt) return { workflow_run_id: 42 };
+      throw new Error('lost receipt');
+    };
+    const get = h.options.get;
+    h.options.get = async (method, p, body) => {
+      if (method === 'PATCH') throw new Error('lost checkpoint');
+      return get(method, p, body);
+    };
+    const counts = await pass(h.options);
+    assert.equal(counts.errors, 1);
+    assert.equal(h.dispatches.length, 1);
+    assert.ok(h.lines.some(l => l.includes('#9 skipped: planning capacity full')));
+  }
 });
 
 test('ordinary reporting volume is bounded and reporting failures do not block epic planning', async () => {

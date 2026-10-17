@@ -508,7 +508,8 @@ A plan that `agent-board epic apply --dry-run` refuses (stderr
 counted toward `coordinator.maxFailedRuns` like a run that posted no plan, and
 its refusal (capped at 2000 characters) is quoted in the next brief, and the
 pass goes on to the next epic. Other agent-board failures leave the plan
-pending, uncounted, for the next pass.
+pending, uncounted, for the next pass. Every epic error is counted and logged
+with its issue, without preventing the next epic from getting its turn.
 
 At most one live epic per pass gets a planning run or an apply preview that
 is not refused. Planning is
@@ -522,8 +523,13 @@ and `updated_at`, preventing a newer or edited plan from substituting actions
 between reads. Exit 3 leaves the epic pending without counting a failure, so
 the next pass re-checks it. Success checkpoints the checked fingerprint, not
 a fresh census that might hide concurrent operator changes.
-An already-claimed response is not confirmation of completed actions: the
-coordinator retains pending and reports an error asking for claim inspection.
+An already-claimed response triggers a fresh bounded census, never a replay.
+Recovery requires each create's title to identify exactly one distinct child in
+the planned repository, with the expected body, requested labels and job plan,
+enrolled with the planned (or default) Priority, each
+close to be closed, each rescope body to match, and each Priority write to match.
+Missing or ambiguous effects retain pending and are named in the error. A full
+match checkpoints `pending: null, reconcile: true` just like a successful apply.
 Plan pinning does not guard concurrent epic-intent or child-body edits at the
 mutation boundary; that still requires upstream observation preconditions.
 Ordering is only Priority, with no Ready step.
