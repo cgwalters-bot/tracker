@@ -4,9 +4,9 @@
 from one workstation. It is frozen: nothing is added to it, and once the
 steps below are done it is archived. This is cutover line 6 of
 [tracker#528](https://github.com/cgwalters-forge/tracker/issues/528), from
-its 14 Oct research comment, re-checked on 15 Oct against homegit `c027d9f`
-(unchanged since 13 Oct), tracker `d572933`, actions `951f34c`, agent-board
-`8ad9f0a` and praxis-credential-broker `45fbb14`.
+its 14 Oct research comment. The configuration move was re-checked on
+17 Oct 2026 against actions `9342b3e`, agenthome `9f0461b` and agent-board
+`1ef37df`.
 
 ## What still used it, and what replaces it
 
@@ -15,7 +15,7 @@ its 14 Oct research comment, re-checked on 15 Oct against homegit `c027d9f`
 | `bin/bot-runs` (dispatch, watching runs, pool choice) | `dispatch.yml` and `pools.json` here, `agent-board dispatch` and `request dispatch` ([bring-up.md](bring-up.md)) | moved |
 | `bin/bot-board` (status updates, item edits, questions) | agent-board's `project status-update`, `item add`/`edit`, `ask create`/`resolve` | moved; `archive-done`, `handback` and `state-get`/`put` dropped |
 | `bin/bot-capacity`, `bin/bot-heartbeat` | `pools.json` pacing and `usage.yml` here | moved |
-| `dotfiles/.config/opencode/` and `dotfiles/.config/AGENTS.md`, which every opencode run reads: the actions wrapper still defaults `AGENT_CONFIG_REPO` to homegit | agenthome's `opencode/` ([agenthome#6](https://github.com/cgwalters-forge/agenthome/pull/6), open), then the wrapper's default ([actions#35](https://github.com/cgwalters-forge/actions/issues/35), open) | pending that pull request and that issue, not the operator; step 3 waits for them |
+| `dotfiles/.config/opencode/` and `dotfiles/.config/AGENTS.md`, which every opencode run reads | agenthome's `opencode/` ([agenthome#9](https://github.com/cgwalters-forge/agenthome/pull/9), [#10](https://github.com/cgwalters-forge/agenthome/pull/10), [#13](https://github.com/cgwalters-forge/agenthome/pull/13)) and the wrapper default ([cgwalters-forge/actions#55](https://github.com/cgwalters-forge/actions/issues/55), [PR cgwalters-forge/actions#56](https://github.com/cgwalters-forge/actions/pull/56)) | moved |
 | `bot-supervisor.service`, `bot-sweep.service`/`.timer` on the workstation, running `bin/bot-supervisor` and `bin/bot-sweep` from a homegit checkout | `poll.yml` here: its board job and agent-board's poll | pending an operator step (1) |
 | praxis-credential-broker quadlets in `dotfiles/.config/containers/systemd/praxis-credential-broker/` | the broker repository's `contrib/quadlet` | pending an operator step (2) |
 | `.github/workflows/controller-report.yml` and `crates/sched`, a read-only report scheduled hourly (last run 15 Oct 13:23 UTC) | none: agent-board took the scheduler over (operator notes, 7 Oct) | dropped; archiving stops it (3) |
@@ -23,13 +23,12 @@ its 14 Oct research comment, re-checked on 15 Oct against homegit `c027d9f`
 
 ## The operator's steps, in order
 
-Each needs the operator's machine or credentials, so they are listed here
-for the operator; tracker#582's operator actions do not exist yet.
+The operator-action schema is in [cgwalters-forge/agent-board's docs/operator-actions.md](https://github.com/cgwalters-forge/agent-board/blob/main/docs/operator-actions.md); these steps remain listed for the operator to run by hand.
 
 **1. Stop the workstation controller** once the hosted poll has run a day
 without failing. While both run, the sweep's `bot-watch --apply` and the
-poll act on the same pull requests. The poll last failed at 17:11 UTC on
-15 Oct. This prints the conclusions of the last day's polls; go ahead only
+poll act on the same pull requests. This prints the conclusions of the last
+day's polls; go ahead only
 if it shows nothing but `success` and `cancelled`:
 
 ```sh
@@ -119,14 +118,9 @@ systemctl --user start praxis-credential-broker-pod.service
 Check: `curl -fsS http://100.121.0.115:18080/healthz`, then a dispatched
 run that reaches inference.
 
-**3. Point homegit's README here, then archive it**, once
-[agenthome#6](https://github.com/cgwalters-forge/agenthome/pull/6) has
-merged and the wrapper defaults to agenthome
-([actions#35](https://github.com/cgwalters-forge/actions/issues/35)), or
-this repository's variables `AGENT_CONFIG_REPO=cgwalters-forge/agenthome`
-and `AGENT_CONFIG_PATH=opencode` are set: until then opencode runs read
-their configuration from homegit, which archiving would freeze. Archiving
-makes it read-only and stops `controller-report`. Close homegit's open pull
+**3. Point homegit's README here, then archive it.** Nothing on agenthome
+or the wrapper blocks archiving any more. Archiving makes it read-only
+and stops `controller-report`. Close homegit's open pull
 requests, put the text below at the top of its `README.md` and push it, then:
 
 ```sh
