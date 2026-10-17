@@ -28,9 +28,18 @@ test('CLI serializes multiline prompts as data and supplies defaults', () => {
     fs.writeFileSync(path.join(root, 'session.json'), JSON.stringify(config));
     fs.writeFileSync(path.join(root, 'pools.json'), JSON.stringify(pools));
     fs.writeFileSync(path.join(root, 'profiles/session.md'), 'profile');
+    fs.mkdirSync(path.join(temp, '.github/supervisor'));
+    fs.writeFileSync(path.join(temp, '.github/supervisor/config.json'), JSON.stringify({ agent: {
+      state: { repository: 'owner/tracker', issue: 8 }, requests: { repository: 'owner/tracker', issue: 9 } } }));
+    // A stand-in gh, answering the supervisor fetches by the path they name.
+    const bin = path.join(temp, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\ncase "$2" in\n' +
+      '  *profiles/supervisor.md\?ref=*) printf PROFILE ;;\n  *skills/supervisor/SKILL.md\?ref=*) printf SKILL ;;\n  *) exit 1 ;;\nesac\n',
+      { mode: 0o755 });
     const output = path.join(temp, 'output');
     const prompt = 'hello\nitem=999\ntask<<evil\nend';
-    const env = { ...process.env, GITHUB_OUTPUT: output, PROMPT: prompt };
+    const env = { ...process.env, GITHUB_OUTPUT: output, PROMPT: prompt, PATH: `${bin}:${process.env.PATH}` };
     delete env.POOL;
     delete env.IDLE;
     const result = spawnSync(process.execPath, [path.join(__dirname, 'session.cjs')], { cwd: temp, env, encoding: 'utf8' });
@@ -47,7 +56,8 @@ test('CLI serializes multiline prompts as data and supplies defaults', () => {
       parsed[header.split('<<')[0]] = lines.splice(0, end).join('\n');
       lines.shift();
     }
-    assert.deepEqual(parsed, compose(config, pools, 'profile', { prompt }));
+    const profile = 'profile\nState issue: owner/tracker#8. Requests issue: owner/tracker#9.\n\nPROFILE\nSKILL';
+    assert.deepEqual(parsed, compose(config, pools, profile, { prompt }));
   } finally {
     fs.rmSync(temp, { recursive: true, force: true });
   }
@@ -95,5 +105,10 @@ test('workflow uses only configured targets and the wrapper session path', () =>
   assert.match(workflow, /allow: .github\/agentic-job\/dispatch.toml/);
   assert.match(workflow, /config: .github\/agentic-job\/hosted.toml/);
   assert.match(workflow, /run: just session-profile/);
-  assert.match(read('profiles/session.md'), /Keep the working tree clean/);
+  // The supervisor's profile and skill are fetched with the job's read token.
+  assert.match(workflow, /GH_TOKEN: \$\{\{ github.token \}\}/);
+  const rules = read('profiles/session.md');
+  assert.match(rules, /Keep the working tree clean/);
+  // The opening-turn rule leads, ahead of the supervisor's profile.
+  assert.match(rules.split('\n\n').slice(0, 2).join('\n'), /first turn: reply "ready"/);
 });
