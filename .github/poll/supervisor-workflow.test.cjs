@@ -26,15 +26,23 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
   assert.doesNotMatch(workflow, /supervisor\/.*\.cjs|just supervisor/);
   assert.deepEqual(fs.readdirSync(path.join(root, '.github/supervisor')), ['config.json']);
   const config = JSON.parse(fs.readFileSync(path.join(root, '.github/supervisor/config.json')));
+  const board = JSON.parse(fs.readFileSync(path.join(root, '.github/poll/agent-board.json')));
   assert.deepEqual(config.agent.requests, { repository: 'cgwalters-forge/tracker', issue: 656 });
   assert.deepEqual(config.agent.log, { repository: 'cgwalters-forge/operator', issue: 2 });
-  // No dispatch or judgment writes are enabled by this migration.
+  // The only write enabled is one daily rewrite of the agent's own state
+  // issue, which the executor must keep apart from requests and log. Other
+  // caps stay zero until a week of preview has been compared (#712).
   assert.equal(config.agent.maxDispatchesPerPass ?? 0, 0);
   assert.equal(config.agent.maxDispatchesPerDay ?? 0, 0);
   assert.deepEqual(config.agent.dailyCaps, {
-    comment: 0, create_issue: 0, close: 0, remove_needs_human: 0, replace_state: 0, status_update: 0,
+    comment: 0, create_issue: 0, close: 0, remove_needs_human: 0, replace_state: 1, status_update: 0,
   });
-  assert.equal(config.agent.state, undefined);
+  assert.deepEqual(config.agent.state, { repository: 'cgwalters-forge/tracker', issue: 718 });
+  for (const other of [config.agent.requests, config.agent.log]) {
+    assert.ok(other.repository.toLowerCase() !== config.agent.state.repository.toLowerCase()
+      || other.issue !== config.agent.state.issue);
+  }
+  assert.ok(board.follow.includes(config.agent.state.repository));
   assert.equal(config.agent.tracker, 'cgwalters-forge/tracker');
   assert.match(config.agent.project, /^PVT_/);
 });

@@ -34,6 +34,7 @@
     "cooldownHours": 1,
     "requests": { "repository": "cgwalters-forge/tracker", "issue": 656 },
     "log": { "repository": "cgwalters-forge/operator", "issue": 2 },
+    "state": { "repository": "cgwalters-forge/tracker", "issue": 718 },
     "kinds": ["triage", "research", "implement"],
     "maxDispatchesPerPass": 0,
     "maxDispatchesPerDay": 0,
@@ -44,7 +45,7 @@
       "create_issue": 0,
       "close": 0,
       "remove_needs_human": 0,
-      "replace_state": 0,
+      "replace_state": 1,
       "status_update": 0
     }
   }
