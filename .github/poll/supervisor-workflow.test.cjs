@@ -55,7 +55,7 @@ test('supervisor requests and sweeps share one agent group and keep preview read
   assert.match(workflow, /issue_comment:\n +types: \[created\]/);
   assert.match(workflow, /prompt:\n +description:.*\n +type: string/);
   assert.match(workflow, /cron: '7 \*\/2 \* \* \*'/);
-  assert.ok(workflow.includes("(github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || (github.event.schedule == '*/15 * * * *' && 'supervisor-health') || 'supervisor-agent'"));
+  assert.ok(workflow.includes("(github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run') && 'supervisor-health') || 'supervisor-agent'"));
   // Serialize whole runs, not just agent: trigger treats a workflow finishing
   // execute as active too, which otherwise discards manual prompts. The
   // fifteen-minute passes stay out of that group so they cannot evict a
@@ -100,8 +100,74 @@ test('supervisor tasks accept only operator comments and remain bounded', () => 
   }
 });
 
+test('the poll chain starts supervisor passes, paced from the previous health artifact', () => {
+  assert.match(workflow, /\n  workflow_run: # zizmor: ignore\[dangerous-triggers\]\n +workflows: \[poll\]\n +types: \[completed\]\n/);
+  // The crons stay as a fallback.
+  assert.match(workflow, /cron: '\*\/15 \* \* \* \*'/);
+  const health = workflow.split('\n  health:\n')[1].split('\n  agent:\n')[0];
+  const order = ['- name: Previous health report', '- name: Whether a pass is due', '- name: Build agent-board',
+    '- name: Read-only health snapshot', '- uses: actions/upload-artifact', '- name: Whether the agent runs'];
+  assert.deepEqual(order.map(step => health.indexOf(step)), order.map(step => health.indexOf(step)).sort((a, b) => a - b));
+  assert.match(health, /id: due\n[\s\S]*?EVENT: \$\{\{ github.event_name \}\}\n +run: node .github\/poll\/supervisor-due.cjs\n/);
+  for (const step of order.slice(2)) {
+    assert.match(health.split(step)[1], /^.*\n( +id: \w+\n| +#.*\n)* +if: \$\{\{ (!cancelled\(\) && )?steps.due.outputs.health == 'true'( && hashFiles\('health.json'\) != '')? \}\}\n/);
+  }
+  // A failed pass uploads no times.json that would hide the last report.
+  assert.ok(health.includes("if: ${{ !cancelled() && steps.due.outputs.health == 'true' && hashFiles('health.json') != '' }}"));
+  assert.match(health, /path: \|\n +health.json\n +times.json\n/);
+  // The sweep is decided by the pacing step, not by which cron fired.
+  assert.match(health, /DAILY: \$\{\{ steps.due.outputs.daily == 'true' && '--daily' \|\| '' \}\}/);
+  assert.doesNotMatch(workflow, /github.event.schedule == '7/);
+});
+
+test('a poll-started pass within fifteen minutes skips, and a sweep is due after two hours', () => {
+  const { due } = require('./supervisor-due.cjs');
+  const now = Date.parse('2026-10-17T20:20:00Z');
+  const ago = minutes => new Date(now - minutes * 60000).toISOString();
+  const recent = { health: ago(14), sweep: ago(60) };
+  assert.deepEqual(due('workflow_run', recent, now), { health: false, daily: false, times: recent });
+  assert.deepEqual(due('workflow_run', { health: ago(15), sweep: ago(60) }, now),
+    { health: true, daily: false, times: { health: ago(0), sweep: ago(60) } });
+  assert.deepEqual(due('workflow_run', { health: ago(30), sweep: ago(120) }, now),
+    { health: true, daily: true, times: { health: ago(0), sweep: ago(0) } });
+  // Not limited: the fallback crons and explicit requests; the latter always
+  // bypass the cooldown, and the sweep cron only when a sweep is due.
+  for (const event of ['schedule', 'workflow_dispatch', 'issue_comment']) assert.equal(due(event, recent, now).health, true);
+  assert.equal(due('schedule', recent, now).daily, false);
+  assert.equal(due('workflow_dispatch', recent, now).daily, true);
+  assert.equal(due('issue_comment', recent, now).daily, true);
+  // No previous artifact, an old one without times, or a time in the future.
+  for (const previous of [{}, { health: 'garbage' }, { health: ago(-60), sweep: ago(-60) }]) {
+    assert.deepEqual(due('workflow_run', previous, now), { health: true, daily: true, times: { health: ago(0), sweep: ago(0) } });
+  }
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'supervisor-due-'));
+  try {
+    const run = previous => {
+      fs.rmSync(path.join(dir, 'previous-health'), { recursive: true, force: true });
+      if (previous !== undefined) {
+        fs.mkdirSync(path.join(dir, 'previous-health'));
+        fs.writeFileSync(path.join(dir, 'previous-health/times.json'), previous);
+      }
+      fs.writeFileSync(path.join(dir, 'output'), '');
+      const result = spawnSync(process.execPath, [path.join(__dirname, 'supervisor-due.cjs')], {
+        cwd: dir, encoding: 'utf8',
+        env: { ...process.env, EVENT: 'workflow_run', RUNNER_TEMP: dir, GITHUB_OUTPUT: path.join(dir, 'output') },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      return fs.readFileSync(path.join(dir, 'output'), 'utf8');
+    };
+    assert.equal(run(JSON.stringify({ health: new Date().toISOString(), sweep: new Date().toISOString() })), 'health=false\ndaily=false\n');
+    for (const previous of [undefined, 'not json', 'null']) assert.equal(run(previous), 'health=true\ndaily=true\n');
+    const times = JSON.parse(fs.readFileSync(path.join(dir, 'times.json'), 'utf8'));
+    assert.ok(Date.now() - Date.parse(times.health) < 60000 && times.sweep === times.health);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('previous health uses completed runs even when an agent job failed', () => {
-  const step = workflow.split('      - name: Previous health report\n')[1].split('      - name: Read-only health snapshot\n')[0];
+  const step = workflow.split('      - name: Previous health report\n')[1].split('      # Before the build')[0];
   const script = step.split('        run: |\n')[1].replace(/^ {10}/gm, '');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'supervisor-previous-'));
   try {
