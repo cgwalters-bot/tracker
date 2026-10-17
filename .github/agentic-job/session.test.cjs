@@ -17,6 +17,10 @@ test('sessions fail closed until enabled in repository configuration', () => {
   assert.doesNotThrow(() => compose({ ...actual, enabled: true }, pools, 'profile'));
   const hosted = read('hosted.toml');
   assert.match(hosted, /\[session\]/);
+  // Enabled sessions must name who may attach; empty lists would refuse everyone.
+  if (actual.enabled) {
+    assert.match(hosted, /^\[session\]\noperators = \["[^"\s]+@[^"\s]+"\]\n(?:#.*\n)*origins = \["https:\/\/[^"\s]+"\]\n/m);
+  }
   assert.doesNotMatch(hosted, /listen\s*=\s*true/);
 });
 

@@ -92,13 +92,15 @@ packages = ["python3-venv", "nftables", "just"]
 [agent.context-windows]
 "zai-glm-5-3" = 131072
 
-# Inert for ordinary runs. Before enabling session.json, the operator must
-# name tailnet logins and browser origins here. Empty lists fail closed.
-# Logins stop other tailnet users prompting the agent; origins stop another
-# website connecting with the operator's tailnet identity.
+# Inert for ordinary runs; read by session runs (session.json). Logins stop
+# other tailnet users prompting the agent; origins stop another website
+# connecting with the operator's tailnet identity. Empty lists fail closed.
+# The login is what `tailscale serve` sends for the operator's untagged
+# devices; a tagged device sends none and is refused.
 [session]
-operators = []
-origins = []
+operators = ["cgwalters@gmail.com"]
+# The review site's chat pane.
+origins = ["https://cgwalters-forge.github.io"]
 
 [commit]
 author = "agentic-job <agentic-job@users.noreply.github.com>"
