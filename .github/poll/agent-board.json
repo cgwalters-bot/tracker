@@ -44,7 +44,8 @@
       "cgwalters-forge/agent-board",
       "cgwalters-forge/review",
       "cgwalters-forge/actions",
-      "cgwalters-forge/agenthome"
+      "cgwalters-forge/agenthome",
+      "cgwalters-forge/misctool"
     ]
   }
 }

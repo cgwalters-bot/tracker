@@ -9,9 +9,9 @@
 # per-repository list of its own: the repositories named here are the only
 # ones a fix may target.
 hosts = ["github.com"]
-# Includes every repository the poll follows; agenthome remains fixable by
+# Includes every repository the poll follows; misctool remains fixable by
 # hand but is not followed until it has a review workflow.
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576
@@ -41,7 +41,7 @@ missing_data = { max = 1 }
 [unprotected_files]
 # The same list as dispatch.toml's, which poll.test.cjs checks;
 # the precondition for listing a repository is in its comment.
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome"]
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 files = ["AGENTS.md", "README.md"]
 dot_folders = [".github"]
