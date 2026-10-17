@@ -390,7 +390,13 @@ scheduler runs them as for any epic.
 ### Supervisor
 
 `supervisor.yml` runs `agent-board supervise health` every fifteen minutes on the default
-branch. Its scheduled runs used to be skipped: the job also required the
+branch. GitHub's cron started one run in two hours on 17 Oct (#730), so, like
+the poll, it also starts at the end of each poll run, and
+`.github/poll/supervisor-due.cjs` paces it from the `times.json` the previous
+`supervisor-health` artifact carries: a poll-started run within fifteen
+minutes of the last health pass ends before the build, and a pass sweeps when
+the last sweep was two hours ago or more. The crons remain as a fallback; they
+and explicit requests are not rate-limited. Scheduled runs used to be skipped: the job also required the
 repository variable `SUPERVISOR=observe`, which was never set. The health pass
 only reads, so it now always runs. `health.json` is a list of checks
 with `id`, `status` (`ok`, `warn`, `fail`), evidence links and a suggested
@@ -449,7 +455,7 @@ issue is open past `unclosedWaitHours`, unless it says it is part of it.
 **The agent and the executor** (D14) are off unless `SUPERVISOR` is `preview`
 or `apply`. No repository variable is changed by this wiring. The agent runs
 on a failing check (with `agent.cooldownHours` cooldown), a two-hour sweep
-(`7 */2 * * *`), a manual prompt, or a new comment by the configured operator
+(decided in the health job, with `7 */2 * * *` as a fallback), a manual prompt, or a new comment by the configured operator
 on the locked requests issue (#656). The comment gate also rejects PR comments;
 the login and issue are checked against trusted config in tests. The requests
 issue must be locked by the operator before comment wakes work.
@@ -462,7 +468,7 @@ gh workflow run supervisor.yml -R cgwalters-forge/tracker \
 Comments, prompts and the sweep share workflow-wide `supervisor-agent`
 concurrency without cancelling an active run, so a request waits through the
 previous executor instead of the trigger discarding it. The fifteen-minute
-health passes use `supervisor-health`: GitHub retains only one pending run per
+health passes, poll-started ones included, use `supervisor-health`: GitHub retains only one pending run per
 group and a newer arrival replaces it, so a shared group would let the next
 pass evict a queued prompt. A health pass that finds an agent active declines
 and retries after its cooldown; a prompt the trigger declines fails its run.
