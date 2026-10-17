@@ -563,3 +563,17 @@ Later the same day, asked to approve three agentic-job pull requests by hand bec
 and then, when one of them (cgwalters-forge/agentic-job#541, which removes the hold) was still refused by the reviewer: he merged it himself.
 
 My reading: an approving event review (a real review by github-actions, required by the ruleset on main, stale approvals dismissed on push) is the gate for every file, the tracker's `.github/` and the review's own files included (cgwalters-forge/agentic-job#540, cgwalters-forge/agentic-job#541); "for now" means this is revisited, see cgwalters-forge/tracker#528.
+
+## 2026-10-17
+
+D17 (which bootc-dev runs the hosted poll may start from the operator's comments; tracker#665), answered on the private decisions issue: **B**. The operator's comments in bootc-dev become runs. Fix rounds run on the bot's own bootc-dev pull requests (pushing to the bot's fork), and other comments become runs on tracker tracking issues (agent-board#106). Triage and research answers may also be posted in the bootc-dev thread the comment came from. Nothing else posts in bootc-dev.
+
+> Yes sure just bump releases as needed don’t ask me
+
+My reading: the controller cuts agentic-job releases whenever they are needed, without asking. The release train is in `apply` mode.
+
+> Bot may create misctool
+
+My reading: the bot created cgwalters-forge/misctool (tracker#677).
+
+Plans for review (tracker#676): the operator approved #674, #677 and #680 by adding the `epic` label. On #674 he removed step-to-step tampering from secure-host's threat model ("Any step can compromise subsequent ones, we can’t fix that") and approved the probes in cgwalters-forge-stage/board-test.
