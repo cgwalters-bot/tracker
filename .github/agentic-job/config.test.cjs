@@ -78,6 +78,18 @@ test('agentic-job config takes acp-experiment.toml, and refuses it without the c
 // and the poll stops on each as "a draft with no checkpoint" (#646). The
 // other fields of each entry stay as they were.
 const outputs = name => read(name).split('[outputs]\n')[1].split(/^\[/m)[0];
+
+test('misctool is a dispatch and fix target with matching workflow-edit bounds', () => {
+  const lists = name => [...read(name).matchAll(/^repos = (\[.*\])$/gm)].map(m => JSON.parse(m[1]));
+  const dispatchLists = lists('dispatch.toml');
+  const fixLists = lists('fix.toml');
+  for (const [name, bounds] of [['dispatch', dispatchLists], ['fix', fixLists]]) {
+    assert.equal(bounds.length, 2, name);
+    for (const repos of bounds) assert.ok(repos.includes('cgwalters-forge/misctool'), name);
+  }
+  for (let i = 0; i < 2; i++) assert.deepEqual([...dispatchLists[i]].sort(), [...fixLists[i]].sort());
+});
+
 test('dispatch.toml and fix.toml open complete work ready', () => {
   assert.match(outputs('dispatch.toml'), /^create_pull_request = \{ max = 1, ready_when_complete = true \}$/m);
   assert.match(outputs('fix.toml'), /^push_to_pull_request_branch = \{ max = 1, branches = \["dispatch\/\*\*"\], replacement_max_commits = 5, ready_when_complete = true \}$/m);

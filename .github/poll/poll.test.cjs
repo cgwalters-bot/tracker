@@ -129,9 +129,14 @@ test('real child buffer overflow fails and keeps the chain alive', async t => {
   assert.equal(result.again, true);
 });
 
-test('configuration follows every dispatch target and preserves pool policy', () => {
+test('configuration follows review-enabled schedule targets and preserves pool policy', () => {
   const c = require('./agent-board.json');
-  for (const repo of c.schedule.repositories) assert.ok(c.follow.includes(repo), repo);
+  // misctool's first workflow needs operator approval before poll follow-up.
+  assert.ok(c.schedule.repositories.includes('cgwalters-forge/misctool'));
+  assert.ok(!c.follow.includes('cgwalters-forge/misctool'));
+  for (const repo of c.schedule.repositories) {
+    if (repo !== 'cgwalters-forge/misctool') assert.ok(c.follow.includes(repo), repo);
+  }
   const fix = fs.readFileSync(path.join(__dirname, '../agentic-job/fix.toml'), 'utf8');
   for (const repo of c.follow) assert.ok(fix.includes(`"${repo}"`), repo);
   assert.equal(c.dispatchWorkflow, 'dispatch.yml');
