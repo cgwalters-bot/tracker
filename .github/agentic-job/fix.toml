@@ -1,6 +1,6 @@
 # Bounds for dispatch.yml's `fix` kind, which pushes to the branch of a
-# pull request that apply itself opened from the bot's fork
-# (cgwalters-forge/agentic-job#435): one commit on top, or the whole
+# pull request the bot opened, by apply from its fork
+# (cgwalters-forge/agentic-job#435) or by hand (`bot/**`): one commit on top, or the whole
 # series again with the fix folded in. Since cgwalters-forge/agentic-job#553
 # apply may also push to another head repository, but only one whose
 # default branch has `.github/agentic-job/accept-owner-branches` naming it
@@ -13,9 +13,10 @@ hosts = ["github.com"]
 # hand but is not followed until it has a review workflow. bootc-dev/* by
 # the operator's decision D17 (docs/operator-notes.md, 2026-10-17), which
 # names the organization: fix rounds on the bot's own
-# pull requests there, from its fork. bootc-dev is external, so no other
-# head repository there accepts the push (no accept-owner-branches), and a
-# fix there may not edit `.github` or AGENTS.md (not listed below).
+# pull requests there, from its fork; since #710 also from the midstream
+# fork cgwalters-forge/bootc (`bot/**` below says how apply bounds the head
+# repository). A fix there may not edit `.github` or AGENTS.md (not listed
+# below).
 repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc"]
 bases = ["main"]
 max_outputs = 3
@@ -30,7 +31,21 @@ max_patch_files = 50
 # is a force with a lease on the head the run was pinned to. A pull
 # request here is one to three commits. `ready_when_complete` as for
 # dispatch.toml's create_pull_request, whose comment says why.
-push_to_pull_request_branch = { max = 1, branches = ["dispatch/**"], replacement_max_commits = 5, ready_when_complete = true }
+#
+# `bot/**` is the homegit era's branches: the bot's bootc-dev pull requests
+# from the midstream fork cgwalters-forge/bootc, and the staged ones within
+# cgwalters-forge/composefs-rs and cgwalters-forge/bootc (#710). Both globs
+# hold for every repository above and every head, as the bounds bound no
+# head repository; apply does (agentic-job's workflow/push.cjs). It
+# pushes only where the bot has write access, and there only to the bot's
+# own fork, or to a fork of the target or the target itself whose default
+# branch has `.github/agentic-job/accept-owner-branches` naming it: the
+# bot's write access alone is not that acceptance. So the file, added by
+# hand to a repository's main, is what lets a head other than the bot's
+# fork take a push, on any branch these globs admit. Neither midstream
+# fork has it yet, so their pushes fail at apply until the operator adds
+# it, accepting that the fork's own workflows run the pushed commits.
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**"], replacement_max_commits = 5, ready_when_complete = true }
 # A blocked fix must explain itself without inventing a patch. Check pins
 # this comment to the run's pull request; no labels or other writes are added.
 add_comment = { max = 1 }

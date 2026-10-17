@@ -106,7 +106,7 @@ test('misctool is a dispatch and fix target with matching workflow-edit bounds',
 
 test('dispatch.toml and fix.toml open complete work ready', () => {
   assert.match(outputs('dispatch.toml'), /^create_pull_request = \{ max = 1, ready_when_complete = true \}$/m);
-  assert.match(outputs('fix.toml'), /^push_to_pull_request_branch = \{ max = 1, branches = \["dispatch\/\*\*"\], replacement_max_commits = 5, ready_when_complete = true \}$/m);
+  assert.match(outputs('fix.toml'), /^push_to_pull_request_branch = \{ max = 1, branches = \["dispatch\/\*\*", "bot\/\*\*"\], replacement_max_commits = 5, ready_when_complete = true \}$/m);
 });
 
 // D17 (docs/operator-notes.md, 2026-10-17): bootc-dev is open to
@@ -136,8 +136,21 @@ test('agentic-job policy admits bootc-dev only for comments and fixes', { skip: 
   assert.notEqual(policy('comment.toml', 'branch', 'create_pull_request,noop', '--base', 'main'), 0);
   assert.notEqual(policy('dispatch.toml', 'analysis', 'add_comment,noop', '--base', 'main'), 0);
   assert.notEqual(policy('dispatch.toml', 'branch', 'create_pull_request,noop', '--base', 'main'), 0);
-  assert.equal(policy('fix.toml', 'branch', 'push_to_pull_request_branch,noop', '--base', 'dispatch/x', '--pull-request', '1',
-    '--head', '0'.repeat(40), '--output-repo', 'bootc-dev/bootc'), 0);
+  const fix = (repo, branch) => spawnSync('agentic-job', ['policy', '--allow', path.join(__dirname, 'fix.toml'),
+    '--repo', repo, '--clone-url', `https://github.com/${repo}`, '--kind', 'branch',
+    '--outputs', 'push_to_pull_request_branch,noop', '--max-outputs', '3', '--base', branch, '--pull-request', '1',
+    '--head', '0'.repeat(40), '--output-repo', repo], { stdio: 'pipe' }).status;
+  // The bot's dispatch branches, and the homegit era's bot/** ones (#710),
+  // in bootc-dev and in the midstream forks; no other branch pattern.
+  for (const repo of ['bootc-dev/bootc', 'cgwalters-forge/bootc', 'cgwalters-forge/composefs-rs']) {
+    for (const branch of ['dispatch/x', 'bot/install-output', 'bot/a/b']) assert.equal(fix(repo, branch), 0, `${repo} ${branch}`);
+    for (const branch of ['main', 'feature/x', 'BOT/x', 'bots/x', 'x/bot/y']) assert.notEqual(fix(repo, branch), 0, `${repo} ${branch}`);
+  }
+  // Another owner's bootc or composefs-rs is no target, even on bot/**.
+  // This is the target, not a pull request's head repository: the policy is
+  // never told the head, which apply bounds instead (fix.toml's comment on
+  // `bot/**`), so no test here can refuse a head owner.
+  for (const repo of ['someone/bootc', 'cgwalters-bot/bootc', 'containers/composefs-rs']) assert.notEqual(fix(repo, 'bot/x'), 0, repo);
 });
 
 // The policy job's own reading of the bounds, so a spelling it ignores fails.
