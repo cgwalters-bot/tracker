@@ -389,7 +389,7 @@ scheduler runs them as for any epic.
 
 ### Supervisor
 
-`supervisor.yml` runs `just supervisor` every fifteen minutes on the default
+`supervisor.yml` runs `agent-board supervise health` every fifteen minutes on the default
 branch. Its scheduled runs used to be skipped: the job also required the
 repository variable `SUPERVISOR=observe`, which was never set. The health pass
 only reads, so it now always runs. `health.json` is a list of checks
@@ -409,7 +409,14 @@ bot's write token. Missing access and truncated listings are warnings, not
 healthy observations, and fail once they have lasted
 `unavailableFailHours`: each pass reads the previous pass's `health.json`
 artifact for since when. API requests have deadlines and a total
-budget and a seven-minute collection deadline; the job has a ten-minute limit.
+budget and a seven-minute collection deadline; the health step has an eight-minute
+limit, within a 25-minute job that also builds agent-board afresh using
+`just build-agent-board` at the commit pinned as `AGENT_BOARD_REV` in
+`supervisor.yml`, which the `execute` job builds too. Unlike `poll.yml`, it
+never follows agent-board's branch: the executor receives the bot's token, so
+a change to agent-board reaches it only when that pin moves here, after review. The newest health artifact among
+the last five completed runs is restored with a two-minute bound and passed as `--previous`;
+a missing or unreadable report starts unavailable timers afresh.
 These bounds prevent a stalled API or
 oversized census from exhausting a runner. The JSON artifact contains links
 and fixed actions, not issue bodies, titles, private decisions or logs.
@@ -447,7 +454,7 @@ bot-authored supervisor log issue in the operator repository. The agent
 runs when a check fails, at most once per `agent.cooldownHours` unless it is
 the daily pass (the `7 11 * * *` schedule). It is a `research` run of the
 shared wrapper on the requests issue, with
-`.github/supervisor/playbook.md`, the policy and `health.json` as its
+agent-board's built-in supervisor playbook, the policy and `health.json` as its
 task, the pool `agent.pool` and the wrapper's read-only job token. Its one
 comment carries a `supervisor-actions` block of typed requests.
 
@@ -455,19 +462,23 @@ The `execute` job holds `CGWALTERS_BOT_PAT` in the `agent-apply`
 environment and runs no agent code. It executes only on a run's first
 attempt, and accepts only the bot's comment, unedited, on the requests
 issue that this run's apply reports. It validates the whole
-batch with `actions.cjs`: the closed action list, the scheduler's
-repositories, the variable/value allowlist, dispatch kinds from config and
-pools from `pools.json`; outside those repositories, only the log issue.
-Comment bodies and reasons must be plain prose, with no `<!--` and no
-fences, so they cannot forge the bot's checkpoints, plans or verdicts.
-Then it reads every target: checkpoints must be the bot's coordinator
-records with no pending operation, the log issue the bot's, dispatch
-targets open issues, queue targets open pull requests, variables this
-repository's, and runs not the supervisor's own. Only after all of these checks does it write. It stops
-at the first failed write and comments one line per action, with a link
-and no agent text, on the log issue. Anything off the list is the operator's
-decision, which the agent asks for as a comment on the log issue. Test with
-`just test-supervisor`.
+batch with `agent-board supervise execute`. To prevent an injected agent
+request from reaching a merging implement run or spending unbounded runs,
+the shared executor admits dispatches, with fixed briefs and reasons, only on
+locked open issues whose authors and editors are collaborators, and an
+implement dispatch only under an open `epic`-labeled parent.
+The configured `agent.kinds` here still permits only research. Dispatches are
+off by default: the omitted `maxDispatchesPerPass` and `maxDispatchesPerDay`
+caps both default to zero. This migration does not enable them. The requests
+and log issues remain unchanged. The old variable, checkpoint and queue actions
+are no longer admitted; the pinned revision also knows comment, issue, close,
+label, state and status actions, but each has a daily cap that defaults to zero
+and `config.json` sets none. The executor records dispatches before starting
+them, stops at the first failed write, and logs the outcome without agent text.
+`agent-board supervise trigger` supplies the wrapper inputs through
+`GITHUB_OUTPUT`; both write jobs retain the `SUPERVISOR=apply` gate.
+Test the workflow wiring with `just test-poll` (set `AGENT_BOARD` to a built
+binary for the shipped-config CLI test); policy tests live in agent-board.
 
 The agent cannot read the private decisions document (its token reads only
 this repository), and the review site's last-run panel is

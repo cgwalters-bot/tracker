@@ -5,13 +5,7 @@
 set positional-arguments
 
 # Every test of the scripts under .github.
-test: test-poll test-usage test-session test-tools test-config test-supervisor test-release-train
-
-test-supervisor:
-    node --test .github/supervisor/*.test.cjs
-
-supervisor:
-    node .github/supervisor/health.cjs
+test: test-poll test-usage test-session test-tools test-config test-release-train
 
 test-release-train:
     node --test .github/release-train/*.test.cjs
@@ -20,15 +14,6 @@ test-release-train:
 # prints the step it would take. GH_TOKEN is the bot's token.
 release-train *args:
     node .github/release-train/train.cjs "$@"
-
-# After `supervisor`: whether the agent runs, from health.json (supervisor.yml).
-supervisor-trigger:
-    node .github/supervisor/trigger.cjs
-
-# Performs the agent's validated requests; GH_TOKEN is the bot's, RESULT_URL
-# the agent's comment.
-supervisor-execute:
-    node .github/supervisor/execute.cjs
 
 test-tools:
     node --test .github/agentic-job/tools.test.cjs
@@ -59,12 +44,17 @@ comment-wake-config:
 poll *args:
     node .github/poll/poll.cjs "$@"
 
-build-agent-board:
+# Without a revision, the configured branch's head; supervisor.yml passes a
+# pinned commit so the program that holds the bot's token is the reviewed one.
+build-agent-board rev="":
     #!/usr/bin/env bash
     set -euo pipefail
     source=$(jq -er .source .github/poll/agent-board.json)
-    branch=$(jq -er .branch .github/poll/agent-board.json)
-    rev=$(git ls-remote --exit-code "$source" "refs/heads/$branch" | cut -f1)
+    rev=${1:-}
+    if [[ -z $rev ]]; then
+      branch=$(jq -er .branch .github/poll/agent-board.json)
+      rev=$(git ls-remote --exit-code "$source" "refs/heads/$branch" | cut -f1)
+    fi
     [[ $rev =~ ^[0-9a-f]{40}$ ]]
     cargo install --locked --root "$RUNNER_TEMP/agent-board" --git "$source" --rev "$rev" agent-board
     echo "rev=$rev" >> "$GITHUB_OUTPUT"

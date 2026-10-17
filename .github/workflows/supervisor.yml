@@ -1,7 +1,7 @@
 # The controller's supervisor (#626). A deterministic, read-only health pass
 # every fifteen minutes; when a check fails, or on the daily pass, an agent
 # reads the report and asks for typed actions; an executor holding the bot's
-# token performs only the ones .github/supervisor/actions.cjs admits and logs
+# token performs only the dispatch requests agent-board admits and logs
 # each in the supervisor log issue. The agent and the executor are off until
 # the repository variable SUPERVISOR is `apply`; the health pass always runs.
 name: supervisor
@@ -13,9 +13,16 @@ on:
     - cron: '7 11 * * *'
   workflow_dispatch:
 permissions: {}
+# The agent-board commit both jobs build: the executor receives the bot's
+# token, so it runs only a revision reviewed here, never agent-board's
+# moving branch, and health/trigger and execute agree within a run. At this
+# commit every write but the log is capped at zero unless config.json sets
+# a cap. Move it only with a review of that revision's `supervise` code.
+env:
+  AGENT_BOARD_REV: be7ada51ea81fdf36cac9b63d8b19016dc2d8fd0
 # Per job, not for the workflow: an agent run lasts up to hours, and a
 # workflow-wide group would hold the health passes, the daily one included,
-# behind it. trigger.cjs keeps two agent runs from overlapping.
+# behind it. `supervise trigger` keeps two agent runs from overlapping.
 jobs:
   health:
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
@@ -23,7 +30,8 @@ jobs:
       group: supervisor-health
       cancel-in-progress: false
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    # Build (10), previous report (2), collection (8), plus setup/upload.
+    timeout-minutes: 25
     permissions:
       contents: read
       actions: read
@@ -46,11 +54,35 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
+      # Built fresh, never a cached binary that another job could replace
+      # before token use.
+      - name: Build agent-board at the pinned revision
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
+      - name: Previous health report
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow supervisor.yml \
+            --branch "$DEFAULT_BRANCH" --status completed --limit 5 --json databaseId --jq '.[].databaseId')
+          for run in $runs; do
+            if gh run download "$run" --repo "$GITHUB_REPOSITORY" --name supervisor-health --dir "$RUNNER_TEMP/previous-health"; then
+              exit 0
+            fi
+          done
       - name: Read-only health snapshot
+        timeout-minutes: 8
         env:
           GH_TOKEN: ${{ secrets.SUPERVISOR_READ_TOKEN || github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: just supervisor
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise health \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --usage-config .github/usage/config.json --previous "$RUNNER_TEMP/previous-health/health.json" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
@@ -63,8 +95,11 @@ jobs:
         id: trigger
         env:
           GH_TOKEN: ${{ github.token }}
-          DAILY: ${{ github.event.schedule == '7 11 * * *' }}
-        run: just supervisor-trigger
+          DAILY: ${{ github.event.schedule == '7 11 * * *' && '--daily' || '' }}
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise trigger \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --pools .github/agentic-job/pools.json ${DAILY:+"$DAILY"} >> "$GITHUB_OUTPUT"
 
   # The agent: a research run of the shared wrapper on the requests issue,
   # whose one checked add_comment carries the typed requests. Its token is
@@ -100,7 +135,7 @@ jobs:
       group: supervisor-execute
       cancel-in-progress: false
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     environment: agent-apply
     permissions:
       contents: read
@@ -111,9 +146,17 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
+      - name: Build agent-board at the pinned revision
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
       - name: Perform the validated requests
+        timeout-minutes: 8
         env:
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           RESULT_URL: ${{ needs.agent.outputs.result-url }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: just supervisor-execute
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise execute \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --pools .github/agentic-job/pools.json --result-url "$RESULT_URL" \
+            | tee -a "$GITHUB_STEP_SUMMARY"
