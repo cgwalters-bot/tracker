@@ -154,7 +154,11 @@ function decision(epic, state, comments, bot, now, operator = bot, run = null, l
       // Until agent-board can prune while retaining source-plan preconditions,
       // do not overwrite a target edited since dispatch. Only an operator
       // comment on the epic clears this (as 'stale' above).
-      const targetsChanged = state.pending.targets &&
+      // A matching retained claim cannot write again; let apply's pinned no-op
+      // reach effect verification even when its own writes changed the targets.
+      const claimed = trusted(comments, bot).some(c => c.body.startsWith(
+        `<!-- agent-board-epic-apply: ${comment.id}@${comment.updated_at} -->`));
+      const targetsChanged = !claimed && state.pending.targets &&
         (Array.isArray(plan.actions) ? plan.actions : []).some(a => typeof a?.issue === 'string' &&
           state.pending.targets[a.issue.toLowerCase()] !== current[a.issue.toLowerCase()]);
       if (targetsChanged) return { action: 'blocked', fingerprint, reason: 'target changed since request; comment on the epic to re-plan' };
@@ -328,6 +332,53 @@ async function save(get, config, number, old, state, marker = MARKER) {
   return (await get('POST', `${base}/${number}/comments`, { body }))?.id ?? null;
 }
 
+// Never replay a retained claim: an ambiguous create could duplicate work.
+// Recovery only observes the bounded census, and refuses ambiguous title matches
+// or effects it cannot prove. `new` is the create's action position, not ordinal.
+async function missingEffects(plan, epic, defaultPriority, { post, get, config }) {
+  if (!Array.isArray(plan.actions) || !plan.actions.length || plan.actions.length > 20) return ['invalid action list'];
+  const created = new Map();
+  const used = new Set();
+  const missing = [];
+  for (const [i, action] of plan.actions.entries()) {
+    if (action.type !== 'create_sub_issue') continue;
+    const matches = epic.subs.filter(s => s.repository.toLowerCase() === action.repo?.toLowerCase() && s.title === action.title);
+    if (matches.length === 1 && !used.has(matches[0])) {
+      created.set(i + 1, matches[0]);
+      used.add(matches[0]);
+    }
+  }
+  for (const [i, a] of plan.actions.entries()) {
+    const target = a.type === 'create_sub_issue' ? created.get(i + 1) : a.new !== undefined ? created.get(a.new) :
+      epic.subs.find(s => `${s.repository}#${s.number}`.toLowerCase() === a.issue?.toLowerCase());
+    let reflected = false;
+    if (a.type === 'create_sub_issue') {
+      const priority = plan.actions.find(p => p.type === 'set_priority' && p.new === i + 1)?.value ?? defaultPriority;
+      const body = plan.actions.find(p => p.type === 'rescope_sub_issue' &&
+        p.issue?.toLowerCase() === `${target?.repository}#${target?.number}`.toLowerCase())?.body ?? a.body;
+      reflected = target?.onBoard && target.priority === priority && target.body === body;
+      if (reflected && a.labels?.length) {
+        const issue = await get('GET', `/repos/${target.repository}/issues/${target.number}`);
+        reflected = Array.isArray(issue.labels) && a.labels.every(label => issue.labels.some(l => l.name === label));
+      }
+      if (reflected && a.plan) {
+        const comments = await readComments(post, target.repository, target.number);
+        const latest = comments.filter(c => [config.planner, config.operator].some(login =>
+          login.toLowerCase() === c.author?.login?.toLowerCase()) && /^```agent-board-plan\s*$/m.test(c.body ?? ''))
+          .sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt)).at(-1);
+        try {
+          reflected = Boolean(latest && trusted([latest], latest.author.login).length &&
+            canonical(resultJSON(latest, 'agent-board-plan')) === canonical({ ...a.plan, repo: a.repo, item: target.number }));
+        } catch { reflected = false; }
+      }
+    } else if (a.type === 'set_priority') reflected = target?.onBoard && target.priority === a.value;
+    else if (a.type === 'close_sub_issue') reflected = target?.state === 'closed';
+    else if (a.type === 'rescope_sub_issue') reflected = target && target.body === a.body;
+    if (!reflected) missing.push(`action ${i + 1} (${a.type}${a.title ? `: ${a.title}` : a.issue ? `: ${a.issue}` : ''})`);
+  }
+  return missing;
+}
+
 // Dispatch, then record the run's id in the claim written before it. The id
 // comes back only where the API knows `return_run_details`; without it, or if
 // recording it fails, the pending operation falls back to the run timeout.
@@ -452,6 +503,7 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
     }
     if (incomplete) { counts.errors++; log('incomplete census; no epic planned or applied'); }
     for (const epic of incomplete ? [] : live) {
+      try {
       const comments = await readComments(post, config.epicsRepository, epic.number);
       const old = record(comments, config.planner);
       // An obsolete run must finish posting before its request is replaced;
@@ -489,7 +541,8 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
       }
       if (step.action === 'apply') {
         const url = `https://github.com/${config.epicsRepository}/issues/${epic.number}`;
-        const file = writeFile('epic-config.json', JSON.stringify(await applyConfig(post, config)));
+        const bounds = await applyConfig(post, config);
+        const file = writeFile('epic-config.json', JSON.stringify(bounds));
         // Pin the checked plan: a newer or edited comment must not substitute
         // destructive actions between preview and agent-board's write claim.
         const args = ['epic', 'apply', url, '--config', file,
@@ -502,7 +555,12 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
             // A retained claim can follow a partial/ambiguous failure. Exit 0
             // then means no retry, not confirmation that all actions completed.
             if (result?.stdout?.split(/\r?\n/).includes('Already claimed; nothing changed.')) {
-              throw new Error('epic plan already claimed; inspect agent-board claim before resetting pending');
+              const snapshot = await refresh();
+              const updated = snapshot.entries.find(e => e.number === epic.number);
+              if (snapshot.note || !updated?.live || updated.error) throw new Error('claimed plan census unavailable; pending retained');
+              const missing = await missingEffects(resultJSON(step.comment, 'agent-board-epic-plan'), updated, bounds.default_priority, { post, get, config });
+              if (missing.length) throw new Error(`epic plan already claimed; inspect agent-board claim before resetting pending; missing: ${missing.join(', ')}`);
+              log(`${config.epicsRepository}#${epic.number} recovered: claimed plan effects confirmed`);
             }
           }
         } catch (err) {
@@ -560,10 +618,18 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
           pending: { id, at: new Date(now).toISOString(), fingerprint: step.fingerprint,
             intent: epicIntent(epic), targets: targetSnapshots(epic) } };
         const claim = await save(get, config, epic.number, old, state);
+        // A lost dispatch receipt can still mean acceptance. Reserve the slot
+        // before sending so the per-epic error handler cannot oversubscribe WIP.
+        running.inFlight++;
+        running.busy.set(`${config.epicsRepository}#${epic.number}`.toLowerCase(), 'plan dispatched');
         await start({ config, get, dispatch }, epic.number, claim, state, { kind: 'triage', repo: config.epicsRepository,
           item: String(epic.number), pool: config.planPool, task });
       }
       break;
+      } catch (err) {
+        counts.errors++;
+        log(`${config.epicsRepository}#${epic.number} coordinator error: ${err.message}`);
+      }
     }
   } catch (err) {
     counts.errors++;
