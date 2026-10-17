@@ -34,7 +34,7 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
   assert.equal(config.agent.maxDispatchesPerPass, 2);
   assert.equal(config.agent.maxDispatchesPerDay, 16);
   assert.deepEqual(config.agent.dailyCaps, {
-    comment: 20, create_issue: 6, close: 10, remove_needs_human: 6, replace_state: 48, status_update: 4,
+    comment: 20, create_issue: 6, close: 10, remove_needs_human: 6, replace_state: 48, status_update: 1,
   });
   assert.deepEqual(config.agent.state, { repository: 'cgwalters-forge/tracker', issue: 718 });
   for (const other of [config.agent.requests, config.agent.log]) {
