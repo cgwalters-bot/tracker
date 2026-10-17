@@ -1,6 +1,5 @@
 {
   "pageSize": 100,
-  "requestTimeoutSeconds": 20,
   "maxRequests": 500,
   "collectionTimeoutSeconds": 420,
   "pollFailures": 3,
@@ -35,7 +34,6 @@
     "cooldownHours": 1,
     "requests": { "repository": "cgwalters-forge/tracker", "issue": 656 },
     "log": { "repository": "cgwalters-forge/operator", "issue": 2 },
-    "variables": { "BOARD_DISPATCH": ["off"], "COORDINATOR": ["off"] },
     "kinds": ["research"]
   }
 }
