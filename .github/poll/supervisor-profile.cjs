@@ -3,8 +3,8 @@ const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
 // Reviewed profile, not an issue-selected prompt or a moving setup revision.
-const PROFILE = 'repos/cgwalters-forge/agenthome/contents/.github/agentic-job/profiles/supervisor.md?ref=ad87560e4ec6b2b82860800cbfda9bcf019abd8c';
-const SKILL = 'repos/cgwalters-forge/agenthome/contents/skills/supervisor/SKILL.md?ref=ad87560e4ec6b2b82860800cbfda9bcf019abd8c';
+const PROFILE = 'repos/cgwalters-forge/agenthome/contents/.github/agentic-job/profiles/supervisor.md?ref=7ba2e215d770074f9c49bfc387bb57259ec013a3';
+const SKILL = 'repos/cgwalters-forge/agenthome/contents/skills/supervisor/SKILL.md?ref=7ba2e215d770074f9c49bfc387bb57259ec013a3';
 const MAX_TASK_BYTES = 48 * 1024;
 
 function read(endpoint) {
