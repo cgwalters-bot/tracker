@@ -96,7 +96,7 @@ jobs:
       - name: Read-only health snapshot
         timeout-minutes: 8
         env:
-          GH_TOKEN: ${{ secrets.SUPERVISOR_READ_TOKEN || github.token }}
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise health \

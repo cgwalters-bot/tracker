@@ -398,14 +398,13 @@ action; each check also has one summary line. All thresholds and collection
 bounds are in `.github/supervisor/config.json`, with repository identities
 in that file and the existing poll configuration, never dispatcher inputs.
 
-The job token reads this repository and the followed public ones. The usage
-snapshot (`pace`) is on a private repository, `.github/usage/config.json`'s,
-which it cannot read: provision `SUPERVISOR_READ_TOKEN` with read-only
-Issues on that repository, and read-only Actions, Checks (or a classic
-token's `repo` read), contents, issues and pull requests on this one and the
-followed ones. That token also lifts the job token's 1000 requests an hour
-for the repository, which four passes an hour come near. Do not use the
-bot's write token. Missing access and truncated listings are warnings, not
+The health step reads with the bot's token (`CGWALTERS_BOT_PAT`), as the execute
+job and the poll do. The usage snapshot (`pace`) is on a private repository,
+`.github/usage/config.json`'s, which the job token cannot read, and the job
+token's 1000 requests an hour come near four passes' worth. The step runs
+only agent-board built from the pinned revision, never an agent or pull
+request code (the operator, 17 Oct: the same token as everything else of the
+bot's, rather than a separate read-only one). Missing access and truncated listings are warnings, not
 healthy observations, and fail once they have lasted
 `unavailableFailHours`: each pass reads the previous pass's `health.json`
 artifact for since when. API requests have deadlines and a total
