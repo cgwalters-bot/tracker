@@ -329,7 +329,7 @@ test('workflows follow our own repositories at main, review.yml excepted, and pi
   assert.ok(seen > 0);
 });
 
-test('review wrapper uses the agentic-job v0.5.2 release pin', () => {
+test('review wrapper uses the agentic-job v0.6.1 release pin', () => {
   const workflow = fs.readFileSync(path.join(__dirname, '../workflows/review.yml'), 'utf8');
-  assert.match(workflow, /^\s+uses: \S+\/cgwalters-review\.yml@bc0ea824a5c77a191eca503e493dbbb7fe991610 # main, agentic-job v0\.5\.2 \(actions#48\)$/m);
+  assert.match(workflow, /^\s+uses: \S+\/cgwalters-review\.yml@5906e6745c4e3e1c68b698dacf409a452c727d08 # main, agentic-job v0\.6\.1 \(actions#67\)$/m);
 });
