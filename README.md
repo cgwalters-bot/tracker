@@ -480,10 +480,13 @@ reads `docs/operator-notes.md`, the latest `supervisor-health` artifact's
 only the configured operator's comments are instructions. Its one comment on
 the requests issue carries a `supervisor-actions` block of typed requests.
 
-No state issue number has been supplied: `agent.state` is deliberately absent
-and `dailyCaps.replace_state` is zero. The operator must file and lock a
-distinct public state issue, then add its repository and number to trusted
-config before enabling memory. Missing state is reported, never guessed.
+`agent.state` names the locked state issue #718, distinct from the requests
+and log issues. `dailyCaps.replace_state` is one: `replace_state` edits only
+that issue's body, once a day. The body persists and every later run reads it
+first, so a misled run can plant text for later runs; it is data to them, and
+with the other caps at zero they cannot act on it. A batch with a second
+`replace_state` in a day is rejected whole, so ask for memory at most once a
+day once other caps rise. Missing state is reported, never guessed.
 
 The `execute` job holds `CGWALTERS_BOT_PAT` in the `agent-apply`
 environment and runs no agent code. It executes only on a run's first
@@ -495,7 +498,8 @@ the shared executor admits dispatches, with fixed briefs and reasons, only on
 locked open issues whose authors and editors are collaborators, and an
 implement dispatch only under an open `epic`-labeled parent.
 Trusted config names the permitted dispatch kinds, tracker and project; both
-dispatch caps and every judgment action's daily cap are explicitly zero.
+dispatch caps and every judgment action's daily cap other than
+`replace_state` are explicitly zero.
 The requests and log issues remain unchanged. Only the operator raises caps
 after review. The executor records requests before starting them, stops at the
 first failed write, and logs the outcome without agent text.
