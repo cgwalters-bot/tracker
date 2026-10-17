@@ -718,7 +718,11 @@ callers once that merges. The repositories, files, threshold and labels are
 in `.github/release-train/config.json`. A release is due when at least
 `threshold` PRs merged since the last one and that was `intervalHours` ago,
 or at once when one of them is labelled `P0`; the bump is minor if one is
-labelled `breaking`, a patch otherwise. The PRs come from the bot's forks
+labelled `breaking`, a patch otherwise. A release cut outside the train,
+by hand or by anyone, is followed all the same (#723): when the wrappers
+pin an older version than the latest release, a pass opens a train for that
+release starting at the wrappers' pin bump, unless a train for it was
+closed or its tag is not on agentic-job's default branch. The PRs come from the bot's forks
 with the release notes for the callers' interface changes, and go through
 each repository's review and queue; the train only waits for them.
 

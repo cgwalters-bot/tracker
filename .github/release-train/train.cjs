@@ -4,6 +4,8 @@
 // moves its callers' pins, one step a pass, as the controller did by hand:
 // the version bump PR, release.yml once it merges, the wrappers' pin PR once
 // the release is out, then each caller's review.yml pin PR once that merges.
+// A release cut outside the train is followed from the wrappers' pin bump
+// on (#723), so the "due" rule governs only cutting releases.
 // Every PR goes through its repository's review and queue like any other.
 // A pass keeps no state of its own: it reads the stage from GitHub, from the
 // one open tracking issue and the PRs on its branch, so a lost or repeated
@@ -40,9 +42,13 @@ function due(merged, published, now, cfg = config) {
 // null (not opened yet) or { state, merged, html_url, merge_commit_sha }.
 function next(f) {
   const closed = (pr, what) => pr.state === 'closed' && !pr.merged && { step: 'stall', reason: `${what} was closed unmerged` };
-  if (!f.bump) return { step: 'bump' };
-  if (!f.bump.merged) return closed(f.bump, 'the version bump') || { step: 'wait', reason: 'the version bump' };
+  // A release that is out, whoever cut it, needs no bump: the train
+  // follows it from the wrappers on. But not past its own bump still open:
+  // merged later, that would raise main to a version already released.
+  if (f.release && f.bump?.state === 'open') return { step: 'stall', reason: 'the version was released while its version bump is still open; close the bump' };
   if (!f.release) {
+    if (!f.bump) return { step: 'bump' };
+    if (!f.bump.merged) return closed(f.bump, 'the version bump') || { step: 'wait', reason: 'the version bump' };
     if (!f.run) return { step: 'release' };
     if (f.run.status !== 'completed') return { step: 'wait', reason: 'release.yml' };
     // Not dispatched again: a failed release needs a look first.
@@ -78,12 +84,9 @@ function workspaceVersion(toml) {
   return /^\[workspace\.package\]\n(?:[^[\n][^\n]*\n|\n)*?version = "([^"]+)"/m.exec(toml)?.[1];
 }
 
-// Moves every pin of target's workflows in files to to.pin, a tag or a
-// commit, and the "<project> vX.Y.Z" that names the version beside it, in
-// plain or regex-escaped form (a test asserting the pin), to to.version.
-// Every file must change: a file that no longer has the pin is a layout
-// this cannot follow, and a PR missing it would be half a bump.
-function repin(files, target, project, to) {
+// The one pin of target's workflows in files, a tag or a commit, and the
+// version it is: the tag's, or the "<project> vX.Y.Z" beside a commit.
+function pinOf(files, target, project) {
   const uses = new RegExp(`${esc(target)}/\\.github/workflows/[\\w.-]+\\.yml@(v\\d+\\.\\d+\\.\\d+|[0-9a-f]{40})(.*)$`, 'gm');
   const named = new RegExp(`${esc(project)} \\**v(\\d+\\.\\d+\\.\\d+)`);
   const pins = new Set();
@@ -95,8 +98,27 @@ function repin(files, target, project, to) {
     }
   }
   if (pins.size !== 1 || versions.size !== 1 || versions.has(undefined)) throw new Stall(`no single pin of ${target} with its version`);
-  const [pin] = pins;
-  const [version] = versions;
+  return { pin: [...pins][0], version: [...versions][0] };
+}
+
+// Whether version a is older than b; both X.Y.Z.
+function older(a, b) {
+  const [x, y] = [a, b].map(v => {
+    const m = SEMVER.exec(v);
+    if (!m) throw new Stall(`not a version: ${v}`);
+    return m.slice(1).map(Number);
+  });
+  const i = x.findIndex((n, k) => n !== y[k]);
+  return i >= 0 && x[i] < y[i];
+}
+
+// Moves every pin of target's workflows in files to to.pin, a tag or a
+// commit, and the "<project> vX.Y.Z" that names the version beside it, in
+// plain or regex-escaped form (a test asserting the pin), to to.version.
+// Every file must change: a file that no longer has the pin is a layout
+// this cannot follow, and a PR missing it would be half a bump.
+function repin(files, target, project, to) {
+  const { pin, version } = pinOf(files, target, project);
   if (pin === to.pin) throw new Stall(`${target} is already pinned at ${pin}`);
   // A commit is unique wherever it appears; a tag is moved only in a pin.
   const pinned = pin.startsWith('v')
@@ -152,6 +174,16 @@ async function pass({ api, apply = false, now = Date.now(), log = console.log, c
     return pr ? { state: pr.state, merged: Boolean(pr.merged_at), merged_at: pr.merged_at, html_url: pr.html_url, merge_commit_sha: pr.merge_commit_sha } : null;
   };
 
+  const contents = async (repo, ref, paths) => {
+    const files = {};
+    for (const path of paths) {
+      const file = await api('GET', `/repos/${repo}/contents/${path.split('/').map(enc).join('/')}?ref=${enc(ref)}`);
+      if (file.encoding !== 'base64') throw new Stall(`${repo}:${path} is too large to edit through the API`);
+      files[path] = Buffer.from(file.content, 'base64').toString('utf8');
+    }
+    return files;
+  };
+
   // Opens a PR from the bot's fork, as the bot's other PRs are, so the poll
   // follows it to a fix or a merge like those. The commit is made on the
   // fork through the API on the default branch's head; files keep mode
@@ -164,13 +196,7 @@ async function pass({ api, apply = false, now = Date.now(), log = console.log, c
     if ((await api('GET', `/repos/${fork}`)).parent?.full_name !== repo) throw new Stall(`${fork} is not a fork of ${repo}`);
     const { default_branch: base } = await api('GET', `/repos/${repo}`);
     const head = await api('GET', `/repos/${repo}/commits/${enc(base)}`);
-    const files = {};
-    for (const path of edit.paths) {
-      const file = await api('GET', `/repos/${repo}/contents/${path.split('/').map(enc).join('/')}?ref=${head.sha}`);
-      if (file.encoding !== 'base64') throw new Stall(`${repo}:${path} is too large to edit through the API`);
-      files[path] = Buffer.from(file.content, 'base64').toString('utf8');
-    }
-    const changed = edit.apply(files);
+    const changed = edit.apply(await contents(repo, head.sha, edit.paths));
     // A dropped train's PR still open on the branch: the force push below
     // would change what its reviewers saw.
     const stale = await api('GET', `/repos/${repo}/pulls?state=open&head=${enc(`${fork.split('/')[0]}:${ref}`)}&per_page=${cfg.pageSize}`);
@@ -190,6 +216,18 @@ async function pass({ api, apply = false, now = Date.now(), log = console.log, c
       const pr = await api('POST', `/repos/${repo}/pulls`, { title: text.title, body: text.body, head: `${fork.split('/')[0]}:${ref}`, base });
       return pr.html_url;
     });
+  };
+
+  // The commit tag points at, which must be on the release repository's
+  // default branch: whoever can publish a release can tag a commit nobody
+  // reviewed, and the train would carry it into every caller's review.yml.
+  const reviewed = async tag => {
+    const repo = cfg.release.repository;
+    const { sha } = await api('GET', `/repos/${repo}/commits/${enc(tag)}`);
+    const { default_branch: base } = await api('GET', `/repos/${repo}`);
+    const { status } = await api('GET', `/repos/${repo}/compare/${enc(base)}...${sha}`);
+    if (status !== 'identical' && status !== 'behind') throw new Stall(`${tag} is at ${sha}, which is not on ${repo}'s ${base}`);
+    return sha;
   };
 
   // The release repository's state since its last release.
@@ -214,6 +252,48 @@ async function pass({ api, apply = false, now = Date.now(), log = console.log, c
   if (trains.length > 1) throw new Error('more than one open release train');
 
   let issue = trains[0];
+  if (!issue) {
+    const latest = await api('GET', `/repos/${cfg.release.repository}/releases/latest`);
+    const current = latest.tag_name.replace(/^v/, '');
+    // A release cut by hand, or by a train dropped after it, gets no train
+    // of its own: one opened here follows it from the wrappers' pin bump on.
+    // A closed train for that version means it was dropped (or finished),
+    // so it is not followed again: otherwise closing one would open the
+    // next an hour later, and with it another PR. Either way, and when the
+    // pin or the tag cannot be read or the tag is off the default branch,
+    // the pass goes on to cutting: a release that is due is not held up by
+    // one that is not followed.
+    const behind = async () => {
+      if (!/^v\d+\.\d+\.\d+$/.test(latest.tag_name)) throw new Stall(`${latest.tag_name} is not a vX.Y.Z tag`);
+      const { default_branch: wrapped } = await api('GET', `/repos/${cfg.wrappers.repository}`);
+      const pinned = pinOf(await contents(cfg.wrappers.repository, wrapped, cfg.wrappers.files), cfg.release.repository, project).version;
+      if (!older(pinned, current)) return null;
+      await reviewed(latest.tag_name);
+      const dropped = await api('GET', `/repos/${cfg.tracking}/issues?state=closed&labels=${enc(cfg.labels.tracking)}&creator=${enc(owner)}&per_page=${cfg.pageSize}`);
+      if (dropped.some(i => !i.pull_request && i.user?.login === owner && i.title === title(current))) {
+        log(`the wrappers pin v${pinned}, behind ${latest.tag_name}, whose train was closed: not following`);
+        return null;
+      }
+      return pinned;
+    };
+    // An API error here (a 404 once a wrappers file is renamed) is a
+    // reason not to follow too; only the budget and the network end the
+    // pass, as they would any other.
+    const pinned = await behind().catch(e => {
+      if (!(e instanceof Stall) && e.status === undefined) throw e;
+      log(`not following ${latest.tag_name}: ${e.message}`);
+      return null;
+    });
+    if (pinned) {
+      log(`the wrappers pin v${pinned}, behind ${latest.tag_name}: following it`);
+      issue = await write(`open the tracking issue "${title(current)}"`, () => api('POST', `/repos/${cfg.tracking}/issues`, {
+        title: title(current),
+        body: `The release train's steps following ${cfg.release.repository} ${latest.tag_name}, released outside the train, with the pin bumps (.github/release-train). The wrappers pin v${pinned}. Label it \`${cfg.labels.stalled}\` to halt the train; close it to drop it.`,
+        labels: [cfg.labels.tracking],
+      }));
+      issue ??= { number: 0, html_url: '(new tracking issue)', title: title(current), labels: [], created_at: new Date(now).toISOString() };
+    }
+  }
   if (!issue) {
     const { latest, current, workspace, merged } = await pending();
     if (workspace !== current) return log(`main is at ${workspace}, not the last release ${latest.tag_name}: not starting`);
@@ -249,6 +329,13 @@ async function pass({ api, apply = false, now = Date.now(), log = console.log, c
     `The train only moves the pin: wire through, in this PR, any interface change of [v${version}](${facts.release.html_url}) that callers must pass on. Tracked on ${issue.html_url}. Its release notes, as data:`,
     '', '````text', (facts.release.body ?? '').slice(0, 30000).replace(/`{4,}/g, '```'), '````',
   ].join('\n');
+  // Where the release came from, for the reviewers of the pin bumps: the
+  // last gate on a release the train did not cut. Its tag is checked again,
+  // as a tag can move after the train began.
+  const origin = async () => {
+    const sha = await reviewed(`v${version}`);
+    return facts.bump?.merged ? '' : ` v${version} was released outside the train, from ${cfg.release.repository}@${sha}.`;
+  };
   try {
     switch (step.step) {
       case 'bump': {
@@ -275,16 +362,17 @@ async function pass({ api, apply = false, now = Date.now(), log = console.log, c
         return comment(issue, `Ran ${cfg.release.workflow} for ${version}, as the bump merged: ${facts.bump.html_url}`);
       }
       case 'wrappers': {
-        const why = `Moves the wrappers to ${project} v${version} so callers get its changes, through the release train.`;
+        const why = `Moves the wrappers to ${project} v${version} so callers get its changes, through the release train.${await origin()}`;
         const url = await open(cfg.wrappers, branch(version), { title: `wrappers: Pin ${project} v${version}`, why, body: `${why}\n\n${notes()}` },
           { paths: cfg.wrappers.files, apply: files => repin(files, cfg.release.repository, project, { pin: `v${version}`, version }).files });
         return comment(issue, `Opened the wrappers' pin bump: ${url ?? '(dry run)'}`);
       }
       case 'callers': {
         const urls = [];
+        const from = await origin();
         for (const repo of step.repositories) {
           const caller = cfg.callers.find(c => c.repository === repo);
-          const why = `Moves review.yml to the wrappers' commit for ${project} v${version}, so this repository's reviews run it, through the release train.`;
+          const why = `Moves review.yml to the wrappers' commit for ${project} v${version}, so this repository's reviews run it, through the release train.${from}`;
           urls.push(await open(caller, branch(version), { title: `review: Pin ${project} v${version}`, why, body: `${why}\n\n${notes()}` },
             { paths: caller.files, apply: files => repin(files, cfg.wrappers.repository, project, { pin: facts.wrappers.merge_commit_sha, version }).files }) ?? `(dry run on ${repo})`);
         }
@@ -308,7 +396,7 @@ async function pass({ api, apply = false, now = Date.now(), log = console.log, c
   }
 }
 
-module.exports = { nextVersion, due, next, bumpCargo, workspaceVersion, repin, pass, Stall };
+module.exports = { nextVersion, due, next, bumpCargo, workspaceVersion, pinOf, older, repin, pass, Stall };
 
 if (require.main === module) {
   const args = process.argv.slice(2);
