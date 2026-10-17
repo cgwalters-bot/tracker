@@ -78,6 +78,11 @@ packages = ["python3-venv", "nftables", "just"]
 "cgwalters-forge/agentic-job" = ["cargo"]
 "cgwalters-forge/agent-board" = ["cargo"]
 "cgwalters-forge/tracker" = ["cargo"]
+"cgwalters-forge/misctool" = ["cargo"]
+# The midstream forks (epic #160). composefs-rs builds with pkg-config and
+# OpenSSL for its HTTP fetch; bootc also links libostree, glib and zstd.
+"cgwalters-forge/composefs-rs" = ["cargo", "pkg-config", "libssl-dev"]
+"cgwalters-forge/bootc" = ["cargo", "pkg-config", "libssl-dev", "libostree-dev", "libglib2.0-dev", "libzstd-dev"]
 
 # The window each broker model is given, which Vibe compacts at three
 # quarters of (agentic-job's docs/harness.md). Without an entry a model gets
