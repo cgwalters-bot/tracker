@@ -18,7 +18,7 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
   }
   assert.equal(workflow.match(/--config .github\/poll\/agent-board.json --supervisor-config .github\/supervisor\/config.json/g)?.length, 3);
   assert.match(workflow, /--usage-config .github\/usage\/config.json --previous "\$RUNNER_TEMP\/previous-health\/health.json"/);
-  assert.match(workflow, /--workflow supervisor.yml[\s\S]*--branch "\$DEFAULT_BRANCH" --status completed --limit 5/);
+  assert.match(workflow, /--workflow supervisor.yml[\s\S]*--branch "\$DEFAULT_BRANCH" --status completed --limit 50\b/);
   assert.match(workflow, /--pools .github\/agentic-job\/pools.json \$\{DAILY:\+"\$DAILY"\} >> "\$GITHUB_OUTPUT"/);
   assert.match(workflow, /\(vars.SUPERVISOR == 'preview' \|\| vars.SUPERVISOR == 'apply'\) && needs.health.outputs.act == 'true'/);
   assert.match(workflow, /\(vars.SUPERVISOR == 'preview' \|\| vars.SUPERVISOR == 'apply'\) && needs.agent.outputs.result-url != ''/);
@@ -119,6 +119,19 @@ fs.writeFileSync(dir + '/health.json', '[{"id":"broker","unavailable_since":"202
     assert.equal(result.status, 0, result.stderr);
     const commands = fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
     assert.equal(commands[0][commands[0].indexOf('--status') + 1], 'completed');
+    assert.equal(commands[0][commands[0].indexOf('--limit') + 1], '50');
+    assert.equal(commands[0][commands[0].indexOf('--json') + 1], 'databaseId,conclusion');
+    const filtered = spawnSync('jq', ['-r', commands[0][commands[0].indexOf('--jq') + 1]], {
+      encoding: 'utf8',
+      input: JSON.stringify([
+        ...Array.from({ length: 8 }, (_, i) => ({ databaseId: 11 - i, conclusion: 'skipped' })),
+        { databaseId: 3, conclusion: 'success' },
+        { databaseId: 2, conclusion: 'failure' },
+        { databaseId: 1, conclusion: 'success' },
+      ]),
+    });
+    assert.equal(filtered.status, 0, filtered.stderr);
+    assert.equal(filtered.stdout, '3\n2\n1\n');
     assert.deepEqual(commands.slice(1).map(args => args[2]), ['3', '2']);
     assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'previous-health/health.json')))[0].unavailable_since,
       '2026-10-16T00:00:00Z');
