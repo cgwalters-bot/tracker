@@ -36,17 +36,17 @@
     "log": { "repository": "cgwalters-forge/operator", "issue": 2 },
     "state": { "repository": "cgwalters-forge/tracker", "issue": 718 },
     "kinds": ["triage", "research", "implement"],
-    "maxDispatchesPerPass": 0,
-    "maxDispatchesPerDay": 0,
+    "maxDispatchesPerPass": 2,
+    "maxDispatchesPerDay": 16,
     "tracker": "cgwalters-forge/tracker",
     "project": "PVT_kwDOE9oHIs4BlJLc",
     "dailyCaps": {
-      "comment": 0,
-      "create_issue": 0,
-      "close": 0,
-      "remove_needs_human": 0,
-      "replace_state": 1,
-      "status_update": 0
+      "comment": 20,
+      "create_issue": 6,
+      "close": 10,
+      "remove_needs_human": 6,
+      "replace_state": 48,
+      "status_update": 4
     }
   }
 }
