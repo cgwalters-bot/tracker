@@ -16,7 +16,7 @@ hosts = ["github.com"]
 # pull requests there, from its fork. bootc-dev is external, so no other
 # head repository there accepts the push (no accept-owner-branches), and a
 # fix there may not edit `.github` or AGENTS.md (not listed below).
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576
