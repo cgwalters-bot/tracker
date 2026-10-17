@@ -84,8 +84,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
+          # Skipped comment runs have no report; don't let them crowd out health passes.
           runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow supervisor.yml \
-            --branch "$DEFAULT_BRANCH" --status completed --limit 5 --json databaseId --jq '.[].databaseId')
+            --branch "$DEFAULT_BRANCH" --status completed --limit 50 --json databaseId,conclusion \
+            --jq '.[] | select(.conclusion != "skipped") | .databaseId')
           for run in $runs; do
             if gh run download "$run" --repo "$GITHUB_REPOSITORY" --name supervisor-health --dir "$RUNNER_TEMP/previous-health"; then
               exit 0
