@@ -52,6 +52,19 @@ test('dispatch passes the run only a configuration from its closed set', () => {
 // The check the wrapper's policy job makes, with the settings it adds for a
 // real agent; where agentic-job is not installed (CI) it is skipped.
 const agenticJob = spawnSync('agentic-job', ['--version'], { stdio: 'pipe' }).status === 0;
+
+test('supervisor config preserves hosted sandbox and enables only item watching', { skip: !agenticJob && 'agentic-job is not installed' }, () => {
+  const check = file => execFileSync('agentic-job', ['config', '--from', path.join(__dirname, file), '--host'], { encoding: 'utf8' });
+  const supervisor = check('supervisor.toml');
+  const base = check('hosted.toml');
+  for (const table of ['sandbox', 'sandbox.check', 'setup']) {
+    const section = text => text.split(`[${table}]\n`)[1].split('\n[')[0];
+    assert.equal(section(supervisor), section(base));
+  }
+  assert.match(supervisor, /\[session\]\nwatch-item = true/);
+  assert.doesNotMatch(supervisor, /listen = true/);
+});
+
 test('agentic-job config takes acp-experiment.toml, and refuses it without the cap', { skip: !agenticJob && 'agentic-job is not installed' }, () => {
   const check = file => spawnSync('agentic-job', ['config', '--from', file, '--repo', 'o/r',
     '--string', 'agent.name=claude', '--string', 'agent.model=m',

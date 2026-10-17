@@ -447,16 +447,43 @@ approved PR whose merge state is clean, out of the queue past
 `unqueuedWaitHours`; `unclosed`, the bot's merged implement PR whose run's
 issue is open past `unclosedWaitHours`, unless it says it is part of it.
 
-**The agent and the executor** (D14) are off until the repository variable
-`SUPERVISOR` is `apply` and `agent.requests` and `agent.log` in
-`config.json` name a public requests issue in this repository and the
-bot-authored supervisor log issue in the operator repository. The agent
-runs when a check fails, at most once per `agent.cooldownHours` unless it is
-the daily pass (the `7 11 * * *` schedule). It is a `research` run of the
-shared wrapper on the requests issue, with
-agent-board's built-in supervisor playbook, the policy and `health.json` as its
-task, the pool `agent.pool` and the wrapper's read-only job token. Its one
-comment carries a `supervisor-actions` block of typed requests.
+**The agent and the executor** (D14) are off unless `SUPERVISOR` is `preview`
+or `apply`. No repository variable is changed by this wiring. The agent runs
+on a failing check (with `agent.cooldownHours` cooldown), a two-hour sweep
+(`7 */2 * * *`), a manual prompt, or a new comment by the configured operator
+on the locked requests issue (#656). The comment gate also rejects PR comments;
+the login and issue are checked against trusted config in tests. The requests
+issue must be locked by the operator before comment wakes work.
+
+```sh
+gh workflow run supervisor.yml -R cgwalters-forge/tracker \
+  -f prompt="close what triage found done in agent-board"
+```
+
+Comments, prompts and the sweep share workflow-wide `supervisor-agent`
+concurrency without cancelling an active run, so a request waits through the
+previous executor instead of the trigger discarding it. The fifteen-minute
+health passes use `supervisor-health`: GitHub retains only one pending run per
+group and a newer arrival replaces it, so a shared group would let the next
+pass evict a queued prompt. A health pass that finds an agent active declines
+and retries after its cooldown; a prompt the trigger declines fails its run.
+The executor keeps its own `supervisor-execute` group. A second prompt queued
+behind a pending one still replaces it, so use the requests issue for durable
+requests and steering an active agent.
+The agent is a `research` run
+of the shared wrapper, using `agent.pool` and the wrapper's read-only job
+token, not the bot token. Its task includes the pinned agenthome supervisor
+profile and skill, agent-board's policy and this pass's health report. It also
+reads `docs/operator-notes.md`, the latest `supervisor-health` artifact's
+`health.json` and the configured state issue. Its isolated runner config sets
+`session.watch-item = true`: later comments arrive as attributed data, and
+only the configured operator's comments are instructions. Its one comment on
+the requests issue carries a `supervisor-actions` block of typed requests.
+
+No state issue number has been supplied: `agent.state` is deliberately absent
+and `dailyCaps.replace_state` is zero. The operator must file and lock a
+distinct public state issue, then add its repository and number to trusted
+config before enabling memory. Missing state is reported, never guessed.
 
 The `execute` job holds `CGWALTERS_BOT_PAT` in the `agent-apply`
 environment and runs no agent code. It executes only on a run's first
@@ -467,16 +494,18 @@ request from reaching a merging implement run or spending unbounded runs,
 the shared executor admits dispatches, with fixed briefs and reasons, only on
 locked open issues whose authors and editors are collaborators, and an
 implement dispatch only under an open `epic`-labeled parent.
-The configured `agent.kinds` here still permits only research. Dispatches are
-off by default: the omitted `maxDispatchesPerPass` and `maxDispatchesPerDay`
-caps both default to zero. This migration does not enable them. The requests
-and log issues remain unchanged. The old variable, checkpoint and queue actions
-are no longer admitted; the pinned revision also knows comment, issue, close,
-label, state and status actions, but each has a daily cap that defaults to zero
-and `config.json` sets none. The executor records dispatches before starting
-them, stops at the first failed write, and logs the outcome without agent text.
+Trusted config names the permitted dispatch kinds, tracker and project; both
+dispatch caps and every judgment action's daily cap are explicitly zero.
+The requests and log issues remain unchanged. Only the operator raises caps
+after review. The executor records requests before starting them, stops at the
+first failed write, and logs the outcome without agent text.
 `agent-board supervise trigger` supplies the wrapper inputs through
-`GITHUB_OUTPUT`; both write jobs retain the `SUPERVISOR=apply` gate.
+`GITHUB_OUTPUT`. In `preview`, the execute job lists the proposed comment
+without a bot token or calling the executor (which always writes its log).
+Only `SUPERVISOR=apply` runs `agent-board supervise execute` with the bot token.
+The hosted preview proof still requires an operator-enabled run: confirm it
+lists requests and applies none, then compare a week of preview against the
+local loop before enabling apply with small caps.
 Test the workflow wiring with `just test-poll` (set `AGENT_BOARD` to a built
 binary for the shipped-config CLI test); policy tests live in agent-board.
 

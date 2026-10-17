@@ -20,17 +20,77 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
   assert.match(workflow, /--usage-config .github\/usage\/config.json --previous "\$RUNNER_TEMP\/previous-health\/health.json"/);
   assert.match(workflow, /--workflow supervisor.yml[\s\S]*--branch "\$DEFAULT_BRANCH" --status completed --limit 5/);
   assert.match(workflow, /--pools .github\/agentic-job\/pools.json \$\{DAILY:\+"\$DAILY"\} >> "\$GITHUB_OUTPUT"/);
-  assert.match(workflow, /vars.SUPERVISOR == 'apply' && needs.health.outputs.act == 'true'/);
-  assert.match(workflow, /vars.SUPERVISOR == 'apply' && needs.agent.outputs.result-url != ''/);
-  assert.match(workflow, /group: supervisor-execute\n +cancel-in-progress: false/);
+  assert.match(workflow, /\(vars.SUPERVISOR == 'preview' \|\| vars.SUPERVISOR == 'apply'\) && needs.health.outputs.act == 'true'/);
+  assert.match(workflow, /\(vars.SUPERVISOR == 'preview' \|\| vars.SUPERVISOR == 'apply'\) && needs.agent.outputs.result-url != ''/);
+  assert.match(workflow, /^concurrency:\n[\s\S]*?\n +cancel-in-progress: false/m);
   assert.doesNotMatch(workflow, /supervisor\/.*\.cjs|just supervisor/);
   assert.deepEqual(fs.readdirSync(path.join(root, '.github/supervisor')), ['config.json']);
   const config = JSON.parse(fs.readFileSync(path.join(root, '.github/supervisor/config.json')));
   assert.deepEqual(config.agent.requests, { repository: 'cgwalters-forge/tracker', issue: 656 });
   assert.deepEqual(config.agent.log, { repository: 'cgwalters-forge/operator', issue: 2 });
-  // Omitted caps default to zero: this migration must not enable dispatches.
+  // No dispatch or judgment writes are enabled by this migration.
   assert.equal(config.agent.maxDispatchesPerPass ?? 0, 0);
   assert.equal(config.agent.maxDispatchesPerDay ?? 0, 0);
+  assert.deepEqual(config.agent.dailyCaps, {
+    comment: 0, create_issue: 0, close: 0, remove_needs_human: 0, replace_state: 0, status_update: 0,
+  });
+  assert.equal(config.agent.state, undefined);
+  assert.equal(config.agent.tracker, 'cgwalters-forge/tracker');
+  assert.match(config.agent.project, /^PVT_/);
+});
+
+test('supervisor requests and sweeps share one agent group and keep preview read-only', () => {
+  const board = JSON.parse(fs.readFileSync(path.join(root, '.github/poll/agent-board.json')));
+  const config = JSON.parse(fs.readFileSync(path.join(root, '.github/supervisor/config.json')));
+  assert.ok(workflow.includes(`github.event.comment.user.login == '${board.operator}'`));
+  assert.ok(workflow.includes(`github.event.issue.number == ${config.agent.requests.issue}`));
+  assert.match(workflow, /github.event.issue.locked == true &&\n +!github.event.issue.pull_request/);
+  assert.match(workflow, /issue_comment:\n +types: \[created\]/);
+  assert.match(workflow, /prompt:\n +description:.*\n +type: string/);
+  assert.match(workflow, /cron: '7 \*\/2 \* \* \*'/);
+  assert.ok(workflow.includes("(github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || (github.event.schedule == '*/15 * * * *' && 'supervisor-health') || 'supervisor-agent'"));
+  // Serialize whole runs, not just agent: trigger treats a workflow finishing
+  // execute as active too, which otherwise discards manual prompts. The
+  // fifteen-minute passes stay out of that group so they cannot evict a
+  // pending prompt; the executor keeps its own group across both.
+  assert.ok(workflow.indexOf('concurrency:') < workflow.indexOf('\njobs:'));
+  assert.equal(workflow.match(/concurrency:/g)?.length, 2);
+  assert.match(workflow.split('  execute:\n')[1], /concurrency:\n +group: supervisor-execute\n +cancel-in-progress: false/);
+  assert.match(workflow, /if: \$\{\{ github.event_name == 'workflow_dispatch' && steps.trigger.outputs.act != 'true' && [^\n]*\n +run: \|\n.*::error::.*\n +exit 1/);
+  assert.match(workflow, /config: .github\/agentic-job\/supervisor.toml/);
+  for (const name of ['Build agent-board at the pinned revision', 'Perform the validated requests']) {
+    const execute = workflow.split('  execute:\n')[1];
+    assert.ok(execute.includes(`- name: ${name}\n        if: \${{ vars.SUPERVISOR == 'apply' }}`));
+  }
+  const preview = workflow.split('      - name: Preview requests without applying\n')[1]
+    .split('      - name: Perform the validated requests\n')[0];
+  assert.match(preview, /GH_TOKEN: \$\{\{ github.token \}\}/);
+  assert.doesNotMatch(preview, /CGWALTERS_BOT_PAT|supervise execute/);
+  const runner = fs.readFileSync(path.join(root, '.github/agentic-job/supervisor.toml'), 'utf8');
+  assert.match(runner, /\[session\]\nwatch-item = true/);
+  assert.doesNotMatch(runner, /listen = true/);
+});
+
+test('supervisor tasks accept only operator comments and remain bounded', () => {
+  const { compose, commentEndpoint } = require('./supervisor-profile.cjs');
+  const config = { operator: 'owner', requests: { repository: 'o/r', issue: 1 } };
+  const event = { comment: { user: { login: 'owner' }, body: 'public request' }, issue: { number: 1, locked: true } };
+  for (const changed of [
+    { ...event, comment: { ...event.comment, user: { login: 'outsider' } } },
+    { ...event, issue: { number: 2, locked: true } },
+    { ...event, issue: { number: 1, locked: false } },
+    { ...event, issue: { ...event.issue, pull_request: {} } },
+  ]) assert.throws(() => compose('policy', '', changed, 'profile', config), /Not an operator/);
+  const task = compose('policy', '', event, 'profile', config);
+  for (const expected of ['public request', 'profile', 'policy', 'docs/operator-notes.md', 'health.json', 'agent.state']) {
+    assert.ok(task.includes(expected));
+  }
+  assert.ok(compose('policy', 'manual request', {}, 'profile', config).includes('manual request'));
+  assert.throws(() => compose('policy', 'x'.repeat(48 * 1024), {}, 'profile', config), /exceeds/);
+  assert.equal(commentEndpoint('https://github.com/o/r/issues/1#issuecomment-2', config.requests), 'repos/o/r/issues/comments/2');
+  for (const url of ['https://github.com/o/r/issues/2#issuecomment-2', 'https://evil.invalid/o/r/issues/1#issuecomment-2', 'https://github.com/o/r/issues/1#issuecomment-2/more']) {
+    assert.throws(() => commentEndpoint(url, config.requests), /not on the requests issue/);
+  }
 });
 
 test('previous health uses completed runs even when an agent job failed', () => {

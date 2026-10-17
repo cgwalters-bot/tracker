@@ -34,6 +34,18 @@
     "cooldownHours": 1,
     "requests": { "repository": "cgwalters-forge/tracker", "issue": 656 },
     "log": { "repository": "cgwalters-forge/operator", "issue": 2 },
-    "kinds": ["research"]
+    "kinds": ["triage", "research", "implement"],
+    "maxDispatchesPerPass": 0,
+    "maxDispatchesPerDay": 0,
+    "tracker": "cgwalters-forge/tracker",
+    "project": "PVT_kwDOE9oHIs4BlJLc",
+    "dailyCaps": {
+      "comment": 0,
+      "create_issue": 0,
+      "close": 0,
+      "remove_needs_human": 0,
+      "replace_state": 0,
+      "status_update": 0
+    }
   }
 }
