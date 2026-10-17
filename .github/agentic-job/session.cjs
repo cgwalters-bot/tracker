@@ -1,6 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const crypto = require('node:crypto');
+const supervisor = require('../poll/supervisor-profile.cjs');
 
 function compose(config, pools, profile, { pool = 'claude', idle = '', prompt = '' } = {}) {
   if (config.enabled !== true) throw new Error('Sessions are disabled in session.json');
@@ -15,12 +16,30 @@ function compose(config, pools, profile, { pool = 'claude', idle = '', prompt = 
   return { repo: config.repository, item: String(config.issue), idle: minutes, agent, model, budget: String(budget), task };
 }
 
+// The session is the supervisor: its reviewed profile and skill, fetched as
+// the scheduled run fetches them. The session's own rules come first, so
+// that the agent reads them before the profile's instruction to start a
+// pass: its opening turn is only "ready" (agentic-job sends the task as a
+// turn of its own before the operator can prompt).
+function supervisorProfile(session, settings) {
+  const issue = target => {
+    if (!target?.repository || !Number.isSafeInteger(target.issue)) {
+      throw new Error('.github/supervisor/config.json lacks agent.state or agent.requests');
+    }
+    return `${target.repository}#${target.issue}`;
+  };
+  return `${session}\nState issue: ${issue(settings.agent.state)}. Requests issue: ${issue(settings.agent.requests)}.\n\n` +
+    `${supervisor.read(supervisor.PROFILE)}\n${supervisor.read(supervisor.SKILL)}`;
+}
+
 function main() {
   // The workflow gates checkout on the default branch; the wrapper repeats it.
   const root = '.github/agentic-job/';
+  const profile = supervisorProfile(fs.readFileSync(`${root}profiles/session.md`, 'utf8'),
+    JSON.parse(fs.readFileSync('.github/supervisor/config.json', 'utf8')));
   const result = compose(JSON.parse(fs.readFileSync(`${root}session.json`)),
     JSON.parse(fs.readFileSync(`${root}pools.json`)),
-    fs.readFileSync(`${root}profiles/session.md`, 'utf8'),
+    profile,
     { pool: process.env.POOL, idle: process.env.IDLE, prompt: process.env.PROMPT });
   const delimiter = `session-${crypto.randomBytes(16).toString('hex')}`;
   fs.appendFileSync(process.env.GITHUB_OUTPUT, Object.entries(result)

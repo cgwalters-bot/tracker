@@ -44,6 +44,8 @@ jobs:
           just-version: 1.58.0
       - id: compose
         env:
+          # Fetches the supervisor's profile and skill from agenthome.
+          GH_TOKEN: ${{ github.token }}
           POOL: ${{ inputs.pool }}
           IDLE: ${{ inputs.idle-minutes }}
           PROMPT: ${{ inputs.prompt }}

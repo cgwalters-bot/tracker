@@ -55,4 +55,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { compose, commentEndpoint };
+module.exports = { compose, commentEndpoint, read, PROFILE, SKILL };
