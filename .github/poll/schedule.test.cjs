@@ -760,8 +760,21 @@ test('schedule.batch is off unless set, and bounded by agent-board', () => {
 
 test('--batch is passed only when on', async () => {
   // GARBLED fails to parse, and the error names the command it ran.
-  await assert.rejects(probePlan(GARBLED, { ...CONFIG, batch: 2 }, TOKEN, ITEM), /--planner cgwalters-bot --batch 2: output not understood/);
-  await assert.rejects(probePlan(GARBLED, CONFIG, TOKEN, ITEM), /--planner cgwalters-bot: output not understood/);
+  await assert.rejects(probePlan(GARBLED, { ...CONFIG, batch: 2 }, TOKEN, ITEM), /--bot cgwalters-bot --batch 2: output not understood/);
+  await assert.rejects(probePlan(GARBLED, CONFIG, TOKEN, ITEM), /--bot cgwalters-bot: output not understood/);
+});
+
+// #758: agent-board refuses a stacks_on plan without --bot.
+const STACKED = stub('stacked', `const args = process.argv.slice(2);
+const bot = args[args.indexOf('--bot') + 1];
+if (!args.includes('--bot')) process.stderr.write('error: a plan that stacks_on another issue needs --bot\\n');
+else process.stderr.write(\`error: waits on the pull request by \${bot} for o/r#6\\n\`);
+process.exit(1);`);
+
+test('the dry run passes the bot, so a stacked plan is not refused for want of it', async () => {
+  await assert.rejects(probePlan(GARBLED, CONFIG, TOKEN, ITEM), / --planner cgwalters-bot --bot cgwalters-bot: /);
+  const found = await probePlan(STACKED, CONFIG, TOKEN, ITEM);
+  assert.deepEqual(found, { refused: `error: waits on the pull request by ${BOT} for o/r#6` });
 });
 
 test("a dry run's batched issues are held for the rest of the pass", async () => {
