@@ -23,7 +23,7 @@
   "rebaseRounds": 2,
   "lockCollaboratorItems": 30,
   "pace": { "repository": "cgwalters-forge/bot-ops", "issue": 1, "bot": "cgwalters-bot", "marginPercent": 5 },
-  "kindPools": { "triage": "mistral" },
+  "kindPools": { "triage": "mistral", "research": "mistral" },
   "epics": {
     "repository": "cgwalters-forge/tracker"
   },

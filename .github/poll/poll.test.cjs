@@ -150,6 +150,7 @@ test('configuration follows review-enabled schedule targets and preserves pool p
   // round on a pool whose conflict runs have returned without a new head.
   assert.equal(c.toilFixPool, 'openai');
   assert.equal(c.kindPools.triage, 'mistral');
+  assert.equal(c.kindPools.research, 'mistral');
   // agent-board's refund reads the same issue as the hold: the probe's, here.
   assert.deepEqual(c.brokerOutage, { repository: c.dispatchRepo, author: c.bot, leadSeconds: 1800 });
   const pools = require('../agentic-job/pools.json');
