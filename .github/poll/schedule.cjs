@@ -850,9 +850,13 @@ function failure(args, why, stderr, env) {
 // The same for a dry run and --apply, so a preview shows the batch a run
 // would take. --batch only when on, so an agent-board without it still runs,
 // and not for a step decide() sends alone.
+// --bot is the planner, the configured bot: agent-board needs it to find a
+// stacks_on plan's lower pull request (refusing the plan without it), and it
+// also has agent-board wait for or run beside the bot's open pull requests
+// and runs in flight on the plan's repository, as agent-board documents it.
 function dispatchArgs(config, batch = true) {
   return ['--caller', config.caller, '--workflow', config.workflow,
-    '--operator', config.operator, '--planner', config.planner,
+    '--operator', config.operator, '--planner', config.planner, '--bot', config.planner,
     ...(config.batch && batch ? ['--batch', String(config.batch)] : [])];
 }
 
