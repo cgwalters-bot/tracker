@@ -240,8 +240,8 @@ one whose run filed it as a follow-up, does not. Closed, unmerged PRs do not cou
 `schedule.triage` (0 to 5; 0, off, if unset) turns those two guesses,
 probably done and `no plan`, into questions rather than skips that stall the
 board ([#636](https://github.com/cgwalters-forge/tracker/issues/636)). Each
-pass asks at most that many: an item gets one `kind: triage` run (in
-`coordinator.planPool`, taking a slot) that compares the issue with the
+pass asks at most that many: an item gets one `kind: triage` run (on
+`schedule.triagePool`, `coordinator.planPool` if unset, taking a slot) that compares the issue with the
 candidate PR and later merged ones and answers in a `schedule-triage` block:
 done (the next pass closes the issue, linking the answer), partly or not done
 (with an implement plan for what is left, which is then dispatched as any plan),

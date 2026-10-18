@@ -524,7 +524,7 @@ test('with --apply, a probably done item gets a triage run, and a stub with no p
   const [, record] = sent[1];
   const request = JSON.parse(/^<!-- schedule-triage\/v1: (.*) -->$/m.exec(record.body)[1]).request;
   const { inputs } = sent[2][1];
-  assert.deepEqual({ ...inputs, task: undefined }, { kind: 'triage', repo: EPICS, item: '41', pool: REPO_CONFIG.coordinator.planPool, task: undefined });
+  assert.deepEqual({ ...inputs, task: undefined }, { kind: 'triage', repo: EPICS, item: '41', pool: REPO_CONFIG.schedule.triagePool, task: undefined });
   assert.ok(inputs.task.includes(request) && inputs.task.includes('https://github.com/o/r/pull/9'));
   assert.ok(calls.every(c => !c.startsWith('PATCH ')));
 });
@@ -872,6 +872,18 @@ test('schedule.triage is off unless set, and bounded', () => {
   assert.equal(parse({}).triage, 0);
   assert.equal(parse({ triage: 5 }).triage, 5);
   for (const triage of [-1, 6, '2', 1.5]) assert.throws(() => parse({ triage }), /schedule.triage/);
+});
+
+test('schedule.triagePool defaults to the plan pool, and must name a configured pool', () => {
+  const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
+  const schedule = { owner: 'o', project: 1, wip: 4, repositories: ['o/r'] };
+  const parse = (coordinator, extra) => loadConfig(JSON.stringify({ ...base, coordinator, schedule: { ...schedule, ...extra } }));
+  // Unset, it follows the plan pool, itself defaulting to claude.
+  assert.equal(parse(undefined, {}).triagePool, 'claude');
+  assert.equal(parse({ planPool: 'mistral' }, {}).triagePool, 'mistral');
+  assert.equal(parse({ planPool: 'mistral' }, { triagePool: 'openai' }).triagePool, 'openai');
+  for (const triagePool of ['nobody', 3]) assert.throws(() => parse({}, { triagePool }), /schedule.triagePool/);
+  assert.throws(() => parse({ planPool: 'nobody' }, {}), /coordinator.planPool/);
 });
 
 test('off, a guess is a skip as before', async () => {
