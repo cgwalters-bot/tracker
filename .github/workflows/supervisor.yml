@@ -34,7 +34,7 @@ permissions: {}
 # commit every write but the log is capped at zero unless config.json sets
 # a cap. Move it only with a review of that revision's `supervise` code.
 env:
-  AGENT_BOARD_REV: be7ada51ea81fdf36cac9b63d8b19016dc2d8fd0
+  AGENT_BOARD_REV: bfeb126054abf5b024e71ca42ffd401247782989
 # Keep whole runs serialized: trigger considers the previous workflow active
 # through execute, even after its agent job ends, so a job-only group would
 # discard manual prompts in that window. GitHub keeps one pending run per
