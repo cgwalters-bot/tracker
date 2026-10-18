@@ -48,6 +48,10 @@ poll *args:
 refresh-usage:
     gh workflow run usage.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
 
+# Reuse the release train's due check; poll.yml gates this on its existing opt-in.
+start-release-train:
+    gh workflow run release-train.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
+
 # Without a revision, the configured branch's head; supervisor.yml passes a
 # pinned commit so the program that holds the bot's token is the reviewed one.
 build-agent-board rev="":
