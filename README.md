@@ -674,10 +674,15 @@ they are not writes. Prose requests are not counted as epic plans. Test with
 
 ## The usage snapshot
 
-`.github/workflows/usage.yml` publishes, every fifteen minutes, the
+`.github/workflows/usage.yml` publishes after each completed `poll`, with a
+fifteen-minute cron fallback and manual dispatch, the
 `bot-usage/v1` snapshot that the review app's pool meters read: one comment by
 the bot, edited in place, on the issue `.github/usage/config.json` names, in a
-repository GitHub must say is private. It joins the tailnet as the agent job
+repository GitHub must say is private. Before joining, it reads the configured
+bot's comment (the first 100 comments only) and skips publication when every
+paced pool's `observed_at` is less than ten minutes old. Missing, malformed,
+future or stale observations cause a publish attempt. Runs remain serialized.
+It joins the tailnet as the agent job
 does and reads the inference broker's `/usage` (the variable `INFERENCE_URL`,
 else the organization's tailnet setting). It holds the claude and openai pools,
 paced as homegit's frozen `bin/bot-capacity` paced them (the config's `pacing`), but
