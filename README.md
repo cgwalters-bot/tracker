@@ -674,8 +674,10 @@ they are not writes. Prose requests are not counted as epic plans. Test with
 
 ## The usage snapshot
 
-`.github/workflows/usage.yml` publishes after each completed `poll`, with a
-fifteen-minute cron fallback and manual dispatch, the
+Each non-dry `poll` pass explicitly dispatches `.github/workflows/usage.yml`,
+even when idle and not starting a successor. Job-token-started polls cannot
+rely on `workflow_run` to start the publisher; that trigger remains for other
+completed polls, with a fifteen-minute cron fallback and manual dispatch. It publishes the
 `bot-usage/v1` snapshot that the review app's pool meters read: one comment by
 the bot, edited in place, on the issue `.github/usage/config.json` names, in a
 repository GitHub must say is private. Before joining, it reads the configured

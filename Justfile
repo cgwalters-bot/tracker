@@ -44,6 +44,10 @@ comment-wake-config:
 poll *args:
     node .github/poll/poll.cjs "$@"
 
+# Dispatch only the default branch's publisher in this repository.
+refresh-usage:
+    gh workflow run usage.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
+
 # Without a revision, the configured branch's head; supervisor.yml passes a
 # pinned commit so the program that holds the bot's token is the reviewed one.
 build-agent-board rev="":
