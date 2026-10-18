@@ -106,7 +106,7 @@ test('misctool is a dispatch and fix target with matching workflow-edit bounds',
 
 test('dispatch.toml and fix.toml open complete work ready', () => {
   assert.match(outputs('dispatch.toml'), /^create_pull_request = \{ max = 1, ready_when_complete = true \}$/m);
-  assert.match(outputs('fix.toml'), /^push_to_pull_request_branch = \{ max = 1, branches = \["dispatch\/\*\*", "bot\/\*\*"\], replacement_max_commits = 5, ready_when_complete = true \}$/m);
+  assert.match(outputs('fix.toml'), /^push_to_pull_request_branch = \{ max = 1, branches = \["dispatch\/\*\*", "bot\/\*\*", "release-train\/\*\*"\], replacement_max_commits = 5, ready_when_complete = true \}$/m);
 });
 
 // D17 (docs/operator-notes.md, 2026-10-17): bootc-dev is open to

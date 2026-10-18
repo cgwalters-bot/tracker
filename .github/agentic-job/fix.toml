@@ -45,7 +45,12 @@ max_patch_files = 50
 # fork take a push, on any branch these globs admit. Neither midstream
 # fork has it yet, so their pushes fail at apply until the operator adds
 # it, accepting that the fork's own workflows run the pushed commits.
-push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**"], replacement_max_commits = 5, ready_when_complete = true }
+#
+# `release-train/**` is the release train's version-bump and pin pull
+# requests (.github/release-train), which the poll now follows like any
+# bot pull request (agent-board#142): a new release can need its pin bump
+# fixed, as actions#73 did for v0.6.2.
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5, ready_when_complete = true }
 # A blocked fix must explain itself without inventing a patch. Check pins
 # this comment to the run's pull request; no labels or other writes are added.
 add_comment = { max = 1 }
