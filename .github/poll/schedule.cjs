@@ -154,12 +154,20 @@ function loadConfig(text) {
   config.timeoutMs = t * 1000;
   // Triage runs, and needs-design records, a pass may start (readTriage);
   // 0, the default, is off. They write implement plans, as the coordinator's
-  // planning runs do, so they use its pool.
+  // planning runs do, so they default to its pool; `schedule.triagePool` moves
+  // the questions themselves, toil a cheaper pool can answer, while the plans
+  // they write are still checked by the planner rules and dispatched on their
+  // own pools.
   config.triage = s.triage ?? 0;
   if (!Number.isSafeInteger(config.triage) || config.triage < 0 || config.triage > TRIAGE_LIMIT) {
     throw new Error(`agent-board.json: schedule.triage must be 0 to ${TRIAGE_LIMIT}`);
   }
-  config.triagePool = all.coordinator?.planPool ?? 'claude';
+  const pools = require('../agentic-job/pools.json');
+  config.planPool = all.coordinator?.planPool ?? 'claude';
+  config.triagePool = s.triagePool ?? config.planPool;
+  for (const [name, pool] of [['coordinator.planPool', config.planPool], ['schedule.triagePool', config.triagePool]]) {
+    if (typeof pool !== 'string' || !Object.hasOwn(pools, pool)) throw new Error(`agent-board.json: ${name} must name a configured pool`);
+  }
   // Extra small sibling issues one implement run may also do (agent-board's
   // `dispatch --batch`); 0, the default, is off.
   config.batch = s.batch ?? 0;
@@ -1033,7 +1041,10 @@ async function main(argv) {
   let fill = [];
   if (config.fill) {
     const gql = body => request(token, 'POST', '/graphql', body);
-    pace = await readPace(gql, config.triagePool, Date.now())
+    // The pace read is the plan pool's: fill mode fills that pool's slots, so
+    // it is that pool's usage that bounds it, whatever pool a triage question
+    // itself runs on (`schedule.triagePool`).
+    pace = await readPace(gql, config.planPool, Date.now())
       .catch(err => ({ fill: false, mode: `normal (usage not read: ${err.message.slice(0, 300)})` }));
     const answers = [];
     for (const repository of pace.fill ? config.followed : []) {
