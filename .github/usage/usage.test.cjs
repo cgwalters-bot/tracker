@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const http = require('node:http');
-const { MARKER, carryPools, checkConfig, findComment, mistralAllowance, mistralUsage, poolPace, previousSnapshot, publish, readBroker, render, snapshot } = require('./usage.cjs');
+const { MARKER, carryPools, checkConfig, findComment, mistralAllowance, mistralUsage, needsPublish, poolPace, previousSnapshot, publish, readBroker, render, snapshot } = require('./usage.cjs');
 
 const CONFIG = require('./config.json');
 const POOLS = require('../agentic-job/pools.json');
@@ -16,6 +16,50 @@ const PACING = { target: 0.95, burst: 3 };
 const MISTRAL = { model: 'mistral-medium', allowance: { amount: 300, currency: 'USD', period: 'calendar-month' } };
 const PRICES = { 'mistral-medium': { input: 0.4, output: 2 } };
 const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} != ${b}`);
+
+test('freshness skips only when every configured pool observation is under ten minutes old', async () => {
+  const fresh = () => ({ schema: 'bot-usage/v1', pools: Object.fromEntries(
+    Object.keys(CONFIG.pacing).map(name => [name, { observed_at: new Date(NOW - 9 * 60e3).toISOString() }]),
+  ) });
+  const first = Object.keys(CONFIG.pacing)[0];
+  for (const [label, mutate, expected] of [
+    ['fresh', () => {}, false],
+    ['boundary', s => { s.pools[first].observed_at = new Date(NOW - 10 * 60e3).toISOString(); }, true],
+    ['stale', s => { s.pools[first].observed_at = new Date(NOW - 46 * 60e3).toISOString(); s.updated_at = new Date(NOW).toISOString(); }, true],
+    ['missing pool', s => { delete s.pools[first]; }, true],
+    ['null pool', s => { s.pools[first] = null; }, true],
+    ['invalid date', s => { s.pools[first].observed_at = 'invalid'; }, true],
+    ['future', s => { s.pools[first].observed_at = new Date(NOW + 1).toISOString(); }, true],
+    ['wrong schema', s => { s.schema = 'unknown'; }, true],
+  ]) {
+    const snap = fresh();
+    mutate(snap);
+    const body = `${MARKER}\n\n\`\`\`json\n${JSON.stringify(snap)}\n\`\`\``;
+    const request = async (method, url) => {
+      assert.equal(method, 'GET');
+      assert.equal(url, `/repos/${CONFIG.repo}/issues/${CONFIG.issue}/comments?per_page=100`);
+      return [{ user: { login: CONFIG.bot }, body }];
+    };
+    assert.equal(await needsPublish({ config: CONFIG, request, now: NOW }), expected, label);
+  }
+  for (const comments of [[], [{ user: { login: CONFIG.bot }, body: `${MARKER}\ninvalid` }],
+    [{ user: { login: 'another-user' }, body: render(fresh(), 'test') }]]) {
+    assert.equal(await needsPublish({ config: CONFIG, request: async () => comments, now: NOW }), true);
+  }
+  await assert.rejects(needsPublish({ config: CONFIG, request: async () => { throw new Error('unavailable'); }, now: NOW }), /unavailable/);
+});
+
+test('workflow checks freshness before joining and uses only default-branch code', () => {
+  const workflow = require('node:fs').readFileSync(require('node:path').join(__dirname, '../workflows/usage.yml'), 'utf8');
+  assert.match(workflow, /workflow_run:[\s\S]*workflows: \[poll\]\n\s+types: \[completed\]/);
+  assert.match(workflow, /github.ref == format\('refs\/heads\/\{0\}', github.event.repository.default_branch\)/);
+  assert.match(workflow, /group: usage\n\s+cancel-in-progress: false/);
+  assert.ok(workflow.indexOf('just publish-usage --check-freshness') < workflow.indexOf('name: Join the tailnet'));
+  for (const step of ['Join the tailnet', 'Publish']) {
+    assert.ok(workflow.includes(`- name: ${step}\n        if: steps.freshness.outputs.publish == 'true'`));
+  }
+  assert.doesNotMatch(workflow, /github.event.workflow_run\.|download-artifact/);
+});
 
 test('the repository config and the Mistral allowance in pools.json are usable', () => {
   checkConfig(CONFIG);

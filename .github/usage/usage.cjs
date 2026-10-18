@@ -35,6 +35,7 @@ const MAX_BROKER_BYTES = 256 * 1024;
 const MAX_BODY_CHARS = 32 * 1024;
 // The review app reads the first page of the issue's comments, this long.
 const COMMENT_PAGE = 100;
+const FRESH_MS = 10 * MINUTE_MS;
 
 const REPO_RE = /^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/;
 const LOGIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
@@ -227,6 +228,18 @@ function previousSnapshot(body) {
   }
 }
 
+// Only skip a join when every configured paced pool has a recent observation.
+// A newer envelope (or short-window header) cannot freshen a weekly reading.
+async function needsPublish({ config, request, now }) {
+  const comments = await request('GET', `/repos/${config.repo}/issues/${config.issue}/comments?per_page=${COMMENT_PAGE}`);
+  const previous = previousSnapshot(findComment(comments, config.bot)?.body);
+  return !Object.keys(config.pacing).every(name => {
+    const observed = previous?.pools?.[name]?.observed_at;
+    const age = now - (typeof observed === 'string' ? Date.parse(observed) : NaN);
+    return Number.isFinite(age) && age >= 0 && age < FRESH_MS;
+  });
+}
+
 // carryPools(snap, previous, config, now): snap, with each pool it has no
 // reading of taken from the previous snapshot, paced again, while that
 // one's window has yet to reset. The broker keeps its readings in memory
@@ -322,10 +335,18 @@ async function readBroker(base) {
 }
 
 async function main(argv) {
-  const unknown = argv.filter(a => a !== '--dry-run');
-  if (unknown.length) throw new Error(`usage: usage.cjs [--dry-run] (unknown: ${unknown.join(' ')})`);
+  const unknown = argv.filter(a => !['--dry-run', '--check-freshness'].includes(a));
+  if (unknown.length) throw new Error(`usage: usage.cjs [--dry-run | --check-freshness] (unknown: ${unknown.join(' ')})`);
   const dryRun = argv.includes('--dry-run');
+  if (dryRun && argv.includes('--check-freshness')) throw new Error('--dry-run and --check-freshness are mutually exclusive');
   const config = checkConfig(JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')));
+  if (argv.includes('--check-freshness')) {
+    const token = process.env.GH_TOKEN;
+    if (!token) throw new Error(`GH_TOKEN must hold ${config.bot}'s token`);
+    const publish = await needsPublish({ config, request: (...args) => request(token, ...args), now: Date.now() });
+    fs.appendFileSync(process.env.GITHUB_OUTPUT, `publish=${publish}\n`);
+    return;
+  }
   const mistralPool = JSON.parse(fs.readFileSync(POOLS_FILE, 'utf8')).mistral;
   const base = process.env.INFERENCE_URL;
   if (!base) throw new Error('INFERENCE_URL must name the inference broker');
@@ -343,7 +364,7 @@ async function main(argv) {
   await publish({ config, snap, render: s => render(s, workflow), request: (...args) => request(token, ...args), log: console.log });
 }
 
-module.exports = { MARKER, carryPools, checkConfig, claudeReading, findComment, mistralAllowance, mistralUsage, openaiReading, poolPace, previousSnapshot, publish, readBroker, render, snapshot };
+module.exports = { MARKER, carryPools, checkConfig, claudeReading, findComment, mistralAllowance, mistralUsage, needsPublish, openaiReading, poolPace, previousSnapshot, publish, readBroker, render, snapshot };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`usage: ${err.message}`); process.exit(1); });
