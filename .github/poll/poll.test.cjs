@@ -10,6 +10,21 @@ const { MARKER } = require('./broker.cjs');
 
 const env = { AGENT_BOARD: '/trusted/agent-board', POLL_STATE: '/trusted/state.json' };
 
+test('usage refresh is independent of poll activity and survives build failures without writing in dry runs', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../workflows/poll.yml'), 'utf8');
+  const step = workflow.match(/      - name: Refresh usage\n([\s\S]*?)(?=      - name:)/);
+  assert.ok(step, 'job-token polls need explicit dispatch, not only workflow_run');
+  assert.match(step[1], /if: \$\{\{ !inputs\.dry-run \}\}/);
+  assert.match(step[1], /continue-on-error: true/);
+  assert.match(step[1], /timeout-minutes: 1/);
+  assert.match(step[1], /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(step[1], /DEFAULT_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+  assert.match(step[1], /run: just refresh-usage/);
+  assert.ok(step.index < workflow.indexOf('        id: build'));
+  const recipes = fs.readFileSync(path.join(__dirname, '../../Justfile'), 'utf8');
+  assert.match(recipes, /refresh-usage:\n    gh workflow run usage\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$DEFAULT_BRANCH"/);
+});
+
 // No outage issue is open.
 const none = async () => [];
 const api = issues => async (token, method, p) => {
