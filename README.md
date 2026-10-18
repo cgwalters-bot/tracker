@@ -739,8 +739,14 @@ closed or its tag is not on agentic-job's default branch. The PRs come from the 
 with the release notes for the callers' interface changes, and go through
 each repository's review and queue; the train only waits for them.
 
+Each non-dry poll pass also dispatches the train on the default branch when
+enabled, so a delayed or dropped hourly cron does not strand a due release.
+The dispatch has a one-minute bound and failure does not stop the poll;
+the train serializes passes and checks whether work is due without a build
+or tailnet join. The hourly cron remains a fallback.
+
 It is off unless the repository variable `RELEASE_TRAIN` is `dry-run`,
-which prints each hourly pass's step, or `apply`, which takes it with
+which prints each pass's step, or `apply`, which takes it with
 `CGWALTERS_BOT_PAT`: that token needs to open issues here, push to the bot's
 forks (named in the configuration: a fork need not share its parent's name)
 with the workflows permission, as the pins are in workflow files, open PRs

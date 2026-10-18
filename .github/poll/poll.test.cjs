@@ -25,6 +25,27 @@ test('usage refresh is independent of poll activity and survives build failures 
   assert.match(recipes, /refresh-usage:\n    gh workflow run usage\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$DEFAULT_BRANCH"/);
 });
 
+test('poll starts only the enabled default-branch release train before expensive work', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../workflows/poll.yml'), 'utf8');
+  const step = workflow.match(/      - name: Start release train\n([\s\S]*?)(?=      - name:)/);
+  assert.ok(step);
+  assert.match(step[1], /if: \$\{\{ !inputs\.dry-run && \(vars\.RELEASE_TRAIN == 'dry-run' \|\| vars\.RELEASE_TRAIN == 'apply'\) \}\}/);
+  assert.match(step[1], /continue-on-error: true/);
+  assert.match(step[1], /timeout-minutes: 1/);
+  assert.match(step[1], /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(step[1], /DEFAULT_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+  assert.match(step[1], /run: just start-release-train/);
+  assert.ok(step.index < workflow.indexOf('        id: build'));
+  // Both ends refuse other branches: the poll job that dispatches, and the train's pass.
+  assert.match(workflow, /  poll:\n    if: \$\{\{ github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\) \}\}/);
+  const recipes = fs.readFileSync(path.join(__dirname, '../../Justfile'), 'utf8');
+  assert.match(recipes, /start-release-train:\n    gh workflow run release-train\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$DEFAULT_BRANCH"/);
+  const train = fs.readFileSync(path.join(__dirname, '../workflows/release-train.yml'), 'utf8');
+  assert.match(train, /concurrency:\n  group: release-train\n  cancel-in-progress: false/);
+  assert.match(train, /cron: '23 \* \* \* \*'/);
+  assert.match(train, /  pass:\n    if: \$\{\{ \(vars\.RELEASE_TRAIN == 'dry-run' \|\| vars\.RELEASE_TRAIN == 'apply'\) && github\.ref == format\('refs\/heads\/\{0\}', github\.event\.repository\.default_branch\) \}\}/);
+});
+
 // No outage issue is open.
 const none = async () => [];
 const api = issues => async (token, method, p) => {

@@ -126,9 +126,9 @@ jobs:
   poll:
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-26.04
-    # Usage dispatch (1), build (10), restore (2), pass (6), upload (2), successor wait (5),
+    # Usage/train dispatch (2), build (10), restore (2), pass (6), upload (2), successor wait (5),
     # plus five minutes for checkout/setup and dispatch overhead.
-    timeout-minutes: 31
+    timeout-minutes: 32
     permissions:
       contents: read
       actions: write
@@ -157,6 +157,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: just refresh-usage
+      # Cron starvation can leave a due release waiting indefinitely. Reuse
+      # the train's opt-in and serialized, cheap due check, not a second clock.
+      - name: Start release train
+        if: ${{ !inputs.dry-run && (vars.RELEASE_TRAIN == 'dry-run' || vars.RELEASE_TRAIN == 'apply') }}
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: just start-release-train
       - name: Build agent-board at the branch's head
         id: build
         timeout-minutes: 10
