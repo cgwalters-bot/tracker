@@ -25,6 +25,25 @@ test('usage refresh is independent of poll activity and survives build failures 
   assert.match(recipes, /refresh-usage:\n    gh workflow run usage\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$DEFAULT_BRANCH"/);
 });
 
+test('every poll pass starts the supervisor, which paces it and keeps one pending start', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../workflows/poll.yml'), 'utf8');
+  const step = workflow.match(/      - name: Start supervisor\n([\s\S]*?)(?=      - name:)/);
+  assert.ok(step, 'job-token polls raise no workflow_run for supervisor.yml (#763)');
+  assert.match(step[1], /if: \$\{\{ !inputs\.dry-run \}\}/);
+  assert.match(step[1], /continue-on-error: true/);
+  assert.match(step[1], /timeout-minutes: 1/);
+  assert.match(step[1], /GH_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(step[1], /DEFAULT_BRANCH: \$\{\{ github\.event\.repository\.default_branch \}\}/);
+  assert.match(step[1], /run: just start-supervisor/);
+  assert.ok(step.index < workflow.indexOf('        id: build'));
+  const recipes = fs.readFileSync(path.join(__dirname, '../../Justfile'), 'utf8');
+  // No prompt: supervisor.yml paces a prompt-less dispatch as the poll chain.
+  assert.match(recipes, /start-supervisor:\n    gh workflow run supervisor\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$DEFAULT_BRANCH"\n/);
+  const supervisor = fs.readFileSync(path.join(__dirname, '../workflows/supervisor.yml'), 'utf8');
+  assert.match(supervisor, /github\.event_name == 'workflow_dispatch' && inputs\.prompt == ''\)\) && 'supervisor-health'/);
+  assert.match(supervisor, /^concurrency:\n  group: .*\n  cancel-in-progress: false\n/m);
+});
+
 test('poll starts only the enabled default-branch release train before expensive work', () => {
   const workflow = fs.readFileSync(path.join(__dirname, '../workflows/poll.yml'), 'utf8');
   const step = workflow.match(/      - name: Start release train\n([\s\S]*?)(?=      - name:)/);

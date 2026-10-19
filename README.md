@@ -391,12 +391,15 @@ scheduler runs them as for any epic.
 
 `supervisor.yml` runs `agent-board supervise health` every fifteen minutes on the default
 branch. GitHub's cron started one run in two hours on 17 Oct (#730), so, like
-the poll, it also starts at the end of each poll run, and
-`.github/poll/supervisor-due.cjs` paces it from the `times.json` the previous
-`supervisor-health` artifact carries: a poll-started run within fifteen
-minutes of the last health pass ends before the build, and a pass sweeps when
-the last sweep was two hours ago or more. The crons remain as a fallback; they
-and explicit requests are not rate-limited. Scheduled runs used to be skipped: the job also required the
+the poll, it also starts at the end of each poll run, and each non-dry poll
+pass dispatches it without a prompt, since self-dispatched passes raise no
+`workflow_run` (#763). `.github/poll/supervisor-due.cjs` paces both from the
+`times.json` the previous `supervisor-health` artifact carries: a poll-started
+run within fifteen minutes of the last health pass ends before the build, and
+a pass sweeps when the last sweep was two hours ago or more. The crons remain
+as a fallback; they and explicit requests (a prompt or a comment) are not
+rate-limited. A dispatch without a prompt, by hand too, is paced as a
+poll-started run. Scheduled runs used to be skipped: the job also required the
 repository variable `SUPERVISOR=observe`, which was never set. The health pass
 only reads, so it now always runs. `health.json` is a list of checks
 with `id`, `status` (`ok`, `warn`, `fail`), evidence links and a suggested

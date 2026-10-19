@@ -8,7 +8,9 @@ name: supervisor
 # Started like the poll, at the end of each of its runs, because GitHub's
 # cron can go hours without firing (#730); .github/poll/supervisor-due.cjs
 # limits those starts to a health pass every fifteen minutes and a sweep
-# every two hours. The crons are only a fallback for a stalled poll.
+# every two hours. Self-dispatched poll passes raise no workflow_run, so
+# each poll pass also dispatches this without a prompt (#763), which is
+# paced the same way. The crons are only a fallback for a stalled poll.
 on:
   schedule:
     - cron: '*/15 * * * *'
@@ -43,9 +45,10 @@ env:
 # behind a long agent run. A health pass that finds an agent active declines
 # (failures keep their cooldown and retry); a manual prompt declined that way
 # fails visibly below. Outsiders' skipped workflows must not evict an
-# operator's pending run.
+# operator's pending run. A prompt-less dispatch, the poll's start every
+# pass, is a health pass too: in supervisor-agent it would evict a prompt.
 concurrency:
-  group: ${{ (github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run') && 'supervisor-health') || 'supervisor-agent' }}
+  group: ${{ (github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.prompt == '')) && 'supervisor-health') || 'supervisor-agent' }}
   cancel-in-progress: false
 jobs:
   health:
@@ -104,6 +107,7 @@ jobs:
         timeout-minutes: 1
         env:
           EVENT: ${{ github.event_name }}
+          PROMPT: ${{ inputs.prompt }}
         run: node .github/poll/supervisor-due.cjs
       # Built fresh, never a cached binary that another job could replace
       # before token use.
@@ -148,7 +152,7 @@ jobs:
       # Operator comments also reach an active agent through watch-item; a
       # prompt has no other way in, so its operator must see it was dropped.
       - name: Fail a manual prompt the trigger declined
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.trigger.outputs.act != 'true' && (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.prompt != '' && steps.trigger.outputs.act != 'true' && (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') }}
         run: |
           echo "::error::The trigger declined this prompt, most likely because another supervisor agent run is active. Repeat it when that run ends."
           exit 1
