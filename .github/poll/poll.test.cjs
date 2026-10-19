@@ -208,6 +208,12 @@ test('configuration follows review-enabled schedule targets and preserves pool p
   assert.equal(c.kindPools.research, 'mistral');
   // agent-board's refund reads the same issue as the hold: the probe's, here.
   assert.deepEqual(c.brokerOutage, { repository: c.dispatchRepo, author: c.bot, leadSeconds: 1800 });
+  // Without mergeQueue agent-board leaves a removed pull request to be enqueued
+  // again and never reads a repeated merge-group failure as a fix round
+  // (agent-board#166). It also holds a merge or rebase while a queue entry
+  // changes the same files; where a repository has no queue that read comes
+  // back empty and holds nothing, at one query a base branch a pass.
+  assert.deepEqual(c.mergeQueue, { tries: 3 });
   const pools = require('../agentic-job/pools.json');
   for (const pool of [...c.fixPools, c.toilFixPool, ...Object.values(c.kindPools)]) assert.ok(pools[pool], pool);
 });
