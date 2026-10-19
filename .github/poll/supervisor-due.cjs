@@ -16,11 +16,14 @@ function since(at, now) {
 
 // health: whether this run takes a health pass; only the poll's chain is
 // rate-limited, since it fires every few minutes and the crons are only a
-// fallback. daily: whether the trigger bypasses the failure cooldown, for an
+// fallback. The chain is workflow_run and the dispatch without a prompt that
+// every poll pass makes (#763); its empty prompt asks for nothing explicit.
+// daily: whether the trigger bypasses the failure cooldown, for an
 // explicit request or a sweep that is due, the last one two hours ago.
-function due(event, previous, now) {
-  const explicit = event === 'workflow_dispatch' || event === 'issue_comment';
-  const health = event !== 'workflow_run' || since(previous.health, now) >= HEALTH_MS;
+function due(event, previous, now, prompt = '') {
+  const chain = event === 'workflow_run' || (event === 'workflow_dispatch' && prompt === '');
+  const explicit = !chain && (event === 'workflow_dispatch' || event === 'issue_comment');
+  const health = !chain || since(previous.health, now) >= HEALTH_MS;
   const daily = health && (explicit || since(previous.sweep, now) >= SWEEP_MS);
   const stamp = new Date(now).toISOString();
   return {
@@ -35,7 +38,7 @@ function main() {
   try {
     previous = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'previous-health/times.json'), 'utf8')) ?? {};
   } catch {}
-  const result = due(process.env.EVENT, previous, Date.now());
+  const result = due(process.env.EVENT, previous, Date.now(), process.env.PROMPT ?? '');
   // Uploaded beside health.json, so the next run reads both from one artifact.
   fs.writeFileSync('times.json', `${JSON.stringify(result.times)}\n`);
   fs.appendFileSync(process.env.GITHUB_OUTPUT, `health=${result.health}\ndaily=${result.daily}\n`);

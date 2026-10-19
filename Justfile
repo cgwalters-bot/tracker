@@ -48,6 +48,10 @@ poll *args:
 refresh-usage:
     gh workflow run usage.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
 
+# Without a prompt: supervisor.yml paces it as a poll-chain start.
+start-supervisor:
+    gh workflow run supervisor.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
+
 # Reuse the release train's due check; poll.yml gates this on its existing opt-in.
 start-release-train:
     gh workflow run release-train.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"

@@ -126,9 +126,9 @@ jobs:
   poll:
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-26.04
-    # Usage/train dispatch (2), build (10), restore (2), pass (6), upload (2), successor wait (5),
+    # Usage/supervisor/train dispatch (3), build (10), restore (2), pass (6), upload (2), successor wait (5),
     # plus five minutes for checkout/setup and dispatch overhead.
-    timeout-minutes: 32
+    timeout-minutes: 33
     permissions:
       contents: read
       actions: write
@@ -157,6 +157,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: just refresh-usage
+      # Same gap for supervisor.yml's workflow_run trigger (#763). It paces a
+      # prompt-less dispatch like a poll-chain start and keeps one pending
+      # run in supervisor-health, so a start every pass costs a short job.
+      - name: Start supervisor
+        if: ${{ !inputs.dry-run }}
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: just start-supervisor
       # Cron starvation can leave a due release waiting indefinitely. Reuse
       # the train's opt-in and serialized, cheap due check, not a second clock.
       - name: Start release train

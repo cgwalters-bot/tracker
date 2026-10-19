@@ -55,7 +55,9 @@ test('supervisor requests and sweeps share one agent group and keep preview read
   assert.match(workflow, /issue_comment:\n +types: \[created\]/);
   assert.match(workflow, /prompt:\n +description:.*\n +type: string/);
   assert.match(workflow, /cron: '7 \*\/2 \* \* \*'/);
-  assert.ok(workflow.includes("(github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run') && 'supervisor-health') || 'supervisor-agent'"));
+  // The poll's prompt-less dispatches are health passes; in supervisor-agent
+  // every poll pass would evict a pending prompt (#763).
+  assert.ok(workflow.includes("(github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.prompt == '')) && 'supervisor-health') || 'supervisor-agent'"));
   // Serialize whole runs, not just agent: trigger treats a workflow finishing
   // execute as active too, which otherwise discards manual prompts. The
   // fifteen-minute passes stay out of that group so they cannot evict a
@@ -63,7 +65,7 @@ test('supervisor requests and sweeps share one agent group and keep preview read
   assert.ok(workflow.indexOf('concurrency:') < workflow.indexOf('\njobs:'));
   assert.equal(workflow.match(/concurrency:/g)?.length, 2);
   assert.match(workflow.split('  execute:\n')[1], /concurrency:\n +group: supervisor-execute\n +cancel-in-progress: false/);
-  assert.match(workflow, /if: \$\{\{ github.event_name == 'workflow_dispatch' && steps.trigger.outputs.act != 'true' && [^\n]*\n +run: \|\n.*::error::.*\n +exit 1/);
+  assert.match(workflow, /if: \$\{\{ github.event_name == 'workflow_dispatch' && inputs.prompt != '' && steps.trigger.outputs.act != 'true' && [^\n]*\n +run: \|\n.*::error::.*\n +exit 1/);
   assert.match(workflow, /config: .github\/agentic-job\/supervisor.toml/);
   for (const name of ['Build agent-board at the pinned revision', 'Perform the validated requests']) {
     const execute = workflow.split('  execute:\n')[1];
@@ -108,7 +110,7 @@ test('the poll chain starts supervisor passes, paced from the previous health ar
   const order = ['- name: Previous health report', '- name: Whether a pass is due', '- name: Build agent-board',
     '- name: Read-only health snapshot', '- uses: actions/upload-artifact', '- name: Whether the agent runs'];
   assert.deepEqual(order.map(step => health.indexOf(step)), order.map(step => health.indexOf(step)).sort((a, b) => a - b));
-  assert.match(health, /id: due\n[\s\S]*?EVENT: \$\{\{ github.event_name \}\}\n +run: node .github\/poll\/supervisor-due.cjs\n/);
+  assert.match(health, /id: due\n[\s\S]*?EVENT: \$\{\{ github.event_name \}\}\n +PROMPT: \$\{\{ inputs.prompt \}\}\n +run: node .github\/poll\/supervisor-due.cjs\n/);
   for (const step of order.slice(2)) {
     assert.match(health.split(step)[1], /^.*\n( +id: \w+\n| +#.*\n)* +if: \$\{\{ (!cancelled\(\) && )?steps.due.outputs.health == 'true'( && hashFiles\('health.json'\) != '')? \}\}\n/);
   }
@@ -132,10 +134,16 @@ test('a poll-started pass within fifteen minutes skips, and a sweep is due after
     { health: true, daily: true, times: { health: ago(0), sweep: ago(0) } });
   // Not limited: the fallback crons and explicit requests; the latter always
   // bypass the cooldown, and the sweep cron only when a sweep is due.
-  for (const event of ['schedule', 'workflow_dispatch', 'issue_comment']) assert.equal(due(event, recent, now).health, true);
+  for (const event of ['schedule', 'issue_comment']) assert.equal(due(event, recent, now).health, true);
+  assert.equal(due('workflow_dispatch', recent, now, 'a request').health, true);
   assert.equal(due('schedule', recent, now).daily, false);
-  assert.equal(due('workflow_dispatch', recent, now).daily, true);
+  assert.equal(due('workflow_dispatch', recent, now, 'a request').daily, true);
   assert.equal(due('issue_comment', recent, now).daily, true);
+  // The poll's prompt-less dispatch every pass (#763) is paced as the chain.
+  for (const previous of [recent, { health: ago(15), sweep: ago(60) }, { health: ago(30), sweep: ago(120) }]) {
+    assert.deepEqual(due('workflow_dispatch', previous, now, ''), due('workflow_run', previous, now));
+  }
+  assert.deepEqual(due('workflow_dispatch', recent, now), due('workflow_run', recent, now));
   // No previous artifact, an old one without times, or a time in the future.
   for (const previous of [{}, { health: 'garbage' }, { health: ago(-60), sweep: ago(-60) }]) {
     assert.deepEqual(due('workflow_run', previous, now), { health: true, daily: true, times: { health: ago(0), sweep: ago(0) } });
