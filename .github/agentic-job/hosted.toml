@@ -108,4 +108,4 @@ watch-item = true
 
 [commit]
 author = "agentic-job <agentic-job@users.noreply.github.com>"
-trailers = ["Generated-by: AI"]
+trailers = ["Assisted-by: https://github.com/cgwalters/cgwalters#llms"]
