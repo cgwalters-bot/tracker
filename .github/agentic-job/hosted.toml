@@ -101,6 +101,10 @@ packages = ["python3-venv", "nftables", "just"]
 operators = ["cgwalters@gmail.com"]
 # The review site's chat pane.
 origins = ["https://cgwalters-forge.github.io"]
+# Send a dispatched run the comments made on its item while it works, so
+# the operator's later direction reaches it instead of being lost
+# (agentic-job#1370). They arrive quoted with author and link, as data.
+watch-item = true
 
 [commit]
 author = "agentic-job <agentic-job@users.noreply.github.com>"

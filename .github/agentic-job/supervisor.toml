@@ -1,4 +1,4 @@
-# Isolated from ordinary dispatches: only the supervisor watches its item.
+# Isolated from ordinary dispatches; like them it watches its item (hosted.toml).
 # Match hosted.toml's hosted-runner sandbox and setup, without a tailnet listener.
 [sandbox]
 stop-services = [
