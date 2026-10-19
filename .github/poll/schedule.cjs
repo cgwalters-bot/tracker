@@ -61,6 +61,12 @@ const BATCHED_RE = /^Batched: ([\w.-]+\/[\w.-]+#\d+) from the plan in /gm;
 // writer's plan, and, on stderr of a dry run, of the plan it read.
 const NO_PLAN = 'no plan on this issue';
 const PLAN_FROM_RE = /request for the plan in (https:\/\/github\.com\/\S+#issuecomment-(\d+)) by /;
+// A dry run of a plan agent-board would wait on (dispatch.rs: a stacked plan
+// whose lower slice has no pull request, or an overlapping open pull request
+// or run in flight) exits 0 with nothing on stdout, this as its last stderr
+// line, and the reason on the lines before it.
+const WOULD_WAIT_RE = /^Dry run: the plan in \S+ would wait; nothing was sent\.$/;
+const WAIT_REASON_RE = /^(Waiting|Not stacked): /;
 // The hidden first line of agent-board's record of a dispatch:
 // `<!-- agent-board-dispatch: COMMENT-ID@TIME -->`.
 const RECORD_RE = /^<!-- agent-board-dispatch: (\d+)@\S+ -->$/;
@@ -615,6 +621,8 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
         if (!await answered(record)) await skip(`no plan since triage answered ${record.verdict}, ${record.url}`, true);
         continue;
       }
+      // Counted as "waiting" in the idle line, as its reason starts so.
+      if (found.waiting) { await skip(`waiting: ${found.waiting}`); continue; }
       if (!found.plan) { await skip(`plan refused: ${found.refused}`); continue; }
       if (found.recorded) {
         // With `retries` on, the recorded plan's run decides (tracker#645):
@@ -868,6 +876,13 @@ async function probePlan(bin, config, token, item) {
   const env = { GH_TOKEN: token };
   const run = agentBoard(bin, args, { env, timeoutMs: config.timeoutMs, check: false });
   if (run.status !== 0) return readRefusal(run.stderr);
+  // Only that exact shape is a wait: any other empty or unparsable stdout is
+  // still output not understood, so a change in agent-board's format shows.
+  const lines = run.stderr.trim().split('\n').map(l => l.trim());
+  if (!run.stdout.trim() && WOULD_WAIT_RE.test(lines.at(-1))) {
+    const reason = lines.filter(l => WAIT_REASON_RE.test(l)).join('; ');
+    return { waiting: (reason || 'no reason given').slice(0, 300) };
+  }
   let found;
   try {
     found = readDryRun(run.stdout, run.stderr);

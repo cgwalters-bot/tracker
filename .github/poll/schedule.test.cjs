@@ -360,6 +360,48 @@ test("a dry run's refusal is an answer; a hang or output not understood skips th
   assert.deepEqual(steps[1], { item: 'o/r#8', action: 'skip', reason: 'no plan' });
 });
 
+// #761: agent-board's "would wait" dry run, as dispatch.rs writes it: exit 0,
+// nothing on stdout, the reason and the dry-run line on stderr.
+const waits = (name, reason) => stub(name, `process.stderr.write(${JSON.stringify(
+  `${reason}\nDry run: the plan in https://github.com/o/r/issues/7#issuecomment-42 would wait; nothing was sent.\n`)});`);
+const WAITS = {
+  stacked: ['Not stacked: o/r#6, the lower slice, has no pull request yet', 'Not stacked: o/r#6, the lower slice, has no pull request yet'],
+  overlap: ['Waiting: open pull request o/r#93 changes src/a.rs, which this plan changes too', 'Waiting: open pull request o/r#93 changes src/a.rs, which this plan changes too'],
+  'in-flight': ['note: reading runs\nWaiting: a run is in flight on o/r, https://github.com/o/t/actions/runs/5\nWaiting: open pull request o/r#94',
+    'Waiting: a run is in flight on o/r, https://github.com/o/t/actions/runs/5; Waiting: open pull request o/r#94'],
+};
+for (const [shape, [reason, want]] of Object.entries(WAITS)) {
+  test(`a ${shape} wait in a dry run is a wait with its reason, not output not understood`, async () => {
+    assert.deepEqual(await probePlan(waits(`waits-${shape}`, reason), CONFIG, TOKEN, ITEM), { waiting: want });
+  });
+}
+
+test('a waiting plan is skipped as waiting and tallied so; empty stdout without the wait line is still an error', async () => {
+  const steps = await decide([ITEM, issue(8)], empty, caps(4), item => probePlan(waits(`waits-${item.number}`, WAITS.overlap[0]), CONFIG, TOKEN, item), noPulls);
+  assert.deepEqual(steps.map(s => s.reason), [`waiting: ${WAITS.overlap[1]}`, `waiting: ${WAITS.overlap[1]}`]);
+  assert.equal(idleLine(steps, 4), 'idle: 4 slot(s) free and nothing started; skipped: waiting 2');
+  // The wait line must end stderr, with stdout empty.
+  const silent = stub('silent', "process.stderr.write('Waiting: something\\n');");
+  await assert.rejects(probePlan(silent, CONFIG, TOKEN, ITEM), /output not understood: Unexpected end of JSON input; stderr: Waiting: something$/);
+  const both = stub('wait-and-request', `process.stdout.write('{'); process.stderr.write('Dry run: the plan in https://x would wait; nothing was sent.\\n');`);
+  await assert.rejects(probePlan(both, CONFIG, TOKEN, ITEM), /output not understood/);
+});
+
+test('a dry run that sends a request is still read as one', async () => {
+  const output = { body: { inputs: { repo: 'o/r', item: '7', kind: 'implement', task: 'Do it' } } };
+  const binary = stub('request', `process.stdout.write(${JSON.stringify(JSON.stringify(output))}); process.stderr.write('Dry run: request for the plan in https://github.com/o/r/issues/7#issuecomment-42 by op; nothing was sent.\\n');`);
+  const savedFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('[]', { status: 200 });
+  try {
+    const found = await probePlan(binary, CONFIG, TOKEN, ITEM);
+    assert.equal(found.waiting, undefined);
+    assert.equal(found.plan, 'https://github.com/o/r/issues/7#issuecomment-42');
+    assert.equal(found.brief, 'Do it');
+  } finally {
+    globalThis.fetch = savedFetch;
+  }
+});
+
 // A census over the API as testdata/epics-schedule.json answers it: #1 and
 // #3 labelled by the operator, the board ranking #3 first; #2 by the bot.
 const fixture = JSON.parse(fs.readFileSync(path.join(__dirname, 'testdata', 'epics-schedule.json'), 'utf8'));
