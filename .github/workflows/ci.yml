@@ -19,8 +19,8 @@ concurrency:
 jobs:
   # The tests of poll.cjs and usage.cjs, through the Justfile.
   test:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    runs-on: ubuntu-26.04
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,7 +30,11 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
+      - name: Build the supervisor's pinned config validator
+        run: just build-supervisor-agent-board
       - run: just test
+        env:
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
 
   # actionlint, zizmor and the runner-label policy shared by the forge
   # repositories, at the versions its `just check` recipe pins on the

@@ -228,15 +228,39 @@ test('shared CLI accepts the shipped settings and emits workflow outputs without
   try {
     const health = path.join(dir, 'health.json');
     fs.writeFileSync(health, '[]');
-    const result = spawnSync(process.env.AGENT_BOARD, ['supervise', 'trigger',
-      '--config', '.github/poll/agent-board.json', '--supervisor-config', '.github/supervisor/config.json',
+    const config = JSON.parse(fs.readFileSync(path.join(root, '.github/supervisor/config.json')));
+    // Empty checks and no --daily return before any API request. Still load the
+    // same settings and Policy as execute, so invalid caps fail in review.
+    const run = supervisor => spawnSync(process.env.AGENT_BOARD, ['supervise', 'trigger',
+      '--config', '.github/poll/agent-board.json', '--supervisor-config', supervisor,
       '--pools', '.github/agentic-job/pools.json', '--health', health], {
-      cwd: root, encoding: 'utf8',
-      env: { ...process.env, GH_TOKEN: 'unused', GITHUB_REPOSITORY: 'cgwalters-forge/tracker', GITHUB_RUN_ID: '1' },
+      cwd: root, encoding: 'utf8', timeout: 10000,
+      env: { ...process.env, GH_TOKEN: 'test-key-not-secret',
+        GITHUB_REPOSITORY: config.agent.requests.repository, GITHUB_RUN_ID: '1' },
     });
+    const result = run('.github/supervisor/config.json');
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, 'act=false\n');
+    // These proposed caps must remain valid; this check must not freeze policy.
+    Object.assign(config.agent, { maxDispatchesPerPass: 4, maxDispatchesPerDay: 40 });
+    Object.assign(config.agent.dailyCaps, { create_issue: 15, remove_needs_human: 12 });
+    const changed = path.join(dir, 'config.json');
+    fs.writeFileSync(changed, JSON.stringify(config));
+    const proposed = run(changed);
+    assert.equal(proposed.status, 0, proposed.stderr);
+    config.agent.dailyCaps.status_update = 4;
+    fs.writeFileSync(changed, JSON.stringify(config));
+    const refused = run(changed);
+    assert.equal(refused.status, 1, refused.stderr);
+    assert.match(refused.stderr, /status updates are capped at one per day/);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('CI builds the supervisor pin and enables the shared CLI test', () => {
+  const ci = fs.readFileSync(path.join(root, '.github/workflows/ci.yml'), 'utf8');
+  const job = ci.split('\n  test:\n')[1].split('\n  lint:\n')[0];
+  assert.ok(job.indexOf('run: just build-supervisor-agent-board') < job.indexOf('run: just test'));
+  assert.match(job, /AGENT_BOARD: \$\{\{ runner.temp \}\}\/agent-board\/bin\/agent-board/);
 });

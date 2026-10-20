@@ -520,6 +520,10 @@ lists requests and applies none, then compare a week of preview against the
 local loop before enabling apply with small caps.
 Test the workflow wiring with `just test-poll` (set `AGENT_BOARD` to a built
 binary for the shipped-config CLI test); policy tests live in agent-board.
+CI builds that binary from the supervisor workflow's exact pin with
+`just build-supervisor-agent-board`. The CLI test uses empty health checks,
+without `--daily`, to validate settings and executor policy without API calls
+or writes, and checks that an invalid status-update cap is refused.
 
 The agent cannot read the private decisions document (its token reads only
 this repository), and the review site's last-run panel is
