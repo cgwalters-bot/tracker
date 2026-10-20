@@ -29,12 +29,12 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
   const board = JSON.parse(fs.readFileSync(path.join(root, '.github/poll/agent-board.json')));
   assert.deepEqual(config.agent.requests, { repository: 'cgwalters-forge/tracker', issue: 656 });
   assert.deepEqual(config.agent.log, { repository: 'cgwalters-forge/operator', issue: 2 });
-  // The operator cut the controller over before a week of preview (17 Oct):
-  // small caps, which the executor enforces whatever the agent asks for.
-  assert.equal(config.agent.maxDispatchesPerPass, 2);
-  assert.equal(config.agent.maxDispatchesPerDay, 16);
+  // The executor enforces these caps whatever the agent asks for. Small at the
+  // 17 Oct cutover; raised on 20 Oct when the pools sat far below pace.
+  assert.equal(config.agent.maxDispatchesPerPass, 4);
+  assert.equal(config.agent.maxDispatchesPerDay, 40);
   assert.deepEqual(config.agent.dailyCaps, {
-    comment: 20, create_issue: 6, close: 10, remove_needs_human: 6, replace_state: 48, status_update: 1,
+    comment: 20, create_issue: 15, close: 10, remove_needs_human: 12, replace_state: 48, status_update: 1,
   });
   assert.deepEqual(config.agent.state, { repository: 'cgwalters-forge/tracker', issue: 718 });
   for (const other of [config.agent.requests, config.agent.log]) {
