@@ -47,7 +47,11 @@ jobs:
             issue, conclusion first: the recommendation (keep going, adopt a
             named piece of theirs, or switch), then what they have that we
             lack, then what we have that they lack. Say what changed since
-            the previous weekly comment here, if there is one.
+            the previous weekly comment here, if there is one. Go through
+            gh-aw's releases and changelog since that comment and name every
+            new feature, not only the ones close to what we already compare:
+            orchestration, scheduling or campaign features in particular. For
+            each, say in a line whether it matters to us and why.
         run: |
           gh workflow run dispatch.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
             -f kind=research -f repo="$ITEM_REPO" -f item="$ITEM" -f task="$TASK"
