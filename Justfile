@@ -56,6 +56,10 @@ start-supervisor:
 start-release-train:
     gh workflow run release-train.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
 
+# Validate against the actor that will consume the config, not a moving head.
+build-supervisor-agent-board:
+    rev=$(node -e 'const fs = require("node:fs"); const text = fs.readFileSync(".github/workflows/supervisor.yml", "utf8"); const pins = [...text.matchAll(/^  AGENT_BOARD_REV: ([0-9a-f]{40})$/gm)]; if (pins.length !== 1) throw Error("expected one supervisor pin"); process.stdout.write(pins[0][1]);') && {{ just_executable() }} build-agent-board "$rev"
+
 # Without a revision, the configured branch's head; supervisor.yml passes a
 # pinned commit so the program that holds the bot's token is the reviewed one.
 build-agent-board rev="":
