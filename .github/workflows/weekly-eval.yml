@@ -38,10 +38,13 @@ jobs:
             This week's re-evaluation of our own tools against the
             alternatives. Compare cgwalters-forge/agentic-job and
             cgwalters-forge/agent-board, each as its main branch is today,
-            with github/gh-aw as its main branch is today and with any other
+            with github/gh-aw and githubnext/gh-cao (gh-aw's central control
+            plane and campaigns) as their main branches are today, and with
+            any other
             comparable tool you find (one that runs coding agents from
             GitHub events with bounded, checked effects, or that schedules
-            such work from a board). Work from their sources and docs, not
+            such work from a board). Compare cgwalters-forge/review with
+            gh-cao's dashboard the same way. Work from their sources and docs, not
             from memory or from earlier comments on this issue, and name the
             commit of each that you read. Post one short comment on this
             issue, conclusion first: the recommendation (keep going, adopt a
