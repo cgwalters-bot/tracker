@@ -204,8 +204,10 @@ test('configuration follows review-enabled schedule targets and preserves pool p
   // Conflicts share the first-round toil pool: do not spend a bounded fix
   // round on a pool whose conflict runs have returned without a new head.
   assert.equal(c.toilFixPool, 'openai');
-  assert.equal(c.kindPools.triage, 'mistral');
-  assert.equal(c.kindPools.research, 'mistral');
+  // Claude until the hosted wrapper pins agentic-job v0.6.3 (Mistral's loop
+  // guard) and the 22 Oct reset has passed (tracker#792).
+  assert.equal(c.kindPools.triage, 'claude');
+  assert.equal(c.kindPools.research, 'claude');
   // agent-board's refund reads the same issue as the hold: the probe's, here.
   assert.deepEqual(c.brokerOutage, { repository: c.dispatchRepo, author: c.bot, leadSeconds: 1800 });
   // Without mergeQueue agent-board leaves a removed pull request to be enqueued
