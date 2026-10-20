@@ -43,7 +43,7 @@ on:
         options: [implement, triage, research, review, fix]
         required: true
       pool:
-        description: "Inference pool: claude, openai or mistral (.github/agentic-job/pools.json); empty uses the variables AGENT and AGENT_MODEL"
+        description: "Inference pool: claude, fable, openai or mistral (.github/agentic-job/pools.json); empty uses the variables AGENT and AGENT_MODEL"
         type: string
         default: ''
       config:
