@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { FILL_QUERY, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, paceMode, planInterval, probePlan, pullIssues, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
+const { FILL_QUERY, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, planInterval, probePlan, pullIssues, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
 const { census } = require('./epics.cjs');
 const { render } = require('../usage/usage.cjs');
 
@@ -461,7 +461,7 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
   const saved = { fetch: globalThis.fetch, log: console.log, GH_TOKEN: process.env.GH_TOKEN, AGENT_BOARD: process.env.AGENT_BOARD, GITHUB_REPOSITORY: process.env.GITHUB_REPOSITORY, read: fs.readFileSync };
   // Fill mode reads the usage snapshot and more issues, so a test opts in
   // to it rather than following the repository's own setting.
-  const text = JSON.stringify({ ...REPO_CONFIG, schedule: { ...REPO_CONFIG.schedule, fill: 0, ...schedule } });
+  const text = JSON.stringify({ ...REPO_CONFIG, schedule: { ...REPO_CONFIG.schedule, fill: 0, operatorRetryPools: [], ...schedule } });
   fs.readFileSync = (file, ...rest) => (String(file).endsWith('agent-board.json') ? text : saved.read(file, ...rest));
   globalThis.fetch = async (u, init) => {
     if (u === `https://api.github.com${OUTAGE}`) {
@@ -487,7 +487,7 @@ async function runMain(args, rest, { board = [], bin = path.join(stubDir, 'missi
     } else {
       return new Response('nope', { status: 404 });
     }
-    return new Response(JSON.stringify(body), { status: 200 });
+    return new Response(JSON.stringify(body), { status: body?.serverError ? 502 : 200 });
   };
   console.log = line => out.push(line);
   process.env.GH_TOKEN = 'test-token';
@@ -1529,4 +1529,160 @@ test("a fill-mode triage run's task says the issue is outside any epic", () => {
   const task = triageTask({ planDocs: 'https://x/docs' }, { url: 'https://github.com/o/r/issues/1', fill: true }, 'r1');
   assert.match(task, /outside any epic/);
   assert.ok(!task.includes('no accepted job plan'));
+});
+
+// Operator requests whose run failed (tracker#792).
+const RETRY = { caller: 'o/t', planner: BOT, operator: 'op', operatorRetryPools: ['claude', 'openai'] };
+const orun = (id, extra = {}) => ({ id, display_title: 'triage o/t#7 (mistral)', status: 'completed', conclusion: 'failure',
+  created_at: `2026-10-20T${String(id).padStart(2, '0')}:00:00Z`, html_url: `https://github.com/o/t/actions/runs/${id}`, ...extra });
+const relay = (extra = {}) => ({ state: 'open', user: { login: BOT }, title: 'up/stream#5: operator request', labels: [], ...extra });
+const said = (body, hour, login = BOT) => ({ user: { login }, body, created_at: `2026-10-20T${String(hour).padStart(2, '0')}:30:00Z` });
+const retryRecord = (failed, hour, started, login) => said(`<!-- operator-retry/v1: ${failed} -->\nBoard scheduler: running this operator request again.`
+  + (started ? ` Retry: https://github.com/o/t/actions/runs/${started}.` : ' GitHub named no run.'), hour, login);
+
+test('a failed run on an operator request is retried once on another pool, then handed to a person', async () => {
+  const cases = [
+    ['failed on mistral: retried on the first pool', [orun(1)], relay(), [], [['retry', 'claude']]],
+    ['failed on claude: retried on the next', [orun(1, { display_title: 'triage o/t#7 (claude)' })], relay(), [], [['retry', 'openai']]],
+    ['no pool named: retried on the first', [orun(1, { display_title: 'triage o/t#7' })], relay(), [], [['retry', 'claude']]],
+    ['research stays research', [orun(1, { display_title: 'research o/t#7 (mistral) [acp-experiment]' })], relay(), [], [['retry', 'claude', 'research']]],
+    ['timed out counts as failed', [orun(1, { conclusion: 'timed_out' })], relay(), [], [['retry', 'claude']]],
+    ['succeeded', [orun(1, { conclusion: 'success' })], relay(), [], []],
+    ['cancelled by a person or a newer run', [orun(1, { conclusion: 'cancelled' })], relay(), [], []],
+    ['still running', [orun(1, { status: 'in_progress', conclusion: null })], relay(), [], []],
+    ['a newer run answered it', [orun(1), orun(2, { conclusion: 'success' })], relay(), [], []],
+    ['a newer run of another kind answered it', [orun(1), orun(2, { display_title: 'implement o/t#7', conclusion: 'success' })], relay(), [], []],
+    ['an implement run is not an operator request', [orun(1, { display_title: 'implement o/t#7 (mistral)' })], relay(), [], []],
+    ["a visitor's issue with the title", [orun(1)], relay({ user: { login: 'visitor' } }), [], []],
+    ['an issue without the title', [orun(1)], relay({ title: 'up/stream#5: something else' }), [], []],
+    ['closed', [orun(1)], relay({ state: 'closed' }), [], []],
+    ['a pull request', [orun(1)], relay({ pull_request: {} }), [], []],
+    ['labelled needs-human', [orun(1)], relay({ labels: [{ name: 'needs-human' }] }), [], []],
+    ['its retry was recorded, its run not listed yet', [orun(1)], relay(), [retryRecord(1, 1)], []],
+    ['the failed run was the retry', [orun(1), orun(2, { display_title: 'triage o/t#7 (claude)' })], relay(), [retryRecord(1, 1, 2)], [['needs-human']]],
+    ['the retry GitHub named no run of is the first run after its record', [orun(1), orun(2)], relay(), [retryRecord(1, 1)], [['needs-human']]],
+    ["a retry's record does not make a later request's failure a retry", [orun(1), orun(2), orun(3)], relay(), [retryRecord(1, 1, 2)], [['retry', 'claude']]],
+    ["a visitor's record or hand-off line counts for nothing", [orun(1)], relay(), [retryRecord(1, 1, undefined, 'visitor'), said('<!-- operator-retry/v1-held: 1 -->', 2, 'visitor')], [['retry', 'claude']]],
+    ['handed to a person already', [orun(1)], relay(), [said('<!-- operator-retry/v1-held: 1 -->', 2)], []],
+  ];
+  for (const [name, runs, issue, comments, want] of cases) {
+    const reads = [];
+    const steps = await operatorRetries(runs, RETRY, async key => { reads.push(key); return { issue, comments }; }, Date.parse('2026-10-20T01:45:00Z'));
+    assert.deepEqual(steps.map(s => [s.action, ...(s.next ? [s.next] : []), ...(s.kind === 'research' ? ['research'] : [])]), want, name);
+    for (const s of steps) assert.equal(s.item, 'o/t#7', name);
+    assert.ok(reads.every(k => k === 'o/t#7'), name);
+  }
+  // A record whose run never appeared, from a pass cut off or a dispatch
+  // GitHub answered ambiguously, hands the request to a person after an hour.
+  const lost = await operatorRetries([orun(1)], RETRY, async () => ({ issue: relay(), comments: [retryRecord(1, 1)] }), Date.parse('2026-10-20T02:31:00Z'));
+  assert.deepEqual(lost.map(s => [s.action, s.reason.endsWith('and the retry recorded at 2026-10-20T01:30:00Z started no run')]), [['needs-human', true]]);
+  // With no other pool to go to, a person gets it at once.
+  const only = await operatorRetries([orun(1, { display_title: 'triage o/t#7 (claude)' })], { ...RETRY, operatorRetryPools: ['claude'] }, async () => ({ issue: relay(), comments: [] }));
+  assert.deepEqual(only.map(s => s.action), ['needs-human']);
+});
+
+test("operator retries take only the caller's items, and a pass is bounded", async () => {
+  const reads = [];
+  const read = async key => { reads.push(key); return { issue: relay(), comments: [] }; };
+  // An item of another repository is not read at all.
+  assert.deepEqual(await operatorRetries([orun(1, { display_title: 'triage up/stream#5 (mistral)' })], RETRY, read), []);
+  assert.deepEqual(reads, []);
+  const many = Array.from({ length: 12 }, (_, i) => orun(i + 1, { display_title: `triage o/t#${i + 1} (mistral)` }));
+  const steps = await operatorRetries(many, RETRY, read);
+  // Newest first, three steps a pass.
+  assert.deepEqual(steps.map(s => s.item), ['o/t#12', 'o/t#11', 'o/t#10']);
+  reads.length = 0;
+  await operatorRetries(many, RETRY, async key => { reads.push(key); return { issue: relay({ state: 'closed' }), comments: [] }; });
+  assert.equal(reads.length, 10);
+});
+
+test('schedule.operatorRetryPools is off unless set, and lists distinct configured pools', () => {
+  const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
+  const schedule = { owner: 'o', project: 1, wip: 4, repositories: ['o/r'] };
+  const parse = extra => loadConfig(JSON.stringify({ ...base, schedule: { ...schedule, ...extra } }));
+  assert.deepEqual(parse({}).operatorRetryPools, []);
+  assert.deepEqual(parse({ operatorRetryPools: ['openai', 'claude'] }).operatorRetryPools, ['openai', 'claude']);
+  for (const operatorRetryPools of ['claude', ['nope'], ['claude', 'claude'], [1]]) {
+    assert.throws(() => parse({ operatorRetryPools }), /operatorRetryPools/);
+  }
+  // Mistral's loop guard is not pinned yet (tracker#792): not a retry pool.
+  assert.ok(!REPO_CONFIG.schedule.operatorRetryPools.includes('mistral'));
+});
+
+test("a retry's task quotes no issue text and names the failed run", () => {
+  const task = operatorRetryTask(RETRY, { kind: 'triage', run: 'https://github.com/o/t/actions/runs/1', conclusion: 'failure', pool: 'mistral' });
+  assert.match(task, /one retry/);
+  assert.ok(task.includes('https://github.com/o/t/actions/runs/1') && task.includes('mistral'));
+});
+
+const RUNS = `/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`;
+const relayAt = n => `/repos/${REPO_CONFIG.dispatchRepo}/issues/${n}`;
+const relayed = n => ({ [`GET ${RUNS}`]: { workflow_runs: [orun(1, { display_title: `triage ${REPO_CONFIG.dispatchRepo}#${n} (mistral)` })] },
+  [`GET ${relayAt(n)}`]: relay({ user: { login: REPO_CONFIG.bot } }), [`GET ${relayAt(n)}/comments`]: [],
+  [LIST]: [epicIssue(2)], [`/repos/${EPICS}/issues/2/timeline`]: labelled(REPO_CONFIG.bot) });
+
+test('with --apply, a failed operator request is recorded, then run again on another pool, and the record links the run', async () => {
+  const DISPATCHES = `/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/dispatches`;
+  const { out, sent, error } = await runMain(['--apply'], {
+    ...relayed(703),
+    [`POST ${relayAt(703)}/comments`]: { id: 70 },
+    [`GET /repos/${REPO_CONFIG.dispatchRepo}`]: { default_branch: 'main' },
+    [`POST ${DISPATCHES}`]: { workflow_run_id: 99 },
+    [`PATCH /repos/${REPO_CONFIG.dispatchRepo}/issues/comments/70`]: {},
+  }, { schedule: { operatorRetryPools: ['claude', 'openai'] } });
+  assert.equal(error, undefined, out.join('\n'));
+  assert.match(out[0], /^operator request .*#703 retry: its triage run \S+ ended failure on the mistral pool; once more on claude$/);
+  assert.deepEqual(sent.map(([c]) => c), [`POST ${relayAt(703)}/comments`, `POST ${DISPATCHES}`, `PATCH /repos/${REPO_CONFIG.dispatchRepo}/issues/comments/70`]);
+  assert.match(sent[0][1].body, /^<!-- operator-retry\/v1: 1 -->\n/);
+  const { inputs } = sent[1][1];
+  assert.deepEqual({ ...inputs, task: undefined }, { kind: 'triage', repo: REPO_CONFIG.dispatchRepo, item: '703', pool: 'claude', task: undefined });
+  assert.ok(sent[2][1].body.endsWith(` Retry: https://github.com/${REPO_CONFIG.dispatchRepo}/actions/runs/99.`));
+  // What the next pass reads of it: the retry's own failure goes to a person.
+  const steps = await operatorRetries([orun(1), orun(2, { display_title: 'triage o/t#7 (claude)' })], RETRY,
+    async () => ({ issue: relay(), comments: [said(sent[2][1].body.replace(REPO_CONFIG.dispatchRepo, 'o/t').replace('runs/99', 'runs/2'), 1)] }));
+  assert.deepEqual(steps.map(s => s.action), ['needs-human']);
+});
+
+test('with --apply, a retry GitHub refuses takes its record back and fails the pass; a dry run writes nothing', async () => {
+  const { out, sent, calls, error } = await runMain(['--apply'], {
+    ...relayed(703),
+    [`POST ${relayAt(703)}/comments`]: { id: 70 },
+    [`GET /repos/${REPO_CONFIG.dispatchRepo}`]: { default_branch: 'main' },
+    [`DELETE /repos/${REPO_CONFIG.dispatchRepo}/issues/comments/70`]: null,
+  }, { schedule: { operatorRetryPools: ['claude'] } });
+  assert.match(String(error), /1 operator request step\(s\) failed/);
+  assert.match(out[0], /#703 retry: .*; error: POST .*dispatches: HTTP 404/);
+  assert.deepEqual(sent.map(([c]) => c), [`POST ${relayAt(703)}/comments`, `POST /repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/dispatches`]);
+  assert.ok(calls.includes(`DELETE /repos/${REPO_CONFIG.dispatchRepo}/issues/comments/70`));
+
+  // A server error may still have started the run: the record stays.
+  const ambiguous = await runMain(['--apply'], {
+    ...relayed(703),
+    [`POST ${relayAt(703)}/comments`]: { id: 70 },
+    [`GET /repos/${REPO_CONFIG.dispatchRepo}`]: { default_branch: 'main' },
+    [`POST /repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/dispatches`]: { serverError: true },
+  }, { schedule: { operatorRetryPools: ['claude'] } });
+  assert.match(String(ambiguous.error), /1 operator request step\(s\) failed/);
+  assert.ok(!ambiguous.calls.some(c => c.startsWith('DELETE ')), ambiguous.calls.join('\n'));
+
+  const dry = await runMain([], relayed(703), { schedule: { operatorRetryPools: ['claude'] } });
+  assert.equal(dry.error, undefined);
+  assert.match(dry.out[0], /^\[dry-run\] operator request .*#703 retry: /);
+  assert.deepEqual(dry.calls.filter(c => !c.startsWith('GET ')), []);
+});
+
+test('with --apply, a failed retry labels the request needs-human before saying why', async () => {
+  const n = 703;
+  const { out, sent, error } = await runMain(['--apply'], {
+    ...relayed(n),
+    [`GET ${RUNS}`]: { workflow_runs: [orun(1, { display_title: `triage ${REPO_CONFIG.dispatchRepo}#${n} (mistral)` }), orun(2, { display_title: `triage ${REPO_CONFIG.dispatchRepo}#${n} (claude)` })] },
+    [`GET ${relayAt(n)}/comments`]: [said(`<!-- operator-retry/v1: 1 -->\nx Retry: https://github.com/${REPO_CONFIG.dispatchRepo}/actions/runs/2.`, 1, REPO_CONFIG.bot)],
+    [`POST ${relayAt(n)}/labels`]: [],
+    [`POST ${relayAt(n)}/comments`]: { id: 71 },
+  }, { schedule: { operatorRetryPools: ['claude', 'openai'] } });
+  assert.equal(error, undefined, out.join('\n'));
+  assert.match(out[0], /#703 needs-human: .* on the claude pool, and was the retry$/);
+  assert.deepEqual(sent.map(([c]) => c), [`POST ${relayAt(n)}/labels`, `POST ${relayAt(n)}/comments`]);
+  assert.deepEqual(sent[0][1], { labels: ['needs-human'] });
+  assert.match(sent[1][1].body, /^<!-- operator-retry\/v1-held: 2 -->\n/);
 });

@@ -297,6 +297,18 @@ extra's, and a run whose status comment a later run replaced keep the old
 skip. Editing or replacing the plan starts the attempts again. The idle line
 also counts the recorded runs by outcome.
 
+`schedule.operatorRetryPools` (empty, off, if unset) keeps an operator's
+request from being dropped when its run fails
+([#792](https://github.com/cgwalters-forge/tracker/issues/792)). Each pass,
+before the census, it reads the newest dispatch runs. When the newest run on
+one of agent-board's `OWNER/REPO#N: operator request` issues here (open, and
+opened by the bot) is a failed triage or research run, the scheduler
+records an `operator-retry` line on the issue and runs it again once, on the
+first listed pool that is not the failed run's. If the retry fails too, if no
+other pool is listed, or if an hour after its record no newer run is listed,
+the issue is labelled `needs-human` instead. A pass
+reads at most ten such issues and takes at most three steps.
+
 `schedule.fill` (0 to 20; 0, off, if unset; needs `schedule.triage`) fills
 slots the epics leave free while the pool is under its pace
 ([#672](https://github.com/cgwalters-forge/tracker/issues/672)). The pace is
