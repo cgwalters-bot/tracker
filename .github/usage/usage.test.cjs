@@ -7,7 +7,9 @@ const { test } = require('node:test');
 const http = require('node:http');
 const { MARKER, carryPools, checkConfig, findComment, mistralAllowance, mistralUsage, needsPublish, poolPace, previousSnapshot, publish, readBroker, render, snapshot } = require('./usage.cjs');
 
-const CONFIG = require('./config.json');
+// The live config's shape, with pacing fixed so the tests don't move when the
+// operator retunes it.
+const CONFIG = { ...require('./config.json'), pacing: { claude: { target: 0.95, burst: 3 }, openai: { target: 0.95, burst: 3 } } };
 const POOLS = require('../agentic-job/pools.json');
 const load = () => structuredClone(require('./testdata/broker-usage.json'));
 const NOW = Date.parse('2026-10-08T10:00:00Z');
