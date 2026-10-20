@@ -42,6 +42,7 @@
     "triage": 2,
     "triagePool": "mistral",
     "fill": 4,
+    "operatorRetryPools": ["claude", "openai"],
     "priorityField": "Priority",
     "repositories": [
       "cgwalters-forge/tracker",
