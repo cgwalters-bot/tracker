@@ -94,6 +94,8 @@ const RETRY_LIMIT = 2;
 // The bound on `schedule.fill`, the issues outside any epic a pass in fill
 // mode reads (fillItems); each costs an eligibility query and a comments read.
 const FILL_LIMIT = 20;
+// The pages of 100 open issues fill mode reads of a repository (readFillIssues).
+const FILL_PAGES = 5;
 // A usage snapshot older than this says nothing of the pace: its publisher
 // (usage.yml, every fifteen minutes) has stopped, so fill mode is off.
 const PACE_FRESH_MS = 3 * 3600 * 1000;
@@ -562,10 +564,12 @@ async function readPace(post, pool, now) {
 // epic whose work ran out is planned again sooner.
 const planInterval = (ms, pace) => (pace?.fill ? Math.min(ms, FILL_PLAN_INTERVAL_MS) : ms);
 
-// One followed repository's oldest open issues, with their board fields.
-const FILL_QUERY = `query($owner: String!, $name: String!, $field: String!) {
+// One page of a followed repository's open issues, oldest first, with their
+// board fields.
+const FILL_QUERY = `query($owner: String!, $name: String!, $field: String!, $cursor: String) {
   repository(owner: $owner, name: $name) {
-    issues(states: OPEN, first: 100, orderBy: { field: CREATED_AT, direction: ASC }) {
+    issues(states: OPEN, first: 100, after: $cursor, orderBy: { field: CREATED_AT, direction: ASC }) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         number url body createdAt author { login } parent { number }
         labels(first: 100) { nodes { name } pageInfo { hasNextPage } }
@@ -578,6 +582,27 @@ const FILL_QUERY = `query($owner: String!, $name: String!, $field: String!) {
     }
   }
 }`;
+
+// A followed repository's open issues for fill mode, FILL_PAGES pages of
+// FILL_QUERY at most (tracker#818): one page alone was its 100 oldest, so a
+// newer P0 issue was never a candidate while the oldest were examined on
+// every pass. Past the bound the read is `partial`, which the pass logs,
+// rather than failing: fill mode is only what is left over.
+async function readFillIssues(gql, repository, field) {
+  const [owner, name] = repository.split('/');
+  const nodes = [];
+  let cursor = null;
+  for (let page = 0; page < FILL_PAGES; page++) {
+    const out = await gql({ query: FILL_QUERY, variables: { owner, name, field, cursor } });
+    const issues = out.data?.repository?.issues;
+    if (out.errors?.length || !Array.isArray(issues?.nodes)) throw new Error('open issues not readable');
+    nodes.push(...issues.nodes);
+    if (!issues.pageInfo?.hasNextPage) return { repository, nodes, partial: false };
+    cursor = issues.pageInfo.endCursor;
+    if (!cursor) throw new Error('open issues not readable: no cursor for the next page');
+  }
+  return { repository, nodes, partial: true };
+}
 
 // Fill mode's candidates (tracker#672): open issues of the followed
 // repositories outside any epic, `config.fill` of them at most, by board
@@ -1215,12 +1240,10 @@ async function main(argv) {
       .catch(err => ({ fill: false, mode: `normal (usage not read: ${err.message.slice(0, 300)})` }));
     const answers = [];
     for (const repository of pace.fill ? config.followed : []) {
-      const [owner, name] = repository.split('/');
       try {
-        const out = await gql({ query: FILL_QUERY, variables: { owner, name, field: config.priorityField } });
-        const nodes = out.data?.repository?.issues?.nodes;
-        if (out.errors?.length || !Array.isArray(nodes)) throw new Error('open issues not readable');
-        answers.push({ repository, nodes });
+        const answer = await readFillIssues(gql, repository, config.priorityField);
+        if (answer.partial) log(`fill: ${repository} read partially, its ${answer.nodes.length} oldest open issues`);
+        answers.push(answer);
       } catch (err) {
         log(`fill: ${repository} not read: ${err.message.slice(0, 300)}`);
       }
@@ -1228,7 +1251,9 @@ async function main(argv) {
     const taken = new Set([...epicItems.map(i => keyOf(i.repository, i.number)), ...entries.map(e => keyOf(config.epicsRepository, e.number))]);
     if (config.statusRepository) taken.add(keyOf(config.statusRepository, config.statusIssue));
     fill = fillItems(answers, config, taken);
-    log(`mode: ${pace.mode}${pace.fill ? `; ${fill.length} issue(s) outside any epic, taken after the epics' by board ${config.priorityField}, then age` : ''}`);
+    const considered = answers.reduce((n, a) => n + a.nodes.length, 0);
+    const partial = answers.filter(a => a.partial).map(a => a.repository);
+    log(`mode: ${pace.mode}${pace.fill ? `; ${fill.length} issue(s) outside any epic of ${considered} open issue(s) read${partial.length ? ` (read partially: ${partial.join(', ')})` : ''}, taken after the epics' by board ${config.priorityField}, then age` : ''}`);
   }
   const items = [...epicItems, ...fill];
   if (!live && !fill.length) {
@@ -1379,7 +1404,7 @@ async function main(argv) {
   if (errors || unread || note || retryErrors) throw new Error(`${errors + retryErrors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { FILL_QUERY, RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, planInterval, probePlan, pullIssues, rank, readDryRun, readOutcome, readPace, readRefusal, readRuns, readTriage, triageRecord, triageTask };
+module.exports = { FILL_PAGES, FILL_QUERY, RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, planInterval, probePlan, pullIssues, rank, readDryRun, readFillIssues, readOutcome, readPace, readRefusal, readRuns, readTriage, triageRecord, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });
