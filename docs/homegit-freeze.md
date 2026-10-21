@@ -56,13 +56,12 @@ Keep `~/.config/bot-supervisor.env` and the token file it names:
 differ. homegit's (last changed 1 Oct) runs the upstream
 `ghcr.io/praxis-proxy/ai` image pinned by digest with a `praxis.yaml`
 mounted from the broker checkout, publishes ports 18080 and 18083 on
-`100.121.0.115` itself and is limited to `ConditionHost=xenon`. The broker's
+`$BROKER_ADDR` itself and is limited to `ConditionHost=` the old host. The broker's
 (12 Oct) runs its own `-gateway:main` image with the Claude token as a
 Podman secret, follows `:main` with `AutoUpdate=registry`, and publishes
 only `127.0.0.1:18080`: the tailnet address and the run registration policy
 are drop-ins. 18083 is gone, replaced by the `/anthropic` routes on 18080.
-The broker's `INTERNALS.md` ("Quadlet" and "Xenon") is the reference, and
-says Xenon already runs its copy. See which copy is running:
+The broker's `INTERNALS.md` ("Quadlet") is the reference. See which copy is running:
 
 ```sh
 systemctl --user cat praxis-credential-broker-pod.service praxis-credential-broker-praxis.service |
@@ -70,7 +69,7 @@ systemctl --user cat praxis-credential-broker-pod.service praxis-credential-brok
 ```
 
 If `SourcePath` is under the broker checkout's `contrib/quadlet`, and the
-output has `PublishPort=100.121.0.115:18080:8081` and the policy's
+output has `PublishPort=$BROKER_ADDR:18080:8081` and the policy's
 `Volume=`, its copy is running: skip to the check at the end. Otherwise
 homegit's is, installed in `~/.config/containers/systemd/praxis-credential-broker/`
 (if `SourcePath` names another directory, set `OLD` to it). Pull the broker
@@ -79,6 +78,9 @@ checkout only now: homegit's gateway reads its `praxis.yaml`. Write
 this repository's dispatch workflow as the broker's "Run tokens" section
 says, without `unproven`. Then stop the pod, store the secrets
 `podman secret ls` does not list yet, swap the units and start it:
+
+Set `BROKER_ADDR` to the broker host's tailnet address, which is kept in the
+operator's private notes rather than here.
 
 ```sh
 B=~/src/github/cgwalters-bot/praxis-credential-broker
@@ -95,13 +97,13 @@ rm "$OLD"/praxis-credential-broker*.pod "$OLD"/praxis-credential-broker*.contain
 cd ~/.config/containers/systemd
 ln -s $B/contrib/quadlet/* .
 mkdir -p praxis-credential-broker.pod.d praxis-credential-broker-praxis.container.d
-cat > praxis-credential-broker.pod.d/tailnet.conf <<'EOF'
+cat > praxis-credential-broker.pod.d/tailnet.conf <<EOF
 [Pod]
-PublishPort=100.121.0.115:18080:8081
+PublishPort=$BROKER_ADDR:18080:8081
 
 [Service]
 ExecStartPre=/usr/bin/tailscale wait --timeout=30s
-ExecStartPre=/usr/bin/tailscale ip --4 --assert=100.121.0.115
+ExecStartPre=/usr/bin/tailscale ip --4 --assert=$BROKER_ADDR
 EOF
 cat > praxis-credential-broker-praxis.container.d/run-token-policy.conf <<'EOF'
 [Container]
@@ -117,7 +119,7 @@ systemctl --user daemon-reload
 systemctl --user start praxis-credential-broker-pod.service
 ```
 
-Check: `curl -fsS http://100.121.0.115:18080/healthz`, then a dispatched
+Check: `curl -fsS http://$BROKER_ADDR:18080/healthz`, then a dispatched
 run that reaches inference.
 
 **3. Point homegit's README here, then archive it.** Nothing on agenthome
