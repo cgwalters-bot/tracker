@@ -670,7 +670,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
     // What a recorded question says of the item: true once a step is taken,
     // false when it answered not (or not all) done, so the item goes on.
     const answered = async record => {
-      if (record.verdict === 'done') await push({ item: name, action: 'close', reason: `triage found it done, ${record.evidence}`, evidence: record.evidence, request: record.request });
+      if (record.verdict === 'done') await push({ item: name, action: 'close', reason: `triage found it done, ${record.evidence}`, evidence: record.evidence, request: record.request, mark: record.mark });
       else if (!record.verdict) await skip(`triage asked, ${record.stale ? 'no answer in a day, ' : ''}${record.url}`, !record.stale);
       else if (record.verdict === 'needs-design') await skip(`needs design, ${record.url}`, true);
       else return false;
@@ -843,14 +843,19 @@ function readTriage(comments, writers, body, now = Date.now()) {
     if (!m) continue;
     try {
       const state = JSON.parse(m[1]);
-      if (typeof state.request === 'string' && state.request) record = { ...state, url: c.html_url, at: Date.parse(c.created_at) || 0 };
+      if (typeof state.request === 'string' && state.request) record = { ...state, state, url: c.html_url, at: Date.parse(c.created_at) || 0, id: c.id, text: c.body };
     } catch { /* not a record */ }
   }
   if (!record) return null;
   const lapsed = () => record.body !== undefined && record.body !== bodyHash(body);
   if (record.design) return lapsed() ? null : { url: record.url, verdict: 'needs-design' };
+  // Marked before the close (triageStep), so a close whose comment below
+  // failed still reads as reopened (tracker#817); so does a close that
+  // failed after the mark, which deleting the record undoes.
+  if (record.closed === record.request) return { url: record.url, verdict: 'reopened' };
   for (const c of mine.toReversed()) {
     if ((Date.parse(c.created_at) || 0) < record.at) continue;
+    // The closing comment: for records closed on before they were marked.
     if ((c.body ?? '').split('\n')[0].trimEnd() === closedLine(record.request)) return { url: record.url, verdict: 'reopened' };
     const blocks = [...(c.body ?? '').matchAll(VERDICT_RE)];
     if (blocks.length !== 1) continue;
@@ -858,7 +863,11 @@ function readTriage(comments, writers, body, now = Date.now()) {
     try { answer = JSON.parse(blocks[0][1]); } catch { continue; }
     if (answer?.request !== record.request || !VERDICTS.has(answer.verdict)) continue;
     if (answer.verdict === 'needs-design' && lapsed()) return null;
-    return { url: record.url, request: record.request, verdict: answer.verdict, evidence: c.html_url };
+    if (answer.verdict !== 'done') return { url: record.url, request: record.request, verdict: answer.verdict, evidence: c.html_url };
+    // The record as triageStep marks it before closing on this answer.
+    const [, ...rest] = record.text.split('\n');
+    const marked = [`<!-- schedule-triage/v1: ${JSON.stringify({ ...record.state, closed: record.request })} -->`, ...rest].join('\n');
+    return { url: record.url, request: record.request, verdict: 'done', evidence: c.html_url, mark: { id: record.id, body: marked } };
   }
   return { url: record.url, stale: now - record.at > ANSWER_MS };
 }
@@ -1255,7 +1264,10 @@ async function main(argv) {
   const triageStep = async (step, item) => {
     if (step.action === 'close') {
       // Closed first: a comment saying so on an issue left open would read
-      // as reopened. If the comment fails, the answer on the issue is the evidence.
+      // as reopened. Before either, the record is marked closed: that, not
+      // the comment, keeps a reopened issue open (readTriage), so a failed
+      // comment leaves only the answer on the issue as the evidence.
+      await request(token, 'PATCH', `/repos/${item.repository}/issues/comments/${step.mark.id}`, { body: step.mark.body });
       await request(token, 'PATCH', issuePath(item), { state: 'closed', state_reason: 'completed' });
       await request(token, 'POST', `${issuePath(item)}/comments`,
         { body: `${closedLine(step.request)}\nBoard scheduler: closed, as a triage run found this done: ${step.evidence}. Reopen it if that is wrong.` });
