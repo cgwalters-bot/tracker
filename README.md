@@ -754,9 +754,10 @@ and comment summary include the broker's short-window usage and reset.
 Missing short-window headers retain the last published lower bound until its
 reset. A session hold on the planning pool pauses the local scheduler and
 coordinator pass, including work on other pools. Missing usage keeps their
-existing fail-open behavior. The pinned external `agent-board` poll and
-supervisor do not yet consume `hold`; they need an upstream change and pin
-update before this protects all automated dispatch paths.
+existing fail-open behavior. agent-board's poll, built at its branch head,
+holds a pool whose snapshot entry has `hold` (agent-board 4307b77). The
+supervisor's `execute`, at its pinned revision and on agent-board's main
+alike, does not read the snapshot, so its dispatches are not yet held.
 A broker it cannot read fails the run and
 leaves the last snapshot, and its time, as they were. The broker keeps its
 readings in memory, so after a restart it has none until a run goes through
