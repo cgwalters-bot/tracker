@@ -43,5 +43,19 @@ missing_data = { max = 1 }
 # while it was unlisted, no run could change them.
 repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
-files = ["AGENTS.md", "README.md"]
+# And every other name on agentic-job's default protected list, by the
+# operator's decision (21 Oct): a blocked manifest or lockfile meant a run
+# handed back a change CI couldn't build and a person had to land it
+# (agentic-job#1450). The same review gates these as gates `.github/`, and
+# each repository's review task checks dependency changes as supply chain.
+files = ["AGENTS.md", "README.md", "package.json", "bun.lockb",
+  "bunfig.toml", "deno.json", "deno.jsonc", "deno.lock", "global.json",
+  "NuGet.Config", "Directory.Packages.props", "mix.exs", "mix.lock",
+  "go.mod", "go.sum", "stack.yaml", "stack.yaml.lock", "pom.xml",
+  "build.gradle", "build.gradle.kts", "settings.gradle",
+  "settings.gradle.kts", "gradle.properties", "package-lock.json",
+  "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json", "requirements.txt",
+  "Pipfile", "Pipfile.lock", "pyproject.toml", "setup.py", "setup.cfg",
+  "Gemfile", "Gemfile.lock", "uv.lock", "CODEOWNERS", "DESIGN.md",
+  "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "CLAUDE.md"]
 dot_folders = [".github"]
