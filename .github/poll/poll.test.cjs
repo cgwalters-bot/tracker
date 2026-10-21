@@ -41,7 +41,7 @@ test('every poll pass starts the supervisor, which paces it and keeps one pendin
   assert.match(recipes, /start-supervisor:\n    gh workflow run supervisor\.yml --repo "\$GITHUB_REPOSITORY" --ref "\$DEFAULT_BRANCH"\n/);
   const supervisor = fs.readFileSync(path.join(__dirname, '../workflows/supervisor.yml'), 'utf8');
   assert.match(supervisor, /github\.event_name == 'workflow_dispatch' && inputs\.prompt == ''\)\) && 'supervisor-health'/);
-  assert.match(supervisor, /^concurrency:\n  group: .*\n  cancel-in-progress: false\n/m);
+  assert.match(supervisor, /^concurrency:\n  group: >-\n(?:    .*\n)+  cancel-in-progress: false\n/m);
 });
 
 test('poll starts only the enabled default-branch release train before expensive work', () => {

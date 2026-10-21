@@ -44,11 +44,22 @@ env:
 # get their own group: sharing one, the next pass would evict a prompt queued
 # behind a long agent run. A health pass that finds an agent active declines
 # (failures keep their cooldown and retry); a manual prompt declined that way
-# fails visibly below. Outsiders' skipped workflows must not evict an
-# operator's pending run. A prompt-less dispatch, the poll's start every
-# pass, is a health pass too: in supervisor-agent it would evict a prompt.
+# fails visibly below. A run the health job skips (any comment but the
+# operator's on the requests issue, or a run off the default branch) gets a
+# group of its own: in a shared group it would evict a pending run and then
+# do nothing (#803). That first branch is the negation of health's `if`
+# (tested). A prompt-less dispatch, the poll's start every pass, is a health
+# pass too: in supervisor-agent it would evict a prompt.
 concurrency:
-  group: ${{ (github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.prompt == '')) && 'supervisor-health') || 'supervisor-agent' }}
+  group: >-
+    ${{ (!(github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+    (github.event_name != 'issue_comment' ||
+    (github.event.comment.user.login == 'cgwalters' &&
+    github.event.issue.number == 656 && github.event.issue.locked == true &&
+    !github.event.issue.pull_request))) && format('supervisor-ignored-{0}', github.run_id)) ||
+    ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run' ||
+    (github.event_name == 'workflow_dispatch' && inputs.prompt == '')) && 'supervisor-health') ||
+    'supervisor-agent' }}
   cancel-in-progress: false
 jobs:
   health:
