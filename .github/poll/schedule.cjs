@@ -1251,7 +1251,7 @@ async function main(argv) {
     + ` accepted implement plans only${pace?.fill ? ', and triage and research ones' : ''}; items of ${config.followed.size} followed repositories only`);
 
   // The record is written before the run is dispatched, so a pass cut off
-  // between the two does not ask twice; a dispatch that fails takes it back.
+  // between the two does not ask twice; a dispatch GitHub refuses takes it back.
   const triageStep = async (step, item) => {
     if (step.action === 'close') {
       // Closed first: a comment saying so on an issue left open would read
@@ -1269,7 +1269,16 @@ async function main(argv) {
       await request(dispatchToken, 'POST', `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`, { ref, inputs: {
         kind: 'triage', repo: item.repository, item: String(item.number), pool: config.triagePool, task: triageTask(config, item, id, step.pull) } });
     } catch (err) {
-      await request(token, 'DELETE', `/repos/${item.repository}/issues/comments/${rec.id}`).catch(() => {});
+      // As for an operator retry: only a dispatch GitHub refused takes the
+      // record back. After a timeout or a server error the run may have
+      // started, and its answer must find the record it names, not a
+      // second question.
+      const at = `/repos/${item.repository}/issues/comments/${rec.id}`;
+      if (/: HTTP 4\d\d /.test(err.message)) await request(token, 'DELETE', at).catch(() => {});
+      else {
+        await request(token, 'PATCH', at, { body: `${triageRecord(id, step, item.body)} (The dispatch was not confirmed.)` })
+          .catch(() => {});
+      }
       throw err;
     }
   };

@@ -571,6 +571,41 @@ test('with --apply, a probably done item gets a triage run, and a stub with no p
   assert.ok(calls.every(c => !c.startsWith('PATCH ')));
 });
 
+test('with --apply, a triage dispatch GitHub refuses takes its record back; a server error keeps it', async () => {
+  const NO_PLAN_BIN = stub('no-plan-dispatch-error', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
+  const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
+  const DISPATCHES = `/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/dispatches`;
+  const RECORD = `/repos/${EPICS}/issues/comments/410`;
+  const pass = dispatch => runMain(['--apply'], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(41)],
+    [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
+    [`/repos/${EPICS}/pulls?state=open`]: [],
+    [`GET /repos/${EPICS}/issues/41/comments`]: [],
+    [`POST /repos/${EPICS}/issues/41/comments`]: { id: 410 },
+    [`GET /repos/${REPO_CONFIG.dispatchRepo}`]: { default_branch: 'main' },
+    [`DELETE ${RECORD}`]: null,
+    [`PATCH ${RECORD}`]: {},
+    ...dispatch,
+  }, { bin: NO_PLAN_BIN, issues: { 41: merged } });
+
+  // No dispatch route: GitHub answers 404, so no run started.
+  const refused = await pass({});
+  assert.ok(refused.calls.includes(`DELETE ${RECORD}`), refused.calls.join('\n'));
+  assert.ok(!refused.calls.includes(`PATCH ${RECORD}`));
+
+  // A 502 may have queued the run: the record stays, marked unconfirmed,
+  // with the request id the run's answer will carry.
+  const ambiguous = await pass({ [`POST ${DISPATCHES}`]: { serverError: true } });
+  assert.ok(!ambiguous.calls.some(c => c.startsWith('DELETE ')), ambiguous.calls.join('\n'));
+  const [, record] = ambiguous.sent.find(([c]) => c === `POST /repos/${EPICS}/issues/41/comments`);
+  const [, edited] = ambiguous.sent.find(([c]) => c === `PATCH ${RECORD}`);
+  const requestOf = body => JSON.parse(/^<!-- schedule-triage\/v1: (.*) -->$/m.exec(body)[1]).request;
+  assert.equal(requestOf(edited.body), requestOf(record.body));
+  assert.match(edited.body, /dispatch was not confirmed/);
+});
+
 test('with --apply during a broker outage, a pass previews and writes nothing', async () => {
   const NO_PLAN_BIN = stub('no-plan-held', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
   const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
