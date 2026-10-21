@@ -24,7 +24,7 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
   }
   assert.equal(workflow.match(/--config .github\/poll\/agent-board.json --supervisor-config .github\/supervisor\/config.json/g)?.length, 3);
   assert.match(workflow, /--usage-config .github\/usage\/config.json --previous "\$RUNNER_TEMP\/previous-health\/health.json"/);
-  assert.match(workflow, /--workflow supervisor.yml[\s\S]*--branch "\$DEFAULT_BRANCH" --status completed --limit 50\b/);
+  assert.match(workflow, /actions\/artifacts\?name=supervisor-health&per_page=10"/);
   assert.match(workflow, /--pools .github\/agentic-job\/pools.json \$\{DAILY:\+"\$DAILY"\} >> "\$GITHUB_OUTPUT"/);
   assert.match(workflow, /\(vars.SUPERVISOR == 'preview' \|\| vars.SUPERVISOR == 'apply'\) && needs.health.outputs.act == 'true'/);
   assert.match(workflow, /\(vars.SUPERVISOR == 'preview' \|\| vars.SUPERVISOR == 'apply'\) && needs.agent.outputs.result-url != ''/);
@@ -165,7 +165,7 @@ test('the poll chain starts supervisor passes, paced from the previous health ar
     '- name: Whether the agent runs'];
   assert.deepEqual(order.map(step => health.indexOf(step)), order.map(step => health.indexOf(step)).sort((a, b) => a - b));
   assert.ok(order.every(step => health.includes(step)));
-  assert.match(health, /id: due\n[\s\S]*?EVENT: \$\{\{ github.event_name \}\}\n +PROMPT: \$\{\{ inputs.prompt \}\}\n +run: node .github\/poll\/supervisor-due.cjs\n/);
+  assert.match(health, /id: due\n[\s\S]*?EVENT: \$\{\{ github.event_name \}\}\n +PROMPT: \$\{\{ inputs.prompt \}\}\n +READ: \$\{\{ steps.previous.outputs.read \}\}\n +run: node .github\/poll\/supervisor-due.cjs\n/);
   for (const step of order.slice(2)) {
     assert.match(health.split(step)[1], /^.*\n( +id: \w+\n| +#.*\n)* +if: \$\{\{ (!cancelled\(\) && )?steps.due.outputs.health == 'true'( && hashFiles\('health.json'\) != '')?( && steps.repeat.outputs.skip != 'true')? \}\}\n/);
   }
@@ -207,10 +207,19 @@ test('a poll-started pass within fifteen minutes skips, and a sweep is due after
   for (const previous of [{}, { health: 'garbage' }, { health: ago(-60), sweep: ago(-60) }]) {
     assert.deepEqual(due('workflow_run', previous, now), { health: true, daily: true, times: { health: ago(0), sweep: ago(0) } });
   }
+  // A previous report that could not be looked up is not an absent one: the
+  // chain waits rather than sweeping every pass (#814); only an explicit
+  // request bypasses the cooldown.
+  for (const event of ['workflow_run', 'workflow_dispatch']) {
+    assert.deepEqual(due(event, {}, now, '', false), { health: false, daily: false, times: { health: null, sweep: null } });
+  }
+  assert.deepEqual(due('schedule', {}, now, '', false), { health: true, daily: false, times: { health: ago(0), sweep: null } });
+  assert.equal(due('workflow_dispatch', {}, now, 'a request', false).daily, true);
+  assert.equal(due('issue_comment', {}, now, '', false).daily, true);
 
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'supervisor-due-'));
   try {
-    const run = previous => {
+    const run = (previous, read = 'true') => {
       fs.rmSync(path.join(dir, 'previous-health'), { recursive: true, force: true });
       if (previous !== undefined) {
         fs.mkdirSync(path.join(dir, 'previous-health'));
@@ -219,7 +228,7 @@ test('a poll-started pass within fifteen minutes skips, and a sweep is due after
       fs.writeFileSync(path.join(dir, 'output'), '');
       const result = spawnSync(process.execPath, [path.join(__dirname, 'supervisor-due.cjs')], {
         cwd: dir, encoding: 'utf8',
-        env: { ...process.env, EVENT: 'workflow_run', RUNNER_TEMP: dir, GITHUB_OUTPUT: path.join(dir, 'output') },
+        env: { ...process.env, EVENT: 'workflow_run', READ: read, RUNNER_TEMP: dir, GITHUB_OUTPUT: path.join(dir, 'output') },
       });
       assert.equal(result.status, 0, result.stderr);
       return fs.readFileSync(path.join(dir, 'output'), 'utf8');
@@ -228,6 +237,8 @@ test('a poll-started pass within fifteen minutes skips, and a sweep is due after
     for (const previous of [undefined, 'not json', 'null']) assert.equal(run(previous), 'health=true\ndaily=true\n');
     const times = JSON.parse(fs.readFileSync(path.join(dir, 'times.json'), 'utf8'));
     assert.ok(Date.now() - Date.parse(times.health) < 60000 && times.sweep === times.health);
+    // The read step failed and set no output.
+    assert.equal(run(undefined, ''), 'health=false\ndaily=false\n');
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -287,48 +298,92 @@ test('standing failures leave the agent to the sweep only when enabled (#804)', 
   assert.equal(config.agent.skipUnchangedFailures, false);
 });
 
-test('previous health uses completed runs even when an agent job failed', () => {
+test('previous health reads the newest report of this workflow and says whether it could (#814)', () => {
   const step = workflow.split('      - name: Previous health report\n')[1].split('      # Before the build')[0];
+  assert.match(step, /^ +id: previous\n +continue-on-error: true\n/);
   const script = step.split('        run: |\n')[1].replace(/^ {10}/gm, '');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'supervisor-previous-'));
   try {
-    // Run 3 has no artifact. Run 2 has a good health artifact but a failed
-    // executor; run 1's overall success must not make its report preferred.
+    // The mock answers each gh api call from the fixture through the step's
+    // own --jq filter, so the filters are what is tested.
     const mock = path.join(dir, 'gh');
     fs.writeFileSync(mock, `#!${process.execPath}
 const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
 const args = process.argv.slice(2);
+const fixture = JSON.parse(fs.readFileSync(process.env.FIXTURE, 'utf8'));
 fs.appendFileSync(process.env.CALLS, JSON.stringify(args) + '\\n');
-if (args[1] === 'list') { process.stdout.write('3\\n2\\n1\\n'); process.exit(0); }
-if (args[2] === '3') process.exit(1);
+if (args[0] === 'api') {
+  const body = args[1].includes('/actions/artifacts?') ? fixture.artifacts : fixture.runs[args[1].split('/').pop()];
+  if (body === undefined) process.exit(1);
+  const jq = spawnSync('jq', ['-r', args[args.indexOf('--jq') + 1]], { input: JSON.stringify(body), stdio: ['pipe', 'inherit', 'inherit'] });
+  process.exit(jq.status);
+}
 const dir = args[args.indexOf('--dir') + 1];
 fs.mkdirSync(dir, { recursive: true });
-fs.writeFileSync(dir + '/health.json', '[{"id":"broker","unavailable_since":"2026-10-16T00:00:00Z"}]');
+fs.writeFileSync(dir + '/health.json', JSON.stringify([{ id: 'broker', run: args[2] }]));
+if (fixture.downloadFails) process.exit(1);
 `, { mode: 0o700 });
     const calls = path.join(dir, 'calls');
-    const result = spawnSync('bash', ['-eo', 'pipefail', '-c', script], {
-      encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}`,
-        CALLS: calls, RUNNER_TEMP: dir, GITHUB_REPOSITORY: 'cgwalters-forge/tracker', DEFAULT_BRANCH: 'main' },
+    const run = fixture => {
+      for (const file of ['calls', 'output', 'previous-health', 'previous-download']) fs.rmSync(path.join(dir, file), { recursive: true, force: true });
+      fs.writeFileSync(path.join(dir, 'output'), '');
+      fs.writeFileSync(path.join(dir, 'fixture.json'), JSON.stringify(fixture));
+      const result = spawnSync('bash', ['-e', '-c', script], {
+        encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, FIXTURE: path.join(dir, 'fixture.json'),
+          CALLS: calls, RUNNER_TEMP: dir, GITHUB_OUTPUT: path.join(dir, 'output'), GITHUB_REPOSITORY: 'o/r', DEFAULT_BRANCH: 'main' },
+      });
+      let report;
+      try { report = JSON.parse(fs.readFileSync(path.join(dir, 'previous-health/health.json')))[0].run; } catch {}
+      const commands = fs.existsSync(calls) ? fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse) : [];
+      return { status: result.status, output: fs.readFileSync(path.join(dir, 'output'), 'utf8'), report, commands };
+    };
+    const artifact = (id, created, expired = false) => ({ expired, created_at: created, workflow_run: { id } });
+    const ours = id => ({
+      id, path: '.github/workflows/supervisor.yml', event: 'workflow_run', head_branch: 'main',
+      repository: { id: 1 }, head_repository: { id: 1 },
     });
-    assert.equal(result.status, 0, result.stderr);
-    const commands = fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-    assert.equal(commands[0][commands[0].indexOf('--status') + 1], 'completed');
-    assert.equal(commands[0][commands[0].indexOf('--limit') + 1], '50');
-    assert.equal(commands[0][commands[0].indexOf('--json') + 1], 'databaseId,conclusion');
-    const filtered = spawnSync('jq', ['-r', commands[0][commands[0].indexOf('--jq') + 1]], {
-      encoding: 'utf8',
-      input: JSON.stringify([
-        ...Array.from({ length: 8 }, (_, i) => ({ databaseId: 11 - i, conclusion: 'skipped' })),
-        { databaseId: 3, conclusion: 'success' },
-        { databaseId: 2, conclusion: 'failure' },
-        { databaseId: 1, conclusion: 'success' },
-      ]),
-    });
-    assert.equal(filtered.status, 0, filtered.stderr);
-    assert.equal(filtered.stdout, '3\n2\n1\n');
-    assert.deepEqual(commands.slice(1).map(args => args[2]), ['3', '2']);
-    assert.equal(JSON.parse(fs.readFileSync(path.join(dir, 'previous-health/health.json')))[0].unavailable_since,
-      '2026-10-16T00:00:00Z');
+    const fixture = {
+      artifacts: { artifacts: [
+        artifact(5, '2026-10-21T10:00:00Z'),
+        artifact(9, '2026-10-21T10:09:00Z'),
+        artifact(8, '2026-10-21T10:08:00Z'),
+        artifact(7, '2026-10-21T10:07:00Z', true),
+        artifact(6, '2026-10-21T10:06:00Z'),
+        artifact(4, '2026-10-21T10:05:00Z'),
+      ] },
+      runs: {
+        9: { ...ours(9), head_repository: { id: 2 } },
+        8: { ...ours(8), head_branch: 'other' },
+        6: { ...ours(6), event: 'pull_request' },
+        4: { ...ours(4), path: '.github/workflows/dispatch.yml' },
+        5: ours(5),
+      },
+    };
+    // Newest first; an expired one, a fork's, another branch's, a pull
+    // request's and another workflow's are passed over.
+    let result = run(fixture);
+    assert.equal(result.status, 0);
+    assert.equal(result.output, 'read=true\n');
+    assert.equal(result.report, '5');
+    assert.match(result.commands[0][1], /^repos\/o\/r\/actions\/artifacts\?name=supervisor-health&per_page=10$/);
+    assert.deepEqual(result.commands.slice(1).map(args => args.slice(0, 3)), [
+      ...[9, 8, 6, 4, 5].map(run => ['api', `repos/o/r/actions/runs/${run}`, '--jq']), ['run', 'download', '5'],
+    ]);
+    // None at all is read: a first pass, or none for two days.
+    for (const artifacts of [[], [artifact(7, '2026-10-21T10:07:00Z', true)]]) {
+      result = run({ artifacts: { artifacts }, runs: {} });
+      assert.deepEqual([result.status, result.output, result.report], [0, 'read=true\n', undefined]);
+    }
+    // A failed listing, run lookup or download is not, nor a page others'
+    // artifacts fill; a failed download leaves no partial report.
+    const others = { ...fixture, artifacts: { artifacts: fixture.artifacts.artifacts.filter(a => a.workflow_run.id !== 5) } };
+    for (const failing of [{ runs: {} }, { ...fixture, runs: {} }, { ...fixture, downloadFails: true }, others]) {
+      result = run(failing);
+      assert.notEqual(result.status, 0);
+      assert.equal(result.output, '');
+      assert.equal(result.report, undefined);
+    }
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

@@ -96,22 +96,38 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
+      # read=true only when this run's report was downloaded or none exists,
+      # never when the lookup failed, so the pacing can tell the two apart
+      # (#814). Listing the artifact by name is one request, where listing
+      # runs and trying each for an artifact took up to 51 of the job
+      # token's hourly share. The name alone is not enough: another
+      # workflow, or a fork's pull request from its main, can upload one, so
+      # only this file's runs from its own triggers here are read; and as
+      # those could fill the page, a page with none of ours is not "none".
       - name: Previous health report
+        id: previous
         continue-on-error: true
         timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          # Skipped comment runs have no report; don't let them crowd out health passes.
-          runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow supervisor.yml \
-            --branch "$DEFAULT_BRANCH" --status completed --limit 50 --json databaseId,conclusion \
-            --jq '.[] | select(.conclusion != "skipped") | .databaseId')
+          runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=supervisor-health&per_page=10" \
+            --jq '.artifacts | sort_by(.created_at) | reverse | .[] | select(.expired | not) | .workflow_run.id')
           for run in $runs; do
-            if gh run download "$run" --repo "$GITHUB_REPOSITORY" --name supervisor-health --dir "$RUNNER_TEMP/previous-health"; then
-              exit 0
-            fi
+            ours=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq 'select(
+              .path == ".github/workflows/supervisor.yml" and .head_branch == env.DEFAULT_BRANCH
+              and .head_repository.id == .repository.id
+              and (.event | IN("schedule", "workflow_run", "workflow_dispatch", "issue_comment"))) | .id')
+            [[ $ours == "$run" ]] || continue
+            # Moved into place whole, so a failed download leaves no partial report.
+            gh run download "$run" --repo "$GITHUB_REPOSITORY" --name supervisor-health --dir "$RUNNER_TEMP/previous-download"
+            mv "$RUNNER_TEMP/previous-download" "$RUNNER_TEMP/previous-health"
+            echo 'read=true' >> "$GITHUB_OUTPUT"
+            exit 0
           done
+          [[ -z $runs ]] || exit 1
+          echo 'read=true' >> "$GITHUB_OUTPUT"
       # Before the build, so a run the poll started too soon ends in seconds.
       - name: Whether a pass is due
         id: due
@@ -119,6 +135,7 @@ jobs:
         env:
           EVENT: ${{ github.event_name }}
           PROMPT: ${{ inputs.prompt }}
+          READ: ${{ steps.previous.outputs.read }}
         run: node .github/poll/supervisor-due.cjs
       # Built fresh, never a cached binary that another job could replace
       # before token use.
