@@ -41,7 +41,7 @@
     "wip": 8,
     "batch": 2,
     "triage": 2,
-    "triagePool": "mistral",
+    "triagePool": "claude",
     "fill": 4,
     "operatorRetryPools": ["claude", "openai"],
     "priorityField": "Priority",
