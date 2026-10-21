@@ -1057,6 +1057,12 @@ test('only a writer’s record and answer count, for the same request, after the
   const closed = comment(BOT, '<!-- schedule-triage/v1-closed: r1 -->\nclosing', 3, 'c');
   assert.equal(readTriage([record(BOT, 1), answer(BOT, 2, 'done'), closed], writers, '').verdict, 'reopened');
   assert.equal(readTriage([record(BOT, 1), answer(BOT, 2, 'done'), { ...closed, user: { login: 'visitor' } }], writers, '').verdict, 'done');
+  // So does one whose closing comment failed: the record was marked before the close (tracker#817).
+  const done = readTriage([{ ...record(BOT, 1), id: 7 }, answer(BOT, 2, 'done')], writers, '');
+  assert.deepEqual(done.mark, { id: 7, body: '<!-- schedule-triage/v1: {"request":"r1","closed":"r1"} -->\nasked' });
+  assert.equal(readTriage([comment(BOT, done.mark.body, 1, 'rec'), answer(BOT, 2, 'done')], writers, '').verdict, 'reopened');
+  // A mark for another request is not this one's.
+  assert.equal(readTriage([record(BOT, 1, { closed: 'r0' }), answer(BOT, 2, 'done')], writers, '').verdict, 'done');
   assert.equal(readTriage([record(BOT, 1), answer('cgwalters', 2, 'maybe')], writers, '', Date.parse(at(3))).verdict, undefined);
   // A needs-design record lapses once the body is written up.
   const design = triageRecord('r1', { action: 'design', reason: 'no plan' }, 'tbd');
@@ -1090,7 +1096,7 @@ test('with --apply, a done answer closes the issue after a comment naming the ev
   const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
   const at = '2026-10-16T10:00:00Z';
   const comments = [
-    { user: { login: REPO_CONFIG.bot }, created_at: at, html_url: 'rec', body: '<!-- schedule-triage/v1: {"request":"r1"} -->\nasked' },
+    { id: 5, user: { login: REPO_CONFIG.bot }, created_at: at, html_url: 'rec', body: '<!-- schedule-triage/v1: {"request":"r1"} -->\nasked' },
     { user: { login: REPO_CONFIG.bot }, created_at: at, html_url: 'ans', body: 'Done: see o/r#9.\n```schedule-triage\n{"request":"r1","verdict":"done"}\n```' },
   ];
   const { out, sent, error } = await runMain(['--apply'], {
@@ -1101,14 +1107,19 @@ test('with --apply, a done answer closes the issue after a comment naming the ev
     [`/repos/${EPICS}/pulls?state=open`]: [],
     [`GET /repos/${EPICS}/issues/41/comments`]: comments,
     [`POST /repos/${EPICS}/issues/41/comments`]: { id: 1 },
+    [`PATCH /repos/${EPICS}/issues/comments/5`]: {},
     [`PATCH /repos/${EPICS}/issues/41`]: {},
   }, { issues: { 41: merged } });
   assert.equal(error, undefined);
   assert.ok(out.some(line => /#41 .*close: triage found it done, ans$/.test(line)));
-  // Closed before the comment that says so, which would otherwise read as reopened.
-  assert.deepEqual(sent.map(([c]) => c), [`PATCH /repos/${EPICS}/issues/41`, `POST /repos/${EPICS}/issues/41/comments`]);
-  assert.deepEqual(sent[0][1], { state: 'closed', state_reason: 'completed' });
-  assert.match(sent[1][1].body, /^<!-- schedule-triage\/v1-closed: r1 -->\n.*ans/);
+  // The record is marked closed first, so a reopen holds even if the
+  // comment fails; then closed before the comment that says so, which
+  // would otherwise read as reopened.
+  assert.deepEqual(sent.map(([c]) => c),
+    [`PATCH /repos/${EPICS}/issues/comments/5`, `PATCH /repos/${EPICS}/issues/41`, `POST /repos/${EPICS}/issues/41/comments`]);
+  assert.deepEqual(sent[0][1], { body: '<!-- schedule-triage/v1: {"request":"r1","closed":"r1"} -->\nasked' });
+  assert.deepEqual(sent[1][1], { state: 'closed', state_reason: 'completed' });
+  assert.match(sent[2][1].body, /^<!-- schedule-triage\/v1-closed: r1 -->\n.*ans/);
 });
 
 test("answered not done, the item's own plan with a brief starts, and the checks after the guess still hold", async () => {
