@@ -11,7 +11,7 @@ const workflow = fs.readFileSync(path.join(__dirname, '../workflows/comment-wake
 const conditions = [...workflow.matchAll(/if: \$\{\{ (.*) \}\}/g)].map(m => m[1]);
 
 test('only enabled, new human operator comments on open issues wake poll', () => {
-  assert.match(workflow, /issue_comment:\n    types: \[created\]/);
+  assert.match(workflow, /issue_comment: # zizmor: ignore\[dangerous-triggers\]\n    types: \[created\]/);
   assert.equal(conditions.length, 2);
   const admitted = (overrides = {}) => {
     const context = {

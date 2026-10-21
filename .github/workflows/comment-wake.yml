@@ -1,7 +1,9 @@
 name: Comment wake
 
 on:
-  issue_comment:
+  # Only the configured operator can dispatch poll on the default branch;
+  # no comment content or event-controlled code is executed.
+  issue_comment: # zizmor: ignore[dangerous-triggers]
     types: [created]
 
 permissions: {}
