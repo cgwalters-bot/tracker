@@ -30,7 +30,7 @@
   },
   "coordinator": {
     "reviewUrl": "https://cgwalters-forge.github.io/review/#",
-    "planPool": "claude",
+    "planPool": "tier-1",
     "statusPool": "openai",
     "statusIssue": 572,
     "statusHourUTC": 11
@@ -41,9 +41,9 @@
     "wip": 8,
     "batch": 2,
     "triage": 2,
-    "triagePool": "claude",
+    "triagePool": "tier-1",
     "fill": 4,
-    "operatorRetryPools": ["claude", "openai"],
+    "operatorRetryPools": ["tier-1"],
     "priorityField": "Priority",
     "repositories": [
       "cgwalters-forge/tracker",

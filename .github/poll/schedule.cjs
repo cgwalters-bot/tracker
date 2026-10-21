@@ -146,6 +146,24 @@ const OPERATOR_RETRY_WAIT_MS = 3600 * 1000;
 // spell one differently.
 const keyOf = (repo, number) => `${repo}#${number}`.toLowerCase();
 
+// The pools a pool setting of agent-board.json names (tracker#837): a pool
+// of pools.json, or a tier, `tier-1` or `tier-2`, for its pools in
+// pools.json's order, but those with `"auto": false` (fable: its allowance
+// is apart, and only a person spends it). A tier with no such pool is
+// refused, as a typo would otherwise leave the work with nowhere to go.
+function resolvePools(setting, pools, name) {
+  const tier = /^tier-([12])$/.exec(typeof setting === 'string' ? setting : '');
+  if (tier) {
+    const names = Object.keys(pools).filter(p => pools[p].tier === Number(tier[1]) && pools[p].auto !== false);
+    if (!names.length) throw new Error(`agent-board.json: ${name} names ${setting}, which has no automatic pool`);
+    return names;
+  }
+  if (typeof setting !== 'string' || !Object.hasOwn(pools, setting)) {
+    throw new Error(`agent-board.json: ${name} must name a configured pool, or tier-1 or tier-2`);
+  }
+  return [setting];
+}
+
 // The `schedule` part of agent-board.json, with the logins and the caller
 // the agent-board job already reads. Everything that names an account or a
 // board is there, on the default branch, not here.
@@ -192,12 +210,15 @@ function loadConfig(text) {
   if (!Number.isSafeInteger(config.triage) || config.triage < 0 || config.triage > TRIAGE_LIMIT) {
     throw new Error(`agent-board.json: schedule.triage must be 0 to ${TRIAGE_LIMIT}`);
   }
+  // Each pool setting is a pool or a tier (resolvePools); `planPool` and
+  // `triagePool` are the first candidate until a pass chooses by pace
+  // (choosePool), which is the pool a setting naming one pool always gets.
   const pools = require('../agentic-job/pools.json');
-  config.planPool = all.coordinator?.planPool ?? 'claude';
-  config.triagePool = s.triagePool ?? config.planPool;
-  for (const [name, pool] of [['coordinator.planPool', config.planPool], ['schedule.triagePool', config.triagePool]]) {
-    if (typeof pool !== 'string' || !Object.hasOwn(pools, pool)) throw new Error(`agent-board.json: ${name} must name a configured pool`);
-  }
+  const plan = all.coordinator?.planPool === undefined ? 'claude' : all.coordinator.planPool;
+  config.planPools = resolvePools(plan, pools, 'coordinator.planPool');
+  config.triagePools = resolvePools(s.triagePool ?? plan, pools, 'schedule.triagePool');
+  [config.planPool] = config.planPools;
+  [config.triagePool] = config.triagePools;
   // Extra small sibling issues one implement run may also do (agent-board's
   // `dispatch --batch`); 0, the default, is off.
   config.batch = s.batch ?? 0;
@@ -219,14 +240,17 @@ function loadConfig(text) {
     throw new Error(`agent-board.json: schedule.fill must be 0 to ${FILL_LIMIT}`);
   }
   if (config.fill && !config.triage) throw new Error('agent-board.json: schedule.fill needs schedule.triage');
-  // The pools a failed run on an operator request is retried on, the first
-  // that is not the failed run's (operatorRetries); empty, the default, is off.
-  config.operatorRetryPools = s.operatorRetryPools ?? [];
-  if (!Array.isArray(config.operatorRetryPools) || config.operatorRetryPools.length > Object.keys(pools).length
-      || new Set(config.operatorRetryPools).size !== config.operatorRetryPools.length
-      || !config.operatorRetryPools.every(p => typeof p === 'string' && Object.hasOwn(pools, p))) {
-    throw new Error('agent-board.json: schedule.operatorRetryPools must list distinct configured pools');
+  // The pools a failed run on an operator request is retried on, those of
+  // its pools or tiers that are not the failed run's (operatorRetries);
+  // empty, the default, is off.
+  const retry = s.operatorRetryPools ?? [];
+  if (!Array.isArray(retry) || retry.length > Object.keys(pools).length || new Set(retry).size !== retry.length) {
+    throw new Error('agent-board.json: schedule.operatorRetryPools must list distinct configured pools or tiers');
   }
+  config.operatorRetryPools = [...new Set(retry.flatMap(p => resolvePools(p, pools, 'schedule.operatorRetryPools')))];
+  // A list of pools only keeps its order, the first that is not the failed
+  // run's; one naming a tier is chosen by pace.
+  config.operatorRetryPaced = retry.some(p => /^tier-/.test(p));
   if (!login.test(config.operator ?? '') || !login.test(config.planner ?? '') || !/^[\w.-]+\/[\w.-]+$/.test(config.caller ?? '')) {
     throw new Error('agent-board.json: operator, bot and dispatchRepo are required');
   }
@@ -444,14 +468,15 @@ async function readOutcome(get, config, found, targetComments) {
 // operator's P0 request was dropped when its one triage run failed in the
 // agent step. Only the newest run of an item counts, as a later one, of
 // agent-board's for a newer comment or of this job's, answers the request.
-// That run, a failed triage or research one, gets one retry on the first of
-// `operatorRetryPools` that is not its own pool; a failed retry, or a run with
+// That run, a failed triage or research one, gets one retry on the pool
+// `pick` takes of `operatorRetryPools` that are not its own pool (the pace's
+// choice in main, else the first); a failed retry, or a run with
 // no other pool to go to, labels the issue needs-human, so it is never left at
 // failed. Only agent-board's relay counts, an open issue of the caller's the
 // planner opened with its title, so a visitor's issue cannot spend a run;
 // the run is the operator's request again, which the relay already quotes.
 // `read(key)` gives the issue and its comments.
-async function operatorRetries(runs, config, read, now = Date.now()) {
+async function operatorRetries(runs, config, read, now = Date.now(), pick = async pools => pools[0]) {
   const byItem = new Map();
   for (const run of runs) {
     const m = RUN_TITLE_RE.exec(run.display_title ?? '');
@@ -490,7 +515,8 @@ async function operatorRetries(runs, config, read, now = Date.now()) {
       ?? String(list.findLast(r => r.at >= (Date.parse(c.created_at) || 0))?.run.id);
     const retried = records.some(c => started(c) === id);
     const pool = / \(([\w-]+)\)(?: \[acp-experiment\])?$/.exec(run.display_title)?.[1] ?? '';
-    const next = config.operatorRetryPools.find(p => p !== pool);
+    const others = config.operatorRetryPools.filter(p => p !== pool);
+    const next = others.length && !retried && !lost ? await pick(others) : undefined;
     const base = { item: key, kind, run: run.html_url, runId: id, conclusion: run.conclusion, pool: pool || 'default',
       why: `its ${kind} run ${run.html_url} ended ${run.conclusion} on the ${pool || 'default'} pool` };
     if (!retried && !lost && next) steps.push({ ...base, action: 'retry', next, reason: `${base.why}; once more on ${next}` });
@@ -547,31 +573,79 @@ function candidates(entries, repository) {
 // either; a daily planning pass of the coordinator runs on the pool and
 // renews it, but with no epic due one fill mode stays off until a run does. { fill, mode } with the figures.
 function paceMode(snapshot, pool, now) {
+  const off = why => ({ fill: false, mode: `normal (${why})` });
+  const r = poolReading(snapshot, pool, now);
+  if (r.why) return off(r.why);
+  if (r.held) return off(`${r.figures}, held`);
+  return r.room > 0 ? { fill: true, mode: `fill (${r.figures})` } : off(r.figures);
+}
+
+// paceMode's reading of one pool: `room`, the points of its window its pace
+// allows that it has not used, and whether the snapshot holds it; or `why`
+// it is not known.
+function poolReading(snapshot, pool, now) {
   const p = snapshot?.pools?.[pool];
   const updated = Date.parse(snapshot?.updated_at ?? '');
-  const off = why => ({ fill: false, mode: `normal (${why})` });
-  if (!p || !Number.isFinite(updated)) return off(`no usage reading of the ${pool} pool`);
-  if (now - updated > PACE_FRESH_MS) return off(`the usage snapshot is from ${snapshot.updated_at}`);
+  if (!p || !Number.isFinite(updated)) return { why: `no usage reading of the ${pool} pool` };
+  if (now - updated > PACE_FRESH_MS) return { why: `the usage snapshot is from ${snapshot.updated_at}` };
   const window = p.window_minutes * 60000;
   const reset = Date.parse(p.resets_at ?? '');
   const observed = Date.parse(p.observed_at ?? '');
-  if (!(now - observed <= OBSERVED_FRESH_MS)) return off(`no reading of the ${pool} pool observed in the last day${p.observed_at ? `, the last at ${p.observed_at}` : ''}`);
-  if (![p.used_percent, p.target_percent, window, reset].every(Number.isFinite) || window <= 0 || reset <= now) return off(`no current window of the ${pool} pool`);
+  if (!(now - observed <= OBSERVED_FRESH_MS)) return { why: `no reading of the ${pool} pool observed in the last day${p.observed_at ? `, the last at ${p.observed_at}` : ''}` };
+  if (![p.used_percent, p.target_percent, window, reset].every(Number.isFinite) || window <= 0 || reset <= now) return { why: `no current window of the ${pool} pool` };
   const gone = 100 * Math.min(1, Math.max(0, (now - (reset - window)) / window));
   const allowed = (p.target_percent * gone) / 100;
-  const figures = `${pool} ${Math.round(p.used_percent)}% used, pace allows ${Math.round(allowed)}%`;
-  if (p.hold) return off(`${figures}, held`);
-  return p.used_percent < allowed ? { fill: true, mode: `fill (${figures})` } : off(figures);
+  return { room: allowed - p.used_percent, held: Boolean(p.hold), figures: `${pool} ${Math.round(p.used_percent)}% used, pace allows ${Math.round(allowed)}%` };
 }
 
-// The pace as the bot's usage comment says it, read as the coordinator reads
-// it: only the bot's own comment, unedited by anyone else, counts.
-async function readPace(post, pool, now) {
+// The pool of `candidates` a run goes to, as agent-board's `pace::choose`
+// picks among a tier's pools: the one furthest under its pace, held pools
+// skipped, one with no reading only where no pool has one, a tie to the
+// first. Where every pool is held, the first: what a setting naming one pool
+// has always got, so a hold never stops planning or triage, which agent-board
+// would make wait. { pool, why }.
+function choosePool(snapshot, candidates, now) {
+  let best = null;
+  for (const pool of candidates) {
+    const r = poolReading(snapshot, pool, now);
+    if (r.held) continue;
+    const room = r.why ? -Infinity : r.room;
+    if (!best || room > best.room) best = { pool, room, why: r.why ?? r.figures };
+  }
+  if (!best) return { pool: candidates[0], why: `${candidates[0]}, the first of ${candidates.join(', ')}, as every one is held` };
+  return { pool: best.pool, why: `${best.pool} of ${candidates.join(', ')} by pace (${best.why})` };
+}
+
+// The usage snapshot as the bot's usage comment says it, read as the
+// coordinator reads it: only the bot's own comment, unedited by anyone else,
+// counts. Null where there is none.
+async function readUsage(post) {
   const { operatorComments, readComments } = require('./epics.cjs');
   const { MARKER, previousSnapshot } = require('../usage/usage.cjs');
   const usage = require('../usage/config.json');
   const comment = operatorComments(await readComments(post, usage.repo, usage.issue), usage.bot).filter(c => c.body.startsWith(MARKER)).at(-1);
-  return paceMode(previousSnapshot(comment?.body), pool, now);
+  return previousSnapshot(comment?.body);
+}
+
+// A pass's one read of the usage snapshot, made only once something needs
+// it: `pace(pool)` is paceMode's, `choose(name, candidates)` choosePool's,
+// read only where a setting names more than one pool. A snapshot not read
+// is said once, and is none.
+function pacing(post, log) {
+  let usage;
+  const snapshot = () => (usage ??= readUsage(post).catch(err => {
+    log(`usage not read: ${err.message.slice(0, 300)}`);
+    return null;
+  }));
+  return {
+    pace: async pool => paceMode(await snapshot(), pool, Date.now()),
+    choose: async (name, candidates) => {
+      if (candidates.length === 1) return candidates[0];
+      const { pool, why } = choosePool(await snapshot(), candidates, Date.now());
+      log(`${name}: ${why}`);
+      return pool;
+    },
+  };
 }
 
 // The coordinator's minimum planning interval: shorter in fill mode, so an
@@ -1200,6 +1274,8 @@ async function main(argv) {
   const log = line => console.log(apply ? line : `[dry-run] ${line}`);
 
   const get = p => request(token, 'GET', p);
+  const gql = body => request(token, 'POST', '/graphql', body);
+  const pools = pacing(gql, log);
   // Operator requests whose run failed, before the census, as they are not
   // board items; their errors fail the pass after the rest is done.
   let retryErrors = 0;
@@ -1210,7 +1286,8 @@ async function main(argv) {
         const [repo, n] = key.split('#');
         return { issue: await get(`/repos/${repo}/issues/${n}`), comments: await paged(token, `/repos/${repo}/issues/${n}/comments`) };
       };
-      for (const step of await operatorRetries(runs, config, read)) {
+      const pick = config.operatorRetryPaced ? others => pools.choose('schedule.operatorRetryPools', others) : undefined;
+      for (const step of await operatorRetries(runs, config, read, Date.now(), pick)) {
         const line = `operator request ${step.item} ${step.action}: ${step.reason}`;
         if (!apply) { log(line); continue; }
         try {
@@ -1274,12 +1351,11 @@ async function main(argv) {
   let pace = null;
   let fill = [];
   if (config.fill) {
-    const gql = body => request(token, 'POST', '/graphql', body);
     // The pace read is the plan pool's: fill mode fills that pool's slots, so
     // it is that pool's usage that bounds it, whatever pool a triage question
-    // itself runs on (`schedule.triagePool`).
-    pace = await readPace(gql, config.planPool, Date.now())
-      .catch(err => ({ fill: false, mode: `normal (usage not read: ${err.message.slice(0, 300)})` }));
+    // itself runs on (`schedule.triagePool`). Of a tier, it is the pool the
+    // coordinator would choose now.
+    pace = await pools.pace(await pools.choose('coordinator.planPool', config.planPools));
     const answers = [];
     for (const repository of pace.fill ? config.followed : []) {
       try {
@@ -1317,6 +1393,9 @@ async function main(argv) {
     + ` ${state.inFlight} of ${config.wip} run(s) in flight;`
     + ` accepted implement plans only${pace?.fill ? ', and triage and research ones' : ''}; items of ${config.followed.size} followed repositories only`);
 
+  // A pass's triage questions all go to one pool, chosen at the first.
+  let triageChoice;
+  const triagePool = () => (triageChoice ??= pools.choose('schedule.triagePool', config.triagePools));
   // The record is written before the run is dispatched, so a pass cut off
   // between the two does not ask twice; a dispatch GitHub refuses takes it back.
   const triageStep = async (step, item) => {
@@ -1344,7 +1423,7 @@ async function main(argv) {
     try {
       const { default_branch: ref } = await request(dispatchToken, 'GET', `/repos/${config.caller}`);
       await request(dispatchToken, 'POST', `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`, { ref, inputs: {
-        kind: 'triage', repo: item.repository, item: String(item.number), pool: config.triagePool, task: triageTask(config, item, id, step.pull) } });
+        kind: 'triage', repo: item.repository, item: String(item.number), pool: await triagePool(), task: triageTask(config, item, id, step.pull) } });
     } catch (err) {
       // As for an operator retry: only a dispatch GitHub refused takes the
       // record back. After a timeout or a server error the run may have
@@ -1465,7 +1544,7 @@ async function main(argv) {
   if (errors || unread || note || retryErrors) throw new Error(`${errors + retryErrors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { FILL_PAGES, FILL_QUERY, RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, planInterval, probePlan, pullIssues, rank, readDryRun, readFillIssues, readOutcome, readPace, readRefusal, readRuns, readTriage, triageRecord, triageTask };
+module.exports = { FILL_PAGES, FILL_QUERY, RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, choosePool, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, pacing, planInterval, probePlan, pullIssues, rank, readDryRun, readFillIssues, readOutcome, readRefusal, readRuns, readTriage, readUsage, resolvePools, triageRecord, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });

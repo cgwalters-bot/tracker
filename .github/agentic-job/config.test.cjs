@@ -26,6 +26,20 @@ test('acp-experiment.toml is hosted.toml and a child agent, and hosted.toml has 
   assert.equal(require('./pools.json').mistral.model, 'zai-glm-5-3');
 });
 
+// Pool settings may name a tier for its automatic pools (tracker#837), so
+// every pool has one; fable's allowance is apart, so only a person spends it.
+test('every pool has a tier, and tier-1 and tier-2 each an automatic pool', () => {
+  const pools = require('./pools.json');
+  for (const [name, pool] of Object.entries(pools)) {
+    assert.ok([1, 2].includes(pool.tier), `${name}.tier`);
+    assert.ok(pool.auto === undefined || typeof pool.auto === 'boolean', `${name}.auto`);
+  }
+  const tier = n => Object.keys(pools).filter(p => pools[p].tier === n && pools[p].auto !== false);
+  assert.deepEqual(tier(1), ['claude', 'openai']);
+  assert.deepEqual(tier(2), ['mistral']);
+  assert.deepEqual([pools.fable.tier, pools.fable.auto], [1, false]);
+});
+
 test('dispatch passes the run only a configuration from its closed set', () => {
   assert.deepEqual(dispatch.match(/^ {6}config: .*$/gm), ['      config: ${{ steps.config.outputs.config }}', '      config: ${{ needs.profile.outputs.config }}']);
   assert.match(dispatch, /^ {8}type: choice\n {8}options: \[hosted, acp-experiment\]\n {8}default: hosted$/m);

@@ -118,7 +118,10 @@ apply. Any other value fails the run before it starts. A pool may also say
 what its provider allows a period, for tools to pace runs against where the
 provider reports no quota: `allowance` is `amount` in `currency` per
 `period`, which is `calendar-month` (`mistral`: 300 USD). Nothing in this
-repository enforces it. The poll alternates its fix rounds between the
+repository enforces it. Every pool has a `tier`, 1 (`claude`, `openai`,
+`fable`) or 2 (`mistral`), for the settings that name a tier rather than a
+pool (README, "Pools and tiers"); `"auto": false` keeps `fable`, whose
+allowance is apart, out of a tier's choice, for dispatch by hand. The poll alternates its fix rounds between the
 first two, except that a first round that is only toil goes to `mistral`;
 `mistral` is for toil such as triage. The run applies
 its own result: a pull request from the bot's fork, or one comment on the

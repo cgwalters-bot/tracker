@@ -5,7 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { CONFIG: POLL, request } = require('./poll.cjs');
 const { heldBy } = require('./broker.cjs');
-const { agentBoard, planInterval, rank, readPace, readRuns, openPullRefs, pullIssues } = require('./schedule.cjs');
+const { agentBoard, pacing, planInterval, rank, readRuns, openPullRefs, pullIssues } = require('./schedule.cjs');
 const { MAX_EPICS, REVIEW_LABEL, canonical, census, loadEpicsConfig, readComments, operatorComments } = require('./epics.cjs');
 const { previousSnapshot } = require('../usage/usage.cjs');
 
@@ -257,11 +257,11 @@ function loadConfig(text) {
   const all = JSON.parse(text);
   const c = all.coordinator ?? {};
   const pools = require('../agentic-job/pools.json');
-  const planPool = c.planPool === undefined ? 'claude' : c.planPool;
+  // The plan pool is a pool or a tier, the schedule's loadConfig's
+  // `planPools`, chosen by pace in main; the status pool names one pool.
+  const [planPool] = config.planPools;
   const statusPool = c.statusPool === undefined ? 'mistral' : c.statusPool;
-  for (const [name, pool] of Object.entries({ planPool, statusPool })) {
-    if (typeof pool !== 'string' || !Object.hasOwn(pools, pool)) throw new Error(`coordinator.${name} must name a configured pool`);
-  }
+  if (typeof statusPool !== 'string' || !Object.hasOwn(pools, statusPool)) throw new Error('coordinator.statusPool must name a configured pool');
   const hour = c.statusHourUTC ?? 11;
   if (!Number.isInteger(hour) || hour < 0 || hour > 23) throw new Error('coordinator.statusHourUTC must be 0 to 23');
   if (!Number.isSafeInteger(c.statusIssue) || c.statusIssue < 1) throw new Error('coordinator.statusIssue must name the reporting issue');
@@ -678,11 +678,14 @@ async function main(argv) {
       const held = await heldBy({ token, repo: process.env.GITHUB_REPOSITORY, login: POLL.author, api: request, log });
       if (held) { log(`held: broker outage ${held.url}`); apply = false; }
     }
+    // A pass's planning runs go to one pool, of a tier the one furthest
+    // under its pace (tracker#837).
+    const pools = pacing(post, log);
+    config.planPool = await pools.choose('coordinator.planPool', config.planPools);
     // In the scheduler's fill mode an idle epic is planned again sooner
     // (tracker#672). A pace not read keeps the configured interval.
     if (config.fill) {
-      const pace = await readPace(post, config.planPool, Date.now())
-        .catch(err => ({ fill: false, mode: `normal (usage not read: ${err.message.slice(0, 300)})` }));
+      const pace = await pools.pace(config.planPool);
       config.minPlanIntervalMs = planInterval(config.minPlanIntervalMs, pace);
       log(`mode: ${pace.mode}; minimum planning interval ${config.minPlanIntervalMs / 60000} minutes`);
     }

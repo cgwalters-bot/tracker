@@ -1,9 +1,9 @@
 {
-  "claude": { "agent": "claude", "model": "claude-opus-5-5", "budget": "3000" },
-  "fable": { "agent": "claude", "model": "claude-fable-5-1", "budget": "3000" },
-  "openai": { "agent": "opencode", "model": "praxis/gpt-6.1-sol", "budget": "500" },
+  "claude": { "agent": "claude", "model": "claude-opus-5-5", "budget": "3000", "tier": 1 },
+  "fable": { "agent": "claude", "model": "claude-fable-5-1", "budget": "3000", "tier": 1, "auto": false },
+  "openai": { "agent": "opencode", "model": "praxis/gpt-6.1-sol", "budget": "500", "tier": 1 },
   "mistral": {
-    "agent": "vibe", "model": "zai-glm-5-3", "budget": "1000",
+    "agent": "vibe", "model": "zai-glm-5-3", "budget": "1000", "tier": 2,
     "allowance": { "amount": 300, "currency": "USD", "period": "calendar-month" }
   }
 }
