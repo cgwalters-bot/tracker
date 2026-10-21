@@ -4,9 +4,15 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
+const vm = require('node:vm');
 
 const root = path.join(__dirname, '../..');
 const workflow = fs.readFileSync(path.join(root, '.github/workflows/supervisor.yml'), 'utf8');
+// The folded (>-) workflow concurrency group and health `if`, as JavaScript.
+const folded = (key, indent) => new RegExp(`^${' '.repeat(indent)}${key}: >-\\n((?:${' '.repeat(indent + 2)}.*\\n)+)`, 'm')
+  .exec(workflow)[1].split('\n').map(line => line.trim()).filter(Boolean).join(' ');
+const groupExpression = /^\$\{\{ (.*) \}\}$/.exec(folded('group', 2))[1];
+const healthCondition = folded('if', 4);
 
 test('supervisor builds the shared actor and keeps write jobs gated', () => {
   // Both jobs build one pinned commit, never the branch's moving head.
@@ -57,7 +63,38 @@ test('supervisor requests and sweeps share one agent group and keep preview read
   assert.match(workflow, /cron: '7 \*\/2 \* \* \*'/);
   // The poll's prompt-less dispatches are health passes; in supervisor-agent
   // every poll pass would evict a pending prompt (#763).
-  assert.ok(workflow.includes("(github.event_name == 'issue_comment' && github.event.comment.user.login != 'cgwalters' && format('supervisor-ignored-{0}', github.run_id)) || ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run' || (github.event_name == 'workflow_dispatch' && inputs.prompt == '')) && 'supervisor-health') || 'supervisor-agent'"));
+  // A run health skips gets its own group, so it cannot evict a pending run
+  // (#803); the others go to supervisor-health or supervisor-agent.
+  assert.ok(groupExpression.startsWith(`(!(${healthCondition}) && format('supervisor-ignored-{0}', github.run_id))`));
+  const operator = { user: { login: board.operator } };
+  const requests = { number: config.agent.requests.issue, locked: true };
+  const ref = 'refs/heads/main';
+  for (const [event, expected] of [
+    [{ event_name: 'issue_comment', event: { comment: operator, issue: requests } }, 'supervisor-agent'],
+    [{ event_name: 'issue_comment', event: { comment: operator, issue: { number: 800, locked: false } } }, 'supervisor-ignored-42'],
+    [{ event_name: 'issue_comment', event: { comment: operator, issue: { ...requests, locked: false } } }, 'supervisor-ignored-42'],
+    [{ event_name: 'issue_comment', event: { comment: operator, issue: { ...requests, pull_request: { url: 'x' } } } }, 'supervisor-ignored-42'],
+    [{ event_name: 'issue_comment', event: { comment: { user: { login: 'outsider' } }, issue: requests } }, 'supervisor-ignored-42'],
+    [{ event_name: 'workflow_dispatch', inputs: { prompt: 'do it' } }, 'supervisor-agent'],
+    [{ event_name: 'workflow_dispatch', inputs: { prompt: 'do it' }, ref: 'refs/heads/other' }, 'supervisor-ignored-42'],
+    [{ event_name: 'workflow_dispatch', inputs: { prompt: '' } }, 'supervisor-health'],
+    [{ event_name: 'workflow_dispatch', inputs: { prompt: '' }, ref: 'refs/heads/other' }, 'supervisor-ignored-42'],
+    [{ event_name: 'workflow_run' }, 'supervisor-health'],
+    [{ event_name: 'schedule', event: { schedule: '*/15 * * * *' } }, 'supervisor-health'],
+    [{ event_name: 'schedule', event: { schedule: '7 */2 * * *' } }, 'supervisor-agent'],
+  ]) {
+    const context = {
+      format: (f, ...a) => f.replace(/\{(\d+)\}/g, (_, i) => a[i]),
+      inputs: event.inputs ?? {},
+      github: {
+        event_name: event.event_name, run_id: 42, ref: event.ref ?? ref,
+        event: { repository: { default_branch: 'main' }, ...event.event },
+      },
+    };
+    const group = vm.runInNewContext(groupExpression, context);
+    assert.equal(group, expected, JSON.stringify(event));
+    assert.equal(vm.runInNewContext(healthCondition, context), !group.startsWith('supervisor-ignored-'), JSON.stringify(event));
+  }
   // Serialize whole runs, not just agent: trigger treats a workflow finishing
   // execute as active too, which otherwise discards manual prompts. The
   // fifteen-minute passes stay out of that group so they cannot evict a
