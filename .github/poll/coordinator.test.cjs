@@ -249,8 +249,11 @@ test('coordinator pools default independently and reject unknown pool names', ()
   const defaults = loadConfig(JSON.stringify(source));
   assert.equal(defaults.planPool, 'claude');
   assert.equal(defaults.statusPool, 'mistral');
+  // A tier is its automatic pools, the first until a pass chooses by pace.
+  const tiered = loadConfig(JSON.stringify({ ...source, coordinator: { ...source.coordinator, planPool: 'tier-1' } }));
+  assert.deepEqual([tiered.planPools, tiered.planPool], [['claude', 'openai'], 'claude']);
   for (const name of ['planPool', 'statusPool']) {
-    for (const value of ['', 'unknown', 'toString', null, 1]) {
+    for (const value of ['', 'unknown', 'toString', null, 1, 'tier-3']) {
       assert.throws(() => loadConfig(JSON.stringify({ ...source,
         coordinator: { ...source.coordinator, [name]: value } })), new RegExp(`coordinator.${name}`));
     }

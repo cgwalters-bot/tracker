@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { FILL_PAGES, FILL_QUERY, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, planInterval, probePlan, pullIssues, readDryRun, readFillIssues, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
+const { FILL_PAGES, FILL_QUERY, agentBoard, batchReleased, candidates, choosePool, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, pacing, planInterval, resolvePools, probePlan, pullIssues, readDryRun, readFillIssues, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
 const { census } = require('./epics.cjs');
 const { render } = require('../usage/usage.cjs');
 
@@ -566,9 +566,37 @@ test('with --apply, a probably done item gets a triage run, and a stub with no p
   const [, record] = sent[1];
   const request = JSON.parse(/^<!-- schedule-triage\/v1: (.*) -->$/m.exec(record.body)[1]).request;
   const { inputs } = sent[2][1];
-  assert.deepEqual({ ...inputs, task: undefined }, { kind: 'triage', repo: EPICS, item: '41', pool: REPO_CONFIG.schedule.triagePool, task: undefined });
+  // No usage snapshot to choose by: the first pool of the configured tier.
+  assert.deepEqual({ ...inputs, task: undefined }, { kind: 'triage', repo: EPICS, item: '41', pool: loadConfig(JSON.stringify(REPO_CONFIG)).triagePools[0], task: undefined });
   assert.ok(inputs.task.includes(request) && inputs.task.includes('https://github.com/o/r/pull/9'));
   assert.ok(calls.every(c => !c.startsWith('PATCH ')));
+});
+
+test('with --apply, a triage question of a tier goes to its pool furthest under its pace', async () => {
+  const NO_PLAN_BIN = stub('no-plan-tier', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
+  const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
+  const DISPATCHES = `/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/dispatches`;
+  const usage = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'usage', 'config.json'), 'utf8'));
+  const now = Date.now();
+  const reading = used => ({ used_percent: used, window_minutes: 7 * 24 * 60, resets_at: new Date(now + 3 * 86400000).toISOString(), observed_at: new Date(now).toISOString(), target_percent: 95, hold: false });
+  const snap = { schema: 'bot-usage/v1', updated_at: new Date(now).toISOString(), pools: { claude: reading(50), openai: reading(5) } };
+  const graphql = (query, v) => (query.includes('comments(') && `${v.owner}/${v.name}` === usage.repo && v.number === usage.issue
+    ? { data: { repository: { issue: { comments: { nodes: [{ databaseId: 7, updatedAt: snap.updated_at, body: render(snap, 'test'), author: { login: usage.bot } }], pageInfo: { hasNextPage: false } } } } } }
+    : undefined);
+  const { out, sent, error } = await runMain(['--apply'], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(41)],
+    [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: [] },
+    [`/repos/${EPICS}/pulls?state=open`]: [],
+    [`GET /repos/${EPICS}/issues/41/comments`]: [],
+    [`POST /repos/${EPICS}/issues/41/comments`]: { id: 410 },
+    [`GET /repos/${REPO_CONFIG.dispatchRepo}`]: { default_branch: 'main' },
+    [`POST ${DISPATCHES}`]: null,
+  }, { bin: NO_PLAN_BIN, issues: { 41: merged }, graphql, schedule: { triagePool: 'tier-1' } });
+  assert.equal(error, undefined, out.join('\n'));
+  assert.ok(out.some(l => /^schedule\.triagePool: openai of claude, openai by pace \(openai 5% used/.test(l)), out.join('\n'));
+  assert.equal(sent.find(([c]) => c === `POST ${DISPATCHES}`)[1].inputs.pool, 'openai');
 });
 
 test('with --apply, a triage dispatch GitHub refuses takes its record back; a server error keeps it', async () => {
@@ -1668,6 +1696,8 @@ test('fill mode: with the epics exhausted, the two unparented issues fill free s
   assert.equal(error, undefined, out.join('\n'));
   const mode = 'fill (claude 40% used, pace allows 53%)';
   assert.deepEqual(out.filter(l => !/ open sub-issue\(s\) of /.test(l)), [
+    // The snapshot reads claude only: of tier-1, the pool with a reading.
+    '[dry-run] coordinator.planPool: claude of claude, openai by pace (claude 40% used, pace allows 53%)',
     `[dry-run] mode: ${mode}; 2 issue(s) outside any epic of 8 open issue(s) read, taken after the epics' by board Priority, then age`,
     `[dry-run] ${EPICS}#41 (epic ${EPICS}#1) skip: a pull request is open, https://github.com/${EPICS}/pull/60`,
     `[dry-run] ${EPICS}#50 (outside any epic) triage: outside any epic; asking a triage run`,
@@ -1683,7 +1713,7 @@ test('over pace, no issue outside an epic is read, and the idle line says the mo
   assert.equal(error, undefined, out.join('\n'));
   assert.deepEqual(fillReads, []);
   const mode = 'normal (claude 70% used, pace allows 53%)';
-  assert.equal(out[0], `[dry-run] mode: ${mode}`);
+  assert.equal(out[1], `[dry-run] mode: ${mode}`);
   assert.equal(out.at(-1), `[dry-run] idle: ${REPO_CONFIG.schedule.wip} slot(s) free and nothing started; mode: ${mode}; skipped: a pull request is open 1`);
 });
 
@@ -1774,8 +1804,107 @@ test('schedule.operatorRetryPools is off unless set, and lists distinct configur
   for (const operatorRetryPools of ['claude', ['nope'], ['claude', 'claude'], [1]]) {
     assert.throws(() => parse({ operatorRetryPools }), /operatorRetryPools/);
   }
+  // A tier is its automatic pools, each once, after the pools named before it.
+  assert.deepEqual(parse({ operatorRetryPools: ['tier-1'] }).operatorRetryPools, ['claude', 'openai']);
+  // Only a list naming a tier is paced; one of pools keeps its order.
+  assert.deepEqual([parse({ operatorRetryPools: ['tier-1'] }).operatorRetryPaced, parse({ operatorRetryPools: ['claude', 'openai'] }).operatorRetryPaced], [true, false]);
+  assert.deepEqual(parse({ operatorRetryPools: ['openai', 'tier-1'] }).operatorRetryPools, ['openai', 'claude']);
+  assert.deepEqual(parse({ operatorRetryPools: ['tier-2', 'tier-1'] }).operatorRetryPools, ['mistral', 'claude', 'openai']);
+  assert.throws(() => parse({ operatorRetryPools: ['tier-1', 'tier-3'] }), /operatorRetryPools/);
   // Mistral's loop guard is not pinned yet (tracker#792): not a retry pool.
-  assert.ok(!REPO_CONFIG.schedule.operatorRetryPools.includes('mistral'));
+  assert.ok(!loadConfig(JSON.stringify(REPO_CONFIG)).operatorRetryPools.includes('mistral'));
+});
+
+// Pool settings naming a tier (tracker#837), against a pools.json of its own.
+const TIERED = { a: { tier: 1 }, b: { tier: 1 }, hand: { tier: 1, auto: false }, c: { tier: 2 }, lone: { tier: 2, auto: false } };
+
+test('a pool setting is a pool, or a tier for its automatic pools in pools.json order', () => {
+  for (const [setting, want] of [
+    ['a', ['a']], ['hand', ['hand']], ['tier-1', ['a', 'b']], ['tier-2', ['c']],
+    // Unknown names, unknown tiers and what is not a name.
+    ['nobody', /must name a configured pool, or tier-1 or tier-2/], ['tier-3', /must name a configured pool/], ['tier-01', /must name/],
+    ['toString', /must name/], ['', /must name/], [1, /must name/], [null, /must name/], [['a'], /must name/],
+  ]) {
+    if (want instanceof RegExp) assert.throws(() => resolvePools(setting, TIERED, 'x.pool'), want, String(setting));
+    else assert.deepEqual(resolvePools(setting, TIERED, 'x.pool'), want, String(setting));
+  }
+  // A tier whose pools are all hand-dispatched has nowhere to send work.
+  assert.throws(() => resolvePools('tier-2', { lone: { tier: 2, auto: false } }, 'x.pool'), /x.pool names tier-2, which has no automatic pool/);
+  // The repository's own: tier-1 is claude and openai, fable kept out.
+  const pools = require('../agentic-job/pools.json');
+  assert.deepEqual(resolvePools('tier-1', pools, 'x'), ['claude', 'openai']);
+  assert.deepEqual(resolvePools('tier-2', pools, 'x'), ['mistral']);
+});
+
+test('a tier in coordinator.planPool and schedule.triagePool resolves at load, its first pool until a pass chooses', () => {
+  const base = { operator: 'op', bot: BOT, dispatchRepo: 'o/t', source: 'https://github.com/o/agent-board', branch: 'main' };
+  const parse = (coordinator, extra) => loadConfig(JSON.stringify({ ...base, coordinator, schedule: { owner: 'o', project: 1, wip: 4, repositories: ['o/r'], ...extra } }));
+  const tiered = parse({ planPool: 'tier-1' }, {});
+  assert.deepEqual([tiered.planPools, tiered.planPool, tiered.triagePools, tiered.triagePool], [['claude', 'openai'], 'claude', ['claude', 'openai'], 'claude']);
+  assert.deepEqual(parse({ planPool: 'tier-1' }, { triagePool: 'tier-2' }).triagePools, ['mistral']);
+  assert.deepEqual(parse({ planPool: 'tier-2' }, { triagePool: 'openai' }).planPools, ['mistral']);
+  assert.throws(() => parse({ planPool: 'tier-9' }, {}), /coordinator.planPool/);
+  assert.throws(() => parse({}, { triagePool: 'tier-3' }), /schedule.triagePool/);
+});
+
+// A fresh snapshot of `pools`, each `[used, extra]` at 56% of a week gone, a
+// pace of 53.2% (usageAt's).
+const pooled = pools => ({ ...usageAt(0, 0.56), pools: Object.fromEntries(Object.entries(pools).map(([name, [used, extra]]) => [name, { ...usageAt(used, 0.56, extra).pools.claude }])) });
+
+test('of a tier, a run goes to the pool furthest under its pace, held ones skipped, one with no reading last', () => {
+  for (const [name, snapshot, candidates, pool, why] of [
+    ['furthest under its pace', pooled({ a: [50], b: [20] }), ['a', 'b'], 'b', /^b of a, b by pace \(b 20% used, pace allows 53%\)$/],
+    ['over its pace still beats no reading', pooled({ b: [90] }), ['a', 'b'], 'b', /by pace \(b 90% used/],
+    ['a tie goes to the first', pooled({ a: [30], b: [30] }), ['a', 'b'], 'a', /^a of a, b/],
+    ['held is skipped, however far under', pooled({ a: [70], b: [0, { hold: true }] }), ['a', 'b'], 'a', /^a of a, b by pace/],
+    ['no reading but held: the unread one', pooled({ b: [0, { hold: true }] }), ['a', 'b'], 'a', /^a of a, b by pace \(no usage reading of the a pool\)$/],
+    ['every pool held: the first', pooled({ a: [0, { hold: true }], b: [0, { hold: true }] }), ['a', 'b'], 'a', /^a, the first of a, b, as every one is held$/],
+    ['no snapshot: the first', null, ['a', 'b'], 'a', /no usage reading of the a pool/],
+    ['a stale snapshot: the first', { ...pooled({ a: [50], b: [0] }), updated_at: new Date(NOW - 4 * 3600 * 1000).toISOString() }, ['a', 'b'], 'a', /snapshot is from/],
+    ['a reading not observed in a day is none', pooled({ a: [50], b: [0, { observed_at: new Date(NOW - 31 * 3600 * 1000).toISOString() }] }), ['a', 'b'], 'a', /by pace \(a 50%/],
+    ['one candidate', pooled({ a: [99, { hold: true }] }), ['a'], 'a', /held/],
+  ]) {
+    const got = choosePool(snapshot, candidates, NOW);
+    assert.equal(got.pool, pool, name);
+    assert.match(got.why, why, name);
+  }
+});
+
+test("a pass's choice reads the snapshot once, and only where a setting names several pools", async () => {
+  let reads = 0;
+  const lines = [];
+  // pacing reads the pace at the real now, not NOW.
+  const now = Date.now();
+  const reading = used => ({ used_percent: used, window_minutes: WEEK_MS / 60000, resets_at: snapIso(now + 0.44 * WEEK_MS), observed_at: snapIso(now), target_percent: 95, hold: false });
+  const snap = { schema: 'bot-usage/v1', updated_at: snapIso(now), pools: { claude: reading(50), openai: reading(10) } };
+  const comment = { databaseId: 7, updatedAt: snap.updated_at, body: render(snap, 'test'), author: { login: usageConfig.bot } };
+  const post = async () => { reads++; return { data: { repository: { issue: { comments: { nodes: [comment], pageInfo: { hasNextPage: false } } } } } }; };
+  const pools = pacing(post, l => lines.push(l));
+  assert.equal(await pools.choose('x', ['claude']), 'claude');
+  assert.equal(reads, 0);
+  assert.equal(await pools.choose('x', ['claude', 'openai']), 'openai');
+  assert.equal(await pools.choose('y', ['claude', 'mistral']), 'claude');
+  assert.equal((await pools.pace('openai')).fill, true);
+  assert.equal(reads, 1);
+  assert.match(lines[0], /^x: openai of claude, openai by pace \(openai 10% used/);
+  // A snapshot not read is said once, and every choice is the first pool.
+  const failing = pacing(async () => { throw new Error('boom'); }, l => lines.push(l));
+  assert.equal(await failing.choose('x', ['openai', 'claude']), 'openai');
+  assert.match((await failing.pace('openai')).mode, /no usage reading/);
+  assert.deepEqual(lines.filter(l => l.startsWith('usage not read')), ['usage not read: boom']);
+});
+
+test("an operator request's retry takes the pool its pick chooses of those not the failed run's", async () => {
+  const offered = [];
+  const pick = async pools => { offered.push(pools); return pools.at(-1); };
+  const config = { ...RETRY, operatorRetryPools: ['claude', 'openai', 'mistral'] };
+  const steps = await operatorRetries([orun(1, { display_title: 'triage o/t#7 (openai)' })], config, async () => ({ issue: relay(), comments: [] }), Date.now(), pick);
+  assert.deepEqual(offered, [['claude', 'mistral']]);
+  assert.deepEqual(steps.map(s => [s.action, s.next]), [['retry', 'mistral']]);
+  // With no other pool, nothing is offered and a person gets it.
+  offered.length = 0;
+  const only = await operatorRetries([orun(1, { display_title: 'triage o/t#7 (claude)' })], { ...RETRY, operatorRetryPools: ['claude'] }, async () => ({ issue: relay(), comments: [] }), Date.now(), pick);
+  assert.deepEqual([offered, only.map(s => s.action)], [[], ['needs-human']]);
 });
 
 test("a retry's task quotes no issue text and names the failed run", () => {
@@ -1806,6 +1935,12 @@ test('with --apply, a failed operator request is recorded, then run again on ano
   const { inputs } = sent[1][1];
   assert.deepEqual({ ...inputs, task: undefined }, { kind: 'triage', repo: REPO_CONFIG.dispatchRepo, item: '703', pool: 'claude', task: undefined });
   assert.ok(sent[2][1].body.endsWith(` Retry: https://github.com/${REPO_CONFIG.dispatchRepo}/actions/runs/99.`));
+  // Named as a tier, the same pools are chosen by pace: with no snapshot, the first, said so.
+  const tiered = await runMain([], relayed(703), { schedule: { operatorRetryPools: ['tier-1'] } });
+  assert.equal(tiered.error, undefined, tiered.out.join('\n'));
+  assert.deepEqual(tiered.out.slice(0, 2).map(l => l.replace(/ its triage run .*/, '')), [
+    '[dry-run] schedule.operatorRetryPools: claude of claude, openai by pace (no usage reading of the claude pool)',
+    `[dry-run] operator request ${REPO_CONFIG.dispatchRepo.toLowerCase()}#703 retry:`]);
   // What the next pass reads of it: the retry's own failure goes to a person.
   const steps = await operatorRetries([orun(1), orun(2, { display_title: 'triage o/t#7 (claude)' })], RETRY,
     async () => ({ issue: relay(), comments: [said(sent[2][1].body.replace(REPO_CONFIG.dispatchRepo, 'o/t').replace('runs/99', 'runs/2'), 1)] }));

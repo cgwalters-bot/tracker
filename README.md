@@ -310,7 +310,8 @@ before the census, it reads the newest dispatch runs. When the newest run on
 one of agent-board's `OWNER/REPO#N: operator request` issues here (open, and
 opened by the bot) is a failed triage or research run, the scheduler
 records an `operator-retry` line on the issue and runs it again once, on the
-first listed pool that is not the failed run's. If the retry fails too, if no
+first listed pool that is not the failed run's; where the list names a tier,
+the one of them pace favors ("Pools and tiers" below). If the retry fails too, if no
 other pool is listed, or if an hour after its record no newer run is listed,
 the issue is labelled `needs-human` instead. A pass
 reads at most ten such issues and takes at most three steps.
@@ -610,7 +611,8 @@ is not refused. Planning is
 `kind=triage`, with the epic's census facts and only authenticated operator
 comments as decisions. Its one comment carries an `agent-board-epic-plan`.
 `coordinator.planPool` in `agent-board.json` defaults to `claude`: epic
-planning must not inherit the triage toil pool.
+planning must not inherit the triage toil pool. It is configured as `tier-1`
+(see "Pools and tiers" below).
 A later pass invokes `agent-board epic apply --dry-run`, then `--apply` only
 with `COORDINATOR=apply`. Both calls pin the matched JSON request, comment ID
 and `updated_at`, preventing a newer or edited plan from substituting actions
@@ -653,7 +655,32 @@ Reporting uses the same triage/checkpoint mechanism on
 `coordinator.statusIssue` in the epic repository. Its `coordinator.statusPool`
 is configured as `openai` (the fallback remains `mistral`). The status brief
 requires writing only from the supplied facts, without reading the repository.
-Both pool settings must name entries in `.github/agentic-job/pools.json`.
+`statusPool` must name an entry in `.github/agentic-job/pools.json`;
+`planPool` an entry or a tier.
+
+### Pools and tiers
+
+Each pool in `.github/agentic-job/pools.json` has a `tier`: `claude` and
+`openai` are tier 1, `mistral` tier 2
+([#837](https://github.com/cgwalters-forge/tracker/issues/837)). `fable` is
+tier 1 too but `"auto": false`: its allowance is apart, so only a person
+dispatches it. `coordinator.planPool`, `schedule.triagePool` and the entries
+of `schedule.operatorRetryPools` each take a pool, or `tier-1` or `tier-2`
+for that tier's pools other than `auto: false` ones, in `pools.json` order; a
+tier with none, or any other name, fails the configuration. A pool keeps its
+old behavior. Of a tier, a pass sends its planning runs, its triage
+questions and each operator retry to the pool furthest under its pace by the
+usage snapshot (paceMode's reading, as agent-board's `pace::choose` picks):
+held pools are skipped, a pool with no current reading only goes where none
+has one, and a tie, a snapshot not read or every pool held gives the first.
+The dispatched run's title carries the chosen pool, so run records and
+pacing see it, and fill mode's pace is that of the plan pool chosen. The
+snapshot is read once a pass, and only where a setting names more than one
+pool. All three are `tier-1` here; nothing names tier 2 yet, as `mistral`
+stays out of triage and research until #792's hold is lifted. The poll's
+`fixPools` and `kindPools` are agent-board's settings and still name pools,
+until agent-board reads tiers
+([agent-board#228](https://github.com/cgwalters-forge/agent-board/issues/228)).
 It requests prose daily
 after `coordinator.statusHourUTC` (default 11), or when any epic's health
 changes, and publishes the returned `coordinator-status` block with
