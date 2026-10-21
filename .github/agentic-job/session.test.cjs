@@ -34,12 +34,15 @@ test('CLI serializes multiline prompts as data and supplies defaults', () => {
     fs.writeFileSync(path.join(root, 'profiles/session.md'), 'profile');
     fs.mkdirSync(path.join(temp, '.github/supervisor'));
     fs.writeFileSync(path.join(temp, '.github/supervisor/config.json'), JSON.stringify({ agent: {
-      state: { repository: 'owner/tracker', issue: 8 }, requests: { repository: 'owner/tracker', issue: 9 } } }));
-    // A stand-in gh, answering the supervisor fetches by the path they name.
+      state: { repository: 'owner/tracker', issue: 8 }, requests: { repository: 'owner/tracker', issue: 9 },
+      profile: { repository: 'owner/home', ref: 'a'.repeat(40) } } }));
+    // A stand-in gh, answering the supervisor fetches by the path they name:
+    // only the configured repository and commit.
     const bin = path.join(temp, 'bin');
     fs.mkdirSync(bin);
     fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\ncase "$2" in\n' +
-      '  *profiles/supervisor.md\?ref=*) printf PROFILE ;;\n  *skills/supervisor/SKILL.md\?ref=*) printf SKILL ;;\n  *) exit 1 ;;\nesac\n',
+      `  repos/owner/home/contents/.github/agentic-job/profiles/supervisor.md?ref=${'a'.repeat(40)}) printf PROFILE ;;\n` +
+      `  repos/owner/home/contents/skills/supervisor/SKILL.md?ref=${'a'.repeat(40)}) printf SKILL ;;\n  *) exit 1 ;;\nesac\n`,
       { mode: 0o755 });
     const output = path.join(temp, 'output');
     const prompt = 'hello\nitem=999\ntask<<evil\nend';
