@@ -489,6 +489,48 @@ test('incomplete census never plans an epic, and dispatch failure retains its cl
   assert.match(failed.writes[0].body.body, /pending/);
 });
 
+test('a dispatch GitHub refused takes its claim back, so the next pass plans again', async () => {
+  const state = body => JSON.parse(/: (\{.*\}) -->/.exec(body)[1]);
+  const refused = harness(true);
+  refused.options.dispatch = async (method, p) => {
+    if (method === 'GET') return { workflow_runs: [] };
+    throw new Error(`POST ${p}: HTTP 403 {"message":"You have exceeded a secondary rate limit"}`);
+  };
+  assert.equal((await pass(refused.options)).errors, 3);
+  // Status issue, then epics 7 and 9: each claim, then its take-back.
+  assert.equal(refused.writes.length, 6);
+  for (const [i, number] of [99, 7, 9].entries()) {
+    const [claim, back] = refused.writes.slice(2 * i, 2 * i + 2);
+    assert.equal(claim.p, `/repos/o/r/issues/${number}/comments`);
+    assert.ok(state(claim.body.body).pending);
+    assert.equal(back.method, 'PATCH');
+    assert.equal(back.p, `/repos/o/r/issues/comments/${2 * i + 1}`);
+    assert.deepEqual(state(back.body.body), { pending: null });
+  }
+  // The restored checkpoint is the one before the claim: no failure counted,
+  // no request time that would hold the next plan back.
+  assert.equal(decision(epic, state(refused.writes[3].body.body), [], 'bot', now + 3600000).action, 'plan');
+
+  // A rejected `return_run_details` is retried without it; a refusal of the
+  // retry takes the claim back as well.
+  const retried = harness(true, [epic]);
+  retried.options.dispatch = async (method, p, body) => {
+    if (method === 'GET') return { workflow_runs: [] };
+    throw new Error(`POST ${p}: HTTP ${body.return_run_details ? 422 : 403} refused`);
+  };
+  await pass(retried.options);
+  assert.equal(retried.writes.filter(w => w.method === 'PATCH').length, 2);
+
+  // A server error is ambiguous: the run may have started, so the claim stays.
+  const ambiguous = harness(true, [epic]);
+  ambiguous.options.dispatch = async (method, p) => {
+    if (method === 'GET') return { workflow_runs: [] };
+    throw new Error(`POST ${p}: HTTP 502 bad gateway`);
+  };
+  await pass(ambiguous.options);
+  assert.equal(ambiguous.writes.filter(w => w.method === 'PATCH').length, 0);
+});
+
 test('large epic dispatch succeeds and includes only configured bot-linked open PR facts', async () => {
   const value = { ...epic, comments: Array.from({ length: 100 }, (_, i) => ({ id: String(i + 1),
     updated_at: new Date(now + i * 1000).toISOString(), body: `${i === 99 ? 'NEWEST' : 'OLDER'} ${'x'.repeat(10000)}` })) };

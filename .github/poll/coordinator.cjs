@@ -382,13 +382,26 @@ async function missingEffects(plan, epic, defaultPriority, { post, get, config }
 // Dispatch, then record the run's id in the claim written before it. The id
 // comes back only where the API knows `return_run_details`; without it, or if
 // recording it fails, the pending operation falls back to the run timeout.
-async function start({ config, get, dispatch }, number, claim, state, inputs, marker) {
+// A dispatch GitHub refused (HTTP 4xx: a rate limit, a bad ref or input)
+// queued nothing, so the claim is taken back to `before` (the checkpoint as it
+// was, with no failure counted); otherwise a rate-limited pass would cost the
+// run timeout and a strike toward stuck. After a timeout, a server error or a
+// lost response the run may have started, so the claim stays, as in the
+// scheduler's dispatches.
+async function start({ config, get, dispatch }, number, claim, state, before, inputs, marker) {
   const repository = await get('GET', `/repos/${config.caller}`);
   const p = `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`;
   const body = { ref: repository.default_branch, inputs };
   const run = await dispatch('POST', p, { ...body, return_run_details: true }).catch(err => {
     if (!/HTTP 422/.test(err.message)) throw err;
     return dispatch('POST', p, body);
+  }).catch(async err => {
+    // Without a claim id there is no checkpoint to edit; a second POST would
+    // leave two. A failed take-back leaves the claim, as before.
+    if (claim && /: HTTP 4\d\d /.test(err.message)) {
+      await save(get, config, number, { id: claim }, { ...before, pending: null }, marker).catch(() => {});
+    }
+    throw err;
   });
   if (claim && Number.isSafeInteger(run?.workflow_run_id)) {
     await save(get, config, number, { id: claim }, { ...state, pending: { ...state.pending, run: run.workflow_run_id } }, marker);
@@ -493,7 +506,7 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
           // Reserve its slot before sending, even on that ambiguous path.
           running.inFlight++;
           running.busy.set(`${config.epicsRepository}#${config.statusIssue}`.toLowerCase(), 'prose dispatched');
-          await start({ config, get, dispatch }, config.statusIssue, claim, state, { kind: 'triage', repo: config.epicsRepository,
+          await start({ config, get, dispatch }, config.statusIssue, claim, state, statusRecord.state, { kind: 'triage', repo: config.epicsRepository,
             item: String(config.statusIssue), pool: config.statusPool, task }, 'coordinator-status/v1');
         }
       }
@@ -622,7 +635,7 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
         // before sending so the per-epic error handler cannot oversubscribe WIP.
         running.inFlight++;
         running.busy.set(`${config.epicsRepository}#${epic.number}`.toLowerCase(), 'plan dispatched');
-        await start({ config, get, dispatch }, epic.number, claim, state, { kind: 'triage', repo: config.epicsRepository,
+        await start({ config, get, dispatch }, epic.number, claim, state, old.state, { kind: 'triage', repo: config.epicsRepository,
           item: String(epic.number), pool: config.planPool, task });
       }
       break;
