@@ -5,7 +5,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const http = require('node:http');
-const { MARKER, carryPools, checkConfig, findComment, mistralAllowance, mistralUsage, needsPublish, poolPace, previousSnapshot, publish, readBroker, render, snapshot } = require('./usage.cjs');
+const { MARKER, carryPools, checkConfig, findComment, mistralAllowance, mistralUsage, needsPublish, poolPace, previousSnapshot, publish, readBroker, render, request, snapshot } = require('./usage.cjs');
 
 // The live config's shape, with pacing fixed so the tests don't move when the
 // operator retunes it.
@@ -328,4 +328,18 @@ test('readBroker reads /usage at the root of the broker, bounded', async t => {
   await assert.rejects(readBroker(base), /answer over/);
   answer = '<html>';
   await assert.rejects(readBroker(base), /\/usage: not JSON/);
+});
+
+test('a GitHub request that stalls fails the call with its method and path', { timeout: 10e3 }, async t => {
+  // Accepts and never answers, or sends the headers and stalls in the body.
+  const server = http.createServer((req, res) => {
+    if (req.url === '/body') { res.writeHead(200); res.write('{'); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const realFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', (url, init) => realFetch(url.replace('https://api.github.com', base), init));
+  await assert.rejects(request('token', 'GET', '/silent', undefined, 200), { message: /^GET \/silent: .*timeout/ });
+  await assert.rejects(request('token', 'PATCH', '/body', {}, 200), { message: /^PATCH \/body: .*timeout/ });
 });

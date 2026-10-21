@@ -399,3 +399,19 @@ test('review wrapper uses the agentic-job v0.6.2 release pin', () => {
   const workflow = fs.readFileSync(path.join(__dirname, '../workflows/review.yml'), 'utf8');
   assert.match(workflow, /^\s+uses: \S+\/cgwalters-review\.yml@d8e22f71b2abbe5f41306a0c7ef1b6c3d2829cac # main, agentic-job v0\.6\.2 \(actions#67\)$/m);
 });
+
+test('a GitHub request that stalls fails the call with its method and path', { timeout: 10e3 }, async t => {
+  const http = require('node:http');
+  const { request } = require('./poll.cjs');
+  // Accepts and never answers, or sends the headers and stalls in the body.
+  const server = http.createServer((req, res) => {
+    if (req.url === '/body') { res.writeHead(200); res.write('{'); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const realFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', (url, init) => realFetch(url.replace('https://api.github.com', base), init));
+  await assert.rejects(request('token', 'GET', '/silent', undefined, 200), { message: /^GET \/silent: .*timeout/ });
+  await assert.rejects(request('token', 'POST', '/body', {}, 200), { message: /^POST \/body: .*timeout/ });
+});

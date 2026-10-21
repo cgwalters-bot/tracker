@@ -31,6 +31,7 @@ const MIN_PACED_WINDOW_MS = DAY_MS;
 // Bounds on what is read and written: the broker answers in well under a
 // kilobyte, and GitHub takes comments of up to 65536 characters.
 const BROKER_TIMEOUT_MS = 10e3;
+const GITHUB_TIMEOUT_MS = 30e3;
 const MAX_BROKER_BYTES = 256 * 1024;
 const MAX_BODY_CHARS = 32 * 1024;
 // The review app reads the first page of the issue's comments, this long.
@@ -297,18 +298,26 @@ async function publish({ config, snap, render, request, log }) {
 
 const API = 'https://api.github.com';
 
-async function request(token, method, path, body) {
-  const res = await fetch(API + path, {
-    method,
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: 'application/vnd.github+json',
-      'x-github-api-version': '2022-11-28',
-      'user-agent': 'tracker-usage',
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await res.text();
+// A stalled GitHub connection fails the call rather than holding the job
+// until its timeout, as poll.cjs's request does (#819).
+async function request(token, method, path, body, timeoutMs = GITHUB_TIMEOUT_MS) {
+  let res, text;
+  try {
+    res = await fetch(API + path, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'tracker-usage',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    text = await res.text();
+  } catch (err) {
+    throw new Error(`${method} ${path}: ${err.cause?.message || err.message}`);
+  }
   if (!res.ok) throw new Error(`${method} ${path}: HTTP ${res.status} ${text.slice(0, 300)}`);
   return text ? JSON.parse(text) : null;
 }
@@ -364,7 +373,7 @@ async function main(argv) {
   await publish({ config, snap, render: s => render(s, workflow), request: (...args) => request(token, ...args), log: console.log });
 }
 
-module.exports = { MARKER, carryPools, checkConfig, claudeReading, findComment, mistralAllowance, mistralUsage, needsPublish, openaiReading, poolPace, previousSnapshot, publish, readBroker, render, snapshot };
+module.exports = { MARKER, carryPools, checkConfig, claudeReading, findComment, mistralAllowance, mistralUsage, needsPublish, openaiReading, poolPace, previousSnapshot, publish, readBroker, render, request, snapshot };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`usage: ${err.message}`); process.exit(1); });
