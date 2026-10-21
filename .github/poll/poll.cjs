@@ -21,18 +21,30 @@ const CONFIG = Object.freeze({
 
 const poolForKind = kind => Object.hasOwn(CONFIG.kindPools, kind) ? CONFIG.kindPools[kind] : '';
 
-async function request(token, method, path, body) {
-  const res = await fetch('https://api.github.com' + path, {
-    method,
-    headers: {
-      authorization: `Bearer ${token}`,
-      accept: 'application/vnd.github+json',
-      'x-github-api-version': '2022-11-28',
-      'user-agent': 'tracker-poll',
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
-  const text = await res.text();
+// fetch never times out by itself: a connection GitHub accepts and never
+// answers would hold the pass until the step's timeout-minutes kills it, past
+// every caller's handling of a failed request (#819). GitHub answers these
+// calls in well under this; the signal covers reading the body too.
+const REQUEST_TIMEOUT_MS = 30e3;
+
+async function request(token, method, path, body, timeoutMs = REQUEST_TIMEOUT_MS) {
+  let res, text;
+  try {
+    res = await fetch('https://api.github.com' + path, {
+      method,
+      headers: {
+        authorization: `Bearer ${token}`,
+        accept: 'application/vnd.github+json',
+        'x-github-api-version': '2022-11-28',
+        'user-agent': 'tracker-poll',
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    text = await res.text();
+  } catch (err) {
+    throw new Error(`${method} ${path}: ${err.cause?.message || err.message}`);
+  }
   if (!res.ok) throw new Error(`${method} ${path}: HTTP ${res.status} ${text.slice(0, 300)}`);
   return text ? JSON.parse(text) : null;
 }
