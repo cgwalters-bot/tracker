@@ -87,8 +87,13 @@ const VERDICT_RE = /^```schedule-triage[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gm;
 const VERDICTS = new Set(['done', 'partly', 'not-done', 'needs-design']);
 // The first line of this job's comment closing an issue on a done answer.
 const closedLine = request => `<!-- schedule-triage/v1-closed: ${request} -->`;
-// A question unanswered this long is listed again, as its run likely failed.
+// A question unanswered this long is lost, as its run likely failed: it is
+// asked once more, then handed to a person (decide's `answered`).
 const ANSWER_MS = 24 * 3600 * 1000;
+// What triageStep appends to a record whose dispatch GitHub answered
+// ambiguously; one whose run has not appeared this long after it is lost too.
+const UNCONFIRMED = ' (The dispatch was not confirmed.)';
+const UNCONFIRMED_WAIT_MS = 3600 * 1000;
 // The bound on `schedule.retries`, the runs a plan may get after its first.
 const RETRY_LIMIT = 2;
 // The bound on `schedule.fill`, the issues outside any epic a pass in fill
@@ -234,18 +239,27 @@ function loadConfig(text) {
 // What dispatch.yml's recent runs say: how many hold a slot, which items
 // have one in flight. Fix and review runs name a pull request, not an issue,
 // but count against the cap all the same.
+// `seen(key, at)` says whether a triage run on the item was created at or
+// after `at`; a time before the oldest of a full list is not known, which
+// counts as seen, so readTriage waits the day rather than ask twice.
 function readRuns(runs) {
   const busy = new Map();
+  const asked = new Map();
   let inFlight = 0;
+  let oldest = Infinity;
   for (const run of runs) {
     const running = RUNNING.has(run.status);
     if (running) inFlight++;
+    const created = Date.parse(run.created_at) || 0;
+    if (created) oldest = Math.min(oldest, created);
     const m = RUN_TITLE_RE.exec(run.display_title ?? '');
     if (!m) continue;
     const key = keyOf(m[2], m[3]);
     if (running && !busy.has(key)) busy.set(key, run.html_url);
+    if (m[1] === 'triage') asked.set(key, Math.max(asked.get(key) ?? 0, created));
   }
-  return { inFlight, busy };
+  const seen = (key, at) => (asked.get(key) ?? -Infinity) >= at || (runs.length >= HISTORY_RUNS && oldest > at);
+  return { inFlight, busy, seen };
 }
 
 // The issues a pull request was made for: its `Refs` line, then those it
@@ -684,19 +698,30 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
     // issue's text, anyone's, which may steer that plan as it may any plan
     // a run writes from an issue; the implement run's pull request still
     // needs its review to merge.
-    const ask = async (guess, pull) => {
+    // `lost`, a stale record, is asked once more: its step names the record
+    // the new one replaces.
+    const ask = async (guess, pull, lost) => {
       if (questions <= 0) return skip(guess);
       questions--;
-      if (!pull && !concrete(item.body)) return push({ item: name, action: 'design', reason: `${guess}; too little in its body to plan, recording needs design` });
+      const again = lost ? { replaces: lost.id } : {};
+      const why = lost ? `${guess}; ${lost.url} got no answer` : guess;
+      if (!pull && !concrete(item.body)) return push({ item: name, action: 'design', reason: `${why}; too little in its body to plan, recording needs design`, ...again });
       busy.set(key, 'started in this pass');
       free--;
-      return push({ item: name, action: 'triage', reason: `${guess}; asking a triage run`, ...(pull ? { pull } : {}) });
+      return push({ item: name, action: 'triage', reason: `${why}; asking a triage run${lost ? ' again, once' : ''}`, ...(pull ? { pull } : {}), ...again });
     };
     // What a recorded question says of the item: true once a step is taken,
     // false when it answered not (or not all) done, so the item goes on.
-    const answered = async record => {
+    // A stale question (readTriage) is one whose run will not answer: the
+    // item has no run in flight, or `held` would have skipped it. Holding it
+    // for good lost it to the scheduler (tracker#816), so it is asked once
+    // more, in this pass's triage budget, and a second lost question labels
+    // it needs-human, which eligibility and fillItems skip.
+    const answered = async (record, guess, pull) => {
       if (record.verdict === 'done') await push({ item: name, action: 'close', reason: `triage found it done, ${record.evidence}`, evidence: record.evidence, request: record.request, mark: record.mark });
-      else if (!record.verdict) await skip(`triage asked, ${record.stale ? 'no answer in a day, ' : ''}${record.url}`, !record.stale);
+      else if (!record.verdict && record.stale && record.retry) await push({ item: name, action: 'needs-human', reason: `triage asked twice and got no answer, ${record.url}`, triage: record.url });
+      else if (!record.verdict && record.stale) await ask(guess, pull, record);
+      else if (!record.verdict) await skip(`triage asked, ${record.url}`, true);
       else if (record.verdict === 'needs-design') await skip(`needs design, ${record.url}`, true);
       else return false;
       return true;
@@ -716,8 +741,9 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       // in eligibility are made, here and for the item's own plan below.
       if (ineligible?.startsWith(PROBABLY_DONE) && triage) {
         record = await triaged(item);
-        if (!record) { await ask(ineligible, ineligible.slice(PROBABLY_DONE.length).split(';')[0]); continue; }
-        if (await answered(record)) continue;
+        const pull = ineligible.slice(PROBABLY_DONE.length).split(';')[0];
+        if (!record) { await ask(ineligible, pull); continue; }
+        if (await answered(record, ineligible, pull)) continue;
         cleared = true;
         ineligible = await inspect(key, '', true);
       }
@@ -727,14 +753,14 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
       if (item.fill) {
         if (record === undefined) record = await triaged(item);
         if (!record) { await ask('outside any epic'); continue; }
-        if (await answered(record)) continue;
+        if (await answered(record, 'outside any epic')) continue;
       }
       found = await probe(item);
       if (found.none) {
         if (!triage) { await skip('no plan'); continue; }
         if (record === undefined) record = await triaged(item);
         if (!record) { await ask('no plan'); continue; }
-        if (!await answered(record)) await skip(`no plan since triage answered ${record.verdict}, ${record.url}`, true);
+        if (!await answered(record, 'no plan')) await skip(`no plan since triage answered ${record.verdict}, ${record.url}`, true);
         continue;
       }
       // Counted as "waiting" in the idle line, as its reason starts so.
@@ -761,7 +787,7 @@ async function decide(items, { inFlight, busy: running }, { wip, followed, statu
           else {
             if (record === undefined) record = await triaged(item);
             if (!record) await ask(guess, pull);
-            else if (!await answered(record)) await skip(`${guess}; triage answered ${record.verdict}, ${record.url}`, true, as);
+            else if (!await answered(record, guess, pull)) await skip(`${guess}; triage answered ${record.verdict}, ${record.url}`, true, as);
           }
           continue;
         }
@@ -859,7 +885,10 @@ const bodyHash = body => crypto.createHash('sha256').update(String(body ?? '')).
 // close an open issue, with a comment linking its evidence, which reopening
 // undoes: a done answer this job closed on once reads as `reopened`, which
 // lets the item go on as not done. `comments` are REST issue comments, oldest first.
-function readTriage(comments, writers, body, now = Date.now()) {
+// An unanswered record is `stale` a day after it was written, or an hour
+// after if its dispatch was not confirmed and `seen(at)` (readRuns's, for the
+// item) lists no triage run since; `retry` is set on a question asked again.
+function readTriage(comments, writers, body, now = Date.now(), seen = () => true) {
   const trusted = new Set(writers.map(w => w.toLowerCase()));
   const mine = comments.filter(c => trusted.has(c.user?.login?.toLowerCase()));
   let record;
@@ -868,7 +897,9 @@ function readTriage(comments, writers, body, now = Date.now()) {
     if (!m) continue;
     try {
       const state = JSON.parse(m[1]);
-      if (typeof state.request === 'string' && state.request) record = { ...state, state, url: c.html_url, at: Date.parse(c.created_at) || 0, id: c.id, text: c.body };
+      if (typeof state.request === 'string' && state.request) {
+        record = { ...state, state, id: c.id, text: c.body, url: c.html_url, at: Date.parse(c.created_at) || 0, unconfirmed: (c.body ?? '').trimEnd().endsWith(UNCONFIRMED) };
+      }
     } catch { /* not a record */ }
   }
   if (!record) return null;
@@ -894,16 +925,18 @@ function readTriage(comments, writers, body, now = Date.now()) {
     const marked = [`<!-- schedule-triage/v1: ${JSON.stringify({ ...record.state, closed: record.request })} -->`, ...rest].join('\n');
     return { url: record.url, request: record.request, verdict: 'done', evidence: c.html_url, mark: { id: record.id, body: marked } };
   }
-  return { url: record.url, stale: now - record.at > ANSWER_MS };
+  const lost = now - record.at > ANSWER_MS || (record.unconfirmed && now - record.at > UNCONFIRMED_WAIT_MS && !seen(record.at));
+  return { url: record.url, id: record.id, stale: lost, ...(record.retry ? { retry: record.retry } : {}) };
 }
 
 // The record's comment, its first line readTriage's. A needs-design one
-// keeps the body's hash, to lapse when the body is written up.
+// keeps the body's hash, to lapse when the body is written up; one that
+// replaces a lost question says so in `retry`, so it is not asked a third time.
 function triageRecord(request, step, body) {
-  const state = step.action === 'design' ? { request, design: true, body: bodyHash(body) } : { request, body: bodyHash(body) };
+  const state = { request, ...(step.action === 'design' ? { design: true } : {}), body: bodyHash(body), ...(step.replaces ? { retry: 1 } : {}) };
   const text = step.action === 'design'
     ? 'Board scheduler: this issue has no job plan, and its body is too short to write one from. It needs design: say what to change and how to check it, and the next pass asks a triage run to plan it.'
-    : `Board scheduler: ${step.reason.split(';')[0]}. A triage run is asked whether this is done; it answers here. Delete this comment to ask again.`;
+    : `Board scheduler: ${step.reason.split(';')[0]}. A triage run is asked whether this is done${step.replaces ? ', again, as the last question got no answer' : ''}; it answers here. Delete this comment to ask again.`;
   return `<!-- schedule-triage/v1: ${JSON.stringify(state)} -->\n${text}`;
 }
 
@@ -1300,7 +1333,14 @@ async function main(argv) {
     }
     const id = crypto.randomUUID();
     const rec = await request(token, 'POST', `${issuePath(item)}/comments`, { body: triageRecord(id, step, item.body) });
-    if (step.action === 'design') return;
+    // A question asked again replaces the lost one once the new record holds
+    // the item, unless GitHub refused the dispatch: the lost one then stays,
+    // to be asked again, rather than leave a first question with no `retry`.
+    // Left behind, it is harmless, as readTriage reads the newest record.
+    const drop = async () => {
+      if (step.replaces) await request(token, 'DELETE', `/repos/${item.repository}/issues/comments/${step.replaces}`).catch(() => {});
+    };
+    if (step.action === 'design') return drop();
     try {
       const { default_branch: ref } = await request(dispatchToken, 'GET', `/repos/${config.caller}`);
       await request(dispatchToken, 'POST', `/repos/${config.caller}/actions/workflows/${config.workflow}/dispatches`, { ref, inputs: {
@@ -1313,11 +1353,13 @@ async function main(argv) {
       const at = `/repos/${item.repository}/issues/comments/${rec.id}`;
       if (/: HTTP 4\d\d /.test(err.message)) await request(token, 'DELETE', at).catch(() => {});
       else {
-        await request(token, 'PATCH', at, { body: `${triageRecord(id, step, item.body)} (The dispatch was not confirmed.)` })
+        await request(token, 'PATCH', at, { body: `${triageRecord(id, step, item.body)}${UNCONFIRMED}` })
           .catch(() => {});
+        await drop();
       }
       throw err;
     }
+    await drop();
   };
   // What decide makes of a recorded plan's run (readOutcome).
   const outcomeStep = async (step, item) => {
@@ -1331,7 +1373,13 @@ async function main(argv) {
       return;
     }
     if (step.action === 'needs-human') {
+      // The label first, as for an operator request: a labelled issue is
+      // skipped, so a comment that fails is not followed by a second label.
       await request(token, 'POST', `${at}/labels`, { labels: ['needs-human'] });
+      if (step.triage) {
+        await request(token, 'POST', `${at}/comments`, { body: `Board scheduler: needs a person, as ${step.reason}. `
+          + `To ask a triage run again, delete ${step.triage} and remove the needs-human label.` });
+      }
       return;
     }
     if (step.action === 'block') {
@@ -1374,7 +1422,8 @@ async function main(argv) {
   const byName = new Map(items.map(i => [`${i.repository}#${i.number}`, i]));
   let errors = 0;
   const issuePath = item => `/repos/${item.repository}/issues/${item.number}`;
-  const triaged = async item => readTriage(await paged(token, `${issuePath(item)}/comments`), [config.operator, config.planner], item.body);
+  const triaged = async item => readTriage(await paged(token, `${issuePath(item)}/comments`), [config.operator, config.planner], item.body,
+    Date.now(), at => state.seen(keyOf(item.repository, item.number), at));
   // Each step is taken as it is decided, so a pass the job's timeout stops
   // has still started what it got to, the items ranked first.
   const steps = await decide(items, state, { ...config, filling: Boolean(pace?.fill) }, item => probePlan(bin, config, token, item), pullFor,
