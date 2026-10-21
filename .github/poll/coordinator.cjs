@@ -680,9 +680,14 @@ async function main(argv) {
     }
     // In the scheduler's fill mode an idle epic is planned again sooner
     // (tracker#672). A pace not read keeps the configured interval.
+    const pace = await readPace(post, config.planPool, Date.now())
+      .catch(err => ({ fill: false, mode: `normal (usage not read: ${err.message.slice(0, 300)})` }));
+    if (pace.held) {
+      log(pace.mode);
+      log(`coordinator/v1 ${JSON.stringify({ mode: apply ? 'apply' : 'preview', plan: 0, apply: 0, status: 0, wait: 0, failed: 0, stuck: 0, errors: 0 })}`);
+      return;
+    }
     if (config.fill) {
-      const pace = await readPace(post, config.planPool, Date.now())
-        .catch(err => ({ fill: false, mode: `normal (usage not read: ${err.message.slice(0, 300)})` }));
       config.minPlanIntervalMs = planInterval(config.minPlanIntervalMs, pace);
       log(`mode: ${pace.mode}; minimum planning interval ${config.minPlanIntervalMs / 60000} minutes`);
     }

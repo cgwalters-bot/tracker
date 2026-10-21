@@ -516,8 +516,8 @@ test('with no live epics a pass says so and starts nothing', async () => {
   });
   assert.equal(error, undefined);
   assert.deepEqual(out, ['no live epics; nothing started']);
-  // Nothing past the census is read, and nothing is written.
-  assert.deepEqual(calls, [`GET ${OUTAGE}`, `GET ${LIST}`, `GET /repos/${EPICS}/issues/2/timeline`]);
+  // The usage read precedes the census; nothing is written.
+  assert.deepEqual(calls, [`GET ${OUTAGE}`, 'POST /graphql', `GET ${LIST}`, `GET /repos/${EPICS}/issues/2/timeline`]);
 });
 
 test('each line of a pass names the epic its item came from', async () => {
@@ -1497,6 +1497,48 @@ test('fill mode is a pool used less than its pace allows, and nothing it does no
   }
 });
 
+test('session holds disable fill mode independently of the weekly pace', () => {
+  const { poolPace } = require('../usage/usage.cjs');
+  for (const [label, used, reset, weekly, missing, held] of [
+    ['under', 84, NOW + 3600e3, 10, false, false],
+    ['at', 85, NOW + 3600e3, 10, false, true],
+    ['spent', 100, NOW + 3600e3, 10, false, true],
+    ['reset', 92, NOW, 10, false, false],
+    ['missing', 92, NOW + 3600e3, 10, true, false],
+    ['weekly and session', 92, NOW + 3600e3, 81, false, true],
+  ]) {
+    const snap = usageAt(weekly, 0.56);
+    const p = snap.pools.claude;
+    const short = { used_percent: used, window_ms: 5 * 3600e3, resets_at: reset };
+    snap.pools.claude = poolPace({ source: 'test', observed_at: NOW, windows: [
+      { used_percent: weekly, window_ms: WEEK_MS, resets_at: Date.parse(p.resets_at) }, ...(missing ? [] : [short]),
+    ] }, { target: 0.95, burst: 3, session_hold: 85 }, NOW);
+    snap.windows = missing ? [] : [{ name: 'claude', used_percent: used, window_minutes: 300, resets_at: new Date(reset).toISOString() }];
+    const mode = paceMode(snap, 'claude', NOW);
+    assert.equal(mode.fill, !held && weekly === 10, label);
+    if (held) {
+      assert.equal(mode.held, true, label);
+      assert.equal(mode.mode, `held: claude 5-hour session at ${used}%`, label);
+    }
+  }
+});
+
+test('a held session stops the scheduler before retries or epic dispatches', async () => {
+  const now = Date.now();
+  const snap = usageAt(10, 0.56, { hold: true, reason: 'session', next_dispatch_at: new Date(now + 3600e3).toISOString() }, now);
+  snap.windows = [{ name: 'claude', used_percent: 92, window_minutes: 300, resets_at: new Date(now + 3600e3).toISOString() }];
+  const usage = require('../usage/config.json');
+  const result = await runMain(['--apply'], {}, {
+    graphql: () => ({ data: { repository: { issue: { comments: {
+      nodes: [{ body: render(snap, 'test'), author: { login: usage.bot } }], pageInfo: { hasNextPage: false },
+    } } } } }),
+  });
+  assert.equal(result.error, undefined);
+  assert.deepEqual(result.out, ['held: claude 5-hour session at 92%']);
+  assert.deepEqual(result.calls, [`GET ${OUTAGE}`, 'POST /graphql']);
+  assert.deepEqual(result.sent, []);
+});
+
 test("in fill mode the coordinator's planning interval is an hour, if that is shorter", () => {
   assert.equal(planInterval(180 * 60000, { fill: true }), 60 * 60000);
   assert.equal(planInterval(30 * 60000, { fill: true }), 30 * 60000);
@@ -1830,7 +1872,7 @@ test('with --apply, a retry GitHub refuses takes its record back and fails the p
   const dry = await runMain([], relayed(703), { schedule: { operatorRetryPools: ['claude'] } });
   assert.equal(dry.error, undefined);
   assert.match(dry.out[0], /^\[dry-run\] operator request .*#703 retry: /);
-  assert.deepEqual(dry.calls.filter(c => !c.startsWith('GET ')), []);
+  assert.deepEqual(dry.calls.filter(c => !c.startsWith('GET ') && c !== 'POST /graphql'), []);
 });
 
 test('with --apply, a failed retry labels the request needs-human before saying why', async () => {

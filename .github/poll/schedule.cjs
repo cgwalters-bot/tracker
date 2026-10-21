@@ -552,6 +552,11 @@ function paceMode(snapshot, pool, now) {
   const off = why => ({ fill: false, mode: `normal (${why})` });
   if (!p || !Number.isFinite(updated)) return off(`no usage reading of the ${pool} pool`);
   if (now - updated > PACE_FRESH_MS) return off(`the usage snapshot is from ${snapshot.updated_at}`);
+  if (p.hold && p.reason === 'session' && Date.parse(p.next_dispatch_at) > now) {
+    const sessions = (snapshot.windows || []).filter(w => w.name === pool && w.window_minutes < 24 * 60 && Date.parse(w.resets_at) > now);
+    const session = sessions.sort((a, b) => b.used_percent - a.used_percent)[0];
+    return { fill: false, held: true, mode: `held: ${pool} ${session ? `${session.window_minutes / 60}-hour session at ${Math.round(session.used_percent)}%` : 'session limit'}` };
+  }
   const window = p.window_minutes * 60000;
   const reset = Date.parse(p.resets_at ?? '');
   const observed = Date.parse(p.observed_at ?? '');
@@ -1200,6 +1205,11 @@ async function main(argv) {
   const log = line => console.log(apply ? line : `[dry-run] ${line}`);
 
   const get = p => request(token, 'GET', p);
+  // A session ceiling protects the shared subscription, not just fill work.
+  // Stop before retries or epic work can dispatch into the held session.
+  const sessionPace = await readPace(body => request(token, 'POST', '/graphql', body), config.planPool, Date.now())
+    .catch(err => { log(`session protection not checked: ${err.message.slice(0, 300)}`); return null; });
+  if (sessionPace?.held) { log(sessionPace.mode); return; }
   // Operator requests whose run failed, before the census, as they are not
   // board items; their errors fail the pass after the rest is done.
   let retryErrors = 0;

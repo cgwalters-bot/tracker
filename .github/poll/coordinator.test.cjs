@@ -1115,17 +1115,36 @@ test("a batched pull request is reported once, with its issues; others' issues a
 });
 
 test('an applying pass during a broker outage previews: no record, no dispatch', async () => {
-  const run = async outage => {
+  const run = async (outage, session = false, fill) => {
     const calls = [];
     const lines = [];
-    const saved = { fetch: globalThis.fetch, log: console.log, env: { ...process.env } };
+    const saved = { fetch: globalThis.fetch, log: console.log, env: { ...process.env }, read: fs.readFileSync };
+    if (fill !== undefined) {
+      fs.readFileSync = (file, ...args) => {
+        const content = saved.read(file, ...args);
+        if (!String(file).endsWith('agent-board.json')) return content;
+        const config = JSON.parse(content);
+        config.schedule.fill = fill;
+        return JSON.stringify(config);
+      };
+    }
     globalThis.fetch = async (u, init) => {
       const p = u.replace('https://api.github.com', '');
       calls.push(`${init?.method ?? 'GET'} ${p}`);
       const reply = body => new Response(JSON.stringify(body), { status: 200 });
       if (p === '/repos/configured/tracker/issues?state=open&labels=outage&per_page=100') return reply(outage);
       if (p.includes('/runs?')) return reply({ workflow_runs: [] });
-      if (p === '/graphql') return reply({ data: { repository: { issue: { comments: { nodes: [], pageInfo: { hasNextPage: false } } } } } });
+      if (p === '/graphql') {
+        const usage = require('../usage/config.json');
+        const { render } = require('../usage/usage.cjs');
+        const stamp = new Date().toISOString();
+        const reset = new Date(Date.now() + 3600e3).toISOString();
+        const snap = { schema: 'bot-usage/v1', updated_at: stamp, pools: { claude: { hold: true, reason: 'session', next_dispatch_at: reset } },
+          windows: [{ name: 'claude', used_percent: 92, window_minutes: 300, resets_at: reset }] };
+        return reply({ data: { repository: { issue: { comments: {
+          nodes: session ? [{ body: render(snap, 'test'), author: { login: usage.bot } }] : [], pageInfo: { hasNextPage: false },
+        } } } } });
+      }
       if (init?.method === 'POST') return reply({ id: 1, body: '', html_url: 'https://github.com/c' });
       return reply([]);
     };
@@ -1137,6 +1156,7 @@ test('an applying pass during a broker outage previews: no record, no dispatch',
     } finally {
       globalThis.fetch = saved.fetch;
       console.log = saved.log;
+      fs.readFileSync = saved.read;
       for (const k of Object.keys(process.env)) if (!(k in saved.env)) delete process.env[k];
       Object.assign(process.env, saved.env);
     }
@@ -1150,4 +1170,11 @@ test('an applying pass during a broker outage previews: no record, no dispatch',
   assert.deepEqual(held.writes, []);
   assert.equal(held.lines.filter(l => l.startsWith('held:')).join('\n'), 'held: broker outage https://github.com/configured/tracker/issues/9');
   assert.match(held.lines.at(-1), /^coordinator\/v1 \{"mode":"preview",/);
+  for (const fill of [0, 2]) {
+    const session = await run([], true, fill);
+    assert.deepEqual(session.writes, []);
+    assert.equal(session.lines[0], 'held: claude 5-hour session at 92%');
+    assert.equal(session.lines.length, 2);
+    assert.match(session.lines[1], /^coordinator\/v1 .*"plan":0/);
+  }
 });

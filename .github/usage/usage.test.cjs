@@ -75,7 +75,9 @@ test('the broker answer becomes the pools and Mistral counters of bot-usage/v1',
   const snap = snapshot(load(), CONFIG, MISTRAL, NOW);
   assert.equal(snap.schema, 'bot-usage/v1');
   assert.equal(snap.updated_at, '2026-10-08T10:00:00.000Z');
-  assert.deepEqual([snap.windows, snap.workers], [[], []]);
+  assert.equal(snap.windows.length, 4);
+  assert.deepEqual(snap.windows[0], { name: 'claude', used_percent: 42, window_minutes: 300, resets_at: '2026-10-08T12:00:00.000Z' });
+  assert.deepEqual(snap.workers, []);
   // Claude's week: 81% used, 4 days 10 hours into it, so the pace allows
   // 95% of 106/168 and the pool holds.
   const { claude, openai } = snap.pools;
@@ -189,6 +191,53 @@ test('a pace hold says when the pace catches up, and a pool past its target wait
 });
 
 const HOUR = 3600e3;
+
+test('session ceilings add holds without changing weekly pacing', () => {
+  for (const [label, used, reset, weekly, missing, held] of [
+    ['under', 84, NOW + HOUR, 10, false, false],
+    ['at', 85, NOW + HOUR, 10, false, true],
+    ['spent', 100, NOW + HOUR, 10, false, true],
+    ['reset', 92, NOW, 10, false, false],
+    ['missing', 92, NOW + HOUR, 10, true, false],
+    ['weekly and session', 92, NOW + HOUR, 81, false, true],
+  ]) {
+    const broker = load();
+    Object.assign(broker.anthropic.unified_5h, { utilization: used / 100, reset: reset / 1000 });
+    broker.anthropic.unified_7d.utilization = weekly / 100;
+    if (missing) delete broker.anthropic.unified_5h;
+    const config = structuredClone(CONFIG);
+    config.pacing.claude.session_hold = 85;
+    const snap = snapshot(broker, config, null, NOW);
+    const before = snapshot(broker, CONFIG, null, NOW).pools.claude;
+    const p = snap.pools.claude;
+    assert.equal(p.hold, held || before.hold, label);
+    assert.equal(p.reason, held ? 'session' : before.reason, label);
+    assert.equal(p.allowed_percent, before.allowed_percent, label);
+    if (held) assert.equal(Date.parse(p.next_dispatch_at), Math.max(reset, Date.parse(before.next_dispatch_at) || 0), label);
+    if (!missing) assert.match(render(snap, 'test'), new RegExp(`claude: 5-hour session ${used}% used, resets`));
+  }
+  for (const value of [0, -1, 101, '85', null]) {
+    const config = structuredClone(CONFIG);
+    config.pacing.claude.session_hold = value;
+    assert.throws(() => checkConfig(config), /session_hold/);
+  }
+  checkConfig(require('./config.json'));
+  for (const weekly of [null, { utilization: 0.1, reset: NOW / 1000, observed_at: NOW / 1000 }]) {
+    const broker = load();
+    broker.anthropic.unified_7d = weekly;
+    broker.anthropic.unified_5h.utilization = 0.92;
+    const config = structuredClone(CONFIG);
+    config.pacing.claude.session_hold = 85;
+    assert.equal(snapshot(broker, config, null, NOW).pools.claude.reason, 'session');
+  }
+  const broker = load();
+  broker.codex.primary.used_percent = 92;
+  broker.codex.primary.reset_after_seconds = 7200;
+  assert.equal(snapshot(broker, CONFIG, null, NOW).pools.openai.hold, false);
+  const config = structuredClone(CONFIG);
+  config.pacing.openai.session_hold = 85;
+  assert.equal(snapshot(broker, config, null, NOW).pools.openai.reason, 'session');
+});
 // A broker just restarted: no window seen yet, the counters from zero.
 function restarted() {
   const b = load();
@@ -216,6 +265,35 @@ test('a pool the broker has no reading of keeps the last one until its window re
   assert.equal(mixed.pools.openai.computed_at, new Date(later).toISOString());
   assert.equal(mixed.pools.claude.observed_at, previous.pools.claude.observed_at);
   assert.equal(previousSnapshot(render(previous, 'x')).updated_at, previous.updated_at);
+});
+
+test('unexpired session lower bounds survive missing broker headers', () => {
+  const config = structuredClone(CONFIG);
+  config.pacing.claude.session_hold = 85;
+  const broker = load();
+  broker.anthropic.unified_7d.utilization = 0.1;
+  broker.anthropic.unified_5h.utilization = 0.92;
+  const previous = snapshot(broker, config, null, NOW);
+  for (const [label, partial, later, held] of [
+    ['restart', false, NOW + 60e3, true],
+    ['partial', true, NOW + 60e3, true],
+    ['reset', false, NOW + 2 * HOUR, false],
+  ]) {
+    const current = partial ? structuredClone(broker) : restarted();
+    if (partial) delete current.anthropic.unified_5h;
+    const carried = carryPools(snapshot(current, config, null, later), previous, config, later);
+    assert.equal(carried.pools.claude.hold, held, label);
+    assert.equal(carried.pools.claude.reason, held ? 'session' : null, label);
+    assert.equal(carried.windows.some(w => w.name === 'claude' && w.window_minutes === 300), held, label);
+  }
+  const fresh = structuredClone(broker);
+  fresh.anthropic.unified_5h.utilization = 0.1;
+  assert.equal(carryPools(snapshot(fresh, config, null, NOW), previous, config, NOW).pools.claude.hold, false);
+  broker.anthropic.unified_7d = null;
+  fresh.anthropic.unified_7d = null;
+  const sessionOnly = snapshot(broker, config, null, NOW);
+  const replaced = carryPools(snapshot(fresh, config, null, NOW), sessionOnly, config, NOW);
+  assert.equal(replaced.pools.claude, null);
 });
 
 test('each weekly number keeps its own observation time, not the newer short window', () => {

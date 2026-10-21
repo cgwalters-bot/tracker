@@ -744,6 +744,19 @@ is fetched. Thus successful publisher runs need not mean fresh provider data.
 Each weekly meter uses that window's `observed_at`, never a newer short
 window's timestamp; `computed_at` dates the pace calculation. Pace is recomputed
 from the window start (reset minus duration) on every publication.
+To leave room for in-flight work and local sessions before shared session
+exhaustion causes 429s, `pacing.<pool>.session_hold` optionally holds new work
+at that percentage of any window shorter than a day. It must be greater than
+zero and at most 100; omission keeps the existing used-up-window behavior.
+Claude enables it at 85; OpenAI leaves it unset. Weekly pacing is unchanged,
+and a session reset never releases a weekly hold. The snapshot's `windows`
+and comment summary include the broker's short-window usage and reset.
+Missing short-window headers retain the last published lower bound until its
+reset. A session hold on the planning pool pauses the local scheduler and
+coordinator pass, including work on other pools. Missing usage keeps their
+existing fail-open behavior. The pinned external `agent-board` poll and
+supervisor do not yet consume `hold`; they need an upstream change and pin
+update before this protects all automated dispatch paths.
 A broker it cannot read fails the run and
 leaves the last snapshot, and its time, as they were. The broker keeps its
 readings in memory, so after a restart it has none until a run goes through

@@ -3,8 +3,7 @@
 // read, from the inference broker's /usage, to the one comment by the bot on
 // the issue config.json names (cgwalters-forge/tracker#558). It replaces
 // homegit's `bin/bot-heartbeat publish`, whose pools and mistral it keeps in
-// the same shape; the per-machine parts of that snapshot (the status line's
-// windows, transcript tokens, workers) have no source here and are empty.
+// the same shape; workers have no source here and are empty.
 // Standard library only; everything but main is pure and is what
 // usage.test.cjs covers.
 'use strict';
@@ -26,7 +25,8 @@ const DAY_MS = 24 * HOUR_MS;
 const CLAUDE_WINDOWS = { unified_5h: 5 * HOUR_MS, unified_7d: 7 * DAY_MS };
 const CODEX_WINDOWS = ['primary', 'secondary'];
 // Only a window this long is paced evenly; a shorter one (five hours) is
-// spent in bursts and holds work only once used up (homegit's lib/pools.js).
+// spent in bursts, with an optional session ceiling to leave room for runs
+// already in flight and local sessions sharing the subscription.
 const MIN_PACED_WINDOW_MS = DAY_MS;
 // Bounds on what is read and written: the broker answers in well under a
 // kilobyte, and GitHub takes comments of up to 65536 characters.
@@ -56,6 +56,9 @@ function checkConfig(c) {
     const p = c.pacing?.[name];
     if (!isObject(p) || !finite(p.target) || p.target <= 0 || p.target > 1 || !finite(p.burst) || p.burst < 0) {
       bad(`pacing.${name} must be {target in (0, 1], burst >= 0}`);
+    }
+    if (p.session_hold !== undefined && (!finite(p.session_hold) || p.session_hold <= 0 || p.session_hold > 100)) {
+      bad(`pacing.${name}.session_hold must be a percent in (0, 100]`);
     }
   }
   return c;
@@ -92,11 +95,22 @@ function openaiReading(broker) {
 // even pace toward target of it at the reset, plus burst points; a hold when
 // above that or the target, or while a shorter window is used up. Null
 // without a reading of a window of a day or more that has yet to reset.
-function poolPace(reading, { target, burst }, now) {
+function poolPace(reading, { target, burst, session_hold }, now) {
   const windows = (reading?.windows || []).filter(w => w.window_ms > 0 && finite(w.resets_at) && finite(w.used_percent));
   if (!windows.length) return null;
+  const sessions = windows.filter(w => w.window_ms < MIN_PACED_WINDOW_MS && w.resets_at > now
+    && session_hold !== undefined && w.used_percent >= session_hold);
   const paced = windows.reduce((a, b) => (b.window_ms > a.window_ms ? b : a));
-  if (paced.window_ms < MIN_PACED_WINDOW_MS || !(paced.resets_at > now)) return null;
+  if (paced.window_ms < MIN_PACED_WINDOW_MS || !(paced.resets_at > now)) {
+    if (!sessions.length) return null;
+    const session = sessions.reduce((a, b) => a.resets_at > b.resets_at ? a : b);
+    return {
+      source: reading.source, observed_at: iso(session.observed_at ?? reading.observed_at), computed_at: iso(now),
+      used_percent: session.used_percent, window_minutes: session.window_ms / MINUTE_MS, resets_at: iso(session.resets_at),
+      target_percent: target * 100, burst, allowed_percent: session_hold, ahead: session.used_percent - session_hold,
+      hold: true, reason: 'session', next_dispatch_at: iso(session.resets_at),
+    };
+  }
   const start = paced.resets_at - paced.window_ms;
   const elapsed = Math.min(Math.max(now - start, 0), paced.window_ms);
   const goal = target * 100;
@@ -109,6 +123,12 @@ function poolPace(reading, { target, burst }, now) {
     hold = true;
     reason = reason || 'window';
     next = Math.max(next || 0, ...spent.map(w => w.resets_at));
+  }
+  if (sessions.length) {
+    hold = true;
+    reason = 'session';
+    // A session reset cannot release an independent weekly hold.
+    next = Math.max(next || 0, ...sessions.map(w => w.resets_at));
   }
   return {
     // A recent short-window header must not make the weekly number look fresh.
@@ -167,20 +187,21 @@ function mistralUsage(broker, pool, now) {
   return out;
 }
 
-// snapshot(broker, config, mistralPool, now): the bot-usage/v1 object. windows
-// and workers are homegit's per-machine parts, kept (empty) for readers that
-// require them; the review app shows the pools when there are no windows.
+// snapshot(broker, config, mistralPool, now): the bot-usage/v1 object.
 function snapshot(broker, config, mistralPool, now) {
   if (!isObject(broker) || broker.schema !== BROKER_SCHEMA) throw new Error(`the broker's answer is not ${BROKER_SCHEMA}`);
   const mistral = mistralUsage(broker, mistralPool, now);
+  const readings = { claude: claudeReading(broker), openai: openaiReading(broker) };
   return {
     schema: SCHEMA,
     updated_at: iso(now),
-    windows: [],
+    windows: Object.entries(readings).flatMap(([name, reading]) => (reading?.windows || []).map(w => ({
+      name, used_percent: w.used_percent, window_minutes: w.window_ms / MINUTE_MS, resets_at: iso(w.resets_at),
+    }))),
     workers: [],
     pools: {
-      claude: poolPace(claudeReading(broker), config.pacing.claude, now),
-      openai: poolPace(openaiReading(broker), config.pacing.openai, now),
+      claude: poolPace(readings.claude, config.pacing.claude, now),
+      openai: poolPace(readings.openai, config.pacing.openai, now),
     },
     ...(mistral ? { mistral } : {}),
   };
@@ -201,6 +222,11 @@ function describe(name, p) {
 function render(snap, workflow) {
   const lines = [MARKER, `Usage as of ${snap.updated_at}, from the inference broker's \`/usage\`. Written by ${workflow}; the review app's ops view reads the JSON below.`, ''];
   for (const [name, p] of Object.entries(snap.pools)) lines.push(`- ${describe(name, p)}`);
+  for (const w of snap.windows || []) {
+    if (w.window_minutes < MIN_PACED_WINDOW_MS / MINUTE_MS) {
+      lines.push(`- ${w.name}: ${w.window_minutes / 60}-hour session ${pct(w.used_percent)} used, resets ${w.resets_at}`);
+    }
+  }
   const m = snap.mistral;
   if (m) {
     const a = m.allowance ? `; allowance $${m.allowance.limit_usd}, resets ${m.allowance.resets_at}${m.allowance.prices ? ', spend estimated from prices' : ''}` : '';
@@ -246,21 +272,41 @@ async function needsPublish({ config, request, now }) {
 // one's window has yet to reset. The broker keeps its readings in memory
 // and has none after a restart until a run goes through it; a reading from
 // before is still a lower bound of the window's usage, and its observed_at
-// says how old it is. Only the paced window is carried, so a hold for a
-// spent shorter window is not.
+// says how old it is. Unexpired short-window lower bounds are carried too.
 function carryPools(snap, previous, config, now) {
   const pools = { ...snap.pools };
+  const windows = [...snap.windows];
   for (const name of Object.keys(pools)) {
     const p = previous?.pools?.[name];
+    // Missing headers after a restart cannot erase a known session lower
+    // bound. A fresh header for the same window duration supersedes it.
+    const carried = (previous?.windows || []).filter(w => w.name === name
+      && finite(w.used_percent) && finite(w.window_minutes) && w.window_minutes > 0
+      && w.window_minutes * MINUTE_MS < MIN_PACED_WINDOW_MS && Date.parse(w.resets_at) > now
+      && !windows.some(current => current.name === name && current.window_minutes === w.window_minutes));
+    windows.push(...carried);
+    if (carried.length && pools[name]) {
+      const current = pools[name];
+      pools[name] = poolPace({ source: current.source, observed_at: Date.parse(current.observed_at), windows: [
+        { used_percent: current.used_percent, window_ms: current.window_minutes * MINUTE_MS, resets_at: Date.parse(current.resets_at) },
+        ...windows.filter(w => w.name === name && w.window_minutes * MINUTE_MS < MIN_PACED_WINDOW_MS)
+          .map(w => ({ used_percent: w.used_percent, window_ms: w.window_minutes * MINUTE_MS, resets_at: Date.parse(w.resets_at) })),
+      ] }, config.pacing[name], now);
+    }
     if (pools[name] || !isObject(p) || ![p.used_percent, p.window_minutes].every(finite)) continue;
+    // A fresh short header may have dropped below the ceiling. Do not
+    // resurrect an older session-only pool after that header superseded it.
+    const effectiveShort = windows.filter(w => w.name === name && w.window_minutes * MINUTE_MS < MIN_PACED_WINDOW_MS);
     const reading = {
       source: p.source,
       observed_at: Date.parse(p.observed_at),
-      windows: [{ used_percent: p.used_percent, window_ms: p.window_minutes * MINUTE_MS, resets_at: Date.parse(p.resets_at) }],
+      windows: [...(p.window_minutes * MINUTE_MS >= MIN_PACED_WINDOW_MS
+        ? [{ used_percent: p.used_percent, window_ms: p.window_minutes * MINUTE_MS, resets_at: Date.parse(p.resets_at) }] : []),
+        ...effectiveShort.map(w => ({ used_percent: w.used_percent, window_ms: w.window_minutes * MINUTE_MS, resets_at: Date.parse(w.resets_at) }))],
     };
     pools[name] = poolPace(reading, config.pacing[name], now);
   }
-  return { ...snap, pools };
+  return { ...snap, pools, windows };
 }
 
 // publish({config, snap, render, request, log}): write the snapshot to the

@@ -3,7 +3,7 @@
   "issue": 1,
   "bot": "cgwalters-bot",
   "pacing": {
-    "claude": { "target": 0.95, "burst": 95 },
+    "claude": { "target": 0.95, "burst": 95, "session_hold": 85 },
     "openai": { "target": 0.95, "burst": 3 }
   }
 }
