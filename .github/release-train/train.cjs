@@ -381,8 +381,11 @@ async function pass({ api, apply = false, now = Date.now(), log = console.log, c
       case 'stall':
         throw new Stall(step.reason);
       case 'done':
-        await comment(issue, `Done: v${version} is released and pinned by the wrappers and every caller.`);
-        return write(`close ${issue.html_url}`, () => api('PATCH', `/repos/${cfg.tracking}/issues/${issue.number}`, { state: 'closed', state_reason: 'completed' }));
+        // The close first: a pass that failed between the two would
+        // otherwise say "Done" again every hour; a closed train is not
+        // followed again, so a failed comment is only lost.
+        await write(`close ${issue.html_url}`, () => api('PATCH', `/repos/${cfg.tracking}/issues/${issue.number}`, { state: 'closed', state_reason: 'completed' }));
+        return comment(issue, `Done: v${version} is released and pinned by the wrappers and every caller.`);
       default:
         return undefined;
     }

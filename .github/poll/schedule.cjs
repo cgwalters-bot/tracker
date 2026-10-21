@@ -474,8 +474,7 @@ async function operatorRetries(runs, config, read, now = Date.now()) {
     const { issue, comments } = await read(key);
     if (issue?.state !== 'open' || issue.pull_request || issue.user?.login?.toLowerCase() !== bot
         || !OPERATOR_REQUEST_RE.test(issue.title ?? '')) continue;
-    // A person's label: the request is theirs now.
-    if ((issue.labels ?? []).some(l => String(l.name).toLowerCase() === 'needs-human')) continue;
+    const labelled = (issue.labels ?? []).some(l => String(l.name).toLowerCase() === 'needs-human');
     const id = String(run.id);
     const mine = comments.filter(c => c.user?.login?.toLowerCase() === bot);
     if (mine.some(c => first(c) === heldLine(id))) continue;
@@ -493,8 +492,14 @@ async function operatorRetries(runs, config, read, now = Date.now()) {
     const next = config.operatorRetryPools.find(p => p !== pool);
     const base = { item: key, kind, run: run.html_url, runId: id, conclusion: run.conclusion, pool: pool || 'default',
       why: `its ${kind} run ${run.html_url} ended ${run.conclusion} on the ${pool || 'default'} pool` };
-    if (!retried && !lost && next) steps.push({ ...base, action: 'retry', next, reason: `${base.why}; once more on ${next}` });
-    else steps.push({ ...base, action: 'needs-human', reason: `${base.why}, ${retried ? 'and was the retry'
+    const retry = !retried && !lost && next;
+    // A person's label: the request is theirs now, so it is never retried.
+    // Labelled without this run's hand-off line, as when a pass's comment
+    // failed after its label, it gets only that comment: the line names the
+    // run, so once.
+    if (labelled && retry) continue;
+    if (retry) steps.push({ ...base, action: 'retry', next, reason: `${base.why}; once more on ${next}` });
+    else steps.push({ ...base, action: 'needs-human', ...(labelled ? { labelled } : {}), reason: `${base.why}, ${retried ? 'and was the retry'
       : lost ? `and the retry recorded at ${pending.created_at} started no run` : 'with no other pool to retry on'}` });
   }
   return steps;
@@ -1194,6 +1199,16 @@ async function main(argv) {
     if (held) { console.log(`held: broker outage ${held.url}`); apply = false; }
   }
   const dispatchToken = process.env.DISPATCH_TOKEN || token;
+  // Each run this pass starts, by item, for the coordinator after it in the
+  // same job (BOARD_DISPATCHED, poll.yml): the runs list it reads can lag
+  // behind them, which would let it start runs past the WIP cap. Written as
+  // each starts, so a pass cut off still counts what it started; a dispatch
+  // whose answer was an error is not counted. A run titled with another
+  // issue than the item (a plan's target) may count twice, which only
+  // holds back the coordinator's starts for that pass.
+  const begun = key => {
+    if (process.env.BOARD_DISPATCHED) fs.appendFileSync(process.env.BOARD_DISPATCHED, `${key.toLowerCase()}\n`);
+  };
   // Required here, not above: epics.cjs takes loadConfig from this module.
   const { census, loadEpicsConfig } = require('./epics.cjs');
   const config = loadEpicsConfig(fs.readFileSync(CONFIG_FILE, 'utf8'));
@@ -1231,8 +1246,9 @@ async function main(argv) {
     const at = `/repos/${repo}/issues/${n}`;
     if (step.action === 'needs-human') {
       // The label first: an issue with it is skipped, so a comment that
-      // fails after it is not followed by a second label.
-      await request(token, 'POST', `${at}/labels`, { labels: ['needs-human'] });
+      // fails after it is not followed by a second label; the next pass
+      // writes only the comment (operatorRetries).
+      if (!step.labelled) await request(token, 'POST', `${at}/labels`, { labels: ['needs-human'] });
       await request(token, 'POST', `${at}/comments`, { body: `${heldLine(step.runId)}\nBoard scheduler: needs a person, as ${step.reason}.` });
       return;
     }
@@ -1252,6 +1268,7 @@ async function main(argv) {
       if (/: HTTP 4\d\d /.test(err.message)) await request(token, 'DELETE', `/repos/${repo}/issues/comments/${rec.id}`).catch(() => {});
       throw err;
     }
+    begun(step.item);
     // Without the run's id the retry is the item's first run after the record.
     const id = started?.workflow_run_id;
     await request(token, 'PATCH', `/repos/${repo}/issues/comments/${rec.id}`, { body: `${record}${Number.isSafeInteger(id)
@@ -1359,6 +1376,7 @@ async function main(argv) {
       }
       throw err;
     }
+    begun(step.item);
     await drop();
   };
   // What decide makes of a recorded plan's run (readOutcome).
@@ -1412,6 +1430,7 @@ async function main(argv) {
       await edit(`It was not dispatched, or not knowingly (${err.message.slice(0, 300)}); edit or replace the plan to dispatch it.`).catch(() => {});
       throw err;
     }
+    begun(step.item);
     const id = started?.workflow_run_id;
     await edit(Number.isSafeInteger(id) ? `[run](https://github.com/${config.caller}/actions/runs/${id}).` : 'GitHub named no run.');
   };
@@ -1452,6 +1471,7 @@ async function main(argv) {
         // many passes see it.
         const { stdout } = agentBoard(bin, ['dispatch', item.url, '--apply', ...dispatchArgs(config, step.batch !== false)],
           { env: { GH_TOKEN: token, DISPATCH_TOKEN: dispatchToken }, timeoutMs: config.timeoutMs });
+        begun(step.item);
         log(`${name} dispatch: ${step.reason}; ${stdout.trim().split('\n').join(', ')}`);
       } catch (err) {
         const last = String(err.stderr ?? '').trim().split('\n').at(-1);

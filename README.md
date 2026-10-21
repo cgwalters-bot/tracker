@@ -70,7 +70,8 @@ The public log and summary contain only `decisions/v1` JSON with `status`,
 `changes` (`id` and `options`, letters only), and `other_edits`. Option labels,
 replies, before/after bodies and child diagnostics are never forwarded. The
 controller must read reply text from the private issue, not the public panel.
-A failed read fails the pass and keeps the retry chain alive.
+A failed read is reported there as `"status":"failed"` and skipped: the pass
+keeps its result and state, and the next pass reads again.
 
 The last-written baseline is not a last-read cursor: repeated reads continue
 to report unanswered edits until a private writer updates the document.

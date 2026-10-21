@@ -249,6 +249,25 @@ test('a release cut outside the train, with the wrappers behind, gets the wrappe
   assert.match(writes[4][2].body, new RegExp(`v0\\.5\\.3 was released outside the train, from ${R}@${tagged}\\.`));
 });
 
+test('a finished train closes before it says so, so a failed close does not repeat the comment', async () => {
+  const routes = releasedRoutes();
+  const merged = { state: 'closed', merged_at: '2026-10-16T11:00:00Z', created_at: '2026-10-16T09:05:00Z', merge_commit_sha: 'e'.repeat(40), html_url: 'm' };
+  routes[`/repos/${W}/pulls`] = [merged];
+  for (const c of config.callers) routes[`/repos/${c.repository}/pulls`] = [merged];
+  const { api, writes } = fake(routes);
+  const failing = async (method, path, body) => {
+    if (method === 'PATCH') throw new Error('HTTP 502');
+    return api(method, path, body);
+  };
+  await assert.rejects(pass({ api: failing, now, apply: true, log: () => {}, owner: 'bot' }), /HTTP 502/);
+  assert.deepEqual(writes, []);
+  await pass({ api, now, apply: true, log: () => {}, owner: 'bot' });
+  assert.deepEqual(writes.map(([m, p]) => `${m} ${p}`), [
+    `PATCH /repos/${config.tracking}/issues/3`,
+    `POST /repos/${config.tracking}/issues/3/comments`,
+  ]);
+});
+
 test('a release tagged off the default branch is not followed, and cutting goes on', async () => {
   const routes = handCutRoutes();
   routes[`/repos/${R}/compare/main...${tagged}`] = { status: 'diverged' };

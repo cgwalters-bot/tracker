@@ -410,7 +410,7 @@ async function start({ config, get, dispatch }, number, claim, state, before, in
 
 // All calls have finite response sizes/pages or agent-board timeouts. Publishing
 // claims first avoids duplicate status writes after an ambiguous API failure.
-async function pass({ config, entries, note, now, apply, get, post, dispatch, board, writeFile, log,
+async function pass({ config, entries, note, now, apply, get, post, dispatch, board, writeFile, log, dispatched = [],
   refresh = () => census(p => get('GET', p), post, config) }) {
   const counts = { plan: 0, apply: 0, status: 0, wait: 0, failed: 0, stuck: 0, errors: 0 };
   // Only a recorded run id is looked up, once per pending operation still
@@ -440,6 +440,13 @@ async function pass({ config, entries, note, now, apply, get, post, dispatch, bo
     const live = entries.filter(e => e.live).sort((a, b) => (rank(a.priority) - rank(b.priority) || 0) || a.number - b.number);
     const runs = (await dispatch('GET', `/repos/${config.caller}/actions/workflows/${config.workflow}/runs?per_page=100`)).workflow_runs;
     const running = readRuns(runs);
+    // The scheduler's runs of this job (`dispatched`, by item), which the
+    // runs list may not show yet; one it shows is counted there already.
+    for (const key of dispatched) {
+      if (running.busy.has(key)) continue;
+      running.inFlight++;
+      running.busy.set(key, 'dispatched by the scheduler');
+    }
     try {
       const statusComments = await readComments(post, config.epicsRepository, config.statusIssue);
       const statusRecord = record(statusComments, config.planner, 'coordinator-status/v1');
@@ -687,7 +694,11 @@ async function main(argv) {
       log(`mode: ${pace.mode}; minimum planning interval ${config.minPlanIntervalMs / 60000} minutes`);
     }
     const snapshot = await census(p => get('GET', p), post, config);
-    const result = await pass({ config, ...snapshot, now: Date.now(), apply, get, post,
+    // Written by the scheduler's step before this one (schedule.cjs); none
+    // where it started nothing or the variable is unset.
+    const file = process.env.BOARD_DISPATCHED;
+    const dispatched = file && fs.existsSync(file) ? fs.readFileSync(file, 'utf8').split('\n').filter(Boolean) : [];
+    const result = await pass({ config, ...snapshot, now: Date.now(), apply, get, post, dispatched,
       dispatch: (method, p, body) => request(process.env.DISPATCH_TOKEN || token, method, p, body),
       board: args => agentBoard(process.env.AGENT_BOARD, args, { timeoutMs: config.timeoutMs, env: { GH_TOKEN: token } }),
       writeFile: (name, content) => { const file = path.join(process.env.RUNNER_TEMP, name); fs.writeFileSync(file, content); return file; }, log });

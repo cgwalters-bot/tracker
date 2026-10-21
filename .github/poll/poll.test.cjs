@@ -5,7 +5,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
 const { execFileSync } = require('node:child_process');
-const { CONFIG, poll } = require('./poll.cjs');
+const { CONFIG, poll, withDecisions } = require('./poll.cjs');
+const { readDecisions } = require('./decisions.cjs');
 const { MARKER } = require('./broker.cjs');
 
 const env = { AGENT_BOARD: '/trusted/agent-board', POLL_STATE: '/trusted/state.json' };
@@ -156,6 +157,16 @@ test('failed, timed out, truncated or malformed passes fail and keep the chain a
     assert.equal(output.status, 0);
     assert.equal(output.again, false);
   }
+});
+
+test('an unreadable decisions issue is a skipped read, not a failed pass', async () => {
+  const pass = await poll([], env, () => ({ status: 0, stdout: 'next-due-seconds=600\n' }));
+  const result = withDecisions(pass, readDecisions({ ...env, DECISIONS_STATE_KEY: 'a'.repeat(64) }, { decisions: {} }, () => ({ status: 1, stdout: '' })));
+  assert.deepEqual([result.status, result.again], [0, false]);
+  assert.match(result.stdout, /^decisions\/v1 \{"status":"failed","changes":\[\]\}$/m);
+  // A failed agent-board pass stays failed.
+  const failed = withDecisions(await poll([], env, () => ({ status: 1 })), { status: 'ok', changes: [], other_edits: false });
+  assert.deepEqual([failed.status, failed.again], [1, true]);
 });
 
 test('adapter emits escaped summary and only its own workflow output', t => {

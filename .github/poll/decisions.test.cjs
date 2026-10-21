@@ -74,7 +74,7 @@ test('failures and malformed private responses never escape or replace baseline'
   assert.throws(() => keyFrom('bad'));
 });
 
-test('enabled executable adapter never publishes private output and retries failed reads', t => {
+test('enabled executable adapter never publishes private output and reports a failed read without failing the pass', t => {
   const { env } = fixture(t);
   const dir = path.dirname(env.POLL_STATE);
   const binary = path.join(dir, 'agent-board');
@@ -93,8 +93,8 @@ else {
       env: { ...process.env, ...env, AGENT_BOARD: binary, FAIL_READ: String(fail), GITHUB_OUTPUT: output, GITHUB_STEP_SUMMARY: summary },
       encoding: 'utf8',
     });
-    assert.equal(result.status, fail);
-    assert.equal(fs.readFileSync(output, 'utf8'), `in-flight=${Boolean(fail)}\n`);
+    assert.equal(result.status, 0);
+    assert.equal(fs.readFileSync(output, 'utf8'), 'in-flight=false\n');
     for (const text of [result.stdout, result.stderr, fs.readFileSync(summary, 'utf8')]) assert.doesNotMatch(text, /PRIVATE/);
     assert.match(result.stdout, fail ? /"status":"failed"/ : /"id":"D1","options":\["A"\]/);
   }
