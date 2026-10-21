@@ -47,6 +47,12 @@ comment-wake-config:
 poll *args:
     node .github/poll/poll.cjs "$@"
 
+# Put issues on the board and have the next poll pass consider them first,
+# with your own gh login (README, "Queueing work for the poll"):
+#   just enqueue https://github.com/OWNER/REPO/issues/N... [priority=P1] [--dry-run]
+enqueue *args:
+    node .github/poll/enqueue.cjs "$@"
+
 # Dispatch only the default branch's publisher in this repository.
 refresh-usage:
     gh workflow run usage.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
