@@ -4,7 +4,7 @@
 # staged pull requests only: the poll does not follow them, so nothing merges
 # into their main, which tracks upstream; the operator promotes work upstream.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/forge-infra"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576

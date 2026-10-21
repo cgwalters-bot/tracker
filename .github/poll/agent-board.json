@@ -16,7 +16,8 @@
     "cgwalters-forge/tracker",
     "cgwalters-forge/actions",
     "cgwalters-forge/review",
-    "cgwalters-forge/agenthome"
+    "cgwalters-forge/agenthome",
+    "cgwalters-forge/forge-infra"
   ],
   "fixPools": ["claude", "openai"],
   "toilFixPool": "openai",

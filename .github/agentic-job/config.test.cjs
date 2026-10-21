@@ -104,6 +104,19 @@ test('misctool is a dispatch and fix target with matching workflow-edit bounds',
   for (let i = 0; i < 2; i++) assert.deepEqual([...dispatchLists[i]].sort(), fixLists[i].filter(r => r !== 'bootc-dev/*').sort());
 });
 
+// forge-infra (#812) is followed and a target, but no run may edit its
+// `.github/` or protected files until a per-repository ruleset is on its
+// main; for now the organization's ruleset is its only gate.
+test('forge-infra is a followed target without unprotected files', () => {
+  const repo = 'cgwalters-forge/forge-infra';
+  for (const name of ['dispatch.toml', 'fix.toml', 'comment.toml']) assert.ok(repos(name).includes(repo), name);
+  for (const name of ['dispatch.toml', 'fix.toml']) {
+    const listed = /^repos = (\[.*\])$/m.exec(read(name).split(/^\[unprotected_files\]$/m)[1])[1];
+    assert.ok(!JSON.parse(listed).includes(repo), name);
+  }
+  assert.ok(JSON.parse(fs.readFileSync(path.join(__dirname, '../poll/agent-board.json'), 'utf8')).follow.includes(repo));
+});
+
 test('dispatch.toml and fix.toml open complete work ready', () => {
   assert.match(outputs('dispatch.toml'), /^create_pull_request = \{ max = 1, ready_when_complete = true \}$/m);
   assert.match(outputs('fix.toml'), /^push_to_pull_request_branch = \{ max = 1, branches = \["dispatch\/\*\*", "bot\/\*\*", "release-train\/\*\*"\], replacement_max_commits = 5, ready_when_complete = true \}$/m);
