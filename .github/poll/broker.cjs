@@ -70,9 +70,11 @@ async function publish({ token, repo, login, up, api, now = new Date().toISOStri
   const issue = await find({ token, repo, login, api });
   const body = `${MARKER}\nBroker ${up ? 'reachable again' : 'unreachable'} from the dispatch tailnet path at ${now}.\nTCP plus one unauthenticated HTTP request; any HTTP response counts as reachable.`;
   if (up) {
+    // The close first: a probe that failed between the two would otherwise
+    // say so again every 15 minutes; a closed issue is not found again.
     if (issue) {
-      await api(token, 'POST', `${path}/${issue.number}/comments`, { body: `Broker reachable again at ${now}.` });
       await api(token, 'PATCH', `${path}/${issue.number}`, { state: 'closed', state_reason: 'completed' });
+      await api(token, 'POST', `${path}/${issue.number}/comments`, { body: `Broker reachable again at ${now}.` });
     }
   } else if (issue) {
     await api(token, 'PATCH', `${path}/${issue.number}`, { body });

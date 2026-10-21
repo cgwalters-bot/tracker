@@ -49,7 +49,22 @@ test('outage issue is created, updated in place, then closed on recovery', async
   await publish({ ...input, up: true });
   assert.equal(writes.filter(w => w.path.endsWith('/issues')).length, 1);
   assert.equal(writes.filter(w => w.method === 'PATCH' && w.body.body).length, 1);
-  assert.equal(writes.at(-1).body.state, 'closed');
+  assert.equal(writes.at(-2).body.state, 'closed');
+  assert.match(writes.at(-1).body.body, /reachable again/);
+});
+
+test('a failed close on recovery does not repeat the recovery comment', async () => {
+  const issues = [{ number: 7, user: { login: 'configured-bot' }, body: `${MARKER}\nBroker unreachable` }];
+  const writes = [];
+  const api = async (_token, method, path, body) => {
+    if (method === 'GET') return issues;
+    if (method === 'PATCH') throw new Error('HTTP 502');
+    writes.push({ method, path, body });
+  };
+  const input = { token: 'token', repo: 'configured/repo', login: 'configured-bot', api, up: true };
+  await assert.rejects(publish(input), /HTTP 502/);
+  await assert.rejects(publish(input), /HTTP 502/);
+  assert.deepEqual(writes, []);
 });
 
 test('only the bot\'s fresh, marked, open outage issue holds', async () => {

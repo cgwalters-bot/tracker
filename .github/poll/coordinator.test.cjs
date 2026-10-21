@@ -920,6 +920,26 @@ test('ambiguous epic dispatches and lost receipt checkpoints reserve their WIP s
   }
 });
 
+test("the scheduler's runs of this job count against the cap, once, before the runs list shows them", async () => {
+  const full = harness(true);
+  full.options.config.wip = 2;
+  full.options.dispatched = ['o/x#1', 'o/x#2'];
+  await pass(full.options);
+  assert.deepEqual(full.dispatches, []);
+  assert.ok(full.lines.some(l => l.includes('planning capacity full')), full.lines.join('\n'));
+
+  // One the list shows already is not counted twice: a slot is left.
+  const listed = harness(true);
+  listed.options.config.wip = 2;
+  listed.options.dispatched = ['o/x#1'];
+  listed.options.dispatch = async (method, p, body) => {
+    if (method === 'GET') return { workflow_runs: [{ status: 'in_progress', display_title: 'implement o/x#1 (claude)', html_url: 'https://example.test/run' }] };
+    listed.dispatches.push(body);
+  };
+  await pass(listed.options);
+  assert.equal(listed.dispatches.length, 1);
+});
+
 test('ordinary reporting volume is bounded and reporting failures do not block epic planning', async () => {
   const h = harness(true);
   h.options.config.followed = new Set(Array.from({ length: 6 }, (_, n) => `o/r${n}`));

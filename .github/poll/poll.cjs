@@ -101,12 +101,16 @@ async function poll(argv, env = process.env, run = spawnSync, api = request) {
   return { stdout, stderr, again, status: failed ? 1 : 0 };
 }
 
+// An unreadable decisions issue (a rate limit, lost access) is a skipped read,
+// reported in its line, not a failed pass: failing would drop the pass's own
+// state and start a pass every 5 minutes until the read came back. The next
+// pass reads it again on the restored baseline, which a failed read leaves.
+function withDecisions(result, decisions) {
+  return { ...result, stdout: `${result.stdout}decisions/v1 ${JSON.stringify(decisions)}\n` };
+}
+
 async function main(argv) {
-  const result = await poll(argv);
-  const decisions = readDecisions(process.env, settings);
-  const decisionLine = `decisions/v1 ${JSON.stringify(decisions)}\n`;
-  result.stdout += decisionLine;
-  if (decisions.status === 'failed') { result.status = 1; result.again = true; }
+  const result = withDecisions(await poll(argv), readDecisions(process.env, settings));
   process.stdout.write(result.stdout);
   process.stderr.write(result.stderr);
   if (result.status) console.error('poll: agent-board failed or did not return a valid interval');
@@ -118,7 +122,7 @@ async function main(argv) {
   process.exitCode = result.status;
 }
 
-module.exports = { CONFIG, paged, poolForKind, request, poll };
+module.exports = { CONFIG, paged, poolForKind, request, poll, withDecisions };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`poll: ${err.message}`); process.exitCode = 1; });

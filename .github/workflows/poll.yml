@@ -80,6 +80,9 @@ jobs:
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           DISPATCH_TOKEN: ${{ github.token }}
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+          # The runs this pass starts, which the coordinator counts against
+          # the cap before the runs list it reads shows them.
+          BOARD_DISPATCHED: ${{ runner.temp }}/board-dispatched
           APPLY: ${{ !inputs.dry-run && vars.BOARD_DISPATCH == 'apply' && '--apply' || '' }}
         shell: bash
         # stderr too, so that the summary says why a pass failed.
@@ -118,6 +121,7 @@ jobs:
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           DISPATCH_TOKEN: ${{ github.token }}
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+          BOARD_DISPATCHED: ${{ runner.temp }}/board-dispatched
           APPLY: ${{ !inputs.dry-run && vars.COORDINATOR == 'apply' && '--apply' || '' }}
         shell: bash
         run: just coordinator ${APPLY:+"$APPLY"}

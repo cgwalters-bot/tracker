@@ -1741,6 +1741,13 @@ test('a failed run on an operator request is retried once on another pool, then 
   // With no other pool to go to, a person gets it at once.
   const only = await operatorRetries([orun(1, { display_title: 'triage o/t#7 (claude)' })], { ...RETRY, operatorRetryPools: ['claude'] }, async () => ({ issue: relay(), comments: [] }));
   assert.deepEqual(only.map(s => s.action), ['needs-human']);
+  // Labelled by a pass whose comment then failed: the comment alone, once.
+  const retried = [orun(1), orun(2, { display_title: 'triage o/t#7 (claude)' })];
+  const labels = [{ name: 'needs-human' }];
+  const unexplained = await operatorRetries(retried, RETRY, async () => ({ issue: relay({ labels }), comments: [retryRecord(1, 1, 2)] }));
+  assert.deepEqual(unexplained.map(s => [s.action, s.labelled]), [['needs-human', true]]);
+  assert.deepEqual(await operatorRetries(retried, RETRY, async () => ({ issue: relay({ labels }),
+    comments: [retryRecord(1, 1, 2), said('<!-- operator-retry/v1-held: 2 -->', 3)] })), []);
 });
 
 test("operator retries take only the caller's items, and a pass is bounded", async () => {
@@ -1805,6 +1812,25 @@ test('with --apply, a failed operator request is recorded, then run again on ano
   assert.deepEqual(steps.map(s => s.action), ['needs-human']);
 });
 
+test('with BOARD_DISPATCHED, each run the pass started is listed for the coordinator, and a refused one is not', async t => {
+  const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'dispatched-')), 'list');
+  process.env.BOARD_DISPATCHED = file;
+  t.after(() => { delete process.env.BOARD_DISPATCHED; });
+  const routes = status => ({
+    ...relayed(703),
+    [`POST ${relayAt(703)}/comments`]: { id: 70 },
+    [`GET /repos/${REPO_CONFIG.dispatchRepo}`]: { default_branch: 'main' },
+    ...(status ? { [`POST /repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/dispatches`]: status } : {}),
+    [`PATCH /repos/${REPO_CONFIG.dispatchRepo}/issues/comments/70`]: {},
+    [`DELETE /repos/${REPO_CONFIG.dispatchRepo}/issues/comments/70`]: null,
+  });
+  await runMain(['--apply'], routes(null), { schedule: { operatorRetryPools: ['claude'] } });
+  assert.equal(fs.existsSync(file), false);
+  const { error } = await runMain(['--apply'], routes({ workflow_run_id: 99 }), { schedule: { operatorRetryPools: ['claude'] } });
+  assert.equal(error, undefined);
+  assert.equal(fs.readFileSync(file, 'utf8'), `${REPO_CONFIG.dispatchRepo.toLowerCase()}#703\n`);
+});
+
 test('with --apply, a retry GitHub refuses takes its record back and fails the pass; a dry run writes nothing', async () => {
   const { out, sent, calls, error } = await runMain(['--apply'], {
     ...relayed(703),
@@ -1847,4 +1873,16 @@ test('with --apply, a failed retry labels the request needs-human before saying 
   assert.deepEqual(sent.map(([c]) => c), [`POST ${relayAt(n)}/labels`, `POST ${relayAt(n)}/comments`]);
   assert.deepEqual(sent[0][1], { labels: ['needs-human'] });
   assert.match(sent[1][1].body, /^<!-- operator-retry\/v1-held: 2 -->\n/);
+
+  // The comment failed after the label: the next pass writes the comment only.
+  const again = await runMain(['--apply'], {
+    ...relayed(n),
+    [`GET ${RUNS}`]: { workflow_runs: [orun(1, { display_title: `triage ${REPO_CONFIG.dispatchRepo}#${n} (mistral)` }), orun(2, { display_title: `triage ${REPO_CONFIG.dispatchRepo}#${n} (claude)` })] },
+    [`GET ${relayAt(n)}`]: relay({ user: { login: REPO_CONFIG.bot }, labels: [{ name: 'needs-human' }] }),
+    [`GET ${relayAt(n)}/comments`]: [said(`<!-- operator-retry/v1: 1 -->\nx Retry: https://github.com/${REPO_CONFIG.dispatchRepo}/actions/runs/2.`, 1, REPO_CONFIG.bot)],
+    [`POST ${relayAt(n)}/comments`]: { id: 72 },
+  }, { schedule: { operatorRetryPools: ['claude', 'openai'] } });
+  assert.equal(again.error, undefined, again.out.join('\n'));
+  assert.deepEqual(again.sent.map(([c]) => c), [`POST ${relayAt(n)}/comments`]);
+  assert.match(again.sent[0][1].body, /^<!-- operator-retry\/v1-held: 2 -->\n/);
 });
