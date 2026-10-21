@@ -480,6 +480,15 @@ gh workflow run supervisor.yml -R cgwalters-forge/tracker \
   -f prompt="close what triage found done in agent-board"
 ```
 
+A check that cannot clear fails every pass and so started an agent every
+cooldown hour to read the same report (#804). With
+`agent.skipUnchangedFailures` set to true (it ships false),
+`.github/poll/supervisor-repeat.cjs` leaves the trigger out of a pass that
+is not a sweep or request when no check fails that did not fail in the
+previous report; the sweep reads standing failures and their new evidence.
+A failure that first appeared while the trigger declined (cooldown, an
+active agent) also waits for a sweep.
+
 Comments, prompts and the sweep share workflow-wide `supervisor-agent`
 concurrency without cancelling an active run, so a request waits through the
 previous executor instead of the trigger discarding it. The fifteen-minute

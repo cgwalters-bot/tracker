@@ -136,12 +136,23 @@ jobs:
             health.json
             times.json
           retention-days: 2
+      # Off unless agent.skipUnchangedFailures: a pass whose failures all
+      # failed in the previous report leaves them to the sweep (#804).
+      - name: Whether a check newly fails
+        id: repeat
+        if: ${{ steps.due.outputs.health == 'true' }}
+        # A failure here sets no skip, so the trigger runs as before.
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          DAILY: ${{ steps.due.outputs.daily == 'true' && '--daily' || '' }}
+        run: node .github/poll/supervisor-repeat.cjs
       # Decides from health.json and this workflow's own recent runs; the job
       # token reads them. --daily bypasses cooldown, not an active agent, for
       # explicit requests and the sweep; failures retain the normal cooldown.
       - name: Whether the agent runs
         id: trigger
-        if: ${{ steps.due.outputs.health == 'true' }}
+        if: ${{ steps.due.outputs.health == 'true' && steps.repeat.outputs.skip != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           DAILY: ${{ steps.due.outputs.daily == 'true' && '--daily' || '' }}

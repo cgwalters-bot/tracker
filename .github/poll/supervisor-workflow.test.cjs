@@ -108,12 +108,18 @@ test('the poll chain starts supervisor passes, paced from the previous health ar
   assert.match(workflow, /cron: '\*\/15 \* \* \* \*'/);
   const health = workflow.split('\n  health:\n')[1].split('\n  agent:\n')[0];
   const order = ['- name: Previous health report', '- name: Whether a pass is due', '- name: Build agent-board',
-    '- name: Read-only health snapshot', '- uses: actions/upload-artifact', '- name: Whether the agent runs'];
+    '- name: Read-only health snapshot', '- uses: actions/upload-artifact', '- name: Whether a check newly fails',
+    '- name: Whether the agent runs'];
   assert.deepEqual(order.map(step => health.indexOf(step)), order.map(step => health.indexOf(step)).sort((a, b) => a - b));
+  assert.ok(order.every(step => health.includes(step)));
   assert.match(health, /id: due\n[\s\S]*?EVENT: \$\{\{ github.event_name \}\}\n +PROMPT: \$\{\{ inputs.prompt \}\}\n +run: node .github\/poll\/supervisor-due.cjs\n/);
   for (const step of order.slice(2)) {
-    assert.match(health.split(step)[1], /^.*\n( +id: \w+\n| +#.*\n)* +if: \$\{\{ (!cancelled\(\) && )?steps.due.outputs.health == 'true'( && hashFiles\('health.json'\) != '')? \}\}\n/);
+    assert.match(health.split(step)[1], /^.*\n( +id: \w+\n| +#.*\n)* +if: \$\{\{ (!cancelled\(\) && )?steps.due.outputs.health == 'true'( && hashFiles\('health.json'\) != '')?( && steps.repeat.outputs.skip != 'true')? \}\}\n/);
   }
+  // Only the trigger is gated on the repeat check, which sees the same --daily.
+  assert.equal(health.match(/steps.repeat.outputs.skip/g)?.length, 1);
+  assert.match(health, /id: trigger\n +if: .* && steps.repeat.outputs.skip != 'true' \}\}\n/);
+  assert.match(health, /id: repeat\n[^-]*continue-on-error: true\n[\s\S]*?DAILY: \$\{\{ steps.due.outputs.daily == 'true' && '--daily' \|\| '' \}\}\n +run: node .github\/poll\/supervisor-repeat.cjs\n/);
   // A failed pass uploads no times.json that would hide the last report.
   assert.ok(health.includes("if: ${{ !cancelled() && steps.due.outputs.health == 'true' && hashFiles('health.json') != '' }}"));
   assert.match(health, /path: \|\n +health.json\n +times.json\n/);
@@ -172,6 +178,60 @@ test('a poll-started pass within fifteen minutes skips, and a sweep is due after
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('standing failures leave the agent to the sweep only when enabled (#804)', () => {
+  const { repeat } = require('./supervisor-repeat.cjs');
+  let pass = 0;
+  const report = (...failing) => ['broker', 'release', 'held', 'idle'].map(id => ({
+    id, status: failing.includes(id) ? 'fail' : 'warn', evidence: [`https://example.invalid/${id}/${pass++}`],
+  }));
+  const standing = report('broker', 'release');
+  // Same failing set, new evidence: skipped. Off, a sweep or a request: not.
+  assert.deepEqual(repeat(true, false, standing, report('broker', 'release')), { skip: true, fresh: [] });
+  assert.equal(repeat(undefined, false, standing, standing).skip, false);
+  assert.equal(repeat(false, false, standing, standing).skip, false);
+  assert.equal(repeat(true, true, standing, standing).skip, false);
+  // A newly failing check goes to the trigger, even if another stopped.
+  assert.deepEqual(repeat(true, false, report('broker', 'held'), standing), { skip: false, fresh: ['held'] });
+  assert.equal(repeat(true, false, report('broker'), standing).skip, true);
+  // No readable previous report: every failure is new.
+  assert.deepEqual(repeat(true, false, standing, undefined), { skip: false, fresh: ['broker', 'release'] });
+  assert.equal(repeat(true, false, standing, { not: 'a list' }).skip, false);
+  // Nor a current report it cannot read, whatever the previous one says.
+  for (const current of [undefined, { checks: standing }]) assert.equal(repeat(true, false, current, standing).skip, false);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'supervisor-repeat-'));
+  try {
+    const run = (enabled, previous, daily = '') => {
+      fs.mkdirSync(path.join(dir, '.github/supervisor'), { recursive: true });
+      fs.writeFileSync(path.join(dir, '.github/supervisor/config.json'),
+        JSON.stringify({ agent: enabled === undefined ? {} : { skipUnchangedFailures: enabled } }));
+      fs.writeFileSync(path.join(dir, 'health.json'), JSON.stringify(standing));
+      fs.rmSync(path.join(dir, 'previous-health'), { recursive: true, force: true });
+      if (previous !== undefined) {
+        fs.mkdirSync(path.join(dir, 'previous-health'));
+        fs.writeFileSync(path.join(dir, 'previous-health/health.json'), previous);
+      }
+      fs.writeFileSync(path.join(dir, 'output'), '');
+      const result = spawnSync(process.execPath, [path.join(__dirname, 'supervisor-repeat.cjs')], {
+        cwd: dir, encoding: 'utf8',
+        env: { ...process.env, DAILY: daily, RUNNER_TEMP: dir, GITHUB_OUTPUT: path.join(dir, 'output') },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      return fs.readFileSync(path.join(dir, 'output'), 'utf8');
+    };
+    const same = JSON.stringify(report('broker', 'release'));
+    assert.equal(run(true, same), 'skip=true\n');
+    assert.equal(run(true, same, '--daily'), 'skip=false\n');
+    assert.equal(run(undefined, same), 'skip=false\n');
+    for (const previous of [undefined, 'not json']) assert.equal(run(true, previous), 'skip=false\n');
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+  // The shipped switch is off.
+  const config = JSON.parse(fs.readFileSync(path.join(root, '.github/supervisor/config.json')));
+  assert.equal(config.agent.skipUnchangedFailures, false);
 });
 
 test('previous health uses completed runs even when an agent job failed', () => {

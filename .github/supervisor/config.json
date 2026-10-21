@@ -32,6 +32,7 @@
   "agent": {
     "pool": "claude",
     "cooldownHours": 1,
+    "skipUnchangedFailures": false,
     "requests": { "repository": "cgwalters-forge/tracker", "issue": 656 },
     "log": { "repository": "cgwalters-forge/operator", "issue": 2 },
     "state": { "repository": "cgwalters-forge/tracker", "issue": 718 },
