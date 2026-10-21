@@ -5,7 +5,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { after, test } = require('node:test');
-const { FILL_QUERY, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, planInterval, probePlan, pullIssues, readDryRun, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
+const { FILL_PAGES, FILL_QUERY, agentBoard, batchReleased, candidates, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, planInterval, probePlan, pullIssues, readDryRun, readFillIssues, readOutcome, readRefusal, readRuns, readTriage, triageRecord, triageTask } = require('./schedule.cjs');
 const { census } = require('./epics.cjs');
 const { render } = require('../usage/usage.cjs');
 
@@ -1441,6 +1441,29 @@ test("a plan under review, assigned to the operator and labelled needs-human, ta
   assert.deepEqual(fillItems([{ repository: 'o/r', nodes }], FILL_CONFIG, new Set()).map(i => i.number), [32]);
 });
 
+test("fill mode reads a repository's open issues past the first page, so a newer P0 ranks ahead, and says a read cut at its bound", async () => {
+  // 250 open issues, oldest first, all P2 but the newest, #250, which is P0.
+  const all = Array.from({ length: 250 }, (_, i) => openIssue(i + 1, 'op', {}, { priority: i === 249 ? 'P0' : 'P2' }));
+  const reads = [];
+  const gql = pages => async ({ query, variables }) => {
+    assert.equal(query, FILL_QUERY);
+    reads.push(variables.cursor);
+    const at = variables.cursor ? Number(variables.cursor) : 0;
+    const next = at + 100 < pages * 100;
+    return { data: { repository: { issues: { nodes: all.slice(at, at + 100), pageInfo: { hasNextPage: next, endCursor: next ? String(at + 100) : null } } } } };
+  };
+  const answer = await readFillIssues(gql(3), 'o/r', 'Priority');
+  assert.deepEqual([answer.nodes.length, answer.partial, reads], [250, false, [null, '100', '200']]);
+  assert.deepEqual(fillItems([answer], FILL_CONFIG, new Set()).map(i => i.number), [250, 1, 2]);
+  // A repository with more than FILL_PAGES pages is read to the bound and marked partial.
+  reads.length = 0;
+  const cut = await readFillIssues(gql(FILL_PAGES + 1), 'o/r', 'Priority');
+  assert.deepEqual([cut.partial, cut.nodes.length], [true, 250]);
+  assert.equal(reads.length, FILL_PAGES);
+  // A page that says there is more but gives no cursor is not read as complete.
+  await assert.rejects(readFillIssues(async () => ({ data: { repository: { issues: { nodes: [], pageInfo: { hasNextPage: true } } } } }), 'o/r', 'Priority'), /no cursor/);
+});
+
 test('in fill mode an issue outside any epic is asked of a triage run first, and goes on once answered not done', async () => {
   const fresh = issue(1, { fill: true, body: 'x'.repeat(300) });
   const answered = issue(2, { fill: true });
@@ -1541,7 +1564,7 @@ test('fill mode: with the epics exhausted, the two unparented issues fill free s
   assert.equal(error, undefined, out.join('\n'));
   const mode = 'fill (claude 40% used, pace allows 53%)';
   assert.deepEqual(out.filter(l => !/ open sub-issue\(s\) of /.test(l)), [
-    `[dry-run] mode: ${mode}; 2 issue(s) outside any epic, taken after the epics' by board Priority, then age`,
+    `[dry-run] mode: ${mode}; 2 issue(s) outside any epic of 8 open issue(s) read, taken after the epics' by board Priority, then age`,
     `[dry-run] ${EPICS}#41 (epic ${EPICS}#1) skip: a pull request is open, https://github.com/${EPICS}/pull/60`,
     `[dry-run] ${EPICS}#50 (outside any epic) triage: outside any epic; asking a triage run`,
     `[dry-run] ${EPICS}#51 (outside any epic) dispatch: plan https://github.com/${EPICS}/issues/51#issuecomment-510`,

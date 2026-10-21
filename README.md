@@ -323,8 +323,9 @@ issues the operator or the bot opened (in a public repository a stranger's
 would spend the pool), on the board (so that no control issue, such as the
 supervisor's requests or a broker outage, is closed by a triage answer), with
 no parent, not an epic or the coordinator's status issue, and no `epic`,
-`question`, `needs-human` or `needs-design` label. Only the 100 oldest
-open issues of each repository are read, and the first `schedule.fill` are
+`question`, `needs-human` or `needs-design` label. Up to the 500 oldest
+open issues of each repository are read (a repository with more is logged
+as read partially, and the mode line says how many were considered), and the first `schedule.fill` are
 taken whether or not they can move, so one held in a skip, such as a triage
 answer of needs design, keeps its place until it is labelled. Each gets the checks a sub-issue gets (an open pull request or a
 dispatched plan skips it), and is asked of a triage run first, within the
