@@ -606,6 +606,45 @@ test('with --apply, a triage dispatch GitHub refuses takes its record back; a se
   assert.match(edited.body, /dispatch was not confirmed/);
 });
 
+test('with --apply, a lost question is asked again in place of its record, and a second lost one labels needs-human', async () => {
+  const NO_PLAN_BIN = stub('no-plan-lost', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
+  const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
+  const DISPATCHES = `/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/dispatches`;
+  const old = new Date(Date.now() - 2 * 3600e3).toISOString();
+  const record = (state, suffix = '') => [{ id: 409, user: { login: REPO_CONFIG.bot }, created_at: old, html_url: 'rec409',
+    body: `<!-- schedule-triage/v1: ${JSON.stringify({ request: 'r0', ...state })} -->\nasked${suffix}` }];
+  const pass = (comments, runs = []) => runMain(['--apply'], {
+    [LIST]: [epicIssue(1)],
+    [`/repos/${EPICS}/issues/1/timeline`]: labelled(REPO_CONFIG.operator),
+    [`/repos/${EPICS}/issues/1/sub_issues`]: [epicIssue(41)],
+    [`/repos/${REPO_CONFIG.dispatchRepo}/actions/workflows/dispatch.yml/runs?per_page=100`]: { workflow_runs: runs },
+    [`/repos/${EPICS}/pulls?state=open`]: [],
+    [`GET /repos/${EPICS}/issues/41/comments`]: comments,
+    [`POST /repos/${EPICS}/issues/41/comments`]: { id: 410 },
+    [`POST /repos/${EPICS}/issues/41/labels`]: [],
+    [`GET /repos/${REPO_CONFIG.dispatchRepo}`]: { default_branch: 'main' },
+    [`DELETE /repos/${EPICS}/issues/comments/409`]: null,
+    [`POST ${DISPATCHES}`]: null,
+  }, { bin: NO_PLAN_BIN, issues: { 41: merged } });
+
+  // Unconfirmed two hours ago, and no triage run on the item since.
+  const lost = await pass(record({}, ' (The dispatch was not confirmed.)'));
+  assert.equal(lost.error, undefined, lost.out.join('\n'));
+  assert.deepEqual(lost.calls.filter(c => !c.startsWith('GET ') && !c.startsWith('POST /graphql')),
+    [`POST /repos/${EPICS}/issues/41/comments`, `POST ${DISPATCHES}`, `DELETE /repos/${EPICS}/issues/comments/409`]);
+  assert.match(lost.sent[0][1].body, /"retry":1/);
+  // Had its run appeared, it would wait the day.
+  const run = { status: 'completed', conclusion: 'failure', display_title: `triage ${EPICS}#41 (claude)`, created_at: new Date().toISOString() };
+  const waiting = await pass(record({}, ' (The dispatch was not confirmed.)'), [run]);
+  assert.ok(!waiting.calls.some(c => c.startsWith('POST /repos/') || c.startsWith('DELETE ')), waiting.calls.join('\n'));
+
+  const twice = await pass(record({ retry: 1 }, ' (The dispatch was not confirmed.)'));
+  assert.equal(twice.error, undefined, twice.out.join('\n'));
+  assert.deepEqual(twice.sent.map(([c, b]) => [c, b.labels ?? /needs a person.*delete rec409/.test(b.body)]),
+    [[`POST /repos/${EPICS}/issues/41/labels`, ['needs-human']], [`POST /repos/${EPICS}/issues/41/comments`, true]]);
+  assert.ok(!twice.calls.some(c => c.includes('dispatches') || c.startsWith('DELETE ')));
+});
+
 test('with --apply during a broker outage, a pass previews and writes nothing', async () => {
   const NO_PLAN_BIN = stub('no-plan-held', "process.stderr.write('error: no plan on this issue from an accepted writer\\n'); process.exit(1);");
   const merged = metadata({ closedByPullRequestsReferences: { nodes: [{ merged: true, url: 'https://github.com/o/r/pull/9' }], pageInfo: { hasNextPage: false } } });
@@ -1018,7 +1057,7 @@ test('an answered question: done closes, not done lets the plan go on, unanswere
     2: { url: 'rec2', verdict: 'partly' },
     3: { url: 'rec3' },
     4: { url: 'rec4', verdict: 'needs-design' },
-    5: { url: 'rec5', stale: true },
+    5: { url: 'rec5', id: 55, stale: true },
     6: { url: 'rec6', verdict: 'not-done' },
   };
   const items = [1, 2, 3, 4, 5, 6].map(n => issue(n));
@@ -1030,14 +1069,33 @@ test('an answered question: done closes, not done lets the plan go on, unanswere
     ['o/r#2', 'dispatch', `plan ${own(issue(2)).plan}`, false],
     ['o/r#3', 'skip', 'triage asked, rec3', true],
     ['o/r#4', 'skip', 'needs design, rec4', true],
-    // A question a day old with no answer is listed again, not asked again.
-    ['o/r#5', 'skip', 'triage asked, no answer in a day, rec5', false],
+    // A question its run will not answer is asked once more (tracker#816).
+    ['o/r#5', 'triage', 'probably done by o/p#6; close it?; rec5 got no answer; asking a triage run again, once', false],
     ['o/r#6', 'skip', 'no plan since triage answered not-done, rec6', true],
   ]);
   assert.equal(steps[0].evidence, 'ev1');
+  assert.deepEqual([steps[4].pull, steps[4].replaces], ['o/p#6', 55]);
   const [reopened] = await decide([issue(7)], empty, caps(8, { triage: 1 }), own, noPulls, (key, brief, cleared) => (cleared ? null : 'probably done by o/p#6; close it?'),
     undefined, async () => ({ url: 'rec7', verdict: 'reopened' }));
   assert.equal(reopened.action, 'dispatch');
+});
+
+test('a lost question is asked once more within the triage budget, and a second lost one goes to a person', async () => {
+  const answers = { 1: { url: 'rec1', id: 11, stale: true }, 2: { url: 'rec2', id: 22, stale: true, retry: 1 }, 3: { url: 'rec3', id: 33, stale: true } };
+  const run = triage => decide([1, 2, 3].map(n => issue(n, { body: LONG, fill: n === 3 })), empty, caps(8, { triage }), none, noPulls,
+    undefined, undefined, async item => answers[item.number]);
+  assert.deepEqual((await run(2)).map(s => [s.item, s.action, s.reason, s.replaces]), [
+    ['o/r#1', 'triage', 'no plan; rec1 got no answer; asking a triage run again, once', 11],
+    ['o/r#2', 'needs-human', 'triage asked twice and got no answer, rec2', undefined],
+    ['o/r#3', 'triage', 'outside any epic; rec3 got no answer; asking a triage run again, once', 33],
+  ]);
+  // With the budget spent it waits for a later pass; the hand-off needs none.
+  assert.deepEqual((await run(1)).map(s => [s.action, s.reason.split(';')[0]]), [
+    ['triage', 'no plan'], ['needs-human', 'triage asked twice and got no answer, rec2'], ['skip', 'outside any epic']]);
+  // A run in flight on the item holds it before its record is read.
+  const busy = { inFlight: 1, busy: new Map([['o/r#1', 'run1']]) };
+  assert.deepEqual((await decide([issue(1, { body: LONG })], busy, caps(8, { triage: 2 }), none, noPulls, undefined, undefined, async () => answers[1]))
+    .map(s => s.reason), ['a run is in flight, run1']);
 });
 
 test('only a writer’s record and answer count, for the same request, after the record', () => {
@@ -1047,7 +1105,7 @@ test('only a writer’s record and answer count, for the same request, after the
   const record = (login, m, extra = {}) => comment(login, `<!-- schedule-triage/v1: ${JSON.stringify({ request: 'r1', ...extra })} -->\nasked`, m, `rec-${login}`);
   const answer = (login, m, verdict, request = 'r1') => comment(login, `Done.\n\n\`\`\`schedule-triage\n${JSON.stringify({ request, verdict })}\n\`\`\`\n`, m, `ans-${login}-${m}`);
   assert.equal(readTriage([record('visitor', 1)], writers, ''), null);
-  assert.deepEqual(readTriage([record(BOT, 1)], writers, '', Date.parse(at(2))), { url: `rec-${BOT}`, stale: false });
+  assert.deepEqual(readTriage([record(BOT, 1)], writers, '', Date.parse(at(2))), { url: `rec-${BOT}`, id: undefined, stale: false });
   assert.equal(readTriage([record(BOT, 1)], writers, '', Date.parse(at(1)) + 25 * 3600e3).stale, true);
   // A visitor's answer, one for another request and one older than the record do not count.
   const ignored = [answer(BOT, 0, 'done'), record(BOT, 1), answer('visitor', 2, 'done'), answer(BOT, 3, 'done', 'r0')];
@@ -1072,6 +1130,41 @@ test('only a writer’s record and answer count, for the same request, after the
   const asked = comment(BOT, triageRecord('r1', { action: 'triage', reason: 'no plan; asking' }, 'tbd'), 1, 'q');
   assert.equal(readTriage([asked, answer(BOT, 2, 'needs-design')], writers, LONG), null);
   assert.equal(readTriage([asked, answer(BOT, 2, 'not-done')], writers, LONG).verdict, 'not-done');
+});
+
+test('an unconfirmed question whose run never appeared is lost after an hour, and a retry says so', () => {
+  const writers = [BOT];
+  const at = Date.parse('2026-10-16T10:00:00Z');
+  const step = { action: 'triage', reason: 'no plan; asking' };
+  const comment = (body, id = 5) => [{ id, user: { login: BOT }, body, created_at: new Date(at).toISOString(), html_url: `rec${id}` }];
+  const unconfirmed = comment(`${triageRecord('r1', step, LONG)} (The dispatch was not confirmed.)`);
+  const later = ms => at + ms;
+  assert.equal(readTriage(unconfirmed, writers, LONG, later(30 * 60e3), () => false).stale, false);
+  assert.deepEqual(readTriage(unconfirmed, writers, LONG, later(2 * 3600e3), () => false), { url: 'rec5', id: 5, stale: true });
+  // A run that did appear may still answer: it gets the day.
+  assert.equal(readTriage(unconfirmed, writers, LONG, later(2 * 3600e3), () => true).stale, false);
+  assert.equal(readTriage(unconfirmed, writers, LONG, later(25 * 3600e3), () => true).stale, true);
+  // A confirmed one waits the day whatever the runs say.
+  assert.equal(readTriage(comment(triageRecord('r1', step, LONG)), writers, LONG, later(2 * 3600e3), () => false).stale, false);
+  const again = triageRecord('r2', { ...step, replaces: 5 }, LONG);
+  assert.match(again, /^<!-- schedule-triage\/v1: \{"request":"r2","body":"[0-9a-f]{16}","retry":1\} -->\n.*again, as the last question got no answer/);
+  assert.equal(readTriage(comment(again, 6), writers, LONG, later(25 * 3600e3)).retry, 1);
+});
+
+test('readRuns says whether a triage run on an item appeared since a time, as far as its list reaches', () => {
+  const t = m => `2026-10-16T10:${String(m).padStart(2, '0')}:00Z`;
+  const runs = [
+    { status: 'completed', display_title: 'triage O/R#3 (mistral)', created_at: t(20) },
+    { status: 'completed', display_title: 'implement o/r#4 (claude)', created_at: t(30) },
+  ];
+  const { seen } = readRuns(runs);
+  assert.equal(seen('o/r#3', Date.parse(t(10))), true);
+  assert.equal(seen('o/r#3', Date.parse(t(25))), false);
+  assert.equal(seen('o/r#4', Date.parse(t(10))), false);
+  // A full list that does not reach back that far does not say.
+  const full = Array.from({ length: 100 }, () => ({ status: 'completed', display_title: 'implement o/r#4', created_at: t(30) }));
+  assert.equal(readRuns(full).seen('o/r#3', Date.parse(t(10))), true);
+  assert.equal(readRuns(full).seen('o/r#3', Date.parse(t(40))), false);
 });
 
 test("a triage run's task carries URLs and the request, not the issue's text", () => {

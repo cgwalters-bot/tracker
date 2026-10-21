@@ -248,10 +248,13 @@ done (the next pass closes the issue, linking the answer), partly or not done
 or needs design. A `no plan` item whose body has under 200 non-space
 characters gets no run, only a needs-design record. A bot comment records each
 question before the run starts, so it is asked once; unanswered, needs-design
-and answered items without a plan are then counted but not listed on each pass,
-until an unanswered question is a day old. Delete the record to ask again; a
-needs-design one lapses when the body changes. Only the bot's or the operator's
-comments count as records or answers, so a visitor cannot close an issue; an
+and answered items without a plan are then counted but not listed on each pass.
+A question with no run in flight and no answer a day on (an hour, if its
+dispatch was not confirmed and no triage run on the item has appeared) is lost:
+it is asked once more, in a new record, and a second lost one labels the issue
+`needs-human` with a comment ([#816](https://github.com/cgwalters-forge/tracker/issues/816)).
+Delete the record to ask again; a needs-design one lapses when the body
+changes. Only the bot's or the operator's comments count as records or answers, so a visitor cannot close an issue; an
 issue reopened after the scheduler closed it goes on as not done. When a pass
 starts nothing with slots free under `schedule.wip`, its last line is `idle:`
 with the count of items skipped for each reason.
