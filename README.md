@@ -411,7 +411,9 @@ run within fifteen minutes of the last health pass ends before the build, and
 a pass sweeps when the last sweep was two hours ago or more. The crons remain
 as a fallback; they and explicit requests (a prompt or a comment) are not
 rate-limited. A dispatch without a prompt, by hand too, is paced as a
-poll-started run. Scheduled runs used to be skipped: the job also required the
+poll-started run. When that artifact cannot be looked up (as against there
+being none), a poll-started run ends too, and no run but an explicit request
+sweeps (#814). Scheduled runs used to be skipped: the job also required the
 repository variable `SUPERVISOR=observe`, which was never set. The health pass
 only reads, so it now always runs. `health.json` is a list of checks
 with `id`, `status` (`ok`, `warn`, `fail`), evidence links and a suggested

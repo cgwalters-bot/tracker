@@ -20,11 +20,16 @@ function since(at, now) {
 // every poll pass makes (#763); its empty prompt asks for nothing explicit.
 // daily: whether the trigger bypasses the failure cooldown, for an
 // explicit request or a sweep that is due, the last one two hours ago.
-function due(event, previous, now, prompt = '') {
+// read: whether the previous report could be looked up at all. If not (a
+// rate-limited job token, an API error), the times are unknown rather than
+// absent, and taking them as no previous pass would make every chained run
+// a sweep with no cooldown (#814); the chain waits, the crons take health
+// passes and only explicit requests bypass the cooldown.
+function due(event, previous, now, prompt = '', read = true) {
   const chain = event === 'workflow_run' || (event === 'workflow_dispatch' && prompt === '');
   const explicit = !chain && (event === 'workflow_dispatch' || event === 'issue_comment');
-  const health = !chain || since(previous.health, now) >= HEALTH_MS;
-  const daily = health && (explicit || since(previous.sweep, now) >= SWEEP_MS);
+  const health = !chain || (read && since(previous.health, now) >= HEALTH_MS);
+  const daily = health && (explicit || (read && since(previous.sweep, now) >= SWEEP_MS));
   const stamp = new Date(now).toISOString();
   return {
     health,
@@ -38,7 +43,7 @@ function main() {
   try {
     previous = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'previous-health/times.json'), 'utf8')) ?? {};
   } catch {}
-  const result = due(process.env.EVENT, previous, Date.now(), process.env.PROMPT ?? '');
+  const result = due(process.env.EVENT, previous, Date.now(), process.env.PROMPT ?? '', process.env.READ === 'true');
   // Uploaded beside health.json, so the next run reads both from one artifact.
   fs.writeFileSync('times.json', `${JSON.stringify(result.times)}\n`);
   fs.appendFileSync(process.env.GITHUB_OUTPUT, `health=${result.health}\ndaily=${result.daily}\n`);
