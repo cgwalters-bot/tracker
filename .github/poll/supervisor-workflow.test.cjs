@@ -71,8 +71,9 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
 test('supervisor requests and sweeps share one agent group and keep preview read-only', () => {
   const board = JSON.parse(fs.readFileSync(path.join(root, '.github/poll/agent-board.json')));
   const config = JSON.parse(fs.readFileSync(path.join(root, '.github/supervisor/config.json')));
-  assert.ok(workflow.includes(`github.event.comment.user.login == '${board.operator}'`));
-  assert.ok(workflow.includes(`github.event.issue.number == ${config.agent.requests.issue}`));
+  // Unset variables fall back to this deployment's config.
+  assert.equal(workflow.match(new RegExp(`github\\.event\\.comment\\.user\\.login == \\(vars\\.OPERATOR \\|\\| '${board.operator}'\\)`, 'g'))?.length, 2);
+  assert.equal(workflow.split(`github.event.issue.number == fromJSON(vars.SUPERVISOR_REQUESTS_ISSUE || '${config.agent.requests.issue}')`).length, 3);
   assert.match(workflow, /github.event.issue.locked == true &&\n +!github.event.issue.pull_request/);
   assert.match(workflow, /issue_comment:\n +types: \[created\]/);
   assert.match(workflow, /prompt:\n +description:.*\n +type: string/);
@@ -101,6 +102,8 @@ test('supervisor requests and sweeps share one agent group and keep preview read
   ]) {
     const context = {
       format: (f, ...a) => f.replace(/\{(\d+)\}/g, (_, i) => a[i]),
+      fromJSON: JSON.parse,
+      vars: {},
       inputs: event.inputs ?? {},
       github: {
         event_name: event.event_name, run_id: 42, ref: event.ref ?? ref,
@@ -110,6 +113,21 @@ test('supervisor requests and sweeps share one agent group and keep preview read
     const group = vm.runInNewContext(groupExpression, context);
     assert.equal(group, expected, JSON.stringify(event));
     assert.equal(vm.runInNewContext(healthCondition, context), !group.startsWith('supervisor-ignored-'), JSON.stringify(event));
+  }
+  // Another deployment's variables replace the defaults rather than add to them.
+  const vars = { OPERATOR: 'other-operator', SUPERVISOR_REQUESTS_ISSUE: '9' };
+  for (const [login, number, expected] of [
+    ['other-operator', 9, 'supervisor-agent'],
+    [board.operator, 9, 'supervisor-ignored-42'],
+    ['other-operator', config.agent.requests.issue, 'supervisor-ignored-42'],
+  ]) {
+    const context = {
+      format: (f, ...a) => f.replace(/\{(\d+)\}/g, (_, i) => a[i]), fromJSON: JSON.parse, vars, inputs: {},
+      github: { event_name: 'issue_comment', run_id: 42, ref, event: { repository: { default_branch: 'main' },
+        comment: { user: { login } }, issue: { number, locked: true } } },
+    };
+    assert.equal(vm.runInNewContext(groupExpression, context), expected, login);
+    assert.equal(vm.runInNewContext(healthCondition, context), expected === 'supervisor-agent', login);
   }
   // Serialize whole runs, not just agent: trigger treats a workflow finishing
   // execute as active too, which otherwise discards manual prompts. The
@@ -153,6 +171,24 @@ test('supervisor tasks accept only operator comments and remain bounded', () => 
   for (const url of ['https://github.com/o/r/issues/2#issuecomment-2', 'https://evil.invalid/o/r/issues/1#issuecomment-2', 'https://github.com/o/r/issues/1#issuecomment-2/more']) {
     assert.throws(() => commentEndpoint(url, config.requests), /not on the requests issue/);
   }
+});
+
+test('the supervisor profile comes from the configured repository at a full commit', () => {
+  const { sources } = require('./supervisor-profile.cjs');
+  const ref = 'b'.repeat(40);
+  assert.deepEqual(sources({ repository: 'owner/home', ref }), {
+    profile: `repos/owner/home/contents/.github/agentic-job/profiles/supervisor.md?ref=${ref}`,
+    skill: `repos/owner/home/contents/skills/supervisor/SKILL.md?ref=${ref}`,
+  });
+  for (const profile of [undefined, {}, { repository: 'owner/home', ref: 'main' }, { repository: 'owner/home', ref: ref.slice(1) },
+    { repository: 'owner/home/../x', ref }, { repository: 'owner/home?x=1', ref }, { repository: 'owner', ref },
+    { repository: 'owner/..', ref }, { repository: '../home', ref }]) {
+    assert.throws(() => sources(profile), /agent.profile/, JSON.stringify(profile));
+  }
+  // This deployment's agenthome, at the commit the profile was reviewed at.
+  const config = JSON.parse(fs.readFileSync(path.join(root, '.github/supervisor/config.json')));
+  assert.deepEqual(config.agent.profile, { repository: 'cgwalters-forge/agenthome', ref: '7ba2e215d770074f9c49bfc387bb57259ec013a3' });
+  assert.doesNotThrow(() => sources(config.agent.profile));
 });
 
 test('the poll chain starts supervisor passes, paced from the previous health artifact', () => {

@@ -480,9 +480,12 @@ issue is open past `unclosedWaitHours`, unless it says it is part of it.
 or `apply`. No repository variable is changed by this wiring. The agent runs
 on a failing check (with `agent.cooldownHours` cooldown), a two-hour sweep
 (decided in the health job, with `7 */2 * * *` as a fallback), a manual prompt, or a new comment by the configured operator
-on the locked requests issue (#656). The comment gate also rejects PR comments;
+on the locked requests issue (here #656). The comment gate also rejects PR comments;
 the login and issue are checked against trusted config in tests. The requests
-issue must be locked by the operator before comment wakes work.
+issue must be locked by the operator before comment wakes work. Another
+deployment sets the repository variables `OPERATOR` and
+`SUPERVISOR_REQUESTS_ISSUE` to its `operator` and `agent.requests.issue`,
+since that gate runs before checkout; unset, they default to this one's.
 
 ```sh
 gh workflow run supervisor.yml -R cgwalters-forge/tracker \
@@ -510,8 +513,8 @@ behind a pending one still replaces it, so use the requests issue for durable
 requests and steering an active agent.
 The agent is a `research` run
 of the shared wrapper, using `agent.pool` and the wrapper's read-only job
-token, not the bot token. Its task includes the pinned agenthome supervisor
-profile and skill, agent-board's policy and this pass's health report. It also
+token, not the bot token. Its task includes the supervisor profile and skill
+of the agenthome repository and commit that `agent.profile` pins, agent-board's policy and this pass's health report. It also
 reads `docs/operator-notes.md`, the latest `supervisor-health` artifact's
 `health.json` and the configured state issue. Its isolated runner config sets
 `session.watch-item = true`: later comments arrive as attributed data, and

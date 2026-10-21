@@ -54,8 +54,8 @@ concurrency:
   group: >-
     ${{ (!(github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
     (github.event_name != 'issue_comment' ||
-    (github.event.comment.user.login == 'cgwalters' &&
-    github.event.issue.number == 656 && github.event.issue.locked == true &&
+    (github.event.comment.user.login == (vars.OPERATOR || 'cgwalters') &&
+    github.event.issue.number == fromJSON(vars.SUPERVISOR_REQUESTS_ISSUE || '656') && github.event.issue.locked == true &&
     !github.event.issue.pull_request))) && format('supervisor-ignored-{0}', github.run_id)) ||
     ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run' ||
     (github.event_name == 'workflow_dispatch' && inputs.prompt == '')) && 'supervisor-health') ||
@@ -65,11 +65,17 @@ jobs:
   health:
     # Stop outsider comments spending inference or steering a bot-token executor.
     # Keep the login and issue aligned with the trusted config (tested below).
+    # This gate runs before checkout, so another deployment names its own in
+    # the repository variables OPERATOR and SUPERVISOR_REQUESTS_ISSUE; the
+    # defaults are this deployment's. Set them to agent-board.json's operator
+    # and config.json's agent.requests.issue: supervisor-profile.cjs checks
+    # the comment against those again before any agent runs, but a mismatched
+    # login still gets a health pass and a supervisor-agent group slot.
     if: >-
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name != 'issue_comment' ||
-       (github.event.comment.user.login == 'cgwalters' &&
-        github.event.issue.number == 656 && github.event.issue.locked == true &&
+       (github.event.comment.user.login == (vars.OPERATOR || 'cgwalters') &&
+        github.event.issue.number == fromJSON(vars.SUPERVISOR_REQUESTS_ISSUE || '656') && github.event.issue.locked == true &&
         !github.event.issue.pull_request))
     runs-on: ubuntu-26.04
     # Build (10), previous report (2), pacing (1), collection (8), plus setup/upload.

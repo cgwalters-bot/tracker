@@ -5,7 +5,10 @@
 set positional-arguments
 
 # Every test of the scripts under .github.
-test: test-poll test-usage test-session test-tools test-config test-release-train
+test: test-poll test-usage test-session test-tools test-config test-release-train test-scripts
+
+test-scripts:
+    node --test scripts/*.test.cjs
 
 test-release-train:
     node --test .github/release-train/*.test.cjs

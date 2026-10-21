@@ -28,8 +28,9 @@ function supervisorProfile(session, settings) {
     }
     return `${target.repository}#${target.issue}`;
   };
+  const { profile, skill } = supervisor.sources(settings.agent.profile);
   return `${session}\nState issue: ${issue(settings.agent.state)}. Requests issue: ${issue(settings.agent.requests)}.\n\n` +
-    `${supervisor.read(supervisor.PROFILE)}\n${supervisor.read(supervisor.SKILL)}`;
+    `${supervisor.read(profile)}\n${supervisor.read(skill)}`;
 }
 
 function main() {

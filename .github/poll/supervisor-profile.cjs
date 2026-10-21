@@ -2,10 +2,19 @@ const fs = require('node:fs');
 const crypto = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 
-// Reviewed profile, not an issue-selected prompt or a moving setup revision.
-const PROFILE = 'repos/cgwalters-forge/agenthome/contents/.github/agentic-job/profiles/supervisor.md?ref=7ba2e215d770074f9c49bfc387bb57259ec013a3';
-const SKILL = 'repos/cgwalters-forge/agenthome/contents/skills/supervisor/SKILL.md?ref=7ba2e215d770074f9c49bfc387bb57259ec013a3';
 const MAX_TASK_BYTES = 48 * 1024;
+
+// Reviewed profile, not an issue-selected prompt or a moving setup revision:
+// agent.profile in config.json names the deployment's agenthome and a commit
+// of it. The checks keep the value a repository and a full commit id, so a
+// config edit cannot point the read at a branch or another API path.
+function sources(profile) {
+  if (!/^[A-Za-z0-9-]+\/(?!\.\.?$)[A-Za-z0-9_.-]+$/.test(profile?.repository ?? '') || !/^[0-9a-f]{40}$/.test(profile?.ref ?? '')) {
+    throw new Error('.github/supervisor/config.json agent.profile needs a repository and a full commit ref');
+  }
+  const at = path => `repos/${profile.repository}/contents/${path}?ref=${profile.ref}`;
+  return { profile: at('.github/agentic-job/profiles/supervisor.md'), skill: at('skills/supervisor/SKILL.md') };
+}
 
 function read(endpoint) {
   return execFileSync('gh', ['api', endpoint, '-H', 'Accept: application/vnd.github.raw+json'], {
@@ -46,7 +55,8 @@ function main() {
   const board = JSON.parse(fs.readFileSync('.github/poll/agent-board.json', 'utf8'));
   const event = JSON.parse(fs.readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   // Include the skill too: non-opencode pools do not install agenthome's skills.
-  const text = compose(process.env.TASK, process.env.PROMPT, event, `${read(PROFILE)}\n${read(SKILL)}`, {
+  const { profile, skill } = sources(settings.agent.profile);
+  const text = compose(process.env.TASK, process.env.PROMPT, event, `${read(profile)}\n${read(skill)}`, {
     operator: board.operator, requests: settings.agent.requests,
   });
   const delimiter = crypto.randomBytes(16).toString('hex');
@@ -55,4 +65,4 @@ function main() {
 
 if (require.main === module) main();
 
-module.exports = { compose, commentEndpoint, read, PROFILE, SKILL };
+module.exports = { compose, commentEndpoint, read, sources };

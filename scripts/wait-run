@@ -7,15 +7,22 @@
 # token that can read Actions here.
 set -euo pipefail
 
-readonly REPO=${WAIT_RUN_REPO:-cgwalters-forge/tracker}
 readonly MINUTES=${WAIT_RUN_MINUTES:-120}
 readonly INTERVAL_SECONDS=60
 
 if [[ $# -ne 1 || $1 == -* ]]; then
-    echo "Usage: ${0##*/} RUN (a run id or URL of ${REPO})" >&2
+    echo "Usage: ${0##*/} RUN (a run id or URL of WAIT_RUN_REPO, default this checkout's repository)" >&2
     exit 64
 fi
 readonly RUN=${1##*/}
+# By default the repository of the checkout this script is in, whichever
+# deployment's that is (gh's default repository where one is set).
+REPO=${WAIT_RUN_REPO:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && gh repo view --json nameWithOwner -q .nameWithOwner)} || REPO=
+if [[ -z $REPO ]]; then
+    echo "cannot name this checkout's repository; set WAIT_RUN_REPO" >&2
+    exit 64
+fi
+readonly REPO
 
 status=
 for ((minute = 0; minute <= MINUTES; minute++)); do
