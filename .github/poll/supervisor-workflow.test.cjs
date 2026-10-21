@@ -42,6 +42,22 @@ test('supervisor builds the shared actor and keeps write jobs gated', () => {
   assert.deepEqual(config.agent.dailyCaps, {
     comment: 20, create_issue: 15, close: 10, remove_needs_human: 12, replace_state: 48, status_update: 1,
   });
+  // The README is where the operator states what the supervisor may do: every
+  // cap it names as `name: N` must be the config's, and it must name them all.
+  const caps = {
+    maxDispatchesPerPass: config.agent.maxDispatchesPerPass,
+    maxDispatchesPerDay: config.agent.maxDispatchesPerDay,
+    ...config.agent.dailyCaps,
+  };
+  const readme = fs.readFileSync(path.join(root, 'README.md'), 'utf8');
+  const stated = {};
+  for (const [, name, value] of readme.matchAll(/`(\w+): (\d+)`/g)) {
+    if (Object.hasOwn(caps, name)) {
+      assert.ok(!Object.hasOwn(stated, name), `README states ${name} twice`);
+      stated[name] = Number(value);
+    }
+  }
+  assert.deepEqual(stated, caps);
   assert.deepEqual(config.agent.state, { repository: 'cgwalters-forge/tracker', issue: 718 });
   for (const other of [config.agent.requests, config.agent.log]) {
     assert.ok(other.repository.toLowerCase() !== config.agent.state.repository.toLowerCase()
