@@ -204,6 +204,8 @@ test('configuration follows review-enabled schedule targets and preserves pool p
   // Conflicts share the first-round toil pool: do not spend a bounded fix
   // round on a pool whose conflict runs have returned without a new head.
   assert.equal(c.toilFixPool, 'openai');
+  const readme = fs.readFileSync(path.join(__dirname, '../../README.md'), 'utf8');
+  assert.match(readme.replace(/\s+/g, ' '), new RegExp(`no failed check\\) goes to \`${c.toilFixPool}\``));
   // Claude until the hosted wrapper pins agentic-job v0.6.3 (Mistral's loop
   // guard) and the 22 Oct reset has passed (tracker#792).
   assert.equal(c.kindPools.triage, 'claude');

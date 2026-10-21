@@ -110,7 +110,7 @@ one step for each:
   pull request. The rounds alternate between the `claude` and `openai` pools,
   but a first round that is only toil (a rebase, placeholder subjects, or
   review findings that each open by naming a commit message, a description,
-  a rebase or formatting, and no failed check) goes to `mistral`, and the
+  a rebase or formatting, and no failed check) goes to `openai`, and the
   round after it to `claude`. A finding that is not plainly toil keeps the
   round on the usual pools. The task asks for the fix folded into the commit it corrects,
   which `replacement_max_commits` in `.github/agentic-job/fix.toml` lets the
@@ -501,26 +501,31 @@ only the configured operator's comments are instructions. Its one comment on
 the requests issue carries a `supervisor-actions` block of typed requests.
 
 `agent.state` names the locked state issue #718, distinct from the requests
-and log issues. `dailyCaps.replace_state` is one: `replace_state` edits only
-that issue's body, once a day. The body persists and every later run reads it
-first, so a misled run can plant text for later runs; it is data to them, and
-with the other caps at zero they cannot act on it. A batch with a second
-`replace_state` in a day is rejected whole, so ask for memory at most once a
-day once other caps rise. Missing state is reported, never guessed.
+and log issues. `replace_state` edits only that issue's body, within its
+daily cap below. The body persists and every later run reads it first, so a
+misled run can plant text for later runs; it is data to them, but with the
+other caps above zero a later run can act on it within those caps. A batch
+that would pass a daily cap is rejected whole. Missing state is reported,
+never guessed.
 
 The `execute` job holds `CGWALTERS_BOT_PAT` in the `agent-apply`
 environment and runs no agent code. It executes only on a run's first
 attempt, and accepts only the bot's comment, unedited, on the requests
 issue that this run's apply reports. It validates the whole
-batch with `agent-board supervise execute`. To prevent an injected agent
-request from reaching a merging implement run or spending unbounded runs,
-the shared executor admits dispatches, with fixed briefs and reasons, only on
-locked open issues whose authors and editors are collaborators, and an
-implement dispatch only under an open `epic`-labeled parent.
-Trusted config names the permitted dispatch kinds, tracker and project; both
-dispatch caps and every judgment action's daily cap other than
-`replace_state` are explicitly zero.
-The requests and log issues remain unchanged. Only the operator raises caps
+batch with `agent-board supervise execute`. The shared executor admits
+dispatches, with fixed briefs and reasons, on open issues whoever wrote them,
+and an implement dispatch only under an open `epic`-labeled parent. The
+boundary against an injected request is the run's sandbox and the required
+pull request review, not collaborator-only input (agent-board#158). That
+review is a model's verdict (`review.yml`), and the poll merges an approved,
+green head, so an issue anyone writes can reach a merge with no human step;
+the caps bound how many runs it can spend.
+Trusted config names the permitted dispatch kinds, tracker and project, and
+the caps: `maxDispatchesPerPass: 4` and
+`maxDispatchesPerDay: 40`, and the daily caps `comment: 20`,
+`create_issue: 15`, `close: 10`, `remove_needs_human: 12`,
+`replace_state: 48` and `status_update: 1`.
+Only the operator raises caps
 after review. The executor records requests before starting them, stops at the
 first failed write, and logs the outcome without agent text.
 `agent-board supervise trigger` supplies the wrapper inputs through
