@@ -23,6 +23,11 @@ on:
         description: Print what a pass would do and change nothing
         type: boolean
         default: false
+      # `just enqueue` sets it; schedule.cjs's requestedItems validates it.
+      items:
+        description: Issues (owner/repo#n, whitespace-separated) the board scheduler considers first
+        type: string
+        default: ''
 
 permissions: {}
 # One pass at a time; a pass that is due while one runs waits for it. GitHub
@@ -84,6 +89,8 @@ jobs:
           # the cap before the runs list it reads shows them.
           BOARD_DISPATCHED: ${{ runner.temp }}/board-dispatched
           APPLY: ${{ !inputs.dry-run && vars.BOARD_DISPATCH == 'apply' && '--apply' || '' }}
+          # Through the environment, never the script, as any text may come.
+          ITEMS: ${{ inputs.items }}
         shell: bash
         # stderr too, so that the summary says why a pass failed.
         run: node .github/poll/schedule.cjs ${APPLY:+"$APPLY"} 2>&1 | tee "$RUNNER_TEMP/pass.log"

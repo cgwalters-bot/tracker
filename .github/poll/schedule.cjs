@@ -542,8 +542,9 @@ const order = field => `by their epic's ${field}, then their own (P0 first, unse
 // P0, P1, ... by the number; any other value, or none, after them all.
 const rank = p => { const m = /^P(\d{1,3})$/.exec(p ?? ''); return m ? Number(m[1]) : Infinity; };
 const age = item => Date.parse(item.created ?? '') || Infinity; // Two unknowns tie: Infinity - Infinity is NaN, hence `|| 0` below.
-// An epic's sub-issues come before fill mode's issues outside any epic.
-const ahead = (a, b) => (Number(Boolean(a.fill)) - Number(Boolean(b.fill))) || (rank(a.epicPriority) - rank(b.epicPriority) || 0) || (rank(a.priority) - rank(b.priority) || 0) || (age(a) - age(b) || 0);
+// Items the pass was asked to take first (requestedItems) come before the
+// rest, then an epic's sub-issues before fill mode's issues outside any epic.
+const ahead = (a, b) => (Number(Boolean(b.requested)) - Number(Boolean(a.requested))) || (Number(Boolean(a.fill)) - Number(Boolean(b.fill))) || (rank(a.epicPriority) - rank(b.epicPriority) || 0) || (rank(a.priority) - rank(b.priority) || 0) || (age(a) - age(b) || 0);
 const byPriority = items => [...items].sort(ahead);
 
 // The candidates of a census (epics.cjs's `census`): the open sub-issues of
@@ -657,6 +658,15 @@ function pacing(post, log) {
 // epic whose work ran out is planned again sooner.
 const planInterval = (ms, pace) => (pace?.fill ? Math.min(ms, FILL_PLAN_INTERVAL_MS) : ms);
 
+// What fillItems reads of an issue, with its board fields.
+const FILL_FIELDS = `number url body createdAt author { login } parent { number }
+        labels(first: 100) { nodes { name } pageInfo { hasNextPage } }
+        projectItems(first: 20) { nodes {
+          project { number owner { ... on Organization { login } ... on User { login } } }
+          status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+          priority: fieldValueByName(name: $field) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
+        } }`;
+
 // One page of a followed repository's open issues, oldest first, with their
 // board fields.
 const FILL_QUERY = `query($owner: String!, $name: String!, $field: String!, $cursor: String) {
@@ -664,17 +674,45 @@ const FILL_QUERY = `query($owner: String!, $name: String!, $field: String!, $cur
     issues(states: OPEN, first: 100, after: $cursor, orderBy: { field: CREATED_AT, direction: ASC }) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        number url body createdAt author { login } parent { number }
-        labels(first: 100) { nodes { name } pageInfo { hasNextPage } }
-        projectItems(first: 20) { nodes {
-          project { number owner { ... on Organization { login } ... on User { login } } }
-          status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-          priority: fieldValueByName(name: $field) { ... on ProjectV2ItemFieldSingleSelectValue { name } }
-        } }
+        ${FILL_FIELDS}
       }
     }
   }
 }`;
+
+// One requested issue (requestedItems) that FILL_QUERY's pages did not reach.
+const ITEM_QUERY = `query($owner: String!, $name: String!, $field: String!, $number: Int!) {
+  repository(owner: $owner, name: $name) {
+    issue(number: $number) {
+      state
+      ${FILL_FIELDS}
+    }
+  }
+}`;
+
+// The poll.yml input `items` (tracker#838): issues, `owner/repo#n` and
+// whitespace-separated, this pass takes ahead of every other candidate
+// (`ahead`), as `just enqueue` asks. It only reorders: each still has to be
+// a candidate (an open sub-issue of a live epic, or one fillItems takes in
+// fill mode) and gets decide's checks, so a dispatcher cannot start a run on
+// an issue the scheduler would not take on its own. Bounded by
+// `schedule.fill`, as each costs fill mode a read of its own (ITEM_QUERY);
+// with fill off there is nowhere to take them from, so none are accepted.
+// Anything else fails the pass: a dispatcher who made a mistake hears of it.
+function requestedItems(text, config) {
+  const refs = String(text ?? '').split(/\s+/).filter(Boolean);
+  if (!refs.length) return [];
+  if (!config.fill) throw new Error('items: schedule.fill is off, so no items are taken');
+  const keys = new Map();
+  for (const ref of refs) {
+    const m = /^([\w.-]+\/[\w.-]+)#([1-9]\d{0,9})$/.exec(ref);
+    if (!m) throw new Error(`items: ${ref.slice(0, 100)} is not owner/repo#number`);
+    if (!config.followed.has(m[1].toLowerCase())) throw new Error(`items: ${m[1]} is not a followed repository`);
+    keys.set(keyOf(m[1], m[2]), { repository: m[1].toLowerCase(), number: Number(m[2]) });
+  }
+  if (keys.size > config.fill) throw new Error(`items: ${keys.size} issues, more than schedule.fill (${config.fill})`);
+  return [...keys.values()];
+}
 
 // A followed repository's open issues for fill mode, FILL_PAGES pages of
 // FILL_QUERY at most (tracker#818): one page alone was its 100 oldest, so a
@@ -712,20 +750,24 @@ async function readFillIssues(gql, repository, field) {
 // repositories' control issues (the supervisor's requests, a session's, a
 // broker outage) are the operator's or the bot's too, and a triage run's
 // done answer would close them. Each is given a triage run first (decide).
-function fillItems(answers, config, taken) {
+// The keys in `requested` (requestedItems) rank first, so none is cut.
+function fillItems(answers, config, taken, requested = new Set()) {
   const writers = new Set([config.operator, config.planner].map(w => w.toLowerCase()));
   const items = [];
+  // A requested issue read twice, in a page and on its own, is one item.
+  const seen = new Set();
   for (const { repository, nodes } of answers) {
     for (const n of nodes ?? []) {
       const key = keyOf(repository, n.number);
-      if (taken.has(key) || n.parent || !writers.has(n.author?.login?.toLowerCase())) continue;
+      if (taken.has(key) || seen.has(key) || n.parent || !writers.has(n.author?.login?.toLowerCase())) continue;
       // More labels than one page may hide a held one.
       if (n.labels?.pageInfo?.hasNextPage !== false || n.labels.nodes.some(l => FILL_HELD_LABELS.has(l.name.toLowerCase()))) continue;
       const on = (n.projectItems?.nodes ?? []).find(i => i.project?.number === config.project
         && i.project?.owner?.login?.toLowerCase() === config.owner.toLowerCase());
       if (!on) continue;
+      seen.add(key);
       items.push({ repository, number: n.number, content_kind: 'issue', url: n.url, body: n.body, created: n.createdAt,
-        status: on.status?.name, priority: on.priority?.name, fill: true });
+        status: on.status?.name, priority: on.priority?.name, fill: true, ...(requested.has(key) ? { requested: true } : {}) });
     }
   }
   return byPriority(items).slice(0, config.fill);
@@ -1287,6 +1329,9 @@ async function main(argv) {
   const { census, loadEpicsConfig } = require('./epics.cjs');
   const config = loadEpicsConfig(fs.readFileSync(CONFIG_FILE, 'utf8'));
   const log = line => console.log(apply ? line : `[dry-run] ${line}`);
+  // poll.yml's `items` input, empty on every other trigger.
+  const requested = requestedItems(process.env.ITEMS, config);
+  const wanted = new Set(requested.map(r => keyOf(r.repository, r.number)));
 
   const get = p => request(token, 'GET', p);
   const gql = body => request(token, 'POST', '/graphql', body);
@@ -1353,6 +1398,7 @@ async function main(argv) {
   }
   const { entries, note } = await census(get, body => request(token, 'POST', '/graphql', body), config);
   const { items: epicItems, live, unread } = candidates(entries, config.epicsRepository);
+  for (const item of epicItems) if (wanted.has(keyOf(item.repository, item.number))) item.requested = true;
   // An epic not read may be live, and a board the token lost would leave
   // every epic so: that fails the pass, after what could be read is done,
   // rather than pass as an idle one. So do epics past the census's bound,
@@ -1385,12 +1431,36 @@ async function main(argv) {
     }
     const taken = new Set([...epicItems.map(i => keyOf(i.repository, i.number)), ...entries.map(e => keyOf(config.epicsRepository, e.number))]);
     if (config.statusRepository) taken.add(keyOf(config.statusRepository, config.statusIssue));
-    fill = fillItems(answers, config, taken);
+    // A requested issue past FILL_PAGES, as a new one in a busy repository
+    // is, or in a repository not read, is read on its own.
+    const read = new Set(answers.flatMap(a => a.nodes.map(n => keyOf(a.repository, n.number))));
+    for (const r of pace.fill ? requested : []) {
+      const key = keyOf(r.repository, r.number);
+      if (read.has(key) || taken.has(key)) continue;
+      const [owner, name] = r.repository.split('/');
+      try {
+        const out = await gql({ query: ITEM_QUERY, variables: { owner, name, field: config.priorityField, number: r.number } });
+        const node = out.data?.repository?.issue;
+        if (out.errors?.length || !node) throw new Error('not readable');
+        if (node.state === 'OPEN') answers.push({ repository: r.repository, nodes: [node] });
+      } catch (err) {
+        log(`items: ${key} not read: ${err.message.slice(0, 300)}`);
+      }
+    }
+    fill = fillItems(answers, config, taken, wanted);
     const considered = answers.reduce((n, a) => n + a.nodes.length, 0);
     const partial = answers.filter(a => a.partial).map(a => a.repository);
     log(`mode: ${pace.mode}${pace.fill ? `; ${fill.length} issue(s) outside any epic of ${considered} open issue(s) read${partial.length ? ` (read partially: ${partial.join(', ')})` : ''}, taken after the epics' by board ${config.priorityField}, then age` : ''}`);
   }
   const items = [...epicItems, ...fill];
+  // A requested issue that is no candidate is said, not forced.
+  for (const r of requested) {
+    const key = keyOf(r.repository, r.number);
+    if (items.some(i => keyOf(i.repository, i.number) === key)) continue;
+    log(`items: ${r.repository}#${r.number} not taken: ${pace?.fill
+      ? 'not a candidate (closed, a sub-issue of no live epic, not on the board, held by a label, or not opened by the operator or the bot)'
+      : `fill mode is off, ${pace?.mode ?? 'normal'}, and it is no live epic's open sub-issue`}`);
+  }
   if (!live && !fill.length) {
     log(`no live epics${unreadNote}; nothing started`);
     if (unread || note || retryErrors) throw new Error(`${retryErrors ? `${retryErrors} operator request step(s) failed, ` : ''}${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
@@ -1528,8 +1598,9 @@ async function main(argv) {
     (key, brief, cleared) => eligibility(body => request(token, 'POST', '/graphql', body), key, brief, get, config, cleared), async step => {
       const item = byName.get(step.item);
       // Each line names the epic its item was taken from.
-      const name = `${step.item} (${item.fill ? 'outside any epic' : `epic ${item.epic}`})`;
-      if (step.quiet) return;
+      const name = `${step.item} (${item.requested ? 'requested, ' : ''}${item.fill ? 'outside any epic' : `epic ${item.epic}`})`;
+      // A requested item's every skip is said, the reason it waits included.
+      if (step.quiet && !item.requested) return;
       if (step.action === 'skip' || !apply) {
         log(`${name} ${step.action}: ${step.reason}`);
         return;
@@ -1564,7 +1635,7 @@ async function main(argv) {
   if (errors || unread || note || retryErrors) throw new Error(`${errors + retryErrors} step(s) failed, ${unread} epic(s) could not be read${note ? `, ${note}` : ''}`);
 }
 
-module.exports = { FILL_PAGES, FILL_QUERY, RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, choosePool, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, pacing, planInterval, probePlan, pullIssues, rank, readDryRun, readFillIssues, readOutcome, readRefusal, readRuns, readTriage, readUsage, resolvePools, triageRecord, triageTask };
+module.exports = { FILL_PAGES, FILL_QUERY, ITEM_QUERY, RUN_TITLE_RE, STATUS_END, STATUS_REASON, agentBoard, batchReleased, candidates, choosePool, decide, eligibility, fillItems, findRecord, idleLine, loadConfig, main, openPullRefs, operatorRetries, operatorRetryTask, paceMode, pacing, planInterval, probePlan, pullIssues, rank, readDryRun, readFillIssues, readOutcome, readRefusal, readRuns, readTriage, readUsage, requestedItems, resolvePools, triageRecord, triageTask };
 
 if (require.main === module) {
   main(process.argv.slice(2)).catch(err => { console.error(`schedule: ${err.message}`); process.exit(1); });

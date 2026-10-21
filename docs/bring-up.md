@@ -71,7 +71,8 @@ and are not brought up from here.
 The board scheduler starts the work of live epics by itself (an accepted
 implement plan goes out with `agent-board dispatch`; an item without one
 is skipped), once `BOARD_DISPATCH` is `apply`, and the poll starts the fix
-rounds. Anything else is started by
+rounds. New work it can take is queued with `just enqueue` (README,
+"Queueing work for the poll"). Anything else is started by
 hand: write the sentences particular to the task in a file and name the
 target. Run it on the default branch, which the wrapper requires. The task
 is public, in the run's inputs; `pool` may be left out:

@@ -386,6 +386,41 @@ it, `gh run list -R cgwalters-forge/tracker -w dispatch.yml --json
 displayTitle,createdAt`: run names are `KIND REPO#ITEM`, as the summary names
 items. Test with `node --test .github/poll/schedule.test.cjs`.
 
+### Queueing work for the poll
+
+New work goes through the board and the poll, so the scheduler's pacing, pools
+and checks apply to it ([#838](https://github.com/cgwalters-forge/tracker/issues/838)).
+With your own gh login, one step does it:
+
+```sh
+just enqueue https://github.com/OWNER/REPO/issues/N... [priority=P1] [--dry-run]
+```
+
+It puts each issue on the `schedule` board (Priority as given, P1 if not;
+Status `Todo` when it is new there, an item already there only gets its
+priority), says what it did, one line per issue, then starts `poll.yml` once
+with the issues as its `items` input and prints the run's URL. `--dry-run`
+reads the board and changes nothing. Only issues of `schedule.repositories`,
+and at most `schedule.fill` of them, are accepted, as the input accepts.
+
+`items` (whitespace-separated `OWNER/REPO#N`; anything else fails the board
+pass) makes that pass consider those issues before every other candidate. It
+only reorders: each must still be a candidate (an open sub-issue of a live
+epic, or, in fill mode, an issue fill mode would take, read on its own if its
+repository's 500 oldest do not reach it), and gets every check, the `wip` cap
+and the triage budget included, so one outside an epic is still asked of a
+triage run first. One that is not taken is said on a line of its own
+(`items: ... not taken: ...`), as is each skip of a requested item. GitHub
+keeps one pending run of the passes' concurrency group, so a run started
+while a pass is going can be replaced by the next trigger's: the issues stay
+on the board, to be taken in their order, or enqueued again.
+
+Dispatch by hand (docs/bring-up.md, "Dispatching a run") where the poll
+cannot do it: a brief the triage step could not write from the issue, a
+repository the scheduler does not follow, an issue no candidate rule takes
+(a visitor's, or one under a parent that is no live epic), or a kind it
+leaves to a person.
+
 ## The epic census
 
 ### Plans for review
