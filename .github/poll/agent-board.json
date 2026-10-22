@@ -19,11 +19,11 @@
     "cgwalters-forge/agenthome",
     "cgwalters-forge/forge-infra"
   ],
-  "fixPools": ["claude"],
+  "fixPools": ["claude", "openai"],
   "toilFixPool": "openai",
   "rebaseRounds": 2,
   "mergeQueue": { "tries": 3 },
-  "pace": { "repository": "cgwalters-forge/bot-ops", "issue": 1, "bot": "cgwalters-bot", "marginPercent": 95 },
+  "pace": { "repository": "cgwalters-forge/bot-ops", "issue": 1, "bot": "cgwalters-bot", "marginPercent": 5 },
   "kindPools": { "triage": "claude", "research": "claude" },
   "epics": {
     "repository": "cgwalters-forge/tracker"
