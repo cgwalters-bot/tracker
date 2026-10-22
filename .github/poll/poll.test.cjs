@@ -197,11 +197,21 @@ test('real child buffer overflow fails and keeps the chain alive', async t => {
 
 test('configuration follows review-enabled schedule targets and preserves pool policy', () => {
   const c = require('./agent-board.json');
-  // misctool's first workflow needs operator approval before poll follow-up.
-  assert.ok(c.schedule.repositories.includes('cgwalters-forge/misctool'));
-  assert.ok(!c.follow.includes('cgwalters-forge/misctool'));
+  // Scheduled but not followed. misctool's first workflow needs operator
+  // approval before poll follow-up. The forks stay unfollowed until tracker#765
+  // gives agent-board a fix-only mode: the poll would otherwise merge into a
+  // main that tracks upstream.
+  const unfollowed = new Set(['cgwalters-forge/misctool', 'cgwalters-forge/composefs-rs', 'cgwalters-forge/bootc']);
+  for (const repo of unfollowed) {
+    assert.ok(c.schedule.repositories.includes(repo), repo);
+    assert.ok(!c.follow.includes(repo), repo);
+  }
+  // schedule.cjs requires a scheduled repository to be in dispatch.toml's bounds.
+  const dispatch = fs.readFileSync(path.join(__dirname, '../agentic-job/dispatch.toml'), 'utf8');
+  const bounds = JSON.parse(/^repos = (\[.*\])$/m.exec(dispatch.split(/^\[/m)[0])[1]);
   for (const repo of c.schedule.repositories) {
-    if (repo !== 'cgwalters-forge/misctool') assert.ok(c.follow.includes(repo), repo);
+    if (!unfollowed.has(repo)) assert.ok(c.follow.includes(repo), repo);
+    assert.ok(bounds.includes(repo), `${repo} is scheduled but not in dispatch.toml`);
   }
   const fix = fs.readFileSync(path.join(__dirname, '../agentic-job/fix.toml'), 'utf8');
   for (const repo of c.follow) assert.ok(fix.includes(`"${repo}"`), repo);
