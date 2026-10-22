@@ -145,7 +145,8 @@ text, is what the poll uses to stop the fix loop.
 The rounds live in one comment on the pull request that the poll edits in
 place. A pull request labelled `needs-human` is not touched again: remove the
 label to have the poll start again on it with fresh rounds, on the same head
-too.
+too. Where the poll put the label on, the operator's comment does the same
+(`operatorAnswers`; docs/bring-up.md, "Where an operator comment goes").
 
 ### Broker outages
 
