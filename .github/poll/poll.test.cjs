@@ -222,6 +222,12 @@ test('configuration follows review-enabled schedule targets and preserves pool p
   // exactly those in bootc-dev (D17, docs/operator-notes.md).
   assert.deepEqual(c.operatorComments, { repositories: ['bootc-dev/*'] });
   assert.match(c.operator, /^[A-Za-z0-9][A-Za-z0-9-]{0,38}$/);
+  // The operator's comment on a needs-human pull request of the bot's starts
+  // fix round 1 (agent-board#113), and the bot's notifications bring their
+  // comments outside the followed repositories to operatorComments
+  // (agent-board#227). No peers: no other bot's questions start runs here.
+  assert.equal(c.operatorAnswers, true);
+  assert.deepEqual(c.notifications, { reasons: ['assign', 'author', 'comment', 'mention', 'review_requested'] });
   // Conflicts share the first-round toil pool: do not spend a bounded fix
   // round on a pool whose conflict runs have returned without a new head.
   assert.equal(c.toilFixPool, 'openai');

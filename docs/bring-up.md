@@ -56,7 +56,12 @@ export GH_TOKEN="$(cat "$BOT_SUPERVISOR_GH_TOKEN_FILE")"
 
 On the forge, already in place and only to be checked: the organization
 secret `CGWALTERS_BOT_PAT`, which apply and the poll act with, and the
-environment `agent-apply` here, which gates apply. The wrapper has a
+environment `agent-apply` here, which gates apply. The poll reads the bot's
+notifications with that token (`notifications` in
+`.github/poll/agent-board.json`), so it must be a classic token with the
+`notifications` (or `repo`) scope: a fine-grained token cannot list
+notifications, and with one every poll pass fails and its state is not
+kept. The wrapper has a
 default for each deployment setting, and this repository's variables
 override them: `AGENT`, `AGENT_MODEL`, `INFERENCE_URL`,
 `INFERENCE_AUDIENCE`, `AGENT_RUNNER`, `AGENT_CONFIG_REPO` and
@@ -248,6 +253,29 @@ existing authority and concurrency group, so a running pass is not cancelled
 and bursts coalesce into at most one pending pass. Existing scheduler and
 coordinator apply switches still govern writes. A local watcher is not needed.
 The pass reads current forge state, not a queued copy of the comment.
+
+## Where an operator comment goes
+
+- On an open issue here: the comment wake above starts a pass at once (after
+  a running one), once `COMMENT_WAKE=enabled`; without it, the next pass.
+  The pass reads the issue as it reads any; the comment starts no run of
+  its own.
+- On a `needs-human` pull request of the bot's in a followed repository,
+  where the bot put the label on with its stop: `operatorAnswers` starts fix
+  round 1 at the next pass. Any comment counts, a "wait" too.
+- Anywhere else in a followed repository: nothing reads the comment as
+  such; the next pass acts on the thread's current state.
+- In `bootc-dev/*`: `operatorComments` starts a fix round on the bot's pull
+  request (within its rounds), or a triage or research run, at the next pass.
+- Outside the followed repositories, on a thread the bot is notified of
+  (assigned, author, comment, mention, review requested): `notifications`
+  hands the comment to the `operatorComments` handling at the next pass,
+  outside `bootc-dev/*` only in a public repository and only where the new
+  comments have a `/bot` or `@cgwalters-bot` line.
+
+"The next pass" is the poll's cadence: every ten minutes on the schedule,
+which GitHub may delay, or sooner when a dispatch run ends or the poll
+starts its own next pass.
 
 ## Recovery drill
 

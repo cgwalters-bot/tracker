@@ -3,6 +3,8 @@
   "branch": "main",
   "operator": "cgwalters",
   "operatorComments": { "repositories": ["bootc-dev/*"] },
+  "operatorAnswers": true,
+  "notifications": { "reasons": ["assign", "author", "comment", "mention", "review_requested"] },
   "bot": "cgwalters-bot",
   "mergeAuthors": ["dependabot[bot]"],
   "dispatchRepo": "cgwalters-forge/tracker",
