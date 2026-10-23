@@ -77,10 +77,40 @@ jobs:
           sys.exit(failed)
           PY
 
+  # The deployment code may only shrink (#890): a change fails if it adds
+  # any file but a workflow, JSON, TOML or markdown, or if it grows the
+  # line count of the .cjs and .sh files, so a fix to a script deletes at
+  # least as many lines as it adds. Renames count as an add and a delete.
+  shrink:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Refuse new scripts and growth of the .cjs and .sh files
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          added=$(git diff --no-renames --diff-filter=A --name-only "$BASE" HEAD |
+            grep -vE '^\.github/workflows/[^/]+\.ya?ml$|\.(json|toml|md)$' || true)
+          if [ -n "$added" ]; then
+            awk '{ print "::error::adds a script file: " $0 }' <<< "$added"
+            exit 1
+          fi
+          growth=$(git diff --no-renames --numstat "$BASE" HEAD |
+            awk -F'\t' '$3 ~ /\.(cjs|sh)$/ { n += $1 - $2 } END { print n + 0 }')
+          echo "net lines added to .cjs and .sh files: $growth"
+          if [ "$growth" -gt 0 ]; then
+            echo "::error::grows the .cjs and .sh files by $growth lines; delete at least as many as you add"
+            exit 1
+          fi
+
   # Require only ci in the ruleset, on both PR and merge-group commits.
   ci:
     if: ${{ always() }}
-    needs: [test, lint, config]
+    needs: [test, lint, config, shrink]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions: {}
