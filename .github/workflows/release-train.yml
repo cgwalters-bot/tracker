@@ -1,8 +1,8 @@
-# The release train (#650): cuts agentic-job releases and opens the pin
-# bumps that follow, one step a pass, from .github/release-train/config.json
-# on the default branch; the README's "Release train" says how. Off unless
-# the repository variable RELEASE_TRAIN is `dry-run` (print each pass's
-# step) or `apply` (take it).
+# The release train (#650): `agent-board release-train` cuts agentic-job
+# releases and opens the pin bumps that follow, one step a pass, from
+# .github/release-train/config.json on the default branch; the README's
+# "Release train" says how. Off unless the repository variable
+# RELEASE_TRAIN is `dry-run` (print each pass's step) or `apply` (take it).
 name: release-train
 on:
   schedule:
@@ -13,11 +13,16 @@ permissions: {}
 concurrency:
   group: release-train
   cancel-in-progress: false
+# The agent-board commit the train runs. It is given the bot's token, so it
+# is a revision reviewed here, never agent-board's moving branch.
+env:
+  AGENT_BOARD_REV: e520ff957f66cb878a9b1b33f3d674d11c9ce246
 jobs:
   pass:
     if: ${{ (vars.RELEASE_TRAIN == 'dry-run' || vars.RELEASE_TRAIN == 'apply') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    # The build (10) and the pass.
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
@@ -27,11 +32,16 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
+      - name: Build agent-board
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
       - name: One pass
+        timeout-minutes: 5
         env:
           # The bot's token: it opens the PRs from the bot's forks as its
           # other PRs are, and runs agentic-job's release.yml.
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
           APPLY: ${{ vars.RELEASE_TRAIN == 'apply' && '--apply' || '' }}
         shell: bash
-        run: just release-train ${APPLY:+"$APPLY"}
+        run: '"$AGENT_BOARD" release-train --config .github/release-train/config.json ${APPLY:+"$APPLY"}'

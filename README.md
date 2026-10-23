@@ -283,8 +283,10 @@ cgwalters-forge/review's to build; both are left from #626.
 
 ## The release train
 
-`.github/workflows/release-train.yml` cuts agentic-job's releases and moves
-the pins after them (#650), in the order the controller did by hand: the
+`.github/workflows/release-train.yml` runs agent-board's
+[`release-train`](https://github.com/cgwalters-forge/agent-board/blob/main/docs/release-train.md),
+at the commit it pins as `AGENT_BOARD_REV`, to cut agentic-job's releases and
+move the pins after them (#650), in the order the controller did by hand: the
 version bump PR, `release.yml` once it merges, the pin bump of the actions
 wrappers once the release is out, then the `review.yml` pin bumps of the
 callers once that merges. The repositories, files, threshold and labels are
@@ -311,5 +313,6 @@ unmerged, a failed `release.yml`, a file whose pin it cannot find) labels
 the issue `needs-human`, which halts the train until the label goes; closing
 the issue drops that release: a later train for the same version ignores
 its closed PRs, halts on one still open, and does not start while main has
-a version bump that was never released. Test with `just test-release-train`;
-`just release-train` is a dry pass with the token in `GH_TOKEN`.
+a version bump that was never released. `agent-board release-train --config
+.github/release-train/config.json` is a dry pass with the token in
+`GH_TOKEN`; its tests are agent-board's.

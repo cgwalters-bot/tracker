@@ -1,4 +1,5 @@
 {
+  "bot": "cgwalters-bot",
   "release": {
     "repository": "cgwalters-forge/agentic-job",
     "fork": "cgwalters-bot/agentic-job",
@@ -39,8 +40,5 @@
         ".github/agentic-job/test_review.py"
       ]
     }
-  ],
-  "pageSize": 100,
-  "maxRequests": 200,
-  "requestTimeoutSeconds": 20
+  ]
 }
