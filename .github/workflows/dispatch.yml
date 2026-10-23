@@ -1,5 +1,5 @@
-# The dispatch caller that `gh workflow run dispatch.yml`, the board
-# scheduler, the epic coordinator and the pull request poll start. The run itself
+# The dispatch caller that `gh workflow run dispatch.yml` and the pass
+# (poll.yml) start. The run itself
 # is our wrapper's, cgwalters-forge/actions' cgwalters-agentic-job.yml: it
 # carries the agentic-job pin, the tailnet join, the inference proxy, the
 # runner and the model. This file keeps what is this repository's: the

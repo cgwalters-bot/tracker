@@ -2,7 +2,7 @@
 # gh-aw and whatever else does the same job (cgwalters-forge/tracker#519,
 # where each week's comment goes). Nothing runs here but the trigger: the
 # run is dispatch.yml's `research` kind, started the way poll.yml starts its
-# fix runs and its next pass, with the job token and `actions: write`, so no
+# runs, with the job token and `actions: write`, so no
 # secret is read.
 name: weekly-eval
 

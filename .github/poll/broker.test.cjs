@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const http = require('node:http');
 const net = require('node:net');
-const { MARKER, heldBy, probe, publish } = require('./broker.cjs');
+const { MARKER, find, probe, publish, request } = require('./broker.cjs');
 
 test('probe accepts any HTTP response without credentials or redirects', async t => {
   let status = 401;
@@ -67,23 +67,30 @@ test('a failed close on recovery does not repeat the recovery comment', async ()
   assert.deepEqual(writes, []);
 });
 
-test('only the bot\'s fresh, marked, open outage issue holds', async () => {
-  const now = Date.parse('2026-10-16T12:00:00Z');
-  const issue = (over = {}) => ({ number: 7, html_url: 'https://github.com/configured/repo/issues/7', user: { login: 'configured-bot' },
-    body: `${MARKER}\nBroker unreachable`, updated_at: '2026-10-16T11:50:00Z', ...over });
-  const lines = [];
-  const held = issues => heldBy({ token: 'token', repo: 'configured/repo', login: 'configured-bot', now, log: line => lines.push(line),
+test('only the bot\'s marked, open outage issue is found', async () => {
+  const issue = (over = {}) => ({ number: 7, user: { login: 'configured-bot' }, body: `${MARKER}\nBroker unreachable`, ...over });
+  const found = issues => find({ token: 'token', repo: 'configured/repo', login: 'configured-bot',
     api: async (token, method, path) => {
       assert.deepEqual([token, method, path], ['token', 'GET', '/repos/configured/repo/issues?state=open&labels=outage&per_page=100']);
       return issues;
     } });
-  assert.deepEqual(await held([issue()]), { url: 'https://github.com/configured/repo/issues/7', number: 7 });
-  for (const other of [
-    issue({ user: { login: 'visitor' } }), issue({ pull_request: {} }), issue({ body: 'Broker unreachable' }),
-    issue({ updated_at: '2026-10-16T10:59:00Z' }),
-  ]) assert.equal(await held([other]), null);
-  assert.deepEqual(lines, ['outage issue #7 is stale; not holding']);
-  assert.equal(await held([]), null);
-  await assert.rejects(held(Array.from({ length: 100 }, () => issue({ user: { login: 'visitor' } }))), /bound/);
-  await assert.rejects(heldBy({ token: 'token', repo: 'configured/repo', login: 'configured-bot', api: async () => { throw new Error('HTTP 502'); } }), /HTTP 502/);
+  assert.equal((await found([issue()])).number, 7);
+  for (const other of [issue({ user: { login: 'visitor' } }), issue({ pull_request: {} }), issue({ body: 'Broker unreachable' })]) {
+    assert.equal(await found([other]), null);
+  }
+  await assert.rejects(found(Array.from({ length: 100 }, () => issue({ user: { login: 'visitor' } }))), /bound/);
+});
+
+test('a GitHub request that stalls fails the call with its method and path', { timeout: 10e3 }, async t => {
+  // Accepts and never answers, or sends the headers and stalls in the body.
+  const server = http.createServer((req, res) => {
+    if (req.url === '/body') { res.writeHead(200); res.write('{'); }
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const realFetch = globalThis.fetch;
+  t.mock.method(globalThis, 'fetch', (url, init) => realFetch(url.replace('https://api.github.com', base), init));
+  await assert.rejects(request('token', 'GET', '/silent', undefined, 200), { message: /^GET \/silent: .*timeout/ });
+  await assert.rejects(request('token', 'POST', '/body', {}, 200), { message: /^POST \/body: .*timeout/ });
 });

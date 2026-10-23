@@ -1,9 +1,5 @@
 // Probes the inference broker from the dispatch tailnet path and keeps one
-// `outage` issue open while it is unreachable (#603). While that issue is
-// open and fresh (heldBy), the poll, the board scheduler and the coordinator
-// only preview, so no agent run starts against a broker that is down.
-// agent-board gives back the round of a run an outage failed, reading the
-// same issue (`brokerOutage` in agent-board.json).
+// `outage` issue open while it is unreachable (#603), for a person to see.
 'use strict';
 
 const net = require('node:net');
@@ -54,17 +50,6 @@ async function find({ token, repo, login, api }) {
 // down, so one not updated for `staleMinutes` means the probe stopped (say,
 // BROKER_OUTAGE unset after it opened); it does not hold, lest a forgotten
 // issue stop every run for good. A failed read throws: it is not "no outage".
-async function heldBy({ token, repo, login, api, now = Date.now(), staleMinutes = 60, log = () => {} }) {
-  const issue = await find({ token, repo, login, api });
-  if (!issue) return null;
-  const updated = Date.parse(issue.updated_at);
-  if (!(now - updated <= staleMinutes * 60_000)) {
-    log(`outage issue #${issue.number} is stale; not holding`);
-    return null;
-  }
-  return { url: issue.html_url, number: issue.number };
-}
-
 async function publish({ token, repo, login, up, api, now = new Date().toISOString() }) {
   const path = `/repos/${repo}/issues`;
   const issue = await find({ token, repo, login, api });
@@ -85,8 +70,26 @@ async function publish({ token, repo, login, up, api, now = new Date().toISOStri
   }
 }
 
+// fetch never times out by itself, and a connection GitHub accepts and never
+// answers would hold the probe until the step's timeout kills it (#819).
+async function request(token, method, path, body, timeoutMs = 30e3) {
+  let res, text;
+  try {
+    res = await fetch('https://api.github.com' + path, {
+      method,
+      headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'user-agent': 'tracker-broker-probe' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    text = await res.text();
+  } catch (err) {
+    throw new Error(`${method} ${path}: ${err.cause?.message || err.message}`);
+  }
+  if (!res.ok) throw new Error(`${method} ${path}: HTTP ${res.status} ${text.slice(0, 300)}`);
+  return text ? JSON.parse(text) : null;
+}
+
 async function main() {
-  const { request } = require('./poll.cjs');
   const token = process.env.GH_TOKEN;
   const repo = process.env.GITHUB_REPOSITORY;
   if (!token || !repo) throw new Error('GH_TOKEN and GITHUB_REPOSITORY are required');
@@ -98,6 +101,6 @@ async function main() {
   if (!up) process.exitCode = 1;
 }
 
-module.exports = { MARKER, heldBy, probe, publish };
+module.exports = { MARKER, find, probe, publish, request };
 
 if (require.main === module) main().catch(err => { console.error(err.message); process.exitCode = 1; });

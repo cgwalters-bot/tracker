@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  # The tests of poll.cjs and usage.cjs, through the Justfile.
+  # The tests of the scripts under .github, through the Justfile.
   test:
     runs-on: ubuntu-26.04
     timeout-minutes: 25

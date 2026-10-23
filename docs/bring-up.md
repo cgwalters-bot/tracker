@@ -4,11 +4,11 @@
 
 The coordinator picks work from the
 [board](https://github.com/orgs/cgwalters-forge/projects/1) and dispatches
-it. It runs here, as `poll.yml`: its `board` job schedules the operator's
-epics, plans them and reports on the project (the README's board scheduler,
-epic census and epic coordinator), and every pass ends by itself. Their
-writes are off until the repository variables `BOARD_DISPATCH` and
-`COORDINATOR` are `apply`; until then they only preview, in the run's summary. A person
+it. It runs here, as `poll.yml`: one scheduled `agent-board pass` follows
+pull requests, plans and applies the operator's epics, schedules board work
+and derives board Status (the README's "The pass"). Its writes are off until
+the repository variable `PASS_APPLY` is `enabled`; until then it only
+previews, in the run's summary. A person
 at a machine holding nothing but credentials only checks on it, dispatches
 by hand where it does not, and answers what it cannot; everything they need
 is on the forge, and what is not yet is listed at the end.
@@ -23,7 +23,7 @@ pull request, not a commit made on the machine.
 
 This repository, which has the
 dispatch workflow, the bounds and per-kind profiles under
-`.github/agentic-job`, the pull request poll, the operator's instructions
+`.github/agentic-job`, the pass's configuration, the operator's instructions
 ([operator-notes.md](operator-notes.md)) and this page. Read the notes
 before dispatching anything: briefs and decisions are checked against them,
 and a new instruction is appended there, verbatim and dated, in a pull
@@ -35,8 +35,8 @@ at whatever commit its main takes.
 
 Besides `gh`, one tool: [agent-board](https://github.com/cgwalters-forge/agent-board),
 the board's CLI, built from source as its README says (Rust supporting
-edition 2024; there are no releases). The workflows here build it the same way, from
-the branch `.github/poll/agent-board.json` names.
+edition 2024; there are no releases). The workflows here build it the same way, at
+the commit each pins as `AGENT_BOARD_REV`.
 
 ```sh
 cargo install --locked --git https://github.com/cgwalters-forge/agent-board agent-board
@@ -55,13 +55,8 @@ export GH_TOKEN="$(cat "$BOT_SUPERVISOR_GH_TOKEN_FILE")"
 ```
 
 On the forge, already in place and only to be checked: the organization
-secret `CGWALTERS_BOT_PAT`, which apply and the poll act with, and the
-environment `agent-apply` here, which gates apply. The poll reads the bot's
-notifications with that token (`notifications` in
-`.github/poll/agent-board.json`), so it must be a classic token with the
-`notifications` (or `repo`) scope: a fine-grained token cannot list
-notifications, and with one every poll pass fails and its state is not
-kept. The wrapper has a
+secret `CGWALTERS_BOT_PAT`, which apply and the pass act with, and the
+environment `agent-apply` here, which gates apply. The wrapper has a
 default for each deployment setting, and this repository's variables
 override them: `AGENT`, `AGENT_MODEL`, `INFERENCE_URL`,
 `INFERENCE_AUDIENCE`, `AGENT_RUNNER`, `AGENT_CONFIG_REPO` and
@@ -73,11 +68,10 @@ and are not brought up from here.
 
 ## Dispatching a run
 
-The board scheduler starts the work of live epics by itself (an accepted
-implement plan goes out with `agent-board dispatch`; an item without one
-is skipped), once `BOARD_DISPATCH` is `apply`, and the poll starts the fix
-rounds. New work it can take is queued with `just enqueue` (README,
-"Queueing work for the poll"). Anything else is started by
+The pass starts board work by itself (a triage run where an issue has no
+accepted plan, then the implement plan it proposes) and the fix rounds of
+pull requests, once `PASS_APPLY` is `enabled`. New work it can take is put
+on the board with a Priority. Anything else is started by
 hand: write the sentences particular to the task in a file and name the
 target. Run it on the default branch, which the wrapper requires. The task
 is public, in the run's inputs; `pool` may be left out:
@@ -125,11 +119,11 @@ what its provider allows a period, for tools to pace runs against where the
 provider reports no quota: `allowance` is `amount` in `currency` per
 `period`, which is `calendar-month` (`mistral`: 300 USD). Nothing in this
 repository enforces it. Every pool has a `tier`, 1 (`claude`, `openai`,
-`fable`) or 2 (`mistral`), for the settings that name a tier rather than a
-pool (README, "Pools and tiers"); `"auto": false` keeps `fable`, whose
-allowance is apart, out of a tier's choice, for dispatch by hand. The poll alternates its fix rounds between the
-first two, except that a first round that is only toil goes to `mistral`;
-`mistral` is for toil such as triage. The run applies
+`fable`) or 2 (`mistral`); `"auto": false` keeps `fable`, whose allowance
+is apart, for dispatch by hand. The pass paces its runs on the pools
+`.github/pass.json` names, and alternates fix rounds between its
+`pr.fixPools`, except that a first round that is only toil goes to
+`pr.toilFixPool`. The run applies
 its own result: a pull request from the bot's fork, or one comment on the
 item. `scripts/wait-run RUN` waits for a run and prints its conclusion and
 failed jobs.
@@ -152,31 +146,13 @@ $board project status-update --status on-track --body FILE
 `ask create` opens the `question` issue the README describes in the
 repository `-R` names (without it, next to the item it blocks), and sets it
 and the item it blocks to Needs human; `ask resolve` comments, closes and sets it
-Done. `project status-update` writes at once: the epic coordinator
-publishes the daily one once `COORDINATOR` is `apply`, so a hand-written update is for what it cannot say.
+Done. `project status-update` writes at once.
 Read commands (`item list`, `item view`, `ask list`, `project view`) need no
 `--apply`. A job plan is sent with
-`agent-board dispatch ISSUE --dry-run` first, then `--apply`, with the
-`--caller`, `--workflow`, `--operator` and `--planner` the scheduler passes
-(`.github/poll/schedule.cjs`, from `agent-board.json`); an epic plan only by
-the coordinator's step, which pins it.
-
-The coordinator previews unless `COORDINATOR` is `apply`. Its owned
-`agent-board.json` accepts `coordinator.minPlanIntervalMinutes` (1–1440,
-default 180): census churn cannot spend another planning run inside that
-interval. New operator comments, the daily forced pass, and an applied plan
-leaving no open children bypass it; the last only once, so an epic whose
-children are all closed waits for the daily pass after its retry. After applying, a fresh bounded census
-records the plan's own effects; a failed census is retried without applying
-again. Each epic's decision and reason appear in the pass summary.
-
-Pending plans with changed target text, state or Priority, or changed epic
-requirements, currently stop for inspection rather than overwrite newer work.
-Per-action pruning needs support in agent-board's pinned apply contract; the
-coordinator does not rewrite the planner's comment to bypass that contract.
-To unblock an epic, inspect the plan and comment on the epic as the operator;
-the next pass drops the pending plan and plans again. Requests recorded before
-target snapshots are re-planned on any census drift, as before.
+`agent-board dispatch ISSUE --dry-run` first, then `--apply`, with
+`--caller cgwalters-forge/tracker --workflow dispatch.yml`; an epic plan only
+by the pass, which pins it. To unblock an epic held on its plan, comment on
+it as the operator; the next pass plans it again.
 
 ## What is in flight
 
@@ -221,14 +197,14 @@ Nothing has to be remembered by the coordinator. The runs themselves are
 item). What they opened is the bot's open pull requests on `dispatch/`
 branches, `gh pr list -R OWNER/REPO --author cgwalters-bot`, in each
 repository the bounds name. Where each of those stands, its fix rounds and
-the run working on it, is in the one comment the poll keeps on the pull
+the run working on it, is in the one comment the pass keeps on the pull
 request (it carries a `tracker-poll` marker); `needs-human` labels the ones
-the poll gave up on. The README describes the poll.
+the pass gave up on.
 
 ## Where state lives
 
 The board holds what is to be done and whose turn it is, and questions for
-cgwalters are issues here. Each pull request's progress is in the poll's
+cgwalters are issues here. Each pull request's progress is in the pass's
 marker comment and each run's in its status comment on the item. This
 repository holds the workflows, bounds, profiles and the operator's notes,
 and `docs/rulesets/` keeps snapshots of our repositories' rulesets, named
@@ -237,45 +213,15 @@ ruleset's id with `gh api repos/OWNER/REPO/rulesets` and run
 `jq '{name, target, enforcement, conditions, rules, bypass_actors}' FILE | gh api -X PUT repos/OWNER/REPO/rulesets/ID --input -`
 (`-X POST repos/OWNER/REPO/rulesets` where it no longer exists).
 
-## Operator comment wake
-
-The workflow is off until the operator sets the repository variable
-`COMMENT_WAKE=enabled`; then it wakes `poll.yml` on a new comment by the
-`operator` in `.github/poll/agent-board.json` on an open issue here. It
-stays off while the variable is absent or has any other value. After
-setting it, the operator posts one comment on an open issue here and
-checks that it starts a `poll.yml` run (`gh run list -R
-cgwalters-forge/tracker -w poll.yml`).
-PR comments, edits, closed issues and bot replies do not wake it. The login
-is read from the default branch, never a dispatcher input; comment text is
-not passed to the workflow. The wake dispatches one normal poll, using its
-existing authority and concurrency group, so a running pass is not cancelled
-and bursts coalesce into at most one pending pass. Existing scheduler and
-coordinator apply switches still govern writes. A local watcher is not needed.
-The pass reads current forge state, not a queued copy of the comment.
-
 ## Where an operator comment goes
 
-- On an open issue here: the comment wake above starts a pass at once (after
-  a running one), once `COMMENT_WAKE=enabled`; without it, the next pass.
-  The pass reads the issue as it reads any; the comment starts no run of
-  its own.
-- On a `needs-human` pull request of the bot's in a followed repository,
-  where the bot put the label on with its stop: `operatorAnswers` starts fix
-  round 1 at the next pass. Any comment counts, a "wait" too.
-- Anywhere else in a followed repository: nothing reads the comment as
-  such; the next pass acts on the thread's current state.
-- Outside the followed repositories, bootc-dev included, on a thread the bot
-  is notified of (assigned, author, comment, mention, review requested):
-  `notifications` hands the comment to agent-board's operator-comment
-  handling at the next pass, only in a public repository and only where the
-  new comments have a `/bot` or `@cgwalters-bot` line. A comment without one
-  starts nothing: `operatorComments` is deliberately unset, because a comment
-  there is not a request (bootc-dev/bootc#2585).
+- On a live epic here: the next pass plans the epic again with it.
+- Anywhere else: nothing reads the comment as such; the next pass acts on
+  the thread's current state. Outside the followed repositories, bootc-dev
+  included, a comment reaches no pass at all.
 
-"The next pass" is the poll's cadence: every ten minutes on the schedule,
-which GitHub may delay, or sooner when a dispatch run ends or the poll
-starts its own next pass.
+"The next pass" is the pass's cadence: every ten minutes on the schedule,
+which GitHub may delay.
 
 ## Recovery drill
 
@@ -291,10 +237,8 @@ the credentials above brings up a coordinator from nothing:
 3. Read [operator-notes.md](operator-notes.md). Nothing below goes against
    an instruction there.
 4. Run `gh workflow run poll.yml -R cgwalters-forge/tracker` and wait for
-   it with `scripts/wait-run RUN`. It succeeds, the `poll` job's log at
-   "Restore the state of the last pass" says `State from run N` rather
-   than starting afresh, and the board job's summary previews the epics
-   and pull requests the board and `gh pr list` show as open.
+   it with `scripts/wait-run RUN`. It succeeds, and its summary previews
+   the epics and pull requests the board and `gh pr list` show as open.
 5. Dispatch one research run, `gh workflow run dispatch.yml -R
    cgwalters-forge/tracker -f kind=research -f repo=cgwalters-forge/tracker
    -f item=507 -f task="$(cat BRIEFFILE)"`, with a brief asking for a short
