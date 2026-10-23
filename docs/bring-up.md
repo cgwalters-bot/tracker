@@ -265,13 +265,13 @@ The pass reads current forge state, not a queued copy of the comment.
   round 1 at the next pass. Any comment counts, a "wait" too.
 - Anywhere else in a followed repository: nothing reads the comment as
   such; the next pass acts on the thread's current state.
-- In `bootc-dev/*`: `operatorComments` starts a fix round on the bot's pull
-  request (within its rounds), or a triage or research run, at the next pass.
-- Outside the followed repositories, on a thread the bot is notified of
-  (assigned, author, comment, mention, review requested): `notifications`
-  hands the comment to the `operatorComments` handling at the next pass,
-  outside `bootc-dev/*` only in a public repository and only where the new
-  comments have a `/bot` or `@cgwalters-bot` line.
+- Outside the followed repositories, bootc-dev included, on a thread the bot
+  is notified of (assigned, author, comment, mention, review requested):
+  `notifications` hands the comment to agent-board's operator-comment
+  handling at the next pass, only in a public repository and only where the
+  new comments have a `/bot` or `@cgwalters-bot` line. A comment without one
+  starts nothing: `operatorComments` is deliberately unset, because a comment
+  there is not a request (bootc-dev/bootc#2585).
 
 "The next pass" is the poll's cadence: every ten minutes on the schedule,
 which GitHub may delay, or sooner when a dispatch run ends or the poll
