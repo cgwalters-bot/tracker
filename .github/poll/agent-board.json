@@ -42,9 +42,9 @@
     "project": 1,
     "wip": 8,
     "batch": 2,
-    "triage": 2,
-    "triagePool": "tier-1",
-    "fill": 4,
+    "triage": 4,
+    "triagePool": "openai",
+    "fill": 8,
     "operatorRetryPools": ["tier-1"],
     "priorityField": "Priority",
     "repositories": [
