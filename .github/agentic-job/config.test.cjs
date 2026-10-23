@@ -189,3 +189,159 @@ test('agentic-job policy keeps ready_when_complete from both bounds', { skip: !a
   assert.equal(policy('fix.toml', 'push_to_pull_request_branch', '--base', 'dispatch/x', '--pull-request', '1',
     '--head', '0'.repeat(40), '--output-repo', 'cgwalters-forge/tracker').safe_outputs.push_to_pull_request_branch.ready_when_complete, true);
 });
+
+test('no repository the bot owns is a dispatch or fix target unless it opts in', () => {
+  const { bot } = require('../poll/agent-board.json');
+  // Bot-owned repositories whose default branch has accept-owner-branches
+  // naming them, in lowercase; add one only after checking that file is there.
+  const optedIn = new Set([]);
+  for (const name of ['dispatch.toml', 'fix.toml']) {
+    const bounds = fs.readFileSync(path.join(__dirname, name), 'utf8');
+    const repos = JSON.parse(/^repos = (\[.*\])$/m.exec(bounds.split(/^\[/m)[0])[1]);
+    for (const repo of repos) {
+      if (optedIn.has(repo.toLowerCase())) continue;
+      assert.notEqual(repo.split('/')[0].toLowerCase(), bot.toLowerCase(),
+        `${repo} in ${name} is owned by ${bot}: apply cannot push there without its accept-owner-branches; see docs/bring-up.md`);
+    }
+  }
+});
+
+test('blocked fixes can explain themselves without a push or extra write authority', () => {
+  const bounds = fs.readFileSync(path.join(__dirname, 'fix.toml'), 'utf8');
+  const outputs = bounds.split('[outputs]')[1].split('[unprotected_files]')[0];
+  const entries = [...outputs.matchAll(/^([a-z_]+) = (.+)$/gm)];
+  assert.deepEqual(entries.map(m => m[1]), [
+    'push_to_pull_request_branch', 'add_comment', 'noop', 'missing_tool', 'missing_data',
+  ]);
+  assert.equal(entries.find(m => m[1] === 'add_comment')[2], '{ max = 1 }');
+  assert.match(bounds, /^max_outputs = 3$/m);
+  const profile = fs.readFileSync(path.join(__dirname, 'profiles/fix.md'), 'utf8');
+  for (const rule of [
+    'leave the working tree unchanged', 'one `add_comment` safe output with a `body`',
+    'Do not request `push_to_pull_request_branch` or write a replacement series when there is no change to push',
+    'Do not invent a patch',
+  ]) assert.ok(profile.includes(rule), rule);
+});
+
+test('pools.json has what dispatch.yml reads, and a well-formed allowance', () => {
+  const pools = require('./pools.json');
+  for (const [name, pool] of Object.entries(pools)) {
+    for (const key of ['agent', 'model', 'budget']) assert.match(pool[key], /^\S+$/, `${name}.${key}`);
+    assert.match(pool.budget, /^[1-9]\d*$/, `${name}.budget`);
+    if (!('allowance' in pool)) continue;
+    const { amount, currency, period, ...rest } = pool.allowance;
+    assert.deepEqual(rest, {}, `${name}.allowance`);
+    assert.ok(Number.isFinite(amount) && amount > 0, `${name}.allowance.amount`);
+    assert.match(currency, /^[A-Z]{3}$/, `${name}.allowance.currency`);
+    assert.equal(period, 'calendar-month');
+  }
+  assert.equal(pools.mistral.budget, '1000');
+  assert.deepEqual(pools.mistral.allowance, { amount: 300, currency: 'USD', period: 'calendar-month' });
+});
+
+test('dispatch.yml turns on the skills for implement and fix only', () => {
+  assert.deepEqual(dispatch.match(/^ {6}skills: .*$/gm), ["      skills: ${{ needs.profile.outputs.skilled == 'true' && (inputs.kind == 'implement' || inputs.kind == 'fix') }}"]);
+  const profile = kind => fs.readFileSync(path.join(__dirname, `profiles/${kind}.md`), 'utf8');
+  assert.match(profile('implement'), /^Use the implement skill\./);
+  assert.doesNotMatch(profile('implement'), /AGENTS\.md|subagent|left undone/);
+  assert.doesNotMatch(profile('implement-full'), /\bskill\b/);
+  assert.match(profile('implement-full'), /^Implement this issue properly with tests/);
+  for (const rule of profile('implement').trim().split(/(?<=\.) /).slice(1)) assert.ok(profile('implement-full').includes(rule), rule);
+  assert.doesNotMatch(profile('fix'), /implement skill/);
+  for (const kind of ['research', 'triage', 'review']) assert.doesNotMatch(profile(kind), /\bskill\b/);
+});
+
+test('dispatch.yml gives an agent without skills the full implement profile', () => {
+  const stepScript = name => {
+    const re = new RegExp(`^ {6}- name: ${name}\\n(?: {8}.*\\n)*? {8}run: \\|\\n((?:(?: {10}.*)?\\n)+)`, 'm');
+    const step = re.exec(dispatch)?.[1];
+    assert.ok(step, name);
+    return step.replace(/^ {10}/gm, '');
+  };
+  assert.ok(dispatch.indexOf('- name: Resolve the pool') < dispatch.indexOf('- name: Put the profile before the task'));
+  const poolStep = stepScript('Resolve the pool');
+  const composeStep = stepScript('Put the profile before the task');
+  const pools = require('./pools.json');
+  const profiles = path.join(__dirname, 'profiles');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-'));
+  const outputs = text => Object.fromEntries([...text.matchAll(/^([a-z]+)=(.*)$/gm)].map(m => [m[1], m[2]]));
+  let n = 0;
+  const bash = (script, env) => {
+    const out = path.join(dir, String(n++));
+    fs.writeFileSync(out, '');
+    execFileSync('bash', ['-eo', 'pipefail', '-c', script], {
+      cwd: path.join(__dirname, '../..'), stdio: 'pipe',
+      env: { ...process.env, ...env, GITHUB_OUTPUT: out },
+    });
+    return fs.readFileSync(out, 'utf8');
+  };
+  const run = (pool, kind, agent = 'opencode') => {
+    try {
+      const resolved = outputs(bash(poolStep, { POOL: pool, KIND: kind, AGENT: agent }));
+      const composed = bash(composeStep, { KIND: kind, TASK: 'the task', SKILLED: resolved.skilled });
+      const task = /^task<<(task-[0-9a-f]{32})\n([\s\S]*)\n\1\n$/.exec(composed)?.[2];
+      assert.ok(task, composed);
+      return { ...resolved, task };
+    } catch (e) {
+      if (e instanceof assert.AssertionError) throw e;
+      return null;
+    }
+  };
+  const profile = name => fs.readFileSync(path.join(profiles, `${name}.md`), 'utf8');
+  const expected = (kind, skilled) => `${profile(!skilled && fs.existsSync(path.join(profiles, `${kind}-full.md`)) ? `${kind}-full` : kind)}\nthe task`;
+  for (const [name, pool] of Object.entries(pools)) {
+    const skilled = ['claude', 'opencode'].includes(pool.agent);
+    for (const kind of ['implement', 'fix', 'triage', 'research', 'review']) {
+      const r = run(name, kind, skilled ? 'vibe' : 'claude');
+      assert.ok(r, `${kind} on ${name}`);
+      assert.equal(r.agent, pool.agent);
+      assert.equal(r.skilled, String(skilled));
+      assert.equal(r.task, expected(kind, skilled));
+    }
+  }
+  assert.ok(Object.values(pools).some(p => !['claude', 'opencode'].includes(p.agent)));
+  assert.ok(Object.values(pools).some(p => ['claude', 'opencode'].includes(p.agent)));
+  for (const agent of ['claude', 'opencode', 'fake']) {
+    assert.deepEqual(run('', 'implement', agent), { skilled: 'true', agent: '', model: '', budget: '', task: expected('implement', true) });
+  }
+  assert.deepEqual(run('', 'implement', 'vibe'), { skilled: 'false', agent: '', model: '', budget: '', task: expected('implement', false) });
+  assert.equal(run('', 'fix', 'vibe').task, expected('fix', false));
+  assert.notEqual(expected('implement', false), expected('implement', true));
+  assert.equal(expected('fix', false), expected('fix', true));
+  assert.equal(run('nonesuch', 'fix'), null);
+  assert.equal(run('', 'implement-full', 'vibe'), null);
+});
+
+test('workflows follow our own repositories at main, review.yml excepted, and pin the rest', () => {
+  const owner = require('../poll/agent-board.json').dispatchRepo.split('/')[0];
+  const dir = path.join(__dirname, '../workflows');
+  let seen = 0;
+  for (const file of fs.readdirSync(dir).filter(f => f.endsWith('.yml'))) {
+    for (const [, ref] of fs.readFileSync(path.join(dir, file), 'utf8').matchAll(/^\s*(?:- )?uses:\s*(\S+)/gm)) {
+      seen++;
+      // Except review.yml: its verdict is the only gate on .github/ here,
+      // so the wrapper it calls moves only by a reviewed change to the pin.
+      if (ref.startsWith(`${owner}/`)) assert.match(ref, file === 'review.yml' ? /^[\w.-]+\/[\w.\/-]+@[0-9a-f]{40}$/ : /^[\w.-]+\/[\w.\/-]+@main$/, `${file}: ${ref}`);
+      else assert.match(ref, /^[\w.-]+\/[\w.\/-]+@[0-9a-f]{40}$/, `${file}: ${ref}`);
+    }
+  }
+  assert.ok(seen > 0);
+});
+
+test('review wrapper uses the agentic-job v0.6.2 release pin', () => {
+  const workflow = fs.readFileSync(path.join(__dirname, '../workflows/review.yml'), 'utf8');
+  assert.match(workflow, /^\s+uses: \S+\/cgwalters-review\.yml@d8e22f71b2abbe5f41306a0c7ef1b6c3d2829cac # main, agentic-job v0\.6\.2 \(actions#67\)$/m);
+});
+
+test('the pass starts work only where dispatch.yml and fix runs may act, on known pools', () => {
+  const pass = require('../pass.json');
+  const bounds = name => JSON.parse(/^repos = (\[.*\])$/m.exec(read(name).split(/^\[/m)[0])[1]);
+  for (const repo of pass.workRepositories) assert.ok(bounds('dispatch.toml').includes(repo), `${repo} is scheduled but not in dispatch.toml`);
+  for (const repo of pass.follow) assert.ok(bounds('fix.toml').includes(repo), `${repo} is followed but not in fix.toml`);
+  const pools = require('./pools.json');
+  for (const pool of [...Object.keys(pass.pools), ...pass.planPools, ...pass.triagePools, ...pass.pr.fixPools, pass.pr.toilFixPool]) {
+    assert.ok(pools[pool], pool);
+  }
+  assert.equal(pass.dispatchWorkflow, 'dispatch.yml');
+  assert.equal(pass.pr.reviewWorkflow, 'review.yml');
+});

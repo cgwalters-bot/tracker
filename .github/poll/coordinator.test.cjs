@@ -306,13 +306,6 @@ test('long comment history packs newest decisions first within the UTF-8 dispatc
   assert.throws(() => brief(config, { ...epic, body: 'x'.repeat(60000) }, 'request'), /after packing/);
 });
 
-test('coordinator workflow failures are isolated and retain the controller summary', () => {
-  const workflow = fs.readFileSync(require.resolve('../workflows/poll.yml'), 'utf8');
-  const step = workflow.split('      - name: Coordinator\n')[1].split('\n  # agent-board')[0];
-  assert.match(step, /continue-on-error: true/);
-  assert.match(step, /run: just coordinator/);
-});
-
 // The project's Priority field as the API returns it: P0 to P2, no P3.
 const project = (names = ['P0', 'P1', 'P2']) => ({ data: { repositoryOwner: { projectV2: { id: 'project',
   field: { id: 'field', options: names.map(name => ({ name, id: `option-${name}` })) } } } } });

@@ -75,7 +75,7 @@ test('supervisor requests and sweeps share one agent group and keep preview read
   assert.equal(workflow.match(new RegExp(`github\\.event\\.comment\\.user\\.login == \\(vars\\.OPERATOR \\|\\| '${board.operator}'\\)`, 'g'))?.length, 2);
   assert.equal(workflow.split(`github.event.issue.number == fromJSON(vars.SUPERVISOR_REQUESTS_ISSUE || '${config.agent.requests.issue}')`).length, 3);
   assert.match(workflow, /github.event.issue.locked == true &&\n +!github.event.issue.pull_request/);
-  assert.match(workflow, /issue_comment:\n +types: \[created\]/);
+  assert.match(workflow, /issue_comment: # zizmor: ignore\[dangerous-triggers\]\n +types: \[created\]/);
   assert.match(workflow, /prompt:\n +description:.*\n +type: string/);
   assert.match(workflow, /cron: '7 \*\/2 \* \* \*'/);
   // The poll's prompt-less dispatches are health passes; in supervisor-agent
@@ -191,9 +191,8 @@ test('the supervisor profile comes from the configured repository at a full comm
   assert.doesNotThrow(() => sources(config.agent.profile));
 });
 
-test('the poll chain starts supervisor passes, paced from the previous health artifact', () => {
-  assert.match(workflow, /\n  workflow_run: # zizmor: ignore\[dangerous-triggers\]\n +workflows: \[poll\]\n +types: \[completed\]\n/);
-  // The crons stay as a fallback.
+test('the crons start supervisor passes, paced from the previous health artifact', () => {
+  assert.doesNotMatch(workflow, /workflow_run:/);
   assert.match(workflow, /cron: '\*\/15 \* \* \* \*'/);
   const health = workflow.split('\n  health:\n')[1].split('\n  agent:\n')[0];
   const order = ['- name: Previous health report', '- name: Whether a pass is due', '- name: Build agent-board',

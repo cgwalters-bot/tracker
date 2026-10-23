@@ -28,7 +28,7 @@
       "fork": "cgwalters-bot/tracker",
       "files": [
         ".github/workflows/review.yml",
-        ".github/poll/poll.test.cjs"
+        ".github/agentic-job/config.test.cjs"
       ]
     },
     {

@@ -98,7 +98,7 @@ that account owns only if the repository's default branch has
 [`workflow/push.cjs`](https://github.com/cgwalters-forge/agentic-job/blob/main/workflow/push.cjs));
 otherwise apply fails with "owns ... and has no fork of it to push to"
 (#517). So no `cgwalters-bot/*` repository is a dispatch or fix target,
-and a test in `.github/poll/poll.test.cjs` keeps it so.
+and a test in `.github/agentic-job/config.test.cjs` keeps it so.
 `cgwalters-bot/praxis-credential-broker` is local-only: its work is pushed
 by hand as branches in the repository itself. To make it a target, its
 owner adds that file to it by hand, then adds it back to both lists and to

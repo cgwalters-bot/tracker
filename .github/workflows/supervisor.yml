@@ -5,23 +5,16 @@
 # each in the supervisor log issue. The agent and the executor are off until
 # SUPERVISOR is preview or apply; only apply executes requests.
 name: supervisor
-# Started like the poll, at the end of each of its runs, because GitHub's
-# cron can go hours without firing (#730); .github/poll/supervisor-due.cjs
-# limits those starts to a health pass every fifteen minutes and a sweep
-# every two hours. Self-dispatched poll passes raise no workflow_run, so
-# each poll pass also dispatches this without a prompt (#763), which is
-# paced the same way. The crons are only a fallback for a stalled poll.
+# Its own crons start it; the poll no longer does. A dispatch without a
+# prompt is paced by .github/poll/supervisor-due.cjs to a health pass every
+# fifteen minutes and a sweep every two hours.
 on:
   schedule:
     - cron: '*/15 * * * *'
     - cron: '7 */2 * * *'
-  # Runs this file as the default branch has it and uses nothing of the
-  # triggering run's. dispatch -> poll -> supervisor is within GitHub's
-  # three-level limit on workflow_run chains.
-  workflow_run: # zizmor: ignore[dangerous-triggers]
-    workflows: [poll]
-    types: [completed]
-  issue_comment:
+  # The file as the default branch has it; health's `if` admits only the
+  # operator's comment on the locked requests issue.
+  issue_comment: # zizmor: ignore[dangerous-triggers]
     types: [created]
   workflow_dispatch:
     inputs:
@@ -48,8 +41,8 @@ env:
 # operator's on the requests issue, or a run off the default branch) gets a
 # group of its own: in a shared group it would evict a pending run and then
 # do nothing (#803). That first branch is the negation of health's `if`
-# (tested). A prompt-less dispatch, the poll's start every pass, is a health
-# pass too: in supervisor-agent it would evict a prompt.
+# (tested). A prompt-less dispatch is a health pass too: in
+# supervisor-agent it would evict a prompt.
 concurrency:
   group: >-
     ${{ (!(github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
@@ -134,7 +127,7 @@ jobs:
           done
           [[ -z $runs ]] || exit 1
           echo 'read=true' >> "$GITHUB_OUTPUT"
-      # Before the build, so a run the poll started too soon ends in seconds.
+      # Before the build, so a prompt-less dispatch too soon ends in seconds.
       - name: Whether a pass is due
         id: due
         timeout-minutes: 1

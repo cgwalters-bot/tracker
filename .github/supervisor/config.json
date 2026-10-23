@@ -27,7 +27,7 @@
   "paceMarginPercent": 25,
   "usageStaleMinutes": 45,
   "supervisorWorkflow": "supervisor.yml",
-  "schedulerJob": "board",
+  "schedulerJob": "pass",
   "implementBranchPrefix": "dispatch/implement/agent-run-",
   "agent": {
     "pool": "claude",

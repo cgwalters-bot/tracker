@@ -64,7 +64,7 @@ missing_data = { max = 1 }
 # a replacement series can carry a pull request's `.github` changes. `files`
 # also lets them edit AGENTS.md there.
 [unprotected_files]
-# The same list as dispatch.toml's, which poll.test.cjs checks;
+# The same list as dispatch.toml's;
 # the precondition for listing a repository is in its comment.
 repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
