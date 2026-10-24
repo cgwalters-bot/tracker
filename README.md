@@ -45,15 +45,13 @@ and ast-grep. The pin is the API-resolved merge of
 This configuration waits for the shared actions wrapper to upgrade from
 agentic-job v0.2.0 to a release containing
 [#602](https://github.com/cgwalters-forge/agentic-job/pull/602); v0.2.0
-cannot parse the opt-in. After that upgrade, uncomment the four-line table
-and update the staging regression test to require the active table.
+cannot parse the opt-in. After that upgrade, uncomment the four-line table.
 No wrapper input is needed: it already passes
 the caller's runner configuration. The installer runs before network
 lockdown as the sandbox user, with upstream's 120-second Git phases and
 600-second install limit; its code and dependencies are trusted setup,
-not sandboxed task code. Test the caller wiring with `just test-tools`;
-a real install and hardening check still need a fresh dispatched runner
-after that release upgrade.
+not sandboxed task code. A real install and hardening check need a fresh
+dispatched runner.
 
 ## The pass
 

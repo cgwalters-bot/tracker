@@ -1,5 +1,5 @@
 # The runner configuration of the vibe/GLM child-agent experiment
-# (agentic-job#654): hosted.toml, copied below unchanged (tools.test.cjs
+# (agentic-job#654): hosted.toml, copied below unchanged (config.test.cjs
 # holds the copy to it), and then the tables that give the run's agent a
 # second agent, Vibe, to drive over ACP (agentic-job's docs/harness.md, "A
 # second agent"). Only a dispatch that selects it gets it: dispatch.yml's
