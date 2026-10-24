@@ -17,6 +17,10 @@ on:
         type: string
         default: ''
 permissions: {}
+# The reviewed agent-board commit that composes the session's task, the same
+# as supervisor.yml's, whose profile and settings it reads.
+env:
+  AGENT_BOARD_REV: 44471ad42797e4267e2b4ea54a37aa48220ece77
 concurrency:
   group: operator-session
   cancel-in-progress: false
@@ -42,6 +46,9 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
+      - name: Build agent-board at the pinned revision
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
       - id: compose
         env:
           # Fetches the supervisor's profile and skill from agenthome.
@@ -49,7 +56,12 @@ jobs:
           POOL: ${{ inputs.pool }}
           IDLE: ${{ inputs.idle-minutes }}
           PROMPT: ${{ inputs.prompt }}
-        run: just session-profile
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise session \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --session .github/agentic-job/session.json --rules .github/agentic-job/profiles/session.md \
+            --pools .github/agentic-job/pools.json --pool "$POOL" --idle-minutes "$IDLE" \
+            --prompt "$PROMPT" >> "$GITHUB_OUTPUT"
   run:
     needs: profile
     uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main

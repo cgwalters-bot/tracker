@@ -93,9 +93,13 @@ rounds.
 ### Broker outages
 
 Set the repository variable `BROKER_OUTAGE=apply` to enable the
-fifteen-minute `broker-probe.yml` schedule (off otherwise). The probe joins
-using the dispatch tailnet wrapper and resolves `INFERENCE_URL` from the
-repository variable, else the wrapper's configured proxy. It makes one TCP
+fifteen-minute `broker-probe.yml` schedule (off otherwise). It runs
+agent-board's
+[`broker probe`](https://github.com/cgwalters-forge/agent-board/blob/main/docs/broker-probe.md)
+at the commit `supervisor.yml` pins, with `.github/broker/config.json`. The
+probe joins using the dispatch tailnet wrapper and adds `INFERENCE_URL` to
+that config as its `url`, from the repository variable, else the wrapper's
+configured proxy. It makes one TCP
 connection and one unauthenticated GET, each bounded to ten seconds; any
 HTTP response is reachable, not a claim that inference works. It creates one
 bot-owned `outage` issue here, updates it while down, and comments and
@@ -126,14 +130,12 @@ it schedules them as for any epic.
 ### Supervisor
 
 `supervisor.yml` runs `agent-board supervise health` every fifteen minutes on the default
-branch, from its own crons. `.github/poll/supervisor-due.cjs` paces a
-dispatch without a prompt from the `times.json` the previous
-`supervisor-health` artifact carries: one within fifteen minutes of the last
-health pass ends before the build, and a pass sweeps when the last sweep was
-two hours ago or more. The crons and explicit requests (a prompt or a
-comment) are not rate-limited. When that artifact cannot be looked up (as
-against there being none), a prompt-less dispatch ends too, and no run but
-an explicit request sweeps (#814). Scheduled runs used to be skipped: the job also required the
+branch, from its own crons. Every run, a prompt-less dispatch included, is a
+health pass. `agent-board supervise due` decides the sweep from the
+`times.json` the previous `supervisor-health` artifact carries: a pass
+sweeps when the last sweep was two hours ago or more, or on an explicit
+request (a prompt or a comment). When that artifact cannot be looked up (as
+against there being none), no run but an explicit request sweeps (#814). Scheduled runs used to be skipped: the job also required the
 repository variable `SUPERVISOR=observe`, which was never set. The health pass
 only reads, so it now always runs. `health.json` is a list of checks
 with `id`, `status` (`ok`, `warn`, `fail`), evidence links and a suggested
@@ -207,7 +209,7 @@ gh workflow run supervisor.yml -R cgwalters-forge/tracker \
 A check that cannot clear fails every pass and so started an agent every
 cooldown hour to read the same report (#804). With
 `agent.skipUnchangedFailures` set to true (it ships false),
-`.github/poll/supervisor-repeat.cjs` leaves the trigger out of a pass that
+`agent-board supervise repeat` leaves the trigger out of a pass that
 is not a sweep or request when no check fails that did not fail in the
 previous report; the sweep reads standing failures and their new evidence.
 A failure that first appeared while the trigger declined (cooldown, an
@@ -268,12 +270,12 @@ Only `SUPERVISOR=apply` runs `agent-board supervise execute` with the bot token.
 The hosted preview proof still requires an operator-enabled run: confirm it
 lists requests and applies none, then compare a week of preview against the
 local loop before enabling apply with small caps.
-Test the workflow wiring with `just test-poll` (set `AGENT_BOARD` to a built
-binary for the shipped-config CLI test); policy tests live in agent-board.
-CI builds that binary from the supervisor workflow's exact pin with
-`just build-supervisor-agent-board`. The CLI test uses empty health checks,
-without `--daily`, to validate settings and executor policy without API calls
-or writes, and checks that an invalid status-update cap is refused.
+The pacing, the repeat check, the task composition and the preview are
+agent-board's `supervise due`, `repeat`, `compose` and `preview`, tested
+there. CI builds the supervisor workflow's exact pin with
+`just build-supervisor-agent-board`, and `just test-supervisor-config` runs
+`supervise trigger` on empty health checks, without `--daily`, to validate the
+shipped settings and executor policy without API calls or writes.
 
 The agent cannot read the private decisions document (its token reads only
 this repository), and the review site's last-run panel is

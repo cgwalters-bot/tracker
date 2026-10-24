@@ -5,9 +5,8 @@
 # each in the supervisor log issue. The agent and the executor are off until
 # SUPERVISOR is preview or apply; only apply executes requests.
 name: supervisor
-# Its own crons start it; the poll no longer does. A dispatch without a
-# prompt is paced by .github/poll/supervisor-due.cjs to a health pass every
-# fifteen minutes and a sweep every two hours.
+# Its own crons start it; the poll no longer does. Every run is a health
+# pass; `agent-board supervise due` makes it a sweep every two hours.
 on:
   schedule:
     - cron: '*/15 * * * *'
@@ -28,8 +27,9 @@ permissions: {}
 # moving branch, and health/trigger and execute agree within a run. At this
 # commit every write but the log is capped at zero unless config.json sets
 # a cap. Move it only with a review of that revision's `supervise` code.
+# session.yml and broker-probe.yml pin the same commit.
 env:
-  AGENT_BOARD_REV: bfeb126054abf5b024e71ca42ffd401247782989
+  AGENT_BOARD_REV: 44471ad42797e4267e2b4ea54a37aa48220ece77
 # Keep whole runs serialized: trigger considers the previous workflow active
 # through execute, even after its agent job ends, so a job-only group would
 # discard manual prompts in that window. GitHub keeps one pending run per
@@ -40,8 +40,8 @@ env:
 # fails visibly below. A run the health job skips (any comment but the
 # operator's on the requests issue, or a run off the default branch) gets a
 # group of its own: in a shared group it would evict a pending run and then
-# do nothing (#803). That first branch is the negation of health's `if`
-# (tested). A prompt-less dispatch is a health pass too: in
+# do nothing (#803). That first branch is the negation of health's `if`;
+# change both together. A prompt-less dispatch is a health pass too: in
 # supervisor-agent it would evict a prompt.
 concurrency:
   group: >-
@@ -57,11 +57,11 @@ concurrency:
 jobs:
   health:
     # Stop outsider comments spending inference or steering a bot-token executor.
-    # Keep the login and issue aligned with the trusted config (tested below).
+    # Keep the login and issue aligned with the trusted config.
     # This gate runs before checkout, so another deployment names its own in
     # the repository variables OPERATOR and SUPERVISOR_REQUESTS_ISSUE; the
     # defaults are this deployment's. Set them to agent-board.json's operator
-    # and config.json's agent.requests.issue: supervisor-profile.cjs checks
+    # and config.json's agent.requests.issue: `supervise compose` checks
     # the comment against those again before any agent runs, but a mismatched
     # login still gets a health pass and a supervisor-agent group slot.
     if: >-
@@ -127,7 +127,13 @@ jobs:
           done
           [[ -z $runs ]] || exit 1
           echo 'read=true' >> "$GITHUB_OUTPUT"
-      # Before the build, so a prompt-less dispatch too soon ends in seconds.
+      # Built fresh, never a cached binary that another job could replace
+      # before token use.
+      - name: Build agent-board at the pinned revision
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
+      # health is always true; daily marks a request or a due sweep. Without
+      # read (the lookup failed), only an explicit request sweeps (#814).
       - name: Whether a pass is due
         id: due
         timeout-minutes: 1
@@ -135,13 +141,9 @@ jobs:
           EVENT: ${{ github.event_name }}
           PROMPT: ${{ inputs.prompt }}
           READ: ${{ steps.previous.outputs.read }}
-        run: node .github/poll/supervisor-due.cjs
-      # Built fresh, never a cached binary that another job could replace
-      # before token use.
-      - name: Build agent-board at the pinned revision
-        if: ${{ steps.due.outputs.health == 'true' }}
-        timeout-minutes: 10
-        run: just build-agent-board "$AGENT_BOARD_REV"
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise due --event "$EVENT" --prompt "$PROMPT" \
+            ${READ:+--previous "$RUNNER_TEMP/previous-health/times.json"} >> "$GITHUB_OUTPUT"
       - name: Read-only health snapshot
         if: ${{ steps.due.outputs.health == 'true' }}
         timeout-minutes: 8
@@ -173,7 +175,10 @@ jobs:
         timeout-minutes: 1
         env:
           DAILY: ${{ steps.due.outputs.daily == 'true' && '--daily' || '' }}
-        run: node .github/poll/supervisor-repeat.cjs
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise repeat \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --previous "$RUNNER_TEMP/previous-health/health.json" ${DAILY:+"$DAILY"} >> "$GITHUB_OUTPUT"
       # Decides from health.json and this workflow's own recent runs; the job
       # token reads them. --daily bypasses cooldown, not an active agent, for
       # explicit requests and the sweep; failures retain the normal cooldown.
@@ -202,7 +207,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TASK: ${{ steps.trigger.outputs.task }}
           PROMPT: ${{ inputs.prompt }}
-        run: node .github/poll/supervisor-profile.cjs
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise compose \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --task "$TASK" --prompt "$PROMPT" --event "$GITHUB_EVENT_PATH" >> "$GITHUB_OUTPUT"
 
   # The agent: a research run of the shared wrapper on the requests issue,
   # whose one checked add_comment carries the typed requests. Its token is
@@ -254,7 +262,6 @@ jobs:
         with:
           just-version: 1.58.0
       - name: Build agent-board at the pinned revision
-        if: ${{ vars.SUPERVISOR == 'apply' }}
         timeout-minutes: 10
         run: just build-agent-board "$AGENT_BOARD_REV"
       # Preview has no bot token and never calls execute, which always writes
@@ -265,7 +272,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RESULT_URL: ${{ needs.agent.outputs.result-url }}
-        run: node .github/poll/supervisor-profile.cjs preview
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise preview \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --result-url "$RESULT_URL"
       - name: Perform the validated requests
         if: ${{ vars.SUPERVISOR == 'apply' }}
         timeout-minutes: 8
