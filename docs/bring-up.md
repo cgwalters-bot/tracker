@@ -108,7 +108,10 @@ self-review with a subagent included, and `profiles/implement.md` only
 what is ours. `vibe` gets no skills, so an implement that would run it,
 from the pool or the variable `AGENT`, gets `profiles/implement-full.md`
 instead, which spells the procedure out. Fix has no skill yet and
-keeps its full profile. Both of these spell out the self-review too: up
+keeps its full profile. Implement and fix also get agenthome's skills
+(`AGENT_CONFIG_REPO`), and their profiles name its commit-messages skill
+rather than repeat it; `implement-full.md` and `fix.md` keep a short
+version for vibe. Both of these spell out the self-review too: up
 to three passes of a subagent reviewing the diff against the base before
 the run hands it back (#543). `dispatch.yml` also takes an
 optional `pool` input, `claude`, `openai` or `mistral`, which

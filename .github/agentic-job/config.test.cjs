@@ -246,7 +246,7 @@ test('dispatch.yml turns on the skills for implement and fix only', () => {
   assert.doesNotMatch(profile('implement'), /AGENTS\.md|subagent|left undone/);
   assert.doesNotMatch(profile('implement-full'), /\bskill\b/);
   assert.match(profile('implement-full'), /^Implement this issue properly with tests/);
-  for (const rule of profile('implement').trim().split(/(?<=\.) /).slice(1)) assert.ok(profile('implement-full').includes(rule), rule);
+  for (const rule of profile('implement').trim().split(/(?<=\.) /).slice(1).filter(rule => !/commit-messages skill/.test(rule))) assert.ok(profile('implement-full').includes(rule), rule);
   assert.doesNotMatch(profile('fix'), /implement skill/);
   for (const kind of ['research', 'triage', 'review']) assert.doesNotMatch(profile(kind), /\bskill\b/);
 });
