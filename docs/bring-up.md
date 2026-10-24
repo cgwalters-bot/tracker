@@ -194,7 +194,8 @@ This uses the wrapper's research profile: no patch or board mutation, and at
 most one end-of-session comment plus bounded diagnostic outputs, checked and
 applied separately under `dispatch.toml`. Dispatching work, board updates,
 mid-session writes, the review site's pane and a scripted fake-agent end-to-end
-run remain follow-ups. Check the caller with `just test-session`.
+run remain follow-ups. `session.yml` composes the task with agent-board's
+`supervise session`, at the commit `supervisor.yml` pins, where it is tested.
 
 Nothing has to be remembered by the coordinator. The runs themselves are
 `gh run list -R cgwalters-forge/tracker` (the run name is the kind and the

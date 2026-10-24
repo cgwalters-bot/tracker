@@ -4,30 +4,38 @@
 # Recipes see their arguments as $1, $2, ...
 set positional-arguments
 
-# Every test of the scripts under .github.
-test: test-poll test-session test-config
+# Every test of the files under .github.
+test: test-config test-supervisor-config
 
 # Runs `agentic-job config` on acp-experiment.toml where it is installed.
 test-config:
     node --test .github/agentic-job/config.test.cjs
 
-test-session:
-    node --test .github/agentic-job/session.test.cjs
-
-session-profile:
-    node .github/agentic-job/session.cjs
-
-test-poll:
-    cd .github/poll && node --test
-
-broker-probe:
-    node .github/poll/broker.cjs
+# The shipped supervisor settings through the binary supervisor.yml pins
+# (AGENT_BOARD, from build-supervisor-agent-board): a cap the executor
+# refuses would otherwise fail every pass after the merge. Empty checks and
+# no --daily return before any API request.
+test-supervisor-config:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -z ${AGENT_BOARD:-} ]]; then echo 'skipped: set AGENT_BOARD to the built binary'; exit 0; fi
+    health=$(mktemp)
+    echo '[]' > "$health"
+    out=$(GH_TOKEN=unused GITHUB_RUN_ID=1 \
+      GITHUB_REPOSITORY=$(jq -er .agent.requests.repository .github/supervisor/config.json) \
+      "$AGENT_BOARD" supervise trigger --config .github/poll/agent-board.json \
+      --supervisor-config .github/supervisor/config.json --pools .github/agentic-job/pools.json --health "$health")
+    [[ $out == act=false ]]
 
 # Validate against the actor that will consume the config, not a moving head.
 build-supervisor-agent-board:
-    rev=$(node -e 'const fs = require("node:fs"); const text = fs.readFileSync(".github/workflows/supervisor.yml", "utf8"); const pins = [...text.matchAll(/^  AGENT_BOARD_REV: ([0-9a-f]{40})$/gm)]; if (pins.length !== 1) throw Error("expected one supervisor pin"); process.stdout.write(pins[0][1]);') && {{ just_executable() }} build-agent-board "$rev"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rev=$(sed -n 's/^  AGENT_BOARD_REV: \([0-9a-f]\{40\}\)$/\1/p' .github/workflows/supervisor.yml)
+    [[ $rev =~ ^[0-9a-f]{40}$ ]] || { echo 'expected one supervisor pin' >&2; exit 1; }
+    {{ just_executable() }} build-agent-board "$rev"
 
-# Without a revision, the configured branch's head; poll.yml and supervisor.yml
+# Without a revision, the configured branch's head; the workflows
 # pass a pinned commit so the program that holds the bot's token is the reviewed one.
 build-agent-board rev="":
     #!/usr/bin/env bash
