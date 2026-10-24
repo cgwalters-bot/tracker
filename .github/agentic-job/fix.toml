@@ -17,7 +17,7 @@ hosts = ["github.com"]
 # fork cgwalters-forge/bootc (`bot/**` below says how apply bounds the head
 # repository). A fix there may not edit `.github` or AGENTS.md (not listed
 # below).
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/forge-infra"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576

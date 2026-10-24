@@ -91,12 +91,12 @@ that account owns only if the repository's default branch has
 (`acceptsOwnerBranches` in agentic-job's
 [`workflow/push.cjs`](https://github.com/cgwalters-forge/agentic-job/blob/main/workflow/push.cjs));
 otherwise apply fails with "owns ... and has no fork of it to push to"
-(#517). So no `cgwalters-bot/*` repository is a dispatch or fix target,
-and a test in `.github/agentic-job/config.test.cjs` keeps it so.
-`cgwalters-bot/praxis-credential-broker` is local-only: its work is pushed
-by hand as branches in the repository itself. To make it a target, its
-owner adds that file to it by hand, then adds it back to both lists and to
-the test's exemption.
+(#517). So a `cgwalters-bot/*` repository is a dispatch or fix target only
+once that file is there, and a test in `.github/agentic-job/config.test.cjs`
+keeps the list of such repositories. `cgwalters-bot/praxis-credential-broker`
+is the one so far (praxis-credential-broker#37): the poll does not follow
+it, so its pull requests are reviewed and merged by hand, and its
+deployment stays in the operator's private infrastructure.
 
 The standing
 instructions of each kind are not part of the brief: `dispatch.yml` puts

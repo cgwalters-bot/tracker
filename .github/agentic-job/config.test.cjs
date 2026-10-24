@@ -194,7 +194,7 @@ test('no repository the bot owns is a dispatch or fix target unless it opts in',
   const { bot } = require('../poll/agent-board.json');
   // Bot-owned repositories whose default branch has accept-owner-branches
   // naming them, in lowercase; add one only after checking that file is there.
-  const optedIn = new Set([]);
+  const optedIn = new Set(['cgwalters-bot/praxis-credential-broker']);
   for (const name of ['dispatch.toml', 'fix.toml']) {
     const bounds = fs.readFileSync(path.join(__dirname, name), 'utf8');
     const repos = JSON.parse(/^repos = (\[.*\])$/m.exec(bounds.split(/^\[/m)[0])[1]);

@@ -80,6 +80,7 @@ packages = ["python3-venv", "nftables", "just"]
 "cgwalters-forge/agent-board" = ["cargo"]
 "cgwalters-forge/tracker" = ["cargo"]
 "cgwalters-forge/misctool" = ["cargo"]
+"cgwalters-bot/praxis-credential-broker" = ["cargo"]
 # The midstream forks (epic #160). composefs-rs builds with pkg-config and
 # OpenSSL for its HTTP fetch; bootc also links libostree, glib and zstd.
 "cgwalters-forge/composefs-rs" = ["cargo", "pkg-config", "libssl-dev"]
