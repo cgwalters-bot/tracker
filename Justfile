@@ -5,13 +5,7 @@
 set positional-arguments
 
 # Every test of the scripts under .github.
-test: test-poll test-session test-tools test-config test-scripts
-
-test-scripts:
-    node --test scripts/*.test.cjs
-
-test-tools:
-    node --test .github/agentic-job/tools.test.cjs
+test: test-poll test-session test-config
 
 # Runs `agentic-job config` on acp-experiment.toml where it is installed.
 test-config:

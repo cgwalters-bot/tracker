@@ -127,8 +127,10 @@ is apart, for dispatch by hand. The pass paces its runs on the pools
 `pr.fixPools`, except that a first round that is only toil goes to
 `pr.toilFixPool`. The run applies
 its own result: a pull request from the bot's fork, or one comment on the
-item. `scripts/wait-run RUN` waits for a run and prints its conclusion and
-failed jobs.
+item. `gh run watch RUN -R cgwalters-forge/tracker --exit-status` waits
+for a run and fails unless it succeeds; `gh run view RUN -R
+cgwalters-forge/tracker --json jobs -q '.jobs[] | select(.conclusion ==
+"failure") | .name'` names its failed jobs.
 
 ## Board writes, questions and status updates
 
@@ -239,7 +241,8 @@ the credentials above brings up a coordinator from nothing:
 3. Read [operator-notes.md](operator-notes.md). Nothing below goes against
    an instruction there.
 4. Run `gh workflow run poll.yml -R cgwalters-forge/tracker` and wait for
-   it with `scripts/wait-run RUN`. It succeeds, and its summary previews
+   it with `gh run watch RUN -R cgwalters-forge/tracker --exit-status`.
+   It succeeds, and its summary previews
    the epics and pull requests the board and `gh pr list` show as open.
 5. Dispatch one research run, `gh workflow run dispatch.yml -R
    cgwalters-forge/tracker -f kind=research -f repo=cgwalters-forge/tracker
