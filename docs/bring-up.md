@@ -107,8 +107,10 @@ with `claude` or `opencode` also gets agentic-job's skills (its
 self-review with a subagent included, and `profiles/implement.md` only
 what is ours. `vibe` gets no skills, so an implement that would run it,
 from the pool or the variable `AGENT`, gets `profiles/implement-full.md`
-instead, the profile as it was before the skill. Fix has no
-skill yet and keeps its full profile. `dispatch.yml` also takes an
+instead, which spells the procedure out. Fix has no skill yet and
+keeps its full profile. Both of these spell out the self-review too: up
+to three passes of a subagent reviewing the diff against the base before
+the run hands it back (#543). `dispatch.yml` also takes an
 optional `pool` input, `claude`, `openai` or `mistral`, which
 `.github/agentic-job/pools.json` maps to a fixed agent and model (`claude`
 with `claude-opus-5-5`, `opencode` with `praxis/gpt-6.1-sol`, `vibe` with
