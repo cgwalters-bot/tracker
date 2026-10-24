@@ -29,7 +29,7 @@ concurrency:
 # a revision reviewed here, never agent-board's moving branch: move it only
 # with a review of what that revision's `pass` does.
 env:
-  AGENT_BOARD_REV: e520ff957f66cb878a9b1b33f3d674d11c9ce246
+  AGENT_BOARD_REV: cb0c04578ce829f1b307e26bea8fa2a844ed58c7
 
 jobs:
   pass:
