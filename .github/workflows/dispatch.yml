@@ -135,8 +135,9 @@ jobs:
           # profiles/implement.md says "Use the implement skill" and leaves
           # the procedure to it. An agent without skills (vibe, from the
           # mistral pool) would get no procedure at all, so it gets
-          # KIND-full.md, the profile as it was before the skill, where one
-          # exists (#524). Fix has no skill yet and no -full file.
+          # KIND-full.md, the procedure spelled out, self-review included,
+          # where one exists (#524, #543). Fix has no skill yet and no -full
+          # file; its one profile spells the procedure out.
           if [[ "$SKILLED" != true && -s "${profile%.md}-full.md" ]]; then
             profile="${profile%.md}-full.md"
           fi
@@ -173,9 +174,10 @@ jobs:
       # run reviews its own change before it hands it back (#543) and
       # profiles/implement.md need not spell the procedure out. The wrapper
       # honours it only for implement with claude or opencode; fix is asked
-      # for too, but keeps its profile's full text until agentic-job has a
-      # fix skill (its #542). Off for an agent without skills, which gets
-      # the full profile instead (the profile job).
+      # for too, but keeps its profile's full text, its own self-review
+      # loop included, until agentic-job has a fix skill (its #542). Off
+      # for an agent without skills, which gets the full profile instead
+      # (the profile job), with the same loop.
       skills: ${{ needs.profile.outputs.skilled == 'true' && (inputs.kind == 'implement' || inputs.kind == 'fix') }}
       apply-environment: agent-apply
       # Comment-only kinds have bounds of their own, comment.toml, the only
