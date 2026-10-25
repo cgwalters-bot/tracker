@@ -242,8 +242,8 @@ test('pools.json has what dispatch.yml reads, and a well-formed allowance', () =
 test('dispatch.yml turns on the skills for implement and fix only', () => {
   assert.deepEqual(dispatch.match(/^ {6}skills: .*$/gm), ["      skills: ${{ needs.profile.outputs.skilled == 'true' && (inputs.kind == 'implement' || inputs.kind == 'fix') }}"]);
   const profile = kind => fs.readFileSync(path.join(__dirname, `profiles/${kind}.md`), 'utf8');
-  assert.match(profile('implement'), /^Use the implement skill\./);
-  assert.doesNotMatch(profile('implement'), /AGENTS\.md|subagent|left undone/);
+  for (const rule of [/^Use the implement skill\./, /named caller/, /end the PR body with a `Caller settings` section/]) assert.match(profile('implement'), rule);
+  assert.doesNotMatch(profile('implement'), /AGENTS\.md|subagent|left undone|file an issue/);
   assert.doesNotMatch(profile('implement-full'), /\bskill\b/);
   assert.match(profile('implement-full'), /^Implement this issue properly with tests/);
   for (const rule of profile('implement').trim().split(/(?<=\.) /).slice(1).filter(rule => !/commit-messages skill/.test(rule))) assert.ok(profile('implement-full').includes(rule), rule);
