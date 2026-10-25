@@ -1,7 +1,7 @@
 # Once a week, the weekly notes post on the organization site
 # (cgwalters-forge/cgwalters-forge.github.io, its README's "Adding a
 # post"). This gathers the week's material, the board's `agent-board
-# changes` and the project's status updates, into an issue in the site
+# changes`, public releases and the project's status updates, into an issue in the site
 # repository, puts it on the board at P0, and starts dispatch.yml's
 # `implement` kind on it, which writes the post and opens a pull request
 # that closes the issue. The site repository is in dispatch.toml for that,
@@ -75,7 +75,8 @@ jobs:
           # 64 KiB once its profile and brief are added to the issue body,
           # which leaves this much for the body.
           LIMIT: '56000'
-          # The changes' fixed share of it; the status updates get the rest.
+          # The changes' fixed share of it; releases use at most 10 KB,
+          # and the status updates get the rest.
           CHANGES_CHARS: '26000'
           # The newest hundred, more than a week has had.
           UPDATES_QUERY: >-
@@ -89,7 +90,7 @@ jobs:
             {week}. A run that tracker's weekly-blog.yml starts writes the
             post, content/blog/{week}.md, from this issue alone, and opens a
             pull request that closes it. Below are the board's changes from
-            {since} to {until} (`agent-board changes`), then the project's
+            {since} to {until} (`agent-board changes`), public releases, then the project's
             status updates in that window, oldest first.
         run: |
           # The week ends on the latest Sunday at 18:00 UTC, when the
@@ -121,17 +122,44 @@ jobs:
           "$AGENT_BOARD" --owner "$owner" --project "$project" --board-config .github/poll/agent-board.json \
             changes --since "$since" --until "$until" --format markdown --public-only --max-chars "$CHANGES_CHARS" \
             > "$material/changes.md"
+          # The bot can read private repositories: check visibility before
+          # copying release metadata into a public issue. Read at most 1,000
+          # releases per followed repository; refuse an incomplete listing
+          # rather than silently claiming that a release was not published.
+          : > "$material/releases.jsonl"
+          for repo in $(jq -r '.follow[]' .github/poll/agent-board.json); do
+            visibility=$(gh api "repos/$repo" --jq .visibility)
+            [[ $visibility == public ]] || continue
+            for page in {1..10}; do
+              gh api "repos/$repo/releases?per_page=100&page=$page" > "$material/page.json"
+              jq --arg repo "$repo" --arg since "$since" --arg until "$until" -c '
+                .[] | select(.draft == false and .published_at != null and .published_at >= $since and .published_at < $until)
+                | {repository: $repo, tag: .tag_name, name: .name, url: .html_url, published_at}
+                ' "$material/page.json" >> "$material/releases.jsonl"
+              count=$(jq length "$material/page.json")
+              if [[ $count -lt 100 ]]; then break; fi
+              [[ $page -lt 10 ]] || { echo "::error::release listing for $repo exceeds 1,000 entries"; exit 1; }
+            done
+          done
           gh api graphql -f owner="$owner" -F number="$project" -f query="$UPDATES_QUERY" \
             --jq '.data.organization.projectV2.statusUpdates.nodes' > "$material/updates.json"
-          # The changes, then as many status updates as fit in the rest, the
+          # The changes and releases, then as many status updates as fit in the rest, the
           # oldest left out first. Their HTML comments, the supervisor's
           # hidden state, are no material.
           brief=${BRIEF//\{week\}/$week}
           brief=${brief//\{since\}/$since}
           brief="${brief//\{until\}/$until}${partial:+ $partial}"
-          jq -rn --arg brief "$brief" --arg since "$since" --arg until "$until" --argjson limit "$LIMIT" \
+          jq -jn --arg brief "$brief" --arg since "$since" --arg until "$until" --argjson limit "$LIMIT" \
             --arg project_url "https://github.com/orgs/$owner/projects/$project" \
-            --rawfile changes "$material/changes.md" --slurpfile updates "$material/updates.json" '
+            --rawfile changes "$material/changes.md" --slurpfile releases "$material/releases.jsonl" --slurpfile updates "$material/updates.json" '
+            def releases($r; $left):
+              "\n## Releases published in the window\n\n" +
+              (if $left > 0 then "_\($left) releases left out to fit the release material budget._\n\n" else "" end) +
+              (if $r == [] and $left == 0 then "_None were published this week._\n" else "" end) +
+              ($r | map("- " + ([.repository, .tag, (.name // ""), .url, .published_at] | map(gsub("[\\r\\n]"; " ")) | join(" | ")) + "\n") | join(""));
+            ($releases | sort_by(.repository, .published_at, .tag)) as $r
+            | first(range(($r | length); -1; -1) as $n | releases($r[:$n]; ($r | length) - $n) | select(utf8bytelength <= 10000)) as $release_material
+            |
             def updates($u; $left):
               "\n## Project status updates, oldest first\n\n" +
               (if $left == 0 then "" elif $u == [] then "_All \($left) status updates of the week are left out to fit the issue body limit; they are on the project, \($project_url)._\n"
@@ -141,10 +169,10 @@ jobs:
             ($updates[0] | map(select(.createdAt >= $since and .createdAt < $until))
               | map(.body = (.body // "" | gsub("<!--[\\s\\S]*?-->"; "") | sub("\\s+\\z"; "")))
               | sort_by(.createdAt)) as $u
-            | "\($brief)\n\n## Changes from \($since) to \($until)\n\n\($changes)" as $top
-            | first(range(0; ($u | length) + 1) as $k | $top + updates($u[$k:]; $k) | select(utf8bytelength <= $limit))
+            | "\($brief)\n\n## Changes from \($since) to \($until)\n\n\($changes)\($release_material)" as $top
+            | first(range(0; ($u | length) + 1) as $k | $top + updates($u[$k:]; $k) + "\n" | select(utf8bytelength <= $limit))
             ' > "$material/body.md"
-          [[ -s "$material/body.md" ]] || { echo "::error::the changes alone exceed $LIMIT characters"; exit 1; }
+          [[ -s "$material/body.md" ]] || { echo "::error::the changes and releases exceed $LIMIT bytes"; exit 1; }
           {
             echo "week=$week"
             echo "body=$material/body.md"
@@ -209,7 +237,7 @@ jobs:
           TASK: >-
             Write this week's post for the organization site's weekly notes
             from this issue's material only: its body, the board's changes
-            of the week and the project's status updates. Add one file,
+            of the week, public releases and the project's status updates. Add one file,
             content/blog/{week}.md, with TOML front matter giving
             title = "Week ending {week}" and date = {week}, as the
             repository's README shows, and change nothing else. Open with
