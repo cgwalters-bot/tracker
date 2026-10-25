@@ -26,6 +26,10 @@
   "mergeQueue": { "tries": 3 },
   "pace": { "repository": "cgwalters-forge/bot-ops", "issue": 1, "bot": "cgwalters-bot", "marginPercent": 5 },
   "kindPools": { "triage": "claude", "research": "claude" },
+  "review": {
+    "targets": ["ostreedev/*", "bootc-dev/*", "containers/*", "coreos/*"],
+    "checkbox": "Send the newest draft as cgwalters-bot"
+  },
   "epics": {
     "repository": "cgwalters-forge/tracker"
   },
