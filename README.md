@@ -329,3 +329,34 @@ its closed PRs, halts on one still open, and does not start while main has
 a version bump that was never released. `agent-board release-train --config
 .github/release-train/config.json` is a dry pass with the token in
 `GH_TOKEN`; its tests are agent-board's.
+
+## Weekly runs
+
+Two scheduled workflows start a run of `dispatch.yml` as the pass does,
+with the job token and `actions: write`. `weekly-eval.yml`, on Tuesdays,
+does only that: it starts a `research` run that re-evaluates our tools against gh-aw
+and the like and comments on #519.
+
+`weekly-blog.yml`, on Sundays, gathers the week's material for the weekly
+notes on the organization site (cgwalters-forge/cgwalters-forge.github.io,
+`/blog/`): `agent-board changes --public-only` (the status updates are
+copied whole: they are public because the project is) from the Sunday
+before at 18:00 UTC to this one (`--until`), trimmed to a fixed 30,000
+characters with `--max-chars`, then the project's status updates in that
+window, oldest first. It files that, after a short brief, as the issue
+`Weekly notes: week ending YYYY-MM-DD` in the site repository, adds it to
+the board at P0 and starts an `implement` run on it that writes the post,
+`content/blog/YYYY-MM-DD.md`, and opens a pull request that closes the
+issue. The issue and the board item are written with `CGWALTERS_BOT_PAT`,
+at the agent-board commit the workflow pins. The status updates get the
+rest of GitHub's body limit, without their HTML comments; the oldest are
+left out first, and the body says so. A run before the week ends refuses,
+unless started with `partial=true`, which files what there is so far and
+says so; that is then the week's material, as a later run reuses the
+issue. A re-run reuses the week's issue, the latest Sunday's, as it was
+filed; once it is closed, or while a pull request that closes it is open
+or a run for it is queued or running, nothing more is started. The
+schedule is off unless the repository variable `WEEKLY_BLOG` is `enabled`;
+`gh workflow run weekly-blog.yml` runs it at once. The site repository has
+no review workflow yet, so the operator's approval is what lets the pass
+merge the post.

@@ -1,0 +1,237 @@
+# Once a week, the weekly notes post on the organization site
+# (cgwalters-forge/cgwalters-forge.github.io, its README's "Adding a
+# post"). This gathers the week's material, the board's `agent-board
+# changes` and the project's status updates, into an issue in the site
+# repository, puts it on the board at P0, and starts dispatch.yml's
+# `implement` kind on it, which writes the post and opens a pull request
+# that closes the issue. The site repository is in dispatch.toml for that,
+# and followed by the pass, so the post merges once approved.
+#
+# The issue and the board item are written with the bot's token, as the
+# pass writes them; the run is started with the job token and
+# `actions: write`, as weekly-eval.yml starts its own.
+name: weekly-blog
+
+on:
+  schedule:
+    # Sundays 18:00 UTC.
+    - cron: '0 18 * * 0'
+  workflow_dispatch:
+    inputs:
+      partial:
+        description: Before the week ends (Sunday 18:00 UTC), file what there is so far; the week's post is then written from that
+        type: boolean
+        default: false
+
+permissions: {}
+concurrency:
+  group: weekly-blog
+  cancel-in-progress: false
+
+# The agent-board commit this runs with the bot's token, a reviewed one
+# on agent-board's main as in poll.yml, from which it differs only by
+# `changes --until`; move it with the others.
+env:
+  AGENT_BOARD_REV: 495166b5d4fb2129a96921cef606a81d2b2889d0
+  SITE_REPO: cgwalters-forge/cgwalters-forge.github.io
+
+jobs:
+  post:
+    # dispatch.yml only runs from the default branch, so the task it is
+    # given is this file's as the default branch has it. The schedule
+    # waits for the operator's WEEKLY_BLOG; a run by hand does not.
+    if: >-
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      (github.event_name == 'workflow_dispatch' || vars.WEEKLY_BLOG == 'enabled')
+    runs-on: ubuntu-26.04
+    # The build (10) and a few API calls.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      # Built each run and never cached, as in poll.yml.
+      - name: Build agent-board
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
+      - name: Gather the week's material
+        id: material
+        env:
+          # The bot's token: `changes` lists the bot's own new pull requests
+          # as the token's viewer, and the job token cannot read the
+          # organization's project.
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+          # GitHub refuses an issue body over 65536 characters; the margin
+          # is for counting differences.
+          LIMIT: '65000'
+          # The changes' fixed share of it; the status updates get the rest.
+          CHANGES_CHARS: '30000'
+          # The newest hundred, more than a week has had.
+          UPDATES_QUERY: >-
+            query($owner: String!, $number: Int!) { organization(login: $owner) {
+            projectV2(number: $number) { statusUpdates(first: 100,
+            orderBy: {field: CREATED_AT, direction: DESC}) {
+            nodes { createdAt status body } } } } }
+          PARTIAL: ${{ inputs.partial }}
+          BRIEF: >-
+            The material for the weekly notes post of the week ending
+            {week}. A run that tracker's weekly-blog.yml starts writes the
+            post, content/blog/{week}.md, from this issue alone, and opens a
+            pull request that closes it. Below are the board's changes from
+            {since} to {until} (`agent-board changes`), then the project's
+            status updates in that window, oldest first.
+        run: |
+          # The week ends on the latest Sunday at 18:00 UTC, when the
+          # schedule runs, so a run by hand or a re-run later in the week
+          # finds the same issue and the same window. Before that time on a
+          # Sunday the week is not over: a run then refuses, or with
+          # `partial` takes the window up to now and says so.
+          week=$(date -u -d "-$(date -u +%w) days" +%F)
+          since=$(date -u -d "$week 18:00 7 days ago" +%Y-%m-%dT%H:%M:%SZ)
+          until=$(date -u -d "$week 18:00" +%Y-%m-%dT%H:%M:%SZ)
+          now=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          partial=
+          if [[ "$now" < "$until" ]]; then
+            if [[ "$PARTIAL" != true ]]; then
+              echo "::error::the week ending $week is not over until $until; run with partial=true to file what there is so far"
+              exit 1
+            fi
+            until=$now
+            partial="_Partial: filed before the end of the week, with what there was at $now._"
+          fi
+          owner=$(jq -er .board.owner .github/pass.json)
+          project=$(jq -er .board.project .github/pass.json)
+          material="$RUNNER_TEMP/material"
+          mkdir -p "$material"
+          # Nothing of a private repository goes into the public issue. A
+          # busy week's list is about 100 KB; --max-chars trims it as a
+          # status update is trimmed, the longest sections first, with
+          # `+K more` lines.
+          "$AGENT_BOARD" --owner "$owner" --project "$project" --board-config .github/poll/agent-board.json \
+            changes --since "$since" --until "$until" --format markdown --public-only --max-chars "$CHANGES_CHARS" \
+            > "$material/changes.md"
+          gh api graphql -f owner="$owner" -F number="$project" -f query="$UPDATES_QUERY" \
+            --jq '.data.organization.projectV2.statusUpdates.nodes' > "$material/updates.json"
+          # The changes, then as many status updates as fit in the rest, the
+          # oldest left out first. Their HTML comments, the supervisor's
+          # hidden state, are no material.
+          brief=${BRIEF//\{week\}/$week}
+          brief=${brief//\{since\}/$since}
+          brief="${brief//\{until\}/$until}${partial:+ $partial}"
+          jq -rn --arg brief "$brief" --arg since "$since" --arg until "$until" --argjson limit "$LIMIT" \
+            --arg project_url "https://github.com/orgs/$owner/projects/$project" \
+            --rawfile changes "$material/changes.md" --slurpfile updates "$material/updates.json" '
+            def updates($u; $left):
+              "\n## Project status updates, oldest first\n\n" +
+              (if $left == 0 then "" elif $u == [] then "_All \($left) status updates of the week are left out to fit the issue body limit; they are on the project, \($project_url)._\n"
+                else "_The \($left) oldest status updates of the week are left out to fit the issue body limit; they are on the project, \($project_url)._\n\n" end) +
+              (if $u == [] and $left == 0 then "_None were posted this week._\n" else "" end) +
+              ($u | map("### \(.createdAt), \(.status // "no status")\n\n\(.body)\n") | join("\n"));
+            ($updates[0] | map(select(.createdAt >= $since and .createdAt < $until))
+              | map(.body = (.body // "" | gsub("<!--[\\s\\S]*?-->"; "") | sub("\\s+\\z"; "")))
+              | sort_by(.createdAt)) as $u
+            | "\($brief)\n\n## Changes from \($since) to \($until)\n\n\($changes)" as $top
+            | first(range(0; ($u | length) + 1) as $k | $top + updates($u[$k:]; $k) | select(length <= $limit))
+            ' > "$material/body.md"
+          [[ -s "$material/body.md" ]] || { echo "::error::the changes alone exceed $LIMIT characters"; exit 1; }
+          {
+            echo "week=$week"
+            echo "body=$material/body.md"
+          } >> "$GITHUB_OUTPUT"
+          echo "Material: $(wc -m < "$material/body.md") characters, $(jq --arg since "$since" --arg until "$until" 'map(select(.createdAt >= $since and .createdAt < $until)) | length' "$material/updates.json") status updates in the window"
+      # One issue a week: a re-run finds this week's by its exact title
+      # among the bot's issues there and leaves its body as it was filed,
+      # the material a post may already be written from. A closed one
+      # means the post is done, and an open pull request that closes it
+      # means it is written: then nothing more is started.
+      - name: File the week's issue
+        id: issue
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          WEEK: ${{ steps.material.outputs.week }}
+          BODY: ${{ steps.material.outputs.body }}
+          CLOSING_QUERY: >-
+            query($owner: String!, $name: String!, $number: Int!) {
+            repository(owner: $owner, name: $name) { issue(number: $number) {
+            closedByPullRequestsReferences(first: 1, includeClosedPrs: false) { totalCount } } } }
+        run: |
+          title="Weekly notes: week ending $WEEK"
+          bot=$(jq -er .bot .github/pass.json)
+          found=$(gh api --paginate "repos/$SITE_REPO/issues?state=all&creator=$bot&per_page=100" | jq -s add |
+            jq -c --arg title "$title" '[.[] | select(.pull_request == null and .title == $title)] | min_by(.number) // empty')
+          if [[ -z "$found" ]]; then
+            url=$(gh issue create -R "$SITE_REPO" --title "$title" --body-file "$BODY")
+            number=${url##*/}
+            echo "Filed $url"
+          else
+            number=$(jq -r .number <<< "$found")
+            if [[ $(jq -r .state <<< "$found") == closed ]]; then
+              echo "::notice::$SITE_REPO#$number, '$title', is closed: this week's post is done"
+              exit 0
+            fi
+            echo "Reused $SITE_REPO#$number"
+            prs=$(gh api graphql -f owner="${SITE_REPO%/*}" -f name="${SITE_REPO#*/}" -F number="$number" -f query="$CLOSING_QUERY" \
+              --jq '.data.repository.issue.closedByPullRequestsReferences.totalCount')
+            if [[ "$prs" != 0 ]]; then
+              echo "::notice::$SITE_REPO#$number already has an open pull request that closes it; no new run is started"
+              exit 0
+            fi
+          fi
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+      - name: Put it on the board at P0
+        if: steps.issue.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+          NUMBER: ${{ steps.issue.outputs.number }}
+        run: |
+          "$AGENT_BOARD" --owner "$(jq -er .board.owner .github/pass.json)" --project "$(jq -er .board.project .github/pass.json)" \
+            item add "$SITE_REPO#$NUMBER" --priority P0 --apply
+      - name: Start the post's run
+        if: steps.issue.outputs.number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          WEEK: ${{ steps.material.outputs.week }}
+          NUMBER: ${{ steps.issue.outputs.number }}
+          # After profiles/implement.md. {week} and {issue} are filled in.
+          TASK: >-
+            Write this week's post for the organization site's weekly notes
+            from this issue's material only: its body, the board's changes
+            of the week and the project's status updates. Add one file,
+            content/blog/{week}.md, with TOML front matter giving
+            title = "Week ending {week}" and date = {week}, as the
+            repository's README shows, and change nothing else. Open with
+            the week's releases, rolled up by project. Then give three to
+            five highlights and one to three honest lowlights (outages,
+            reverts, stalls), each linking to its pull requests or issues.
+            Write plain prose, with no hype, in under about 600 words. Use
+            only what is in the material and in the public repositories it
+            links. Never mention security advisories, embargoed fixes,
+            private repositories or infrastructure host names. Write
+            Markdown only: no raw HTML, script or embedded content. Open a
+            pull request whose body says "Closes #{issue}".
+        run: |
+          # A run already queued or writing for this issue has no pull
+          # request yet; dispatch.yml names its runs `implement REPO#N`.
+          active=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow dispatch.yml --limit 100 \
+            --json displayTitle,status |
+            jq --arg title "implement $SITE_REPO#$NUMBER" \
+              '[.[] | select(.status != "completed" and (.displayTitle == $title or (.displayTitle | startswith($title + " "))))] | length')
+          if [[ "$active" != 0 ]]; then
+            echo "::notice::a dispatch.yml run for $SITE_REPO#$NUMBER is already queued or running; no new run is started"
+            exit 0
+          fi
+          task=${TASK//\{week\}/$WEEK}
+          gh workflow run dispatch.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
+            -f kind=implement -f repo="$SITE_REPO" -f item="$NUMBER" -f task="${task//\{issue\}/$NUMBER}"
