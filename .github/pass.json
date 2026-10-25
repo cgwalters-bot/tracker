@@ -29,7 +29,7 @@
   "triage": true,
   "planPools": ["claude", "openai"],
   "triagePools": ["openai", "claude"],
-  "pools": {"claude": {"target": 0.95, "burst": 95}, "openai": {"target": 0.95, "burst": 3}},
+  "pools": {"claude": {"target": 0.95, "burst": 95}, "openai": {"target": 0.95, "burst": 50}},
   "usage": {"repository": "cgwalters-forge/bot-ops", "issue": 1, "probe": true},
   "budget": {"weeklyUsd": 1000},
   "pr": {
