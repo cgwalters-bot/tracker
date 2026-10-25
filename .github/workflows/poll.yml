@@ -97,7 +97,7 @@ jobs:
         # watched; stderr too, so that the summary says why a pass failed.
         run: |
           "$AGENT_BOARD" pass --config "$RUNNER_TEMP/pass.json" ${APPLY:+"$APPLY"} \
-            --max-dispatch 2 --max-writes 20 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
+            --max-dispatch 4 --max-writes 20 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
