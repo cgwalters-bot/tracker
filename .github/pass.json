@@ -10,7 +10,8 @@
     "cgwalters-forge/actions",
     "cgwalters-forge/review",
     "cgwalters-forge/agenthome",
-    "cgwalters-forge/forge-infra"
+    "cgwalters-forge/forge-infra",
+    "cgwalters-forge/cgwalters-forge.github.io"
   ],
   "workRepositories": [
     "cgwalters-forge/tracker",

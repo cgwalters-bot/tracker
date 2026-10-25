@@ -5,8 +5,11 @@
 # into their main, which tracks upstream; the operator promotes work upstream.
 # The bot-owned praxis-credential-broker is a target the poll does not
 # follow either (docs/bring-up.md).
+# The organization site cgwalters-forge/cgwalters-forge.github.io is a target
+# for the weekly notes post (weekly-blog.yml). The poll follows it, but it has
+# no review workflow yet, so only the operator's approval merges its posts.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576
