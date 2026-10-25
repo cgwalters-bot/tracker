@@ -71,11 +71,12 @@ jobs:
           # organization's project.
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
-          # GitHub refuses an issue body over 65536 characters; the margin
-          # is for counting differences.
-          LIMIT: '65000'
+          # Bytes, not characters: the dispatch wrapper refuses a task over
+          # 64 KiB once its profile and brief are added to the issue body,
+          # which leaves this much for the body.
+          LIMIT: '56000'
           # The changes' fixed share of it; the status updates get the rest.
-          CHANGES_CHARS: '30000'
+          CHANGES_CHARS: '26000'
           # The newest hundred, more than a week has had.
           UPDATES_QUERY: >-
             query($owner: String!, $number: Int!) { organization(login: $owner) {
@@ -141,7 +142,7 @@ jobs:
               | map(.body = (.body // "" | gsub("<!--[\\s\\S]*?-->"; "") | sub("\\s+\\z"; "")))
               | sort_by(.createdAt)) as $u
             | "\($brief)\n\n## Changes from \($since) to \($until)\n\n\($changes)" as $top
-            | first(range(0; ($u | length) + 1) as $k | $top + updates($u[$k:]; $k) | select(length <= $limit))
+            | first(range(0; ($u | length) + 1) as $k | $top + updates($u[$k:]; $k) | select(utf8bytelength <= $limit))
             ' > "$material/body.md"
           [[ -s "$material/body.md" ]] || { echo "::error::the changes alone exceed $LIMIT characters"; exit 1; }
           {
