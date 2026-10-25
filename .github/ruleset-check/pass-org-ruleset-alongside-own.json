@@ -1,0 +1,6 @@
+[
+  {"type": "deletion", "ruleset_source_type": "Organization", "ruleset_source": "cgwalters-forge", "ruleset_id": 25084478},
+  {"type": "pull_request", "parameters": {"required_approving_review_count": 1, "dismiss_stale_reviews_on_push": true, "require_last_push_approval": false}, "ruleset_source_type": "Organization", "ruleset_source": "cgwalters-forge", "ruleset_id": 25084478},
+  {"type": "pull_request", "parameters": {"required_approving_review_count": 0, "dismiss_stale_reviews_on_push": false, "require_last_push_approval": false}, "ruleset_source_type": "Repository", "ruleset_source": "cgwalters-forge/review", "ruleset_id": 24017897},
+  {"type": "required_status_checks", "parameters": {"required_status_checks": [{"context": "ci"}]}, "ruleset_source_type": "Repository", "ruleset_source": "cgwalters-forge/review", "ruleset_id": 24017897}
+]

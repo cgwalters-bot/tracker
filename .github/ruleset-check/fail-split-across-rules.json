@@ -1,0 +1,4 @@
+[
+  {"type": "pull_request", "parameters": {"required_approving_review_count": 1, "dismiss_stale_reviews_on_push": false}, "ruleset_source_type": "Organization", "ruleset_source": "cgwalters-forge", "ruleset_id": 25084478},
+  {"type": "pull_request", "parameters": {"required_approving_review_count": 0, "dismiss_stale_reviews_on_push": true}, "ruleset_source_type": "Repository", "ruleset_source": "cgwalters-forge/actions", "ruleset_id": 24147876}
+]

@@ -1,0 +1,3 @@
+[
+  {"type": "pull_request", "parameters": {"required_approving_review_count": 2, "dismiss_stale_reviews_on_push": true}, "ruleset_source_type": "Repository", "ruleset_source": "cgwalters-forge/agentic-job", "ruleset_id": 1}
+]
