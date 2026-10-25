@@ -1,0 +1,37 @@
+# Proposes moving every workflow's AGENT_BOARD_REV to agent-board's main
+# once that commit's CI is green: `just bump-agent-board` opens or updates
+# one pull request from the bot's fork, which the review and the pass then
+# take like any bot PR. Off unless the repository variable AGENT_BOARD_PIN
+# is `enabled`.
+name: agent-board-pin
+on:
+  schedule:
+    - cron: '41 * * * *'
+  workflow_dispatch:
+permissions: {}
+# Two runs at once could each push the branch.
+concurrency:
+  group: agent-board-pin
+  cancel-in-progress: false
+jobs:
+  bump:
+    if: ${{ vars.AGENT_BOARD_PIN == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - name: Open or update the pin bump
+        timeout-minutes: 5
+        env:
+          # The bot's token, as poll.yml's: it pushes to the bot's fork, with
+          # the workflows permission since the pins are in workflow files,
+          # and opens the PR here.
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+        run: just bump-agent-board

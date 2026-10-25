@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-config test-supervisor-config test-review-gate test-weekly-material
+test: test-config test-supervisor-config test-review-gate test-weekly-material agent-board-pin
 
 # Exercise the actual release selection and body filters without API calls.
 test-weekly-material:
@@ -84,6 +84,69 @@ test-weekly-material:
     assert len(body(limit=size).encode()) == size
     assert body(limit=size - 1) == ''
     print('ok weekly release selection, section order, empty windows, omissions and byte budget')
+
+# The one agent-board commit every workflow pins as `  AGENT_BOARD_REV:`,
+# printed; fails when the workflows pin different revisions, or none, so a
+# move by hand cannot miss a workflow.
+agent-board-pin:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pins=$(sed -n 's/^  AGENT_BOARD_REV: //p' .github/workflows/*.yml | sort -u)
+    if ! [[ $pins =~ ^[0-9a-f]{40}$ ]]; then
+      echo "::error::.github/workflows pin more than one agent-board revision, or none:" >&2
+      grep -H '^  AGENT_BOARD_REV:' .github/workflows/*.yml >&2 || true
+      exit 1
+    fi
+    echo "$pins"
+
+# Opens or updates the one pull request, from the bot's fork, that moves
+# every AGENT_BOARD_REV to the head of agent-board's configured branch
+# (.github/poll/agent-board.json), once all that commit's check runs have
+# passed and it is ahead of the pin (agent-board-pin.yml). It commits in this
+# checkout, and needs GITHUB_REPOSITORY and GH_TOKEN to push and open the PR.
+bump-agent-board:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pin=$({{ just_executable() }} agent-board-pin)
+    source=$(jq -er .source .github/poll/agent-board.json)
+    branch=$(jq -er .branch .github/poll/agent-board.json)
+    bot=$(jq -er .bot .github/poll/agent-board.json)
+    upstream=${source#https://github.com/}
+    head=$(gh api "repos/$upstream/commits/$branch" --jq .sha)
+    [[ $head =~ ^[0-9a-f]{40}$ ]]
+    if [[ $head == "$pin" ]]; then echo "the pin is $branch's head $head"; exit 0; fi
+    runs=$(gh api --paginate "repos/$upstream/commits/$head/check-runs" --jq '.check_runs[] | {name, status, conclusion}' | jq -cs .)
+    if ! jq -e 'length > 0 and all(.[]; .status == "completed" and (.conclusion | IN("success", "neutral", "skipped")))' <<< "$runs" > /dev/null; then
+      echo "$head: CI is not green yet: $runs"; exit 0
+    fi
+    # Never backwards or onto rewritten history; compare lists at most 250 commits.
+    compare=$(gh api "repos/$upstream/compare/$pin...$head")
+    status=$(jq -r .status <<< "$compare")
+    [[ $status == ahead ]] || { echo "::error::$head is $status of the pin $pin, not ahead"; exit 1; }
+    title="workflows: Move agent-board to ${head:0:7}"
+    pr_branch=agent-board-pin
+    open=$(gh pr list --repo "$GITHUB_REPOSITORY" --author "$bot" --head "$pr_branch" --state open --json number,title --jq '.[0] // empty')
+    if [[ $(jq -r '.title // ""' <<< "$open") == "$title" ]]; then echo "already proposed: $title"; exit 0; fi
+    fork=$(gh api --paginate "repos/$GITHUB_REPOSITORY/forks" --jq ".[] | select(.owner.login == \"$bot\") | .full_name" | head -n1)
+    [[ -n $fork ]] || { echo "::error::$bot has no fork of $GITHUB_REPOSITORY"; exit 1; }
+    body=$(
+      echo "Every \`AGENT_BOARD_REV\` in \`.github/workflows/\` moves from $pin to $head, $branch's head, whose check runs all passed. Review [what changes]($source/compare/$pin...$head) in the program given the bot's token. The agent-board commits in between:"
+      echo
+      # Subjects in code spans, so their #N and @login do not reference here.
+      jq -r --arg s "$source" '.commits[] | "- [\(.sha[0:7])](\($s)/commit/\(.sha)) `\(.commit.message | split("\n")[0] | gsub("`"; "'\''"))`"' <<< "$compare"
+      jq -r 'if .total_commits > (.commits | length) then "\n\(.total_commits - (.commits | length)) more commits are not listed." else empty end' <<< "$compare"
+    )
+    sed -i "s/^  AGENT_BOARD_REV: $pin\$/  AGENT_BOARD_REV: $head/" .github/workflows/*.yml
+    [[ $({{ just_executable() }} agent-board-pin) == "$head" ]]
+    email=$(gh api "users/$bot" --jq '"\(.id)+\(.login)@users.noreply.github.com"')
+    git -c user.name="$bot" -c user.email="$email" commit -q -a -m "$title" -m "$body"
+    gh auth setup-git
+    git push -q --force "https://github.com/$fork" "HEAD:refs/heads/$pr_branch"
+    if [[ -n $open ]]; then
+      gh pr edit "$(jq -r .number <<< "$open")" --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
+    else
+      gh pr create --repo "$GITHUB_REPOSITORY" --head "${fork%%/*}:$pr_branch" --base "$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef --jq .defaultBranchRef.name)" --title "$title" --body "$body"
+    fi
 
 # Whether the effective rules of a branch, GitHub's
 # `repos/OWNER/REPO/rules/branches/BRANCH` response on stdin, hold what the

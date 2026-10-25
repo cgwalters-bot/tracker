@@ -330,6 +330,18 @@ a version bump that was never released. `agent-board release-train --config
 .github/release-train/config.json` is a dry pass with the token in
 `GH_TOKEN`; its tests are agent-board's.
 
+## The agent-board pin
+
+Every workflow that builds agent-board pins the same commit as
+`AGENT_BOARD_REV`; `just agent-board-pin`, part of `just test` in CI, fails
+when they differ. Hourly, `.github/workflows/agent-board-pin.yml` runs `just
+bump-agent-board`: when agent-board's main is ahead of the pin and all its
+check runs passed, it opens or updates one pull request from the bot's fork
+(branch `agent-board-pin`) moving every pin to it, listing the commits in
+between, and the review and the pass take it like any bot PR. It is off
+unless the repository variable `AGENT_BOARD_PIN` is `enabled`, and uses
+`CGWALTERS_BOT_PAT`, which needs the workflows permission on the fork.
+
 ## Weekly runs
 
 Two scheduled workflows start a run of `dispatch.yml` as the pass does,
