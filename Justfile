@@ -5,7 +5,52 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-config test-supervisor-config
+test: test-config test-supervisor-config test-review-gate
+
+# Whether the effective rules of a branch, GitHub's
+# `repos/OWNER/REPO/rules/branches/BRANCH` response on stdin, hold what the
+# `[unprotected_files]` bounds in dispatch.toml rest on: one pull_request
+# rule requiring an approval and dismissing stale approvals on push. Any one
+# rule is enough, as rulesets add up (review's own requires none; the org's
+# does), but both must be on the same rule. Anything but an array fails.
+review-gate:
+    @jq -e 'type == "array" and any(.[]; .type == "pull_request" and .parameters.required_approving_review_count >= 1 and .parameters.dismiss_stale_reviews_on_push == true)' > /dev/null
+
+# review-gate on each fixture under .github/ruleset-check, which must
+# pass if its name starts with pass- and fail otherwise.
+test-review-gate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in .github/ruleset-check/*.json; do
+      want=fail; [[ $(basename "$f") == pass-* ]] && want=pass
+      got=fail; {{ just_executable() }} review-gate < "$f" 2>/dev/null && got=pass
+      [[ $got == "$want" ]] || { echo "$f: want $want, got $got" >&2; exit 1; }
+      echo "ok $f ($want)"
+    done
+
+# review-gate on the default branch of every repository in
+# unprotected_files.repos (ruleset-check.yml). A repository that fails it,
+# or whose rules cannot be read, gets a ::error with the pull_request rules
+# found and is listed in the step output `failed`; then the recipe fails.
+check-review-gate:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    repos=$(python3 -c 'import sys, tomllib; print(*tomllib.load(open(sys.argv[1], "rb"))["unprotected_files"]["repos"])' .github/agentic-job/dispatch.toml)
+    failed=()
+    for repo in $repos; do
+      rules=
+      if branch=$(gh api "repos/$repo" --jq .default_branch) &&
+        rules=$(gh api --paginate "repos/$repo/rules/branches/$branch" | jq -cs add); then
+        if {{ just_executable() }} review-gate <<< "$rules"; then echo "ok $repo"; continue; fi
+        found=$(jq -c '[.[]? | select(.type == "pull_request") | {ruleset_id, ruleset_source} + (.parameters | {required_approving_review_count, dismiss_stale_reviews_on_push})]' <<< "$rules")
+        echo "::error::$repo: no pull_request rule on $branch requires an approval and dismisses stale approvals on push; found $found"
+      else
+        echo "::error::$repo: could not read the rules of its default branch"
+      fi
+      failed+=("$repo")
+    done
+    echo "failed=${failed[*]}" >> "${GITHUB_OUTPUT:-/dev/null}"
+    [[ ${#failed[@]} -eq 0 ]]
 
 # Runs `agentic-job config` on acp-experiment.toml where it is installed.
 test-config:

@@ -1,0 +1,66 @@
+# Once a day, check the one ruleset property the `[unprotected_files]` bounds
+# in .github/agentic-job/dispatch.toml rest on: on the default branch of each
+# repository listed there, a pull_request rule requires an approving review
+# and dismisses stale approvals on push (#538). Without it a run's
+# `.github/` edit there merges with no review, and nothing else would notice
+# a ruleset edited back to 0 approvals. The effective rules of a public
+# repository, the org ruleset's included, are readable with the job token,
+# so no secret is read; diffing the full rulesets against docs/rulesets/
+# would need an admin:org token and is left out.
+name: ruleset-check
+
+on:
+  schedule:
+    # Daily 05:23 UTC.
+    - cron: '23 5 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      failed: ${{ steps.check.outputs.failed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A pinned just: Ubuntu's apt carries an old one (1.21 on 24.04).
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - id: check
+        run: just check-review-gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # Opens or comments on one issue here, so drift is seen by more than a red
+  # run. Its own job, so the token that can write issues never runs the
+  # check's API reads. It also runs when the check failed before listing
+  # any repository, the read of dispatch.toml for one.
+  report:
+    needs: check
+    if: ${{ failure() && needs.check.result == 'failure' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open or comment on the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          FAILED: ${{ needs.check.outputs.failed }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # One fixed title, so a later failure comments on the open issue
+          # rather than opening another.
+          TITLE: 'Ruleset drift: a repository in unprotected_files lost its review gate'
+        run: |
+          body="Failing: ${FAILED:-none listed; the check itself failed}. Each needs a pull_request rule on its default branch with required_approving_review_count >= 1 and dismiss_stale_reviews_on_push; until then remove it from unprotected_files.repos in .github/agentic-job/dispatch.toml. Details: $RUN"
+          issue=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title --jq "first(.[] | select(.title == env.TITLE) | .number)")
+          if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
+          else gh issue create --title "$TITLE" --body "$body"; fi

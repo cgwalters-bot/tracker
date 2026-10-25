@@ -220,6 +220,13 @@ by repository, taken before changing them. To put one back, look up the
 ruleset's id with `gh api repos/OWNER/REPO/rulesets` and run
 `jq '{name, target, enforcement, conditions, rules, bypass_actors}' FILE | gh api -X PUT repos/OWNER/REPO/rulesets/ID --input -`
 (`-X POST repos/OWNER/REPO/rulesets` where it no longer exists).
+The snapshots are not checked against the live rulesets. What is checked,
+daily by `ruleset-check.yml`, is the property the `[unprotected_files]`
+bounds in dispatch.toml rest on: on each listed repository's default
+branch some ruleset, the org's 25084478 today, requires an approving
+review and dismisses stale approvals on push. A repository without it
+fails the run and gets a comment on one open "Ruleset drift" issue here;
+`just check-review-gate` runs the same check locally.
 
 ## Where an operator comment goes
 
