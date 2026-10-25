@@ -341,9 +341,14 @@ and the like and comments on #519.
 notes on the organization site (cgwalters-forge/cgwalters-forge.github.io,
 `/blog/`): `agent-board changes --public-only` (the status updates are
 copied whole: they are public because the project is) from the Sunday
-before at 18:00 UTC to this one (`--until`), trimmed to a fixed 30,000
-characters with `--max-chars`, then the project's status updates in that
-window, oldest first. It files that, after a short brief, as the issue
+before at 18:00 UTC to this one (`--until`), trimmed to a fixed 26,000
+characters with `--max-chars`, then releases published in that window in
+the public repositories in the board configuration's `follow` list (tag,
+name, URL and publication time), then the project's status updates, oldest
+first. Release listings are capped at ten pages of 100 per repository; an
+incomplete listing fails the run. The release section gets at most 10,000
+bytes, with an omission count if needed, within the existing 56,000-byte
+body budget. It files that, after a short brief, as the issue
 `Weekly notes: week ending YYYY-MM-DD` in the site repository, adds it to
 the board at P0 and starts an `implement` run on it that writes the post,
 `content/blog/YYYY-MM-DD.md`, and opens a pull request that closes the
