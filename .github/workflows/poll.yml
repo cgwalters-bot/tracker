@@ -5,8 +5,10 @@
 name: poll
 run-name: pass${{ inputs.apply && ' (apply)' || '' }}
 
-# One clock. GitHub may start a scheduled run late or drop it; the next one
-# picks up where it left off, since a pass keeps no state of its own.
+# The clock is the `next` job: each applying pass starts the next one ten
+# minutes after its own start. GitHub drops most `*/10` scheduled runs, so
+# the schedule only restarts a broken chain; a pass keeps no state of its
+# own, so a late or dropped one costs nothing but time.
 on:
   schedule:
     - cron: '*/10 * * * *'
@@ -18,13 +20,6 @@ on:
         default: false
 
 permissions: {}
-# One pass at a time; one that is due while another runs waits for it. A
-# preview by hand shares the group, so it may replace a pending scheduled
-# pass; the next one comes ten minutes later.
-concurrency:
-  group: pass
-  cancel-in-progress: false
-
 # The agent-board commit the pass runs. It is given the bot's token, so it is
 # a revision reviewed here, never agent-board's moving branch: move it only
 # with a review of what that revision's `pass` does.
@@ -34,6 +29,12 @@ env:
 jobs:
   pass:
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    # One pass at a time; one that is due while another runs waits for it,
+    # and a group keeps only the newest waiting run. The group is the job's,
+    # not the workflow's, so `next` waiting out its ten minutes holds nothing.
+    concurrency:
+      group: pass
+      cancel-in-progress: false
     runs-on: ubuntu-26.04
     # The build (10), the join (3) and the pass's own bound (15, plus two
     # to finish its writes), with room for checkout and setup.
@@ -107,3 +108,36 @@ jobs:
             sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$RUNNER_TEMP/pass.log" 2>/dev/null || echo 'No pass ran'
             echo '</pre>'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  next:
+    needs: pass
+    # Only an applying pass continues the chain, whether it passed or failed;
+    # a preview by hand never starts one. There is one chain: a newer `next`,
+    # from a schedule or a pass by hand, replaces a waiting one. Setting
+    # PASS_APPLY to anything but `enabled`, or cancelling the waiting run,
+    # ends it. While it waits, `next` keeps a hosted runner busy for up to ten
+    # minutes per pass.
+    concurrency:
+      group: pass-next
+      cancel-in-progress: true
+    if: >-
+      ${{ (needs.pass.result == 'success' || needs.pass.result == 'failure') && vars.PASS_APPLY == 'enabled' &&
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      (github.event_name == 'schedule' || inputs.apply) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      actions: write
+    steps:
+      - name: Start the next pass ten minutes after this one started
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_started_at)
+          start=$(date -d "${started:?no start time for run $RUN_ID}" +%s)
+          wait=$(( start + 600 - $(date +%s) ))
+          if (( wait > 0 )); then sleep "$wait"; fi
+          gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f apply=true

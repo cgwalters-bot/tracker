@@ -89,7 +89,11 @@ snapshot. Passes share one concurrency group and never overlap.
 
 A scheduled pass only previews unless the repository variable `PASS_APPLY`
 is `enabled`. By hand, `gh workflow run poll.yml` previews and
-`-f apply=true` applies. Every pass is capped at two agent runs, twenty
+`-f apply=true` applies. While `PASS_APPLY` is `enabled`, each applying pass
+starts the next one ten minutes after its own start, since GitHub drops most
+of the `*/10` schedule. There is only one such chain, since a newer applying
+pass replaces the waiting one; setting the variable to anything else, or
+cancelling the run that is waiting, ends it. Every pass is capped at two agent runs, twenty
 other writes and fifty Status changes (more refuses the Status stage, a
 preview too, until someone has looked); raise them in `poll.yml` once the
 passes have been watched. New work goes through the board: an open issue

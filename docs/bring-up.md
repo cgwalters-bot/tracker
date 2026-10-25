@@ -8,7 +8,8 @@ it. It runs here, as `poll.yml`: one scheduled `agent-board pass` follows
 pull requests, plans and applies the operator's epics, schedules board work
 and derives board Status (the README's "The pass"). Its writes are off until
 the repository variable `PASS_APPLY` is `enabled`; until then it only
-previews, in the run's summary. A person
+previews, in the run's summary. Once enabled, each pass starts the next;
+unsetting the variable stops them. A person
 at a machine holding nothing but credentials only checks on it, dispatches
 by hand where it does not, and answers what it cannot; everything they need
 is on the forge, and what is not yet is listed at the end.
