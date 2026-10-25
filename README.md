@@ -35,6 +35,19 @@ fresh machine from credentials alone, how to dispatch a run and where its
 state is. [docs/operator-notes.md](docs/operator-notes.md) is the log of
 cgwalters' instructions.
 
+## Review drafts
+
+Agent-drafted reviews of others' pull requests wait as issues labelled
+`review-draft` (`is:open label:review-draft` is the queue). To send the
+newest draft as cgwalters-bot, tick the body's
+`Send the newest draft as cgwalters-bot` box or comment just `/send`;
+`.github/workflows/review-send.yml` then runs agent-board's `review send`,
+which posts it only to the repositories `.github/poll/agent-board.json`'s
+`review` section lists, and closes the issue. A draft it cannot send (a
+moved head, a line not in the diff) is refused in a comment; a missing or
+stale approval only fails the run. The approval rules are agent-board's
+[docs/review-drafts.md](https://github.com/cgwalters-forge/agent-board/blob/main/docs/review-drafts.md).
+
 ## Dispatched tools
 
 Dispatched runs have a staged opt-in to agenthome's `install-tools` through

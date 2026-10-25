@@ -1,0 +1,83 @@
+# Sends an operator-approved review draft (#848): `agent-board review send`
+# (agent-board's docs/review-drafts.md) posts the newest draft on a
+# `review-draft` issue as the bot, once the operator has ticked the body's
+# box or commented `/send`. The `review` section of
+# .github/poll/agent-board.json names the repositories a review may go to.
+#
+# A comment or an edit by anyone starts this workflow with the bot's token
+# in reach, so three things keep that safe. The job's `if:` runs nothing
+# unless the sender is the operator. agent-board then checks the approval
+# against the issue as it is now: an operator's `/send` comment, or the
+# tick this edit's payload records with the body still as it left it,
+# after the newest draft's last edit and the bot's last refusal; and only
+# for a draft by the bot or the operator, to a configured target, at the
+# pull request's current head. And it claims the issue with a comment before
+# posting, so an issue that has a claim is never sent again, whether a
+# repeat event or a second run reaches it. The binary runs no agent and no
+# code from the issue.
+name: review-send
+run-name: review-send ${{ github.event.issue.number }}
+
+on:
+  # The file as the default branch has it, gated as the header says.
+  issue_comment: # zizmor: ignore[dangerous-triggers]
+    types: [created]
+  issues:
+    types: [edited]
+
+permissions: {}
+# One send per issue at a time; a later event waits rather than cancelling
+# one whose claim may be under way.
+concurrency:
+  group: review-send-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+# The agent-board commit the send runs, the same as poll.yml's: it is given
+# the bot's token, so move it only with a review of that revision's
+# `review send`.
+env:
+  AGENT_BOARD_REV: 4bcc00dbff1168865daa275b9348ea30af4069b1
+
+jobs:
+  send:
+    # Only spares a build for every other comment; agent-board makes the
+    # real checks. Expressions have no trim, so a comment passes as `/send`
+    # with at most a line end: a looser match ("don't /send yet") would run
+    # agent-board, which finds any earlier `/send` whose run failed.
+    # An edit passes when it may have ticked a box (`contains` ignores
+    # case), so that most edits of the draft's text start no failing run.
+    if: >-
+      ${{ !github.event.issue.pull_request &&
+      contains(github.event.issue.labels.*.name, 'review-draft') &&
+      github.event.sender.login == 'cgwalters' &&
+      ((github.event_name == 'issue_comment' && contains(fromJSON('["/send", "/send\n", "/send\r\n"]'), github.event.comment.body)) ||
+      (github.event_name == 'issues' && github.event.changes.body &&
+      contains(github.event.changes.body.from, '- [ ]') && contains(github.event.issue.body, '- [x]'))) }}
+    runs-on: ubuntu-26.04
+    # The build (10) and the send, with room for checkout and setup.
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      # Built each run and never cached, as in poll.yml.
+      - name: Build agent-board
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
+      - name: Send the review
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          # The tick is approval only as the edit this payload records.
+          EDITED: ${{ github.event_name == 'issues' && 'true' || '' }}
+        shell: bash
+        run: |
+          "$AGENT_BOARD" review send "$ISSUE_URL" --config .github/poll/agent-board.json --apply \
+            ${EDITED:+--approved-by-edit "$GITHUB_EVENT_PATH"}
