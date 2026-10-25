@@ -219,7 +219,8 @@ jobs:
             Write plain prose, with no hype, in under about 600 words. Use
             only what is in the material and in the public repositories it
             links. Never mention security advisories, embargoed fixes,
-            private repositories or infrastructure host names. Write
+            private repositories, infrastructure host names, or budget
+            and spend figures (say a budget exists, not its amount). Write
             Markdown only: no raw HTML, script or embedded content. Open a
             pull request whose body says "Closes #{issue}".
         run: |
