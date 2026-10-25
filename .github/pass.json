@@ -24,9 +24,9 @@
     "cgwalters-forge/bootc"
   ],
   "board": {"owner": "cgwalters-forge", "project": 1},
-  "epics": {"repository": "cgwalters-forge/tracker"},
+  "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true},
   "wip": 8,
-  "triage": true,
+  "triage": true, "triageFollowUpDays": 3,
   "planPools": ["claude", "openai"],
   "triagePools": ["openai", "claude"],
   "pools": {"claude": {"target": 0.95, "burst": 95}, "openai": {"target": 0.95, "burst": 50}},
