@@ -167,10 +167,10 @@ it as the operator; the next pass plans it again.
 ### An interactive session
 
 `session.yml` starts a fresh read-only coordinator through the same wrapper.
-It is disabled in `.github/agentic-job/session.json`. Before enabling it,
-the operator must set the fixed tracker repository and session issue there,
-populate `[session] operators` (tailnet logins, not GitHub logins) and `origins`
-in `hosted.toml`, and set the repository variable `TAILNET_DOMAIN`. The login
+It is enabled in `.github/agentic-job/session.json`, which sets the fixed
+tracker repository and session issue; `[session] operators` (tailnet logins,
+not GitHub logins) and `origins` are in `hosted.toml`, and it needs the
+repository variable `TAILNET_DOMAIN`. The login
 list prevents other tailnet users prompting the agent; the origin list prevents
 cross-site WebSocket hijacking from another page in the operator's browser.
 Never take these lists or the publication issue from dispatch inputs.
