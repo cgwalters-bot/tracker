@@ -27,6 +27,7 @@
   "board": {"owner": "cgwalters-forge", "project": 1},
   "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true},
   "wip": 8,
+  "bodyPlans": true,
   "triage": true, "triageFollowUpDays": 1,
   "planPools": ["claude", "openai"],
   "triagePools": ["openai", "claude"],
