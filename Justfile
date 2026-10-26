@@ -5,7 +5,62 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-config test-supervisor-config test-review-gate test-weekly-material agent-board-pin
+test: test-config test-supervisor-config test-supervisor-workflow test-review-gate test-weekly-material agent-board-pin
+
+# supervisor.yml's folded concurrency group and health `if`, evaluated as
+# JavaScript on events: a run the gate skips gets a group of its own
+# (#803), and a session dispatch, prompt or not, is an agent run.
+test-supervisor-workflow:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const vm = require('node:vm');
+    const workflow = fs.readFileSync('.github/workflows/supervisor.yml', 'utf8');
+    const folded = (key, indent) => new RegExp(`^${' '.repeat(indent)}${key}: >-\\n((?:${' '.repeat(indent + 2)}.*\\n)+)`, 'm')
+      .exec(workflow)[1].split('\n').map(line => line.trim()).filter(Boolean).join(' ');
+    const group = /^\$\{\{ (.*) \}\}$/.exec(folded('group', 2))[1];
+    const gate = folded('if', 4);
+    assert.ok(group.startsWith(`(!(${gate}) && format('supervisor-ignored-{0}', github.run_id))`));
+    const { operator } = JSON.parse(fs.readFileSync('.github/poll/agent-board.json', 'utf8'));
+    const { issue } = JSON.parse(fs.readFileSync('.github/supervisor/config.json', 'utf8')).agent.requests;
+    const comment = { user: { login: operator } };
+    const requests = { number: issue, locked: true };
+    const dispatch = (inputs, ref) => ({ event_name: 'workflow_dispatch', inputs: { prompt: '', session: false, ...inputs }, ref });
+    for (const [event, expected] of [
+      [{ event_name: 'issue_comment', event: { comment, issue: requests } }, 'supervisor-agent'],
+      [{ event_name: 'issue_comment', event: { comment, issue: { ...requests, locked: false } } }, 'supervisor-ignored-42'],
+      [{ event_name: 'issue_comment', event: { comment, issue: { ...requests, pull_request: { url: 'x' } } } }, 'supervisor-ignored-42'],
+      [{ event_name: 'issue_comment', event: { comment: { user: { login: 'outsider' } }, issue: requests } }, 'supervisor-ignored-42'],
+      [dispatch({ prompt: 'do it' }), 'supervisor-agent'],
+      [dispatch({ prompt: 'do it' }, 'refs/heads/other'), 'supervisor-ignored-42'],
+      [dispatch({}), 'supervisor-health'],
+      [dispatch({}, 'refs/heads/other'), 'supervisor-ignored-42'],
+      [dispatch({ session: true }), 'supervisor-agent'],
+      [dispatch({ session: true, prompt: 'look at #1' }), 'supervisor-agent'],
+      [dispatch({ session: true }, 'refs/heads/other'), 'supervisor-ignored-42'],
+      [{ event_name: 'schedule', event: { schedule: '*/15 * * * *' } }, 'supervisor-health'],
+      [{ event_name: 'schedule', event: { schedule: '7 */2 * * *' } }, 'supervisor-agent'],
+    ]) {
+      const context = {
+        format: (f, ...a) => f.replace(/\{(\d+)\}/g, (_, i) => a[i]),
+        fromJSON: JSON.parse,
+        vars: {},
+        inputs: event.inputs ?? {},
+        github: {
+          event_name: event.event_name, run_id: 42, ref: event.ref ?? 'refs/heads/main',
+          event: { repository: { default_branch: 'main' }, ...event.event },
+        },
+      };
+      const got = vm.runInNewContext(group, context);
+      assert.equal(got, expected, JSON.stringify(event));
+      assert.equal(vm.runInNewContext(gate, context), !got.startsWith('supervisor-ignored-'), JSON.stringify(event));
+    }
+    // A session is an explicit request to `due`, and reaches the wrapper
+    // with session.json's idle timeout.
+    assert.match(workflow, /^ {10}PROMPT: \$\{\{ inputs\.prompt \|\| \(inputs\.session && 'session' \|\| ''\) \}\}$/m);
+    assert.match(workflow, /^ {6}session: \$\{\{ needs\.health\.outputs\.session == 'true' \}\}\n {6}idle-minutes: \$\{\{ needs\.health\.outputs\.idle \}\}$/m);
+    assert.match(workflow, /"idle=\\\(\.idleMinutes\)"' \.github\/agentic-job\/session\.json/);
+    console.log('ok supervisor concurrency groups and health gate, sessions included');
 
 # Exercise the actual release selection and body filters without API calls.
 test-weekly-material:

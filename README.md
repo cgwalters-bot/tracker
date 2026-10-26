@@ -221,6 +221,17 @@ gh workflow run supervisor.yml -R cgwalters-forge/tracker \
   -f prompt="close what triage found done in agent-board"
 ```
 
+With `-f session=true` (and optionally `-f pool=openai`, default `claude`)
+the agent runs as an interactive session: after its first turn it waits for
+the operator's prompts over the tailnet, for up to `session.json`'s
+`idleMinutes` each, and its `supervisor-actions` comment goes to the executor
+when the session ends, as for any run. A session is an explicit request, in
+`supervisor-agent`, and needs `TAILNET_DOMAIN` and `session.json` enabled.
+A step posts its `wss://` endpoint on `session.json`'s issue (#728) as
+`session.yml`'s runs have it; the review site's chat pane reads only the
+workflows its configuration lists, so far `session.yml`. `[session]`
+operators and origins are `hosted.toml`'s, copied into `supervisor.toml`.
+
 A check that cannot clear fails every pass and so started an agent every
 cooldown hour to read the same report (#804). With
 `agent.skipUnchangedFailures` set to true (it ships false),

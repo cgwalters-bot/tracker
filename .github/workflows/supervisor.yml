@@ -21,6 +21,17 @@ on:
         description: Public operator request for the supervisor
         type: string
         default: ''
+      # The supervisor's own run, kept up for the operator's prompts over the
+      # tailnet after its first turn, with session.json's idle timeout.
+      session:
+        description: Run the agent as an interactive session
+        type: boolean
+        default: false
+      pool:
+        description: Inference pool from pools.json, for a session only
+        type: choice
+        options: [claude, openai, mistral]
+        default: claude
 permissions: {}
 # The agent-board commit both jobs build: the executor receives the bot's
 # token, so it runs only a revision reviewed here, never agent-board's
@@ -42,7 +53,11 @@ env:
 # group of its own: in a shared group it would evict a pending run and then
 # do nothing (#803). That first branch is the negation of health's `if`;
 # change both together. A prompt-less dispatch is a health pass too: in
-# supervisor-agent it would evict a prompt.
+# supervisor-agent it would evict a prompt. A session dispatch, prompt or
+# not, is an agent run in supervisor-agent, so health passes keep running
+# beside it and none evicts it; it holds that group for up to its idle
+# timeout after each turn and its turn limit, while later prompts and
+# comments wait (one of them pending) behind it.
 concurrency:
   group: >-
     ${{ (!(github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
@@ -51,7 +66,7 @@ concurrency:
     github.event.issue.number == fromJSON(vars.SUPERVISOR_REQUESTS_ISSUE || '656') && github.event.issue.locked == true &&
     !github.event.issue.pull_request))) && format('supervisor-ignored-{0}', github.run_id)) ||
     ((github.event.schedule == '*/15 * * * *' ||
-    (github.event_name == 'workflow_dispatch' && inputs.prompt == '')) && 'supervisor-health') ||
+    (github.event_name == 'workflow_dispatch' && inputs.prompt == '' && !inputs.session)) && 'supervisor-health') ||
     'supervisor-agent' }}
   cancel-in-progress: false
 jobs:
@@ -85,9 +100,13 @@ jobs:
       repo: ${{ steps.trigger.outputs.repo }}
       item: ${{ steps.trigger.outputs.item }}
       task: ${{ steps.compose.outputs.task }}
-      agent: ${{ steps.trigger.outputs.agent }}
-      model: ${{ steps.trigger.outputs.model }}
-      budget: ${{ steps.trigger.outputs.budget }}
+      agent: ${{ steps.session.outputs.agent || steps.trigger.outputs.agent }}
+      model: ${{ steps.session.outputs.model || steps.trigger.outputs.model }}
+      budget: ${{ steps.session.outputs.budget || steps.trigger.outputs.budget }}
+      session: ${{ steps.session.outcome == 'success' }}
+      idle: ${{ steps.session.outputs.idle }}
+      session-repo: ${{ steps.session.outputs.repo }}
+      session-issue: ${{ steps.session.outputs.issue }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -134,12 +153,14 @@ jobs:
         run: just build-agent-board "$AGENT_BOARD_REV"
       # health is always true; daily marks a request or a due sweep. Without
       # read (the lookup failed), only an explicit request sweeps (#814).
+      # `due` reads only whether a dispatch's prompt is empty, so a session
+      # with none is passed one: it is an explicit request too.
       - name: Whether a pass is due
         id: due
         timeout-minutes: 1
         env:
           EVENT: ${{ github.event_name }}
-          PROMPT: ${{ inputs.prompt }}
+          PROMPT: ${{ inputs.prompt || (inputs.session && 'session' || '') }}
           READ: ${{ steps.previous.outputs.read }}
         run: |
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise due --event "$EVENT" --prompt "$PROMPT" \
@@ -195,10 +216,23 @@ jobs:
       # Operator comments also reach an active agent through watch-item; a
       # prompt has no other way in, so its operator must see it was dropped.
       - name: Fail a manual prompt the trigger declined
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.prompt != '' && steps.trigger.outputs.act != 'true' && (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.prompt != '' || inputs.session) && steps.trigger.outputs.act != 'true' && (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') }}
         run: |
-          echo "::error::The trigger declined this prompt, most likely because another supervisor agent run is active. Repeat it when that run ends."
+          echo "::error::The trigger declined this prompt or session, most likely because another supervisor agent run is active. Repeat it when that run ends."
           exit 1
+      # The pool and the publication issue come from trusted files, as
+      # session.yml's do; the dispatcher picks only a pool name.
+      - name: Session settings
+        id: session
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.session && steps.trigger.outputs.act == 'true' && (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') }}
+        timeout-minutes: 1
+        env:
+          POOL: ${{ inputs.pool }}
+        run: |
+          jq -e --arg repo "$GITHUB_REPOSITORY" '.enabled == true and .repository == $repo' .github/agentic-job/session.json > /dev/null ||
+            { echo "::error::session.json does not enable sessions publishing on $GITHUB_REPOSITORY"; exit 1; }
+          jq -r '"repo=\(.repository)", "issue=\(.issue)", "idle=\(.idleMinutes)"' .github/agentic-job/session.json >> "$GITHUB_OUTPUT"
+          jq -r --arg pool "$POOL" '(.[$pool] // error("pools.json has no pool \($pool)")) | "agent=\(.agent)", "model=\(.model)", "budget=\(.budget)"' .github/agentic-job/pools.json >> "$GITHUB_OUTPUT"
       - name: Supervisor profile and operator request
         id: compose
         if: ${{ steps.trigger.outputs.act == 'true' && (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') }}
@@ -235,9 +269,36 @@ jobs:
       agent: ${{ needs.health.outputs.agent }}
       model: ${{ needs.health.outputs.model }}
       budget: ${{ needs.health.outputs.budget }}
+      session: ${{ needs.health.outputs.session == 'true' }}
+      idle-minutes: ${{ needs.health.outputs.idle }}
       apply-environment: agent-apply
     secrets:
       SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
+
+  # The wrapper names a session's endpoint on its item, here the requests
+  # issue; the review app's chat pane looks for it on session.json's issue,
+  # in a comment by github-actions[bot] with this run's URL, as session.yml's
+  # wrapper posts it. The address is the wrapper's: its agent job joins the
+  # tailnet as agentic-job-RUN-ATTEMPT.
+  session-endpoint:
+    needs: health
+    if: ${{ needs.health.outputs.session == 'true' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: The session's endpoint on the session issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ needs.health.outputs.session-repo }}
+          ISSUE: ${{ needs.health.outputs.session-issue }}
+          DOMAIN: ${{ vars.TAILNET_DOMAIN }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          [[ -n $DOMAIN ]] || { echo '::error::a session needs the variable TAILNET_DOMAIN'; exit 1; }
+          endpoint="wss://agentic-job-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.$DOMAIN/"
+          gh issue comment "$ISSUE" --repo "$REPO" --body "⏳ [$GITHUB_WORKFLOW]($RUN_URL) is running. Session: after the task's turn the operator attaches at \`$endpoint\`, once the agent job's summary shows it served."
 
   # Runs no agent-produced code: it parses the requests as data.
   execute:
