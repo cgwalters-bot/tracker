@@ -40,6 +40,7 @@ jobs:
       # committed file gets this run's address added.
       - name: Probe and report
         env:
+          # PAT: the probe reads its login from GET /user, which the job token cannot call, and only the bot's outage issue counts.
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           INFERENCE_URL: ${{ vars.INFERENCE_URL || steps.tailnet.outputs.proxy }}
         run: |
