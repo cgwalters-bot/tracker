@@ -355,6 +355,70 @@ between, and the review and the pass take it like any bot PR. It is off
 unless the repository variable `AGENT_BOARD_PIN` is `enabled`, and uses
 `CGWALTERS_BOT_PAT`, which needs the workflows permission on the fork.
 
+### Release binaries: publication prerequisite (#956)
+
+The switch away from per-run builds is **blocked on publication**, not
+rolled out. On 26 October 2026, `gh api
+repos/cgwalters-forge/agent-board/releases` returned `[]`; its main
+(`c75baf11ad9ae28db701ecded66deb705bdd1f54`) has only `ci.yml`,
+`reconcile.yml`, `review.yml` and `site.yml` in `.github/workflows`, with no
+release producer. The workspace version `0.1.0` is not a published binary.
+Do not replace the working source pin with an invented release URL.
+
+**Next task, in `cgwalters-forge/agent-board`:** add a manually dispatched,
+main-only release producer and publish its first usable immutable release.
+Use agentic-job's
+[`release.yml`](https://github.com/cgwalters-forge/agentic-job/blob/1ae58ed809fad20b9eafda1ca1604c3b638171fc/.github/workflows/release.yml)
+and build workflow as the forge pattern, without its secure-host image or
+other agentic-job-specific assets. Build a locked, versioned
+`agent-board-x86_64-unknown-linux-musl` executable; every current tracker
+build job uses GitHub's x86-64 `ubuntu-26.04` runner. Publish a manifest
+binding the version, full source commit, target, asset name, byte size and
+SHA-256, with the pattern's provenance bundle and immutable-release
+publication. Reject existing tags and mismatched versions; keep compilation
+separate from publishing credentials. Test the version/tag guards and
+manifest, and smoke-test the static binary on the caller's platform. The
+first release must include the supervisor/session/broker commands and
+configuration support of tracker's current pin
+`622f337de1c60b751a841244aac7dc2545307380` (or a reviewed descendant).
+Hand back the real tag, source revision, asset URLs, sizes and digests, and
+evidence that the published release is immutable. Publication and repository
+immutability settings remain producer prerequisites; no release was
+dispatched by this audit.
+
+A substituted executable would receive the bot's write token. The follow-up
+tracker change must therefore pin the release's source revision and artifact
+digests in reviewed metadata, not trust a checksum fetched beside a mutable
+asset. Use one shared installer, with bounded downloads and size limits,
+which fails before running the binary or a token-bearing command on missing
+releases/assets, unsupported platforms, download errors or digest mismatch.
+No `latest`, shared writable binary cache or silent source-build fallback.
+Keep source builds explicit for development, outside routine workflow paths.
+
+That consumer PR depends on the producer PR **and a published release**;
+this tracker-only run cannot deliver the other repository's PR. Update the
+common pin, `agent-board-pin` consistency checks and `bump-agent-board`
+together: green source CI alone must no longer qualify an upgrade; the
+candidate must have usable immutable assets bound to that source revision.
+Preserve `$RUNNER_TEMP/agent-board/bin/agent-board` and the `rev` step output,
+or update every caller. The audited callers are `poll.yml`, both builds in
+`supervisor.yml`, `review-send.yml`, `release-train.yml`, `weekly-blog.yml`,
+`broker-probe.yml`, `session.yml`, and CI's `build-supervisor-agent-board`.
+Also replace the branch-head `cargo install` instruction in
+`.github/agentic-job/profiles/session.md` (the sandbox session is a separate
+consumer from its workflow's task composer), and update this README and
+`docs/bring-up.md`'s installation/session guidance.
+
+Before merging the consumer, exercise the installer failure cases with local
+fixtures, test pin disagreement and bump rejection of source-only candidates,
+and run `just test` and workflow lint. Set `AGENT_BOARD` to the actual
+downloaded executable for `just test-supervisor-config`; a skip or a source
+build is not release-delivery evidence. Record download/setup timing, exact
+version and source revision, and a bounded read-only smoke test. Independent
+review must verify both changes and test evidence. Until publication and
+these consumer checks succeed, #956 remains open and ordinary runs still
+compile agent-board.
+
 ## Weekly runs
 
 Two scheduled workflows start a run of `dispatch.yml` as the pass does,
