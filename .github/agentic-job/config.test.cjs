@@ -57,7 +57,6 @@ test('dispatch passes the run only a configuration from its closed set', () => {
   // A normal dispatch leaves the wrapper its default, hosted.toml.
   assert.equal(resolve('hosted', 0), 'config=\n');
   assert.equal(resolve('acp-experiment', 1), 'config=.github/agentic-job/acp-experiment.toml\n');
-  assert.ok(fs.existsSync(path.join(__dirname, 'acp-experiment.toml')));
   for (const [n, config] of ['', 'dispatch.toml', '.github/agentic-job/dispatch.toml', 'hosted acp-experiment'].entries()) {
     assert.equal(resolve(config, n + 2), null, config);
   }

@@ -193,7 +193,8 @@ check-review-gate:
     echo "failed=${failed[*]}" >> "${GITHUB_OUTPUT:-/dev/null}"
     [[ ${#failed[@]} -eq 0 ]]
 
-# Runs `agentic-job config` on acp-experiment.toml where it is installed.
+# The runner configuration's checks; those that run `agentic-job` skip where
+# it is not installed.
 test-config:
     node --test .github/agentic-job/config.test.cjs
 

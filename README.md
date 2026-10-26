@@ -93,7 +93,7 @@ is `enabled`. By hand, `gh workflow run poll.yml` previews and
 starts the next one ten minutes after its own start, since GitHub drops most
 of the `*/10` schedule. There is only one such chain, since a newer applying
 pass replaces the waiting one; setting the variable to anything else, or
-cancelling the run that is waiting, ends it. Every pass is capped at two agent runs, twenty
+cancelling the run that is waiting, ends it. Every pass is capped at eight agent runs, twenty
 other writes and fifty Status changes (more refuses the Status stage, a
 preview too, until someone has looked); raise them in `poll.yml` once the
 passes have been watched. New work goes through the board: an open issue
@@ -152,9 +152,7 @@ health pass. `agent-board supervise due` decides the sweep from the
 `times.json` the previous `supervisor-health` artifact carries: a pass
 sweeps when the last sweep was two hours ago or more, or on an explicit
 request (a prompt or a comment). When that artifact cannot be looked up (as
-against there being none), no run but an explicit request sweeps (#814). Scheduled runs used to be skipped: the job also required the
-repository variable `SUPERVISOR=observe`, which was never set. The health pass
-only reads, so it now always runs. `health.json` is a list of checks
+against there being none), no run but an explicit request sweeps (#814). `health.json` is a list of checks
 with `id`, `status` (`ok`, `warn`, `fail`), evidence links and a suggested
 action; each check also has one summary line. All thresholds and collection
 bounds are in `.github/supervisor/config.json`, with repository identities

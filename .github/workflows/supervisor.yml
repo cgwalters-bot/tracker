@@ -50,7 +50,7 @@ concurrency:
     (github.event.comment.user.login == (vars.OPERATOR || 'cgwalters') &&
     github.event.issue.number == fromJSON(vars.SUPERVISOR_REQUESTS_ISSUE || '656') && github.event.issue.locked == true &&
     !github.event.issue.pull_request))) && format('supervisor-ignored-{0}', github.run_id)) ||
-    ((github.event.schedule == '*/15 * * * *' || github.event_name == 'workflow_run' ||
+    ((github.event.schedule == '*/15 * * * *' ||
     (github.event_name == 'workflow_dispatch' && inputs.prompt == '')) && 'supervisor-health') ||
     'supervisor-agent' }}
   cancel-in-progress: false
@@ -117,7 +117,7 @@ jobs:
             ours=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" --jq 'select(
               .path == ".github/workflows/supervisor.yml" and .head_branch == env.DEFAULT_BRANCH
               and .head_repository.id == .repository.id
-              and (.event | IN("schedule", "workflow_run", "workflow_dispatch", "issue_comment"))) | .id')
+              and (.event | IN("schedule", "workflow_dispatch", "issue_comment"))) | .id')
             [[ $ours == "$run" ]] || continue
             # Moved into place whole, so a failed download leaves no partial report.
             gh run download "$run" --repo "$GITHUB_REPOSITORY" --name supervisor-health --dir "$RUNNER_TEMP/previous-download"

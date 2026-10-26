@@ -16,7 +16,7 @@ its 14 Oct research comment. The configuration move was re-checked on
 |---|---|---|
 | `bin/bot-runs` (dispatch, watching runs, pool choice) | `dispatch.yml` and `pools.json` here, `agent-board dispatch` and `request dispatch` ([bring-up.md](bring-up.md)) | moved |
 | `bin/bot-board` (status updates, item edits, questions) | agent-board's `project status-update`, `item add`/`edit`, `ask create`/`resolve` | moved; `archive-done`, `handback` and `state-get`/`put` dropped |
-| `bin/bot-capacity`, `bin/bot-heartbeat` | `pools.json` pacing and `usage.yml` here | moved |
+| `bin/bot-capacity`, `bin/bot-heartbeat` | `pass.json` pacing here and agent-board's pass, which publishes usage | moved |
 | `dotfiles/.config/opencode/` and `dotfiles/.config/AGENTS.md`, which every opencode run reads | agenthome's `opencode/` ([agenthome#9](https://github.com/cgwalters-forge/agenthome/pull/9), [#10](https://github.com/cgwalters-forge/agenthome/pull/10), [#13](https://github.com/cgwalters-forge/agenthome/pull/13)) and the wrapper default ([cgwalters-forge/actions#55](https://github.com/cgwalters-forge/actions/issues/55), [PR cgwalters-forge/actions#56](https://github.com/cgwalters-forge/actions/pull/56)) | moved |
 | `bot-supervisor.service`, `bot-sweep.service`/`.timer` on the workstation, running `bin/bot-supervisor` and `bin/bot-sweep` from a homegit checkout | `poll.yml` here: its board job and agent-board's poll | done 22 Oct: stopped and disabled (unit files kept) |
 | praxis-credential-broker quadlets in `dotfiles/.config/containers/systemd/praxis-credential-broker/` | the broker repository's `contrib/quadlet` | done 20 Oct: the broker runs from its own deployment; the old copies are stopped and disabled |

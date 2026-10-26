@@ -34,13 +34,6 @@
   "epics": {
     "repository": "cgwalters-forge/tracker"
   },
-  "coordinator": {
-    "reviewUrl": "https://cgwalters-forge.github.io/review/#",
-    "planPool": "tier-1",
-    "statusPool": "openai",
-    "statusIssue": 572,
-    "statusHourUTC": 11
-  },
   "schedule": {
     "owner": "cgwalters-forge",
     "project": 1,
