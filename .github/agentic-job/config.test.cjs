@@ -66,15 +66,15 @@ test('dispatch passes the run only a configuration from its closed set', () => {
 // real agent; where agentic-job is not installed (CI) it is skipped.
 const agenticJob = spawnSync('agentic-job', ['--version'], { stdio: 'pipe' }).status === 0;
 
-test('supervisor config preserves hosted sandbox and enables only item watching', { skip: !agenticJob && 'agentic-job is not installed' }, () => {
+// A session dispatch of supervisor.yml lets in session.yml's operators and origins.
+test('supervisor config preserves hosted sandbox and session, without a listener', { skip: !agenticJob && 'agentic-job is not installed' }, () => {
   const check = file => execFileSync('agentic-job', ['config', '--from', path.join(__dirname, file), '--host'], { encoding: 'utf8' });
   const supervisor = check('supervisor.toml');
   const base = check('hosted.toml');
-  for (const table of ['sandbox', 'sandbox.check', 'setup']) {
+  for (const table of ['sandbox', 'sandbox.check', 'setup', 'session']) {
     const section = text => text.split(`[${table}]\n`)[1].split('\n[')[0];
     assert.equal(section(supervisor), section(base));
   }
-  assert.match(supervisor, /\[session\]\nwatch-item = true/);
   assert.doesNotMatch(supervisor, /listen = true/);
 });
 

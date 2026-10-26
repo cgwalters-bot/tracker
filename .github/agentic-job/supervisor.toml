@@ -1,5 +1,6 @@
 # Isolated from ordinary dispatches; like them it watches its item (hosted.toml).
-# Match hosted.toml's hosted-runner sandbox and setup, without a tailnet listener.
+# Match hosted.toml's hosted-runner sandbox and setup; only a session
+# dispatch listens on the tailnet.
 [sandbox]
 stop-services = [
     "docker.socket", "docker.service", "containerd.service",
@@ -17,7 +18,11 @@ packages = ["python3-venv", "nftables", "just"]
 # The caller includes agenthome's profile and skill in the task for every pool.
 # Watching stops an operator's later comment being lost while this run works;
 # steer treats other authors' text as data, not operator instructions.
+# The operators and origins are hosted.toml's, read only by a session
+# dispatch (supervisor.yml's `session` input).
 [session]
+operators = ["cgwalters@gmail.com"]
+origins = ["https://cgwalters-forge.github.io"]
 watch-item = true
 
 [commit]
