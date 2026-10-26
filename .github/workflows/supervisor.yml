@@ -169,6 +169,7 @@ jobs:
         if: ${{ steps.due.outputs.health == 'true' }}
         timeout-minutes: 8
         env:
+          # PAT: it reads private bot-ops' usage snapshot, and a pass would spend most of the job token's 1000 requests an hour.
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
@@ -273,6 +274,7 @@ jobs:
       idle-minutes: ${{ needs.health.outputs.idle }}
       apply-environment: agent-apply
     secrets:
+      # PAT: apply posts the requests comment with it, and execute accepts only the bot's, not github-actions[bot]'s.
       SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
 
   # The wrapper names a session's endpoint on its item, here the requests
@@ -341,6 +343,7 @@ jobs:
         if: ${{ vars.SUPERVISOR == 'apply' }}
         timeout-minutes: 8
         env:
+          # PAT: it logs on private cgwalters-forge/operator, writes items in other repositories and posts the org Projects v2 status.
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           RESULT_URL: ${{ needs.agent.outputs.result-url }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
