@@ -1,0 +1,23 @@
+{
+  "_comment": "The forge-native repositories and the CI files each must have (#544). Each needs a .github/workflows/review.yml that uses cgwalters-review.yml at review_pin, which is the pin of this repository's own review.yml (test-forge-sync checks that), a .github/dependabot.yml with a daily github-actions update, and a root Justfile. A repository is exempt from one of these, named review, dependabot or justfile, only through an entry in its `exempt` object whose value is the reason. `just forge-sync` reports each repository's drift from this file.",
+  "review_pin": "d8e22f71b2abbe5f41306a0c7ef1b6c3d2829cac",
+  "repos": [
+    {
+      "repo": "cgwalters-forge/agentic-job",
+      "exempt": {
+        "review": "defines the review jobs and runs them from its own base revision (policy.yml), not through cgwalters-review.yml"
+      }
+    },
+    { "repo": "cgwalters-forge/tracker" },
+    { "repo": "cgwalters-forge/agent-board" },
+    { "repo": "cgwalters-forge/agenthome" },
+    {
+      "repo": "cgwalters-forge/actions",
+      "exempt": {
+        "review": "defines cgwalters-review.yml and calls its own copy locally"
+      }
+    },
+    { "repo": "cgwalters-forge/review" },
+    { "repo": "cgwalters-forge/forge-infra" }
+  ]
+}

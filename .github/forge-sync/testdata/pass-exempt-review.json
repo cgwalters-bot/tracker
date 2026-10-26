@@ -1,0 +1,1 @@
+{"repo": "example/local-review", "review": "jobs:\n  review:\n    uses: ./.github/workflows/cgwalters-review.yml\n", "dependabot": "version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: daily\n", "justfile": true}

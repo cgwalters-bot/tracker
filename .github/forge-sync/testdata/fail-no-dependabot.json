@@ -1,0 +1,1 @@
+{"repo": "example/synced", "review": "jobs:\n  review:\n    uses: cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@1111111111111111111111111111111111111111\n", "dependabot": null, "justfile": true}

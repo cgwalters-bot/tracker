@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-config test-supervisor-config test-supervisor-workflow test-review-gate test-weekly-material agent-board-pin
+test: test-config test-supervisor-config test-supervisor-workflow test-review-gate test-forge-sync test-weekly-material agent-board-pin
 
 # supervisor.yml's folded concurrency group and health `if`, evaluated as
 # JavaScript on events: a run the gate skips gets a group of its own
@@ -247,6 +247,92 @@ check-review-gate:
     done
     echo "failed=${failed[*]}" >> "${GITHUB_OUTPUT:-/dev/null}"
     [[ ${#failed[@]} -eq 0 ]]
+
+# A repository's drift from the manifest (.github/forge-sync/repos.json,
+# #544), one line each, from its fetched files on stdin:
+# {"repo": ..., "review": <review.yml or null>, "dependabot": <dependabot.yml
+# or null>, "justfile": <bool>}. Fails on any drift, a repository the
+# manifest does not list, or an exemption that is unknown or gives no reason.
+# The YAML is parsed with yq (its first document), so only a job's `uses`
+# counts as a call of the reviewer, and every such call must be at the pin.
+forge-sync-drift manifest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    input=$(cat)
+    yaml() { jq -r --arg k "$1" '.[$k] // empty' <<< "$input" | yq -p=yaml -o=json -I=0 'select(document_index == 0)'; }
+    review=$(yaml review)
+    dependabot=$(yaml dependabot)
+    drift=$(jq -r --slurpfile m "$1" --argjson rv "$review" --argjson dp "$dependabot" '
+      $m[0] as $m | .repo as $r | (first($m.repos[] | select(.repo == $r)) // null) as $e
+      | if $e == null then "\($r) \($path): expected an entry, found none" else ($e.exempt // {}) as $x
+      | ($x | to_entries[] | select((.key | IN("review", "dependabot", "justfile") | not) or (.value | type != "string" or length == 0))
+        | "\($r) \($path): expected exempt.\(.key) to be review, dependabot or justfile with a reason, found \(.value | tojson)"),
+        ("cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@" as $call | "\($call)\($m.review_pin)" as $want
+        | [$rv | objects | .jobs | objects | .[] | objects | .uses | strings] as $uses
+        | [$uses[] | select(startswith($call))] as $calls
+        | select($x.review == null and ($calls == [] or any($calls[]; . != $want)))
+        | "\($r) .github/workflows/review.yml: expected uses \($want), found \(if .review == null then "no file" else if $calls == [] then $uses else $calls end | join(", ") | if . == "" then "no uses" else . end end)"),
+        ([$dp | objects | .updates | arrays | .[] | objects | select(."package-ecosystem" == "github-actions")
+          | (.schedule | objects | .interval) // "no interval" | tostring] as $i
+        | select($x.dependabot == null and ($i == [] or any($i[]; . != "daily")))
+        | "\($r) .github/dependabot.yml: expected a github-actions update with interval daily, found \(if .dependabot == null then "no file" elif $i == [] then "no github-actions update" else $i | join(", ") end)"),
+        (select($x.justfile == null and .justfile != true) | "\($r) Justfile: expected a root Justfile, found none")
+      end' --arg path "$1" <<< "$input")
+    [[ -z $drift ]] || { echo "$drift"; exit 1; }
+
+# forge-sync-drift on each fixture under .github/forge-sync/testdata against
+# its manifest.json, passing for pass-* and reporting drift for the fixture's
+# repository otherwise; then on this
+# repository's own files against the real manifest, so moving the pin in
+# review.yml fails here until review_pin moves with it.
+test-forge-sync:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dir=.github/forge-sync/testdata
+    for f in "$dir"/pass-*.json "$dir"/fail-*.json; do
+      want=fail; [[ $(basename "$f") == pass-* ]] && want=pass
+      got=pass; out=$({{ just_executable() }} forge-sync-drift "$dir/manifest.json" < "$f" 2> /dev/null) || got=fail
+      [[ $got == pass || $out == "$(jq -r .repo "$f") "* ]] || got="an error: $out"
+      [[ $got == "$want" ]] || { echo "$f: want $want, got $got" >&2; exit 1; }
+      echo "ok $f ($want)"
+    done
+    bad=$(mktemp)
+    for manifest in '{}' '{"repos": []}' '{"repos": [{}]}' '[' ''; do
+      if [[ -n $manifest ]]; then echo "$manifest" > "$bad"; else rm -f "$bad"; fi
+      if {{ just_executable() }} forge-sync "$bad" > /dev/null 2>&1; then
+        echo "forge-sync with manifest '$manifest': want fail, got pass" >&2; exit 1
+      fi
+      echo "ok forge-sync refuses manifest '${manifest:-<missing>}'"
+    done
+    jq -n --rawfile review .github/workflows/review.yml --rawfile dependabot .github/dependabot.yml \
+      '{repo: "cgwalters-forge/tracker", $review, $dependabot, justfile: true}' |
+      {{ just_executable() }} forge-sync-drift .github/forge-sync/repos.json
+    echo "ok this repository against .github/forge-sync/repos.json"
+
+# forge-sync-drift on the default branch of every repository in the
+# manifest, read through the contents API (a 404 is a missing file); fails
+# if any repository drifted or could not be read.
+forge-sync manifest=".github/forge-sync/repos.json":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    err=$(mktemp)
+    fetch() {
+      local body
+      if body=$(gh api "repos/$1/contents/$2" -H 'Accept: application/vnd.github.raw' 2> "$err"); then jq -Rs . <<< "$body"
+      elif grep -q 'HTTP 404' "$err"; then echo null
+      else echo "::error::$1: could not read $2: $(cat "$err")" >&2; return 1; fi
+    }
+    repos=$(jq -er '.repos | select(length > 0 and all(.[]; .repo | type == "string")) | .[].repo' "$1") || { echo "::error::$1: expected a manifest listing repos" >&2; exit 1; }
+    failed=0
+    for repo in $repos; do
+      if input=$(jq -n --arg repo "$repo" --argjson review "$(fetch "$repo" .github/workflows/review.yml)" \
+          --argjson dependabot "$(fetch "$repo" .github/dependabot.yml)" --argjson j "$(fetch "$repo" Justfile)" \
+          '{$repo, $review, $dependabot, justfile: ($j != null)}') &&
+        {{ just_executable() }} forge-sync-drift "$1" <<< "$input"; then
+        echo "ok $repo"
+      else failed=1; fi
+    done
+    exit "$failed"
 
 # The runner configuration's checks; those that run `agentic-job` skip where
 # it is not installed.

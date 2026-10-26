@@ -1,0 +1,9 @@
+{
+  "_comment": "The manifest test-forge-sync checks the pass-* and fail-* fixtures against.",
+  "review_pin": "1111111111111111111111111111111111111111",
+  "repos": [
+    { "repo": "example/synced" },
+    { "repo": "example/local-review", "exempt": { "review": "defines the review workflow itself" } },
+    { "repo": "example/no-reason", "exempt": { "review": "" } }
+  ]
+}

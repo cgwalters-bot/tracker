@@ -1,0 +1,1 @@
+{"repo": "example/no-reason", "review": null, "dependabot": "version: 2\nupdates:\n  - package-ecosystem: github-actions\n    directory: /\n    schedule:\n      interval: daily\n", "justfile": true}
