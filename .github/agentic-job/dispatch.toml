@@ -8,6 +8,20 @@
 # The organization site cgwalters-forge/cgwalters-forge.github.io is a target
 # for the weekly notes post (weekly-blog.yml). The poll follows it, but it has
 # no review workflow yet, so only the operator's approval merges its posts.
+# The private cgwalters-forge/bot-ops is no target, though the maintain
+# stage's daily digest belongs there (#963): a run dispatched here would
+# publish its assessments in this public repository. The agent job prints
+# the condensed transcript to its log and writes summary.md as its step
+# summary; the agent-run, agent-transcript and safe-outputs artifacts, the
+# last holding the add_comment body itself, and checked-outputs are public
+# run evidence too (agentic-job's docs/private-repositories.md). Only the
+# status comment, a link to the run, is safe. Listing it would not help
+# anyway: triage runs take comment.toml, the policy job refuses a private
+# target and the wrapper a private caller. The smallest fix is a dispatch
+# workflow in bot-ops itself, whose logs and artifacts only its
+# collaborators can read, with bounds that set `private = true` and allow
+# add_comment on bot-ops alone, and its own agent job as that doc describes,
+# since the wrapper runs only from a public repository.
 hosts = ["github.com"]
 repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io"]
 bases = ["main"]
