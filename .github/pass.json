@@ -35,7 +35,7 @@
   "pools": {"claude": {"target": 0.95, "burst": 95}, "openai": {"target": 0.95, "burst": 50}},
   "usage": {"repository": "cgwalters-forge/bot-ops", "issue": 1, "probe": true},
   "holds": {"repository": "cgwalters-forge/bot-ops", "issue": 1},
-  "budget": {"weeklyUsd": 1000},
+  "budget": {"weeklyUsd": 2000},
   "pr": {"staleDays": 2, 
     "reviewWorkflow": "review.yml",
     "fixPools": ["claude", "openai"],
