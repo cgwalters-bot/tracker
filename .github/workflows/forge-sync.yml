@@ -1,0 +1,68 @@
+# Once a day, compare each forge-native repository with the manifest,
+# .github/forge-sync/repos.json (#544), and keep one issue open here while
+# any has drifted. It only reports: it changes nothing in those
+# repositories. All of them are public, so the job token reads them.
+name: forge-sync
+
+on:
+  schedule:
+    # Daily 05:47 UTC.
+    - cron: '47 5 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      failed: ${{ steps.check.outputs.failed }}
+      drift: ${{ steps.check.outputs.drift }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A pinned just: Ubuntu's apt carries an old one (1.21 on 24.04).
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      # forge-sync-drift parses YAML with the image's yq (mikefarah's, 4.x).
+      - id: check
+        run: just forge-sync
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # Opens or comments on one issue while the check fails, and closes it once
+  # the check passes. Its own job, so the token that can write issues never
+  # runs the check's API reads.
+  report:
+    needs: check
+    if: ${{ !cancelled() && (needs.check.result == 'success' || needs.check.result == 'failure') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      issues: write
+    steps:
+      - name: Open, comment on or close the drift issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RESULT: ${{ needs.check.result }}
+          FAILED: ${{ needs.check.outputs.failed }}
+          DRIFT: ${{ needs.check.outputs.drift }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # One fixed title, so a later failure comments on the open issue
+          # rather than opening another.
+          TITLE: 'Forge-sync drift: a forge-native repository differs from .github/forge-sync/repos.json'
+        run: |
+          issue=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title --jq "first(.[] | select(.title == env.TITLE) | .number)")
+          if [ "$RESULT" = success ]; then
+            [ -z "$issue" ] || gh issue close "$issue" --comment "No drift as of $RUN"; exit 0
+          fi
+          lines=$(jq -nr 'env.DRIFT | if . == "" then "" else fromjson end')
+          body=$(printf 'Drifted: %s. Details: %s\n\n~~~\n%s\n~~~' "${FAILED:-none listed; the check itself failed}" "$RUN" "$lines")
+          if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
+          else gh issue create --title "$TITLE" --body "$body"$'\n\nBring each repository in line with .github/forge-sync/repos.json, or give it an exemption with a reason there (#544).'; fi
