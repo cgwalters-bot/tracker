@@ -28,7 +28,7 @@
   "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true},
   "wip": 8,
   "bodyPlans": true,
-  "triage": true, "triageFollowUpDays": 7, "replanAfterDays": 2,
+  "triage": {"scope": "epics"}, "triageFollowUpDays": 7, "replanAfterDays": 2,
   "revisit": {"perPass": 1, "afterDays": 14, "heldAfterDays": 7},
   "planPools": ["claude", "openai"],
   "triagePools": ["openai", "claude"],
