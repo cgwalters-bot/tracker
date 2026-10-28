@@ -1,0 +1,21 @@
+# Bounds for dispatch.yml's `fix` kind on the midstream forks (#336):
+# fix.toml's bounds without `ready_when_complete`, so apply never takes a
+# midstream pull request out of draft; midstream.toml says why. The profile
+# job of dispatch.yml passes this file as the wrapper's `fix-allow` for a
+# target listed here.
+hosts = ["github.com"]
+repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc"]
+bases = ["main"]
+max_outputs = 3
+max_patch_bytes = 1048576
+max_patch_files = 50
+
+[outputs]
+# The branches and replacement as fix.toml's, whose comment says what each
+# glob is for and how apply bounds the head repository: `bot/**` holds the
+# staged pull requests within these forks (#710).
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5 }
+add_comment = { max = 1 }
+noop = { max = 1 }
+missing_tool = { max = 1 }
+missing_data = { max = 1 }

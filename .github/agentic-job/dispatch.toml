@@ -1,8 +1,8 @@
 # Bounds for dispatch.yml: the repositories a dispatched run may target.
 # Exact names, no globs; add a repository here before dispatching to it.
-# The midstream forks composefs-rs and bootc (epic #160) are targets for
-# staged pull requests only: the poll does not follow them, so nothing merges
-# into their main, which tracks upstream; the operator promotes work upstream.
+# The midstream forks composefs-rs and bootc (epic #160) are not listed
+# here: their bounds are midstream.toml, which dispatch.yml picks for them,
+# so that every pull request there stays a draft (#336).
 # The bot-owned praxis-credential-broker is a target the poll does not
 # follow either (docs/bring-up.md).
 # The organization site cgwalters-forge/cgwalters-forge.github.io is a target
@@ -23,7 +23,7 @@
 # add_comment on bot-ops alone, and its own agent job as that doc describes,
 # since the wrapper runs only from a public repository.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576
@@ -34,7 +34,8 @@ max_patch_files = 50
 # a checkpoint or a run stopped at a limit as a draft (agentic-job's
 # docs/safe-outputs.md, "Ready or draft"). Without it every pull request is
 # a draft and the poll stops on each as "a draft with no checkpoint" (#646).
-# config.test.cjs keeps it set, here and in fix.toml.
+# config.test.cjs keeps it set, here and in fix.toml, and unset in the
+# midstream bounds.
 create_pull_request = { max = 1, ready_when_complete = true }
 add_comment = { max = 1 }
 noop = { max = 1 }

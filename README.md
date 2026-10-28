@@ -107,6 +107,15 @@ cannot safely change the pull request, without a push (opt-in in
 `.github/agentic-job/fix.toml`); the unchanged head is what stops the fix
 rounds.
 
+Apply opens complete work ready for review (`ready_when_complete` in
+`dispatch.toml` and `fix.toml`), except on a midstream fork, a repository
+with the `bot-midstream` topic, whose main tracks upstream (#336): there
+every pull request stays a draft. `dispatch.yml` gives those targets
+`midstream.toml` and `midstream-fix.toml` instead, by those files' `repos`,
+which a fork given the topic must join before it is dispatched to.
+cgwalters-review skips drafts, so a midstream pull request gets no automatic
+review; `/review` still works.
+
 ### Broker outages
 
 Set the repository variable `BROKER_OUTAGE=apply` to enable the

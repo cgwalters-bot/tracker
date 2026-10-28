@@ -84,7 +84,8 @@ gh workflow run dispatch.yml -R cgwalters-forge/tracker \
 
 `KIND` is implement, review, fix, triage or research; `N` is an issue, or a
 pull request for review and fix; `OWNER/REPO` must be listed in
-`.github/agentic-job/dispatch.toml` (`fix.toml` for a fix).
+`.github/agentic-job/dispatch.toml` (`fix.toml` for a fix), or, for a
+midstream fork, in `midstream.toml` and `midstream-fix.toml` instead.
 
 Runs push as `cgwalters-bot`, and apply pushes a branch to a repository
 that account owns only if the repository's default branch has
