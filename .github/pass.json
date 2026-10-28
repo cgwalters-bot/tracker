@@ -39,7 +39,6 @@
   "pr": {"staleDays": 2, 
     "reviewWorkflow": "review.yml",
     "fixPools": ["claude", "openai"],
-    "toilFixPool": "openai",
     "mergeAuthors": ["dependabot[bot]"],
     "rebaseRounds": 2,
     "mergeQueue": {"tries": 3}
