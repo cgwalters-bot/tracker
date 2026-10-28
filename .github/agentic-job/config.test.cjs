@@ -337,7 +337,7 @@ test('the pass starts work only where dispatch.yml and fix runs may act, on know
   const either = (...names) => names.flatMap(repos);
   for (const repo of pass.workRepositories) assert.ok(either('dispatch.toml', 'midstream.toml').includes(repo), `${repo} is scheduled but not in dispatch.toml or midstream.toml`);
   for (const repo of pass.follow) assert.ok(either('fix.toml', 'midstream-fix.toml').includes(repo), `${repo} is followed but not in fix.toml or midstream-fix.toml`);
-  for (const pool of [...Object.keys(pass.pools), ...pass.planPools, ...pass.triagePools, ...pass.pr.fixPools, pass.pr.toilFixPool]) {
+  for (const pool of [...Object.keys(pass.pools), ...pass.planPools, ...pass.triagePools, ...pass.pr.fixPools, ...[pass.pr.toilFixPool, pass.pr.conflictFixPool].filter(Boolean)]) {
     assert.ok(pools[pool], pool);
   }
   assert.equal(pass.dispatchWorkflow, 'dispatch.yml');
