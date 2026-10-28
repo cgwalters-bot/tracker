@@ -311,11 +311,14 @@ test-forge-sync:
 
 # forge-sync-drift on the default branch of every repository in the
 # manifest, read through the contents API (a 404 is a missing file); fails
-# if any repository drifted or could not be read.
+# if any repository drifted or could not be read. The step output `failed`
+# lists those repositories and `drift`, a JSON string, their drift lines
+# (forge-sync.yml).
 forge-sync manifest=".github/forge-sync/repos.json":
     #!/usr/bin/env bash
     set -euo pipefail
     err=$(mktemp)
+    trap 'rm -f "$err"' EXIT
     fetch() {
       local body
       if body=$(gh api "repos/$1/contents/$2" -H 'Accept: application/vnd.github.raw' 2> "$err"); then jq -Rs . <<< "$body"
@@ -323,16 +326,23 @@ forge-sync manifest=".github/forge-sync/repos.json":
       else echo "::error::$1: could not read $2: $(cat "$err")" >&2; return 1; fi
     }
     repos=$(jq -er '.repos | select(length > 0 and all(.[]; .repo | type == "string")) | .[].repo' "$1") || { echo "::error::$1: expected a manifest listing repos" >&2; exit 1; }
-    failed=0
+    failed=() drift=
     for repo in $repos; do
-      if input=$(jq -n --arg repo "$repo" --argjson review "$(fetch "$repo" .github/workflows/review.yml)" \
-          --argjson dependabot "$(fetch "$repo" .github/dependabot.yml)" --argjson j "$(fetch "$repo" Justfile)" \
+      out=
+      if j=$(fetch "$repo" Justfile) && if [[ $j == null ]]; then j=$(fetch "$repo" justfile); fi &&
+        input=$(jq -n --arg repo "$repo" --argjson review "$(fetch "$repo" .github/workflows/review.yml)" \
+          --argjson dependabot "$(fetch "$repo" .github/dependabot.yml)" --argjson j "$j" \
           '{$repo, $review, $dependabot, justfile: ($j != null)}') &&
-        {{ just_executable() }} forge-sync-drift "$1" <<< "$input"; then
-        echo "ok $repo"
-      else failed=1; fi
+        out=$({{ just_executable() }} forge-sync-drift "$1" <<< "$input"); then
+        echo "ok $repo"; continue
+      fi
+      out=${out:-"$repo: could not be read or checked"}
+      echo "$out"; drift+=$out$'\n'; failed+=("$repo")
     done
-    exit "$failed"
+    # The lines quote the repositories' files, so the output is capped.
+    drift=${drift%$'\n'}
+    printf 'failed=%s\ndrift=%s\n' "${failed[*]}" "$(jq -nc --arg d "${drift:0:50000}" '$d')" >> "${GITHUB_OUTPUT:-/dev/null}"
+    [[ ${#failed[@]} -eq 0 ]]
 
 # The runner configuration's checks; those that run `agentic-job` skip where
 # it is not installed.
