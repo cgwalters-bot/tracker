@@ -99,6 +99,29 @@ jobs:
         run: |
           "$AGENT_BOARD" pass --config "$RUNNER_TEMP/pass.json" ${APPLY:+"$APPLY"} \
             --max-dispatch 8 --max-writes 20 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
+      # GitHub drops agent-board-pin.yml's hourly runs too, so the pass starts
+      # it when agent-board's head is not the pin and has no pin PR yet (the
+      # title is the one `just bump-agent-board` gives it); the pin workflow
+      # checks CI and stays idempotent, and its schedule is the fallback.
+      - name: Start the agent-board pin bump
+        if: ${{ !cancelled() && vars.AGENT_BOARD_PIN == 'enabled' }}
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          DISPATCH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          source=$(jq -er .source .github/poll/agent-board.json)
+          branch=$(jq -er .branch .github/poll/agent-board.json)
+          bot=$(jq -er .bot .github/poll/agent-board.json)
+          head=$(gh api "repos/${source#https://github.com/}/commits/$branch" --jq .sha)
+          [[ $head =~ ^[0-9a-f]{40}$ ]] || { echo "::error::no head for $source $branch"; exit 1; }
+          if [[ $head == "$AGENT_BOARD_REV" ]]; then echo "the pin is $branch's head"; exit 0; fi
+          title="workflows: Move agent-board to ${head:0:7}"
+          open=$(gh pr list --repo "$GITHUB_REPOSITORY" --author "$bot" --head agent-board-pin --state open --json title --jq '.[0].title // ""')
+          if [[ $open == "$title" ]]; then echo "already proposed: $title"; exit 0; fi
+          GH_TOKEN=$DISPATCH_TOKEN gh workflow run agent-board-pin.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
       - name: Summary
         if: ${{ !cancelled() }}
         run: |
