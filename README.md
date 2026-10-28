@@ -347,11 +347,13 @@ a version bump that was never released. `agent-board release-train --config
 
 Every workflow that builds agent-board pins the same commit as
 `AGENT_BOARD_REV`; `just agent-board-pin`, part of `just test` in CI, fails
-when they differ. Hourly, `.github/workflows/agent-board-pin.yml` runs `just
-bump-agent-board`: when agent-board's main is ahead of the pin and all its
-check runs passed, it opens or updates one pull request from the bot's fork
-(branch `agent-board-pin`) moving every pin to it, listing the commits in
-between, and the review and the pass take it like any bot PR. It is off
+when they differ. `.github/workflows/agent-board-pin.yml` runs `just
+bump-agent-board`, started by the pass when agent-board's main is not the
+pin and has no pin PR yet, and hourly as a fallback: when agent-board's
+main is ahead of the pin and all its check runs passed, it opens or updates
+one pull request from the bot's fork (branch `agent-board-pin`) moving
+every pin to it, listing the commits in between, and the review and the
+pass take it like any bot PR. It is off
 unless the repository variable `AGENT_BOARD_PIN` is `enabled`, and uses
 `CGWALTERS_BOT_PAT`, which needs the workflows permission on the fork.
 

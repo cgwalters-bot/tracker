@@ -2,7 +2,8 @@
 # once that commit's CI is green: `just bump-agent-board` opens or updates
 # one pull request from the bot's fork, which the review and the pass then
 # take like any bot PR. Off unless the repository variable AGENT_BOARD_PIN
-# is `enabled`.
+# is `enabled`. The pass (poll.yml) starts it when agent-board's main moves;
+# the schedule, which GitHub often drops, is only the fallback.
 name: agent-board-pin
 on:
   schedule:
