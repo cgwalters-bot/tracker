@@ -16,8 +16,9 @@ hosts = ["github.com"]
 # pull requests there, from its fork; since #710 also from the midstream
 # fork cgwalters-forge/bootc (`bot/**` below says how apply bounds the head
 # repository). A fix there may not edit `.github` or AGENTS.md (not listed
-# below).
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io"]
+# below). The midstream forks themselves are targets of midstream-fix.toml
+# instead, which keeps their pull requests drafts (#336).
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576
@@ -34,7 +35,8 @@ max_patch_files = 50
 #
 # `bot/**` is the homegit era's branches: the bot's bootc-dev pull requests
 # from the midstream fork cgwalters-forge/bootc, and the staged ones within
-# cgwalters-forge/composefs-rs and cgwalters-forge/bootc (#710). Both globs
+# cgwalters-forge/composefs-rs and cgwalters-forge/bootc (#710), which
+# midstream-fix.toml bounds with the same branches. Both globs
 # hold for every repository above and every head, as the bounds bound no
 # head repository; apply does (agentic-job's workflow/push.cjs). It
 # pushes only where the bot has write access, and there only to the bot's

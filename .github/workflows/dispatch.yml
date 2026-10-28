@@ -6,7 +6,8 @@
 # trigger and its five inputs, the run name, the concurrency, the
 # environment that gates apply and which secret is the apply token; the
 # bounds are in .github/agentic-job (dispatch.toml, comment.toml for
-# `triage` and `research`, fix.toml for `fix`) and
+# `triage` and `research`, fix.toml for `fix`, midstream.toml and
+# midstream-fix.toml in their place for a midstream fork) and
 # the runner configuration in hosted.toml there, the wrapper's default paths.
 # The `pool` input picks the agent and model from the closed set in pools.json
 # there; empty leaves them to the repository variables AGENT and AGENT_MODEL.
@@ -38,7 +39,7 @@ on:
         type: string
         required: true
       kind:
-        description: Fixed profile (review and fix take a pull request number; fix only where fix.toml allows it)
+        description: Fixed profile (review and fix take a pull request number; fix only where fix.toml or midstream-fix.toml allows it)
         type: choice
         options: [implement, triage, research, review, fix]
         required: true
@@ -72,6 +73,8 @@ jobs:
       budget: ${{ steps.pool.outputs.budget }}
       skilled: ${{ steps.pool.outputs.skilled }}
       config: ${{ steps.config.outputs.config }}
+      allow: ${{ steps.bounds.outputs.allow }}
+      fix-allow: ${{ steps.bounds.outputs.fix-allow }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -79,6 +82,8 @@ jobs:
           sparse-checkout: |
             .github/agentic-job/profiles
             .github/agentic-job/pools.json
+            .github/agentic-job/midstream.toml
+            .github/agentic-job/midstream-fix.toml
       # The pool's agent, model and budget, all empty without a pool so that
       # the wrapper falls back to the variables and its default budget, and
       # whether that agent gets agentic-job's skills. A
@@ -122,6 +127,31 @@ jobs:
             *) echo "::error::unknown config '${CONFIG}'; expected hosted or acp-experiment"; exit 1 ;;
           esac
           echo "config=${path}" >> "$GITHUB_OUTPUT"
+      # The bounds, by kind and target. Comment-only kinds have their own,
+      # comment.toml, the only ones that admit bootc-dev besides fix.toml
+      # (D17, docs/operator-notes.md). A midstream fork, a target that
+      # midstream.toml or midstream-fix.toml lists, gets those, which keep
+      # its pull requests drafts (#336); their repos lists are the only list
+      # of midstreams here. The wrapper takes `fix-allow` for fix and
+      # `allow` for every other kind.
+      - name: Resolve the bounds
+        id: bounds
+        env:
+          KIND: ${{ inputs.kind }}
+          REPO: ${{ inputs.repo }}
+        run: |
+          dir=.github/agentic-job
+          listed() {
+            sed -n '/^repos = /{s///p;q}' "$1" |
+              jq -e --arg repo "${REPO,,}" 'map(ascii_downcase) | index($repo)' > /dev/null
+          }
+          case "$KIND" in
+            triage|research) allow=$dir/comment.toml ;;
+            *) allow=$dir/dispatch.toml; listed "$dir/midstream.toml" && allow=$dir/midstream.toml ;;
+          esac
+          fix=$dir/fix.toml
+          listed "$dir/midstream-fix.toml" && fix=$dir/midstream-fix.toml
+          printf 'allow=%s\nfix-allow=%s\n' "$allow" "$fix" >> "$GITHUB_OUTPUT"
       - name: Put the profile before the task
         id: compose
         env:
@@ -180,11 +210,9 @@ jobs:
       # (the profile job), with the same loop.
       skills: ${{ needs.profile.outputs.skilled == 'true' && (inputs.kind == 'implement' || inputs.kind == 'fix') }}
       apply-environment: agent-apply
-      # Comment-only kinds have bounds of their own, comment.toml, the only
-      # ones that admit bootc-dev besides fix.toml (D17,
-      # docs/operator-notes.md). The wrapper ignores `allow` for fix and
-      # takes its default fix.toml.
-      allow: ${{ (inputs.kind == 'triage' || inputs.kind == 'research') && '.github/agentic-job/comment.toml' || '.github/agentic-job/dispatch.toml' }}
+      # From the profile job, which says how it picks them.
+      allow: ${{ needs.profile.outputs.allow }}
+      fix-allow: ${{ needs.profile.outputs.fix-allow }}
     # The bot's token, an organization secret, named and never inherited.
     # The wrapper hands it to apply, in the environment above, and to the
     # status comment on an item of another repository; to nothing else.
