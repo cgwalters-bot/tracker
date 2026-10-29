@@ -22,7 +22,8 @@
     "cgwalters-forge/agenthome",
     "cgwalters-forge/misctool",
     "cgwalters-forge/composefs-rs",
-    "cgwalters-forge/bootc"
+    "cgwalters-forge/bootc",
+    "cgwalters-bot/praxis-credential-broker"
   ],
   "board": {"owner": "cgwalters-forge", "project": 1},
   "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true},
