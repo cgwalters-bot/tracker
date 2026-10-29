@@ -36,7 +36,7 @@
   "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true},
   "wip": 8,
   "bodyPlans": true,
-  "triage": {"scope": "epics"}, "sweep": {"weekday": "Monday", "hourUtc": 13}, "overlap": {"staleDraftHours": 4}, "triageFollowUpDays": 7, "replanAfterDays": 2,
+  "triage": {"scope": "epics"}, "sweep": {"weekday": "Monday", "hourUtc": 13}, "overlap": {"staleDraftHours": 4}, "cost": {"hourUtc": 6}, "triageFollowUpDays": 7, "replanAfterDays": 2,
   "revisit": {"perPass": 1, "afterDays": 14, "heldAfterDays": 7},
   "planPools": ["claude", "openai"],
   "triagePools": ["openai", "claude"],
