@@ -119,8 +119,8 @@ test('misctool is a dispatch and fix target with matching workflow-edit bounds',
     assert.equal(bounds.length, 2, name);
     for (const repos of bounds) assert.ok(repos.includes('cgwalters-forge/misctool'), name);
   }
-  // Less bootc-dev/*, which fix has and dispatch has not (D17, below).
-  for (let i = 0; i < 2; i++) assert.deepEqual([...dispatchLists[i]].sort(), fixLists[i].filter(r => r !== 'bootc-dev/*').sort());
+  // Less the upstreams bootc-dev/* (D17, below) and composefs/composefs-rs, which fix has and dispatch has not.
+  for (let i = 0; i < 2; i++) assert.deepEqual([...dispatchLists[i]].sort(), fixLists[i].filter(r => !['bootc-dev/*', 'composefs/composefs-rs'].includes(r)).sort());
 });
 
 // forge-infra (#812) is followed and a target, but no run may edit its
@@ -334,7 +334,7 @@ test('review wrapper uses the agentic-job v0.6.2 release pin', () => {
 
 test('the pass starts work only where dispatch.yml and fix runs may act, on known pools', () => {
   const pass = require('../pass.json');
-  const either = (...names) => names.flatMap(repos);
+  const either = (...names) => ({includes: repo => names.flatMap(repos).some(r => r === repo || (r.endsWith('/*') && repo.startsWith(r.slice(0, -1))))});
   for (const repo of pass.workRepositories) assert.ok(either('dispatch.toml', 'midstream.toml').includes(repo), `${repo} is scheduled but not in dispatch.toml or midstream.toml`);
   for (const repo of pass.follow) assert.ok(either('fix.toml', 'midstream-fix.toml').includes(repo), `${repo} is followed but not in fix.toml or midstream-fix.toml`);
   for (const pool of [...Object.keys(pass.pools), ...pass.planPools, ...pass.triagePools, ...pass.pr.fixPools, ...[pass.pr.toilFixPool, pass.pr.conflictFixPool].filter(Boolean)]) {
