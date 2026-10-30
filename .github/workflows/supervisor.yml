@@ -40,7 +40,7 @@ permissions: {}
 # a cap. Move it only with a review of that revision's `supervise` code.
 # session.yml and broker-probe.yml pin the same commit.
 env:
-  AGENT_BOARD_REV: d0f08bc875c3e05cfbbfe760ed2be0a7e7722f9f
+  AGENT_BOARD_REV: fb1f8b61c175bce16c099e7a7de7d201bbd80c80
 # Keep whole runs serialized: trigger considers the previous workflow active
 # through execute, even after its agent job ends, so a job-only group would
 # discard manual prompts in that window. GitHub keeps one pending run per
