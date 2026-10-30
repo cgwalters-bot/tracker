@@ -33,7 +33,7 @@
     "opus": {"input": 4.0, "cached_input": 0.20, "output": 20.0}
   },
   "board": {"owner": "cgwalters-forge", "project": 1},
-  "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true},
+  "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true, "maxAppliesPerPass": 3},
   "wip": 8,
   "bodyPlans": true,
   "triage": {"scope": "epics"}, "sweep": {"weekday": "Monday", "hourUtc": 13}, "overlap": {"staleDraftHours": 4}, "triageFollowUpDays": 7, "replanAfterDays": 2,
