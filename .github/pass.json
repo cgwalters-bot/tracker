@@ -16,7 +16,9 @@
     "cgwalters-forge/composefs-rs",
     "cgwalters-forge/bcvk",
     "cgwalters-forge/rpm-ostree",
-    "cgwalters-forge/atomic-linux-sandbox"
+    "cgwalters-forge/atomic-linux-sandbox",
+    "bootc-dev/bootc",
+    "composefs/composefs-rs"
   ],
   "workRepositories": [
     "cgwalters-forge/tracker",
