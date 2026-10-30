@@ -91,9 +91,12 @@ A scheduled pass only previews unless the repository variable `PASS_APPLY`
 is `enabled`. By hand, `gh workflow run poll.yml` previews and
 `-f apply=true` applies. While `PASS_APPLY` is `enabled`, each applying pass
 starts the next one ten minutes after its own start, since GitHub drops most
-of the `*/10` schedule. There is only one such chain, since a newer applying
-pass replaces the waiting one; setting the variable to anything else, or
-cancelling the run that is waiting, ends it. Every pass is capped at eight agent runs, twenty
+of the `*/10` schedule. A pass does not start the next while a newer
+applying run on the default branch is still to finish, so a second chain,
+say from an applying pass by hand, usually folds into the newer one; a run
+arriving during that check, or a newer run that never continues, can still
+leave two chains or none. Setting the variable to anything else, or
+cancelling the run that is waiting, ends the chain. Every pass is capped at eight agent runs, twenty
 other writes and fifty Status changes (more refuses the Status stage, a
 preview too, until someone has looked); raise them in `poll.yml` once the
 passes have been watched. New work goes through the board: an open issue

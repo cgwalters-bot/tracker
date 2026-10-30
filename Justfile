@@ -5,7 +5,79 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-config test-supervisor-config test-supervisor-workflow test-review-gate test-forge-sync test-weekly-material agent-board-pin
+test: test-config test-supervisor-config test-supervisor-workflow test-poll-next test-review-gate test-forge-sync test-weekly-material agent-board-pin
+
+# poll.yml's `next` step as written, with gh and sleep mocked: after its
+# sleep it dispatches unless a newer applying run on the default branch is
+# still to finish, and fails without dispatching when it cannot tell (#1019).
+test-poll-next:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { spawnSync } = require('node:child_process');
+    const workflow = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
+    const script = /- name: Start the next pass ten minutes after this one started\n(?: {8}.*\n)*? {8}run: \|\n((?: {10}.*\n)+)/
+      .exec(workflow)[1].replace(/^ {10}/gm, '');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-next-'));
+    const bin = path.join(dir, 'bin');
+    fs.mkdirSync(bin);
+    fs.writeFileSync(path.join(bin, 'sleep'), '#!/usr/bin/env bash\necho "sleep $*" >> "$MOCK_LOG"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/usr/bin/env bash
+    echo "gh $*" >> "$MOCK_LOG"
+    case "$1 $2" in
+      "api "*) echo "$MOCK_STARTED" ;;
+      "run list") [[ -z $MOCK_FAIL ]] || exit 1; cat "$MOCK_RUNS" ;;
+      "workflow run") ;;
+      *) exit 2 ;;
+    esac
+    `.replace(/^ {4}/gm, ''), { mode: 0o755 });
+    const t0 = '2026-10-29T23:20:00Z', later = '2026-10-29T23:25:00Z', earlier = '2026-10-29T23:15:00Z';
+    const run = (id, createdAt, fields) => ({ databaseId: id, createdAt, status: 'queued', event: 'schedule',
+      displayTitle: 'pass', headBranch: 'main', ...fields });
+    const me = run(100, t0, { status: 'in_progress', event: 'workflow_dispatch', displayTitle: 'pass (apply)' });
+    const applying = { event: 'workflow_dispatch', displayTitle: 'pass (apply)' };
+    const statuses = ['queued', 'waiting', 'pending', 'requested', 'in_progress'];
+    for (const [name, runs, want] of [
+      ['lone chain', [me], 'dispatch'],
+      ['offset duplicate chain', [run(105, later, { ...applying, status: 'in_progress' }), me], 'skip'],
+      ['newer schedule run', [run(105, later), me], 'skip'],
+      ...statuses.map(status => [`newer ${status} run`, [run(105, later, { ...applying, status }), me], 'skip']),
+      ['older queued run', [me, run(90, earlier, applying)], 'dispatch'],
+      ['newer completed run', [run(105, later, { ...applying, status: 'completed' }), me], 'dispatch'],
+      ['newer cancelled run', [run(105, later, { ...applying, status: 'completed', conclusion: 'cancelled' }), me], 'dispatch'],
+      ['same second, higher id', [run(101, t0, applying), me], 'skip'],
+      ['same second, lower id', [me, run(99, t0, applying)], 'dispatch'],
+      ['newer preview', [run(105, later, { event: 'workflow_dispatch', displayTitle: 'pass' }), me], 'dispatch'],
+      ['newer run on another branch', [run(105, later, { ...applying, headBranch: 'other' }), me], 'dispatch'],
+      ['newer schedule run on another branch', [run(105, later, { headBranch: 'other' }), me], 'dispatch'],
+      ['this run beyond the list', [run(105, later, { status: 'completed' })], 'fail'],
+      ['run list fails', null, 'fail'],
+    ]) {
+      const log = path.join(dir, 'log');
+      fs.writeFileSync(log, '');
+      fs.writeFileSync(path.join(dir, 'runs.json'), JSON.stringify(runs ?? []));
+      const started = new Date(Date.now() - 60_000).toISOString().replace(/\.\d+Z$/, 'Z');
+      const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+        encoding: 'utf8',
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, MOCK_LOG: log, MOCK_STARTED: started,
+          MOCK_RUNS: path.join(dir, 'runs.json'), MOCK_FAIL: runs ? '' : '1',
+          GH_TOKEN: 'unused', RUN_ID: '100', DEFAULT_BRANCH: 'main', GITHUB_REPOSITORY: 'o/r' },
+      });
+      // Mocked sleep returns at once; the check comes after it.
+      const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map(line => line.split(' ').slice(0, 3).join(' '));
+      const detail = `${name}: ${result.stdout}${result.stderr}`;
+      assert.deepEqual(calls.slice(0, 3).map(c => c.replace(/^sleep \d+$/, 'sleep')),
+        ['gh api repos/o/r/actions/runs/100', 'sleep', 'gh run list'], detail);
+      assert.match(fs.readFileSync(log, 'utf8'), /^gh run list --repo o\/r --workflow poll\.yml --branch main --limit 200 /m, detail);
+      const dispatched = calls.includes('gh workflow run');
+      assert.equal(result.status === 0 ? (dispatched ? 'dispatch' : 'skip') : 'fail', want, detail);
+      assert.ok(!(result.status !== 0 && dispatched), detail);
+      if (dispatched) assert.match(fs.readFileSync(log, 'utf8'), /^gh workflow run poll\.yml --repo o\/r --ref main -f apply=true$/m, detail);
+      console.log(`ok ${name}: ${want}`);
+    }
+    fs.rmSync(dir, { recursive: true });
 
 # supervisor.yml's folded concurrency group and health `if`, evaluated as
 # JavaScript on events: a run the gate skips gets a group of its own
