@@ -164,21 +164,79 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
-          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_started_at)
-          start=$(date -d "${started:?no start time for run $RUN_ID}" +%s)
-          wait=$(( start + 600 - $(date +%s) ))
-          if (( wait > 0 )); then sleep "$wait"; fi
-          # Applying runs are the schedule's (PASS_APPLY is enabled here) and
-          # those dispatched with apply, which run-name marks. The newest 200
-          # must reach back to this run, else a newer one may be unseen.
-          runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow poll.yml --branch "$DEFAULT_BRANCH" --limit 200 \
-            --json databaseId,status,createdAt,event,displayTitle,headBranch)
-          newer=$(jq -r --argjson id "$RUN_ID" --arg branch "$DEFAULT_BRANCH" '
-            (map(select(.databaseId == $id)) | first // error("run \($id) is not among the newest runs")) as $me
-            | map(select(.databaseId != $id and .headBranch == $branch
-                and (.status | IN("queued", "waiting", "pending", "requested", "in_progress"))
-                and (.event == "schedule" or (.event == "workflow_dispatch" and .displayTitle == "pass (apply)"))
-                and [.createdAt, .databaseId] > [$me.createdAt, $me.databaseId]))
-            | first.databaseId // empty' <<< "$runs")
-          if [[ -n $newer ]]; then echo "run $newer continues the chain; not starting another"; exit 0; fi
-          gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f apply=true
+          node <<'NODE'
+          const { execFileSync } = require('node:child_process');
+          const { setTimeout: sleep } = require('node:timers/promises');
+          const { GITHUB_REPOSITORY: repo, RUN_ID, DEFAULT_BRANCH: branch } = process.env;
+          const id = Number(RUN_ID);
+          const delays = [2000, 4000, 8000];
+          // A transient API failure must not end the chain. Bound each gh process
+          // (including both listing pages) to five seconds, and each operation to
+          // four attempts. Worst case: 24 calls + six backoff sequences = 204s,
+          // plus at most 600s waiting, leaving 96s of the 15-minute job budget.
+          const gh = (...args) => execFileSync('gh', args, {
+            encoding: 'utf8', timeout: 5000, killSignal: 'SIGKILL',
+            stdio: ['ignore', 'pipe', 'pipe'],
+          });
+          async function retry(name, operation) {
+            for (let attempt = 0; ; attempt++) {
+              try { return await operation(); }
+              catch (error) {
+                console.error(`${name} attempt ${attempt + 1}/4: ${error.message}`);
+                if (attempt === delays.length) throw new Error(`${name} exhausted four attempts`);
+                await sleep(delays[attempt]);
+              }
+            }
+          }
+          const timestamp = value => typeof value === 'string' &&
+            /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?Z$/.test(value) && Number.isFinite(Date.parse(value));
+          async function newerRun() {
+            return retry('runs listing', () => {
+              const runs = JSON.parse(gh('run', 'list', '--repo', repo, '--workflow', 'poll.yml',
+                '--branch', branch, '--limit', '200', '--json', 'databaseId,status,createdAt,event,displayTitle,headBranch'));
+              // Never treat an incomplete/malformed response as absence of a successor.
+              if (!Array.isArray(runs) || !runs.every(r => r && Number.isSafeInteger(r.databaseId) &&
+                  r.databaseId > 0 && timestamp(r.createdAt) &&
+                  ['status', 'event', 'displayTitle', 'headBranch'].every(key => typeof r[key] === 'string'))) {
+                throw new Error('malformed runs listing');
+              }
+              // Applying runs are schedules (PASS_APPLY is enabled here) and
+              // dispatches marked by run-name. The newest 200 must include us.
+              const me = runs.find(r => r.databaseId === id);
+              if (!me) throw new Error(`run ${id} is not among the newest runs`);
+              return runs.find(r => r.databaseId !== id && r.headBranch === branch &&
+                ['queued', 'waiting', 'pending', 'requested', 'in_progress'].includes(r.status) &&
+                (r.event === 'schedule' || (r.event === 'workflow_dispatch' && r.displayTitle === 'pass (apply)')) &&
+                (Date.parse(r.createdAt) > Date.parse(me.createdAt) ||
+                  (Date.parse(r.createdAt) === Date.parse(me.createdAt) && r.databaseId > id)));
+            });
+          }
+          async function main() {
+            const start = await retry('run-start lookup', () => {
+              const value = gh('api', `repos/${repo}/actions/runs/${RUN_ID}`, '--jq', '.run_started_at').trim();
+              if (!timestamp(value)) throw new Error('missing or malformed run start time');
+              return Date.parse(value);
+            });
+            const wait = Math.min(600000, start + 600000 - Date.now());
+            if (wait > 0) await sleep(wait);
+            for (let attempt = 0; ; attempt++) {
+              // Dispatch has no exactly-once guarantee: GitHub may accept it but
+              // return an error. Refresh before every attempt, including retries.
+              // A successor not yet visible can still cause a duplicate chain.
+              const newer = await newerRun();
+              if (newer) {
+                console.log(`run ${newer.databaseId} continues the chain; not starting another`);
+                return;
+              }
+              try {
+                gh('workflow', 'run', 'poll.yml', '--repo', repo, '--ref', branch, '-f', 'apply=true');
+                return;
+              } catch (error) {
+                console.error(`workflow dispatch attempt ${attempt + 1}/4: ${error.message}`);
+                if (attempt === delays.length) throw new Error('workflow dispatch exhausted four attempts');
+                await sleep(delays[attempt]);
+              }
+            }
+          }
+          main().catch(error => { console.error(`::error::${error.message}`); process.exitCode = 1; });
+          NODE
