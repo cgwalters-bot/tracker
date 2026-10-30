@@ -481,9 +481,13 @@ fn misctool_is_a_dispatch_and_fix_target_with_matching_workflow_edit_bounds() {
             assert!(repos.iter().any(|r| r == "cgwalters-forge/misctool"), "{name}");
         }
     }
-    // Less bootc-dev/*, which fix has and dispatch has not (D17, below).
+    // Less the upstreams bootc-dev/* (D17, below) and composefs/composefs-rs, which fix has and dispatch has not.
     for i in 0..2 {
-        let fix = fix_lists[i].iter().filter(|r| *r != "bootc-dev/*").cloned().collect();
+        let fix = fix_lists[i]
+            .iter()
+            .filter(|r| !["bootc-dev/*", "composefs/composefs-rs"].contains(&r.as_str()))
+            .cloned()
+            .collect();
         assert_eq!(sorted(dispatch_lists[i].clone()), sorted(fix));
     }
 }
@@ -996,9 +1000,13 @@ fn the_pass_starts_work_only_where_dispatch_and_fix_runs_may_act_on_known_pools(
     for repo in names(&pass["workRepositories"], "workRepositories") {
         assert!(scheduled.contains(&repo), "{repo} is scheduled but not in dispatch.toml or midstream.toml");
     }
+    // An `owner/*` bound covers each of that owner's repositories.
     let followed = either(&["fix.toml", "midstream-fix.toml"]);
     for repo in names(&pass["follow"], "follow") {
-        assert!(followed.contains(&repo), "{repo} is followed but not in fix.toml or midstream-fix.toml");
+        let covered = followed
+            .iter()
+            .any(|r| *r == repo || r.strip_suffix("/*").is_some_and(|owner| repo.starts_with(&format!("{owner}/"))));
+        assert!(covered, "{repo} is followed but not in fix.toml or midstream-fix.toml");
     }
     let mut used: Vec<String> = pass["pools"].as_object().expect("pass.json's pools").keys().cloned().collect();
     for key in ["planPools", "triagePools"] {
