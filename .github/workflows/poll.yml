@@ -164,21 +164,46 @@ jobs:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
-          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_started_at)
+          # One GitHub 5xx must not end the chain (#1033): each call gets four
+          # tries, 2, 4 and 8 seconds apart, and none may hang the job.
+          retry() {
+            local try
+            for try in 1 2 3 4; do
+              timeout 30 "$@" && return 0
+              echo "attempt $try of '$1 $2' failed" >&2
+              if (( try < 4 )); then sleep $(( 2 ** try )); fi
+            done
+            echo "::error::'$1 $2' failed four times" >&2
+            return 1
+          }
+          started=$(retry gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_started_at)
           start=$(date -d "${started:?no start time for run $RUN_ID}" +%s)
           wait=$(( start + 600 - $(date +%s) ))
           if (( wait > 0 )); then sleep "$wait"; fi
           # Applying runs are the schedule's (PASS_APPLY is enabled here) and
           # those dispatched with apply, which run-name marks. The newest 200
           # must reach back to this run, else a newer one may be unseen.
-          runs=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow poll.yml --branch "$DEFAULT_BRANCH" --limit 200 \
-            --json databaseId,status,createdAt,event,displayTitle,headBranch)
-          newer=$(jq -r --argjson id "$RUN_ID" --arg branch "$DEFAULT_BRANCH" '
-            (map(select(.databaseId == $id)) | first // error("run \($id) is not among the newest runs")) as $me
-            | map(select(.databaseId != $id and .headBranch == $branch
-                and (.status | IN("queued", "waiting", "pending", "requested", "in_progress"))
-                and (.event == "schedule" or (.event == "workflow_dispatch" and .displayTitle == "pass (apply)"))
-                and [.createdAt, .databaseId] > [$me.createdAt, $me.databaseId]))
-            | first.databaseId // empty' <<< "$runs")
-          if [[ -n $newer ]]; then echo "run $newer continues the chain; not starting another"; exit 0; fi
-          gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f apply=true
+          newer() {
+            local runs
+            runs=$(retry gh run list --repo "$GITHUB_REPOSITORY" --workflow poll.yml --branch "$DEFAULT_BRANCH" --limit 200 \
+              --json databaseId,status,createdAt,event,displayTitle,headBranch) || return 1
+            jq -r --argjson id "$RUN_ID" --arg branch "$DEFAULT_BRANCH" '
+              (map(select(.databaseId == $id)) | first // error("run \($id) is not among the newest runs")) as $me
+              | map(select(.databaseId != $id and .headBranch == $branch
+                  and (.status | IN("queued", "waiting", "pending", "requested", "in_progress"))
+                  and (.event == "schedule" or (.event == "workflow_dispatch" and .displayTitle == "pass (apply)"))
+                  and [.createdAt, .databaseId] > [$me.createdAt, $me.databaseId]))
+              | first.databaseId // empty' <<< "$runs"
+          }
+          # A dispatch that errored may still have been accepted, so list the
+          # runs again before each try; that narrows, but cannot rule out, a
+          # second chain.
+          for try in 1 2 3 4; do
+            next=$(newer)
+            if [[ -n $next ]]; then echo "run $next continues the chain; not starting another"; exit 0; fi
+            if timeout 30 gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f apply=true; then exit 0; fi
+            echo "attempt $try of 'gh workflow run' failed" >&2
+            if (( try < 4 )); then sleep $(( 2 ** try )); fi
+          done
+          echo "::error::'gh workflow run' failed four times" >&2
+          exit 1

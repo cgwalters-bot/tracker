@@ -10,6 +10,8 @@ test: test-config test-supervisor-config test-supervisor-workflow test-poll-next
 # poll.yml's `next` step as written, with gh and sleep mocked: after its
 # sleep it dispatches unless a newer applying run on the default branch is
 # still to finish, and fails without dispatching when it cannot tell (#1019).
+# Each GitHub call is tried four times, and before retrying a dispatch it
+# lists the runs again, since the failed one may have started a run (#1033).
 test-poll-next:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
@@ -27,10 +29,17 @@ test-poll-next:
     fs.writeFileSync(path.join(bin, 'gh'), `#!/usr/bin/env bash
     echo "gh $*" >> "$MOCK_LOG"
     case "$1 $2" in
-      "api "*) echo "$MOCK_STARTED" ;;
-      "run list") [[ -z $MOCK_FAIL ]] || exit 1; cat "$MOCK_RUNS" ;;
-      "workflow run") ;;
+      "api "*) kind=lookup ;;
+      "run list") kind=list ;;
+      "workflow run") kind=dispatch ;;
       *) exit 2 ;;
+    esac
+    echo >> "$MOCK_LOG.$kind"
+    fail=MOCK_FAIL_$kind
+    (( $(wc -l < "$MOCK_LOG.$kind") > \${!fail:-0} )) || exit 1
+    case $kind in
+      lookup) echo "$MOCK_STARTED" ;;
+      list) if [[ -e $MOCK_LOG.dispatch && -n $MOCK_SUCCESSOR ]]; then cat "$MOCK_SUCCESSOR"; else cat "$MOCK_RUNS"; fi ;;
     esac
     `.replace(/^ {4}/gm, ''), { mode: 0o755 });
     const t0 = '2026-10-29T23:20:00Z', later = '2026-10-29T23:25:00Z', earlier = '2026-10-29T23:15:00Z';
@@ -39,7 +48,7 @@ test-poll-next:
     const me = run(100, t0, { status: 'in_progress', event: 'workflow_dispatch', displayTitle: 'pass (apply)' });
     const applying = { event: 'workflow_dispatch', displayTitle: 'pass (apply)' };
     const statuses = ['queued', 'waiting', 'pending', 'requested', 'in_progress'];
-    for (const [name, runs, want] of [
+    for (const [name, runs, want, fail = {}] of [
       ['lone chain', [me], 'dispatch'],
       ['offset duplicate chain', [run(105, later, { ...applying, status: 'in_progress' }), me], 'skip'],
       ['newer schedule run', [run(105, later), me], 'skip'],
@@ -53,27 +62,46 @@ test-poll-next:
       ['newer run on another branch', [run(105, later, { ...applying, headBranch: 'other' }), me], 'dispatch'],
       ['newer schedule run on another branch', [run(105, later, { headBranch: 'other' }), me], 'dispatch'],
       ['this run beyond the list', [run(105, later, { status: 'completed' })], 'fail'],
-      ['run list fails', null, 'fail'],
+      ['run list fails four times', [me], 'fail', { list: 4 }],
+      ['transient lookup', [me], 'dispatch', { lookup: 1 }],
+      ['lookup fails four times', [me], 'fail', { lookup: 4 }],
+      ['transient listing', [me], 'dispatch', { list: 3 }],
+      ['transient dispatch', [me], 'dispatch', { dispatch: 1 }],
+      ['dispatch fails four times', [me], 'fail', { dispatch: 4 }],
+      ['dispatch errs but starts a run', [me], 'skip', { dispatch: 1, successor: [run(105, later, applying), me] }],
     ]) {
       const log = path.join(dir, 'log');
+      for (const kind of ['', '.lookup', '.list', '.dispatch']) fs.rmSync(log + kind, { force: true });
       fs.writeFileSync(log, '');
-      fs.writeFileSync(path.join(dir, 'runs.json'), JSON.stringify(runs ?? []));
+      fs.writeFileSync(path.join(dir, 'runs.json'), JSON.stringify(runs));
+      fs.writeFileSync(path.join(dir, 'successor.json'), JSON.stringify(fail.successor ?? []));
       const started = new Date(Date.now() - 60_000).toISOString().replace(/\.\d+Z$/, 'Z');
       const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
         encoding: 'utf8',
         env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, MOCK_LOG: log, MOCK_STARTED: started,
-          MOCK_RUNS: path.join(dir, 'runs.json'), MOCK_FAIL: runs ? '' : '1',
+          MOCK_RUNS: path.join(dir, 'runs.json'), MOCK_SUCCESSOR: fail.successor ? path.join(dir, 'successor.json') : '',
+          MOCK_FAIL_lookup: `${fail.lookup ?? 0}`, MOCK_FAIL_list: `${fail.list ?? 0}`, MOCK_FAIL_dispatch: `${fail.dispatch ?? 0}`,
           GH_TOKEN: 'unused', RUN_ID: '100', DEFAULT_BRANCH: 'main', GITHUB_REPOSITORY: 'o/r' },
       });
       // Mocked sleep returns at once; the check comes after it.
       const calls = fs.readFileSync(log, 'utf8').trim().split('\n').map(line => line.split(' ').slice(0, 3).join(' '));
       const detail = `${name}: ${result.stdout}${result.stderr}`;
-      assert.deepEqual(calls.slice(0, 3).map(c => c.replace(/^sleep \d+$/, 'sleep')),
-        ['gh api repos/o/r/actions/runs/100', 'sleep', 'gh run list'], detail);
-      assert.match(fs.readFileSync(log, 'utf8'), /^gh run list --repo o\/r --workflow poll\.yml --branch main --limit 200 /m, detail);
-      const dispatched = calls.includes('gh workflow run');
+      const tries = (call, n) => [...Array(n)].flatMap((_, i) => i ? [`sleep ${2 ** i}`, call] : [call]);
+      const lookups = tries('gh api repos/o/r/actions/runs/100', Math.min((fail.lookup ?? 0) + 1, 4));
+      assert.deepEqual(calls.slice(0, lookups.length + 1).map(c => c.replace(/^sleep \d{3}$/, 'sleep wait')),
+        [...lookups, ...(fail.lookup >= 4 ? [] : ['sleep wait'])], detail);
+      if ((fail.lookup ?? 0) < 4) assert.equal(calls[lookups.length + 1], 'gh run list', detail);
+      if (calls.includes('gh run list')) {
+        assert.match(fs.readFileSync(log, 'utf8'), /^gh run list --repo o\/r --workflow poll\.yml --branch main --limit 200 /m, detail);
+      }
+      const dispatches = calls.filter(c => c === 'gh workflow run').length;
+      const dispatched = dispatches > (fail.dispatch ?? 0);
       assert.equal(result.status === 0 ? (dispatched ? 'dispatch' : 'skip') : 'fail', want, detail);
-      assert.ok(!(result.status !== 0 && dispatched), detail);
+      if (!fail.dispatch) assert.ok(!(result.status !== 0 && dispatches), detail);
+      assert.ok(dispatches <= 4 && calls.filter(c => c === 'gh run list').length <= 16, detail);
+      // A dispatch is only ever tried right after the runs were listed.
+      calls.forEach((c, i) => c === 'gh workflow run' && assert.equal(calls[i - 1], 'gh run list', detail));
+      if (fail.successor) assert.equal(dispatches, 1, detail);
       if (dispatched) assert.match(fs.readFileSync(log, 'utf8'), /^gh workflow run poll\.yml --repo o\/r --ref main -f apply=true$/m, detail);
       console.log(`ok ${name}: ${want}`);
     }
