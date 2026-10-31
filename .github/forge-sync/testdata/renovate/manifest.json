@@ -1,0 +1,9 @@
+{
+  "_comment": "The manifest test-forge-sync checks the Renovate pass-* and fail-* fixtures beside it against.",
+  "review_pin": "1111111111111111111111111111111111111111",
+  "renovate_preset": "github>example/presets//renovate/runners",
+  "repos": [
+    { "repo": "example/synced" },
+    { "repo": "example/own-renovate", "exempt": { "renovate": "keeps its runner labels current by other means" } }
+  ]
+}

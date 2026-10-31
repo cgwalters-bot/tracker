@@ -63,7 +63,7 @@ jobs:
   # Read from the commit the run is on, which the wrapper requires to be
   # the default branch's, so a profile changes only by a merge here.
   profile:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     outputs:

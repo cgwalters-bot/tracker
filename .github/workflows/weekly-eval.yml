@@ -19,7 +19,7 @@ jobs:
     # dispatch.yml only runs from the default branch, so the task it is given
     # is this file's as the default branch has it.
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     # What lets the job token start dispatch.yml here.
     permissions:

@@ -14,7 +14,7 @@ permissions: {}
 
 jobs:
   check:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
       contents: read
@@ -41,7 +41,7 @@ jobs:
   report:
     needs: check
     if: ${{ !cancelled() && (needs.check.result == 'success' || needs.check.result == 'failure') }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
     permissions:
       issues: write

@@ -351,10 +351,13 @@ check-review-gate:
 # A repository's drift from the manifest (.github/forge-sync/repos.json,
 # #544), one line each, from its fetched files on stdin:
 # {"repo": ..., "review": <review.yml or null>, "dependabot": <dependabot.yml
-# or null>, "justfile": <bool>}. Fails on any drift, a repository the
-# manifest does not list, or an exemption that is unknown or gives no reason.
-# The YAML is parsed with yq (its first document), so only a job's `uses`
-# counts as a call of the reviewer, and every such call must be at the pin.
+# or null>, "justfile": <bool>, "renovate": <renovate.json or null>}. Fails
+# on any drift, a repository the manifest does not list, or an exemption that
+# is unknown or gives no reason. The YAML is parsed with yq (its first
+# document), so only a job's `uses` counts as a call of the reviewer, and
+# every such call must be at the pin. Only a manifest that sets
+# renovate_preset requires the Renovate config to list it in `extends`, so
+# that no repository's runner label goes stale unnoticed (#1054).
 forge-sync-drift manifest:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -365,8 +368,8 @@ forge-sync-drift manifest:
     drift=$(jq -r --slurpfile m "$1" --argjson rv "$review" --argjson dp "$dependabot" '
       $m[0] as $m | .repo as $r | (first($m.repos[] | select(.repo == $r)) // null) as $e
       | if $e == null then "\($r) \($path): expected an entry, found none" else ($e.exempt // {}) as $x
-      | ($x | to_entries[] | select((.key | IN("review", "dependabot", "justfile") | not) or (.value | type != "string" or length == 0))
-        | "\($r) \($path): expected exempt.\(.key) to be review, dependabot or justfile with a reason, found \(.value | tojson)"),
+      | ($x | to_entries[] | select((.key | IN("review", "dependabot", "justfile", "renovate") | not) or (.value | type != "string" or length == 0))
+        | "\($r) \($path): expected exempt.\(.key) to be review, dependabot, justfile or renovate with a reason, found \(.value | tojson)"),
         ("cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@" as $call | "\($call)\($m.review_pin)" as $want
         | [$rv | objects | .jobs | objects | .[] | objects | .uses | strings] as $uses
         | [$uses[] | select(startswith($call))] as $calls
@@ -376,27 +379,44 @@ forge-sync-drift manifest:
           | (.schedule | objects | .interval) // "no interval" | tostring] as $i
         | select($x.dependabot == null and ($i == [] or any($i[]; . != "daily")))
         | "\($r) .github/dependabot.yml: expected a github-actions update with interval daily, found \(if .dependabot == null then "no file" elif $i == [] then "no github-actions update" else $i | join(", ") end)"),
-        (select($x.justfile == null and .justfile != true) | "\($r) Justfile: expected a root Justfile, found none")
+        (select($x.justfile == null and .justfile != true) | "\($r) Justfile: expected a root Justfile, found none"),
+        ($m.renovate_preset as $p | select($p != null and $x.renovate == null)
+        | if $p | type != "string" or length == 0 then "\($r) \($path): expected renovate_preset to be a preset name, found \($p | tojson)"
+          else .renovate as $text | (if $text == null then null else try ($text | fromjson) catch null end) as $rc
+          | select([$rc | objects | .extends | arrays | .[] | select(. == $p)] == [])
+          | "\($r) renovate.json: expected extends to list \($p), found \(if $text == null then "no file" elif $rc | type != "object" then "no JSON object" else $rc.extends // [] | tojson end)" end)
       end' --arg path "$1" <<< "$input")
     [[ -z $drift ]] || { echo "$drift"; exit 1; }
 
-# forge-sync-drift on each fixture under .github/forge-sync/testdata against
-# its manifest.json, passing for pass-* and reporting drift for the fixture's
-# repository otherwise; then on this
+# forge-sync-drift on each fixture under .github/forge-sync/testdata, and
+# under its renovate/ whose manifest sets renovate_preset, against the
+# manifest.json beside it, passing for pass-* and reporting drift for the
+# fixture's repository otherwise; then on this
 # repository's own files against the real manifest, so moving the pin in
 # review.yml fails here until review_pin moves with it.
 test-forge-sync:
     #!/usr/bin/env bash
     set -euo pipefail
-    dir=.github/forge-sync/testdata
-    for f in "$dir"/pass-*.json "$dir"/fail-*.json; do
-      want=fail; [[ $(basename "$f") == pass-* ]] && want=pass
-      got=pass; out=$({{ just_executable() }} forge-sync-drift "$dir/manifest.json" < "$f" 2> /dev/null) || got=fail
-      [[ $got == pass || $out == "$(jq -r .repo "$f") "* ]] || got="an error: $out"
-      [[ $got == "$want" ]] || { echo "$f: want $want, got $got" >&2; exit 1; }
-      echo "ok $f ($want)"
+    top=.github/forge-sync/testdata
+    for dir in "$top" "$top/renovate"; do
+      for f in "$dir"/pass-*.json "$dir"/fail-*.json; do
+        want=fail; [[ $(basename "$f") == pass-* ]] && want=pass
+        got=pass; out=$({{ just_executable() }} forge-sync-drift "$dir/manifest.json" < "$f" 2> /dev/null) || got=fail
+        [[ $got == pass || $out == "$(jq -r .repo "$f") "* ]] || got="an error: $out"
+        [[ $got == "$want" ]] || { echo "$f: want $want, got $got" >&2; exit 1; }
+        echo "ok $f ($want)"
+      done
     done
     bad=$(mktemp)
+    # Without renovate_preset no Renovate config is required; with one that
+    # is not a preset name every repository drifts.
+    {{ just_executable() }} forge-sync-drift "$top/manifest.json" < "$top/renovate/fail-no-renovate.json"
+    echo "ok no renovate_preset requires no Renovate config"
+    jq '.renovate_preset = 1' "$top/renovate/manifest.json" > "$bad"
+    if {{ just_executable() }} forge-sync-drift "$bad" < "$top/renovate/pass-extends-preset.json" > /dev/null 2>&1; then
+      echo "forge-sync-drift with renovate_preset 1: want fail, got pass" >&2; exit 1
+    fi
+    echo "ok forge-sync-drift refuses renovate_preset 1"
     for manifest in '{}' '{"repos": []}' '{"repos": [{}]}' '[' ''; do
       if [[ -n $manifest ]]; then echo "$manifest" > "$bad"; else rm -f "$bad"; fi
       if {{ just_executable() }} forge-sync "$bad" > /dev/null 2>&1; then
@@ -426,13 +446,19 @@ forge-sync manifest=".github/forge-sync/repos.json":
       else echo "::error::$1: could not read $2: $(cat "$err")" >&2; return 1; fi
     }
     repos=$(jq -er '.repos | select(length > 0 and all(.[]; .repo | type == "string")) | .[].repo' "$1") || { echo "::error::$1: expected a manifest listing repos" >&2; exit 1; }
+    # The Renovate config is read only when the manifest asks for a preset,
+    # from the two JSON places Renovate looks for it that the forge uses.
+    preset=$(jq -r '.renovate_preset // empty' "$1")
     failed=() drift=
     for repo in $repos; do
-      out=
+      out= renovate=null
       if j=$(fetch "$repo" Justfile) && if [[ $j == null ]]; then j=$(fetch "$repo" justfile); fi &&
+        if [[ -n $preset ]]; then
+          renovate=$(fetch "$repo" renovate.json) && if [[ $renovate == null ]]; then renovate=$(fetch "$repo" .github/renovate.json); fi
+        fi &&
         input=$(jq -n --arg repo "$repo" --argjson review "$(fetch "$repo" .github/workflows/review.yml)" \
-          --argjson dependabot "$(fetch "$repo" .github/dependabot.yml)" --argjson j "$j" \
-          '{$repo, $review, $dependabot, justfile: ($j != null)}') &&
+          --argjson dependabot "$(fetch "$repo" .github/dependabot.yml)" --argjson j "$j" --argjson renovate "$renovate" \
+          '{$repo, $review, $dependabot, justfile: ($j != null), $renovate}') &&
         out=$({{ just_executable() }} forge-sync-drift "$1" <<< "$input"); then
         echo "ok $repo"; continue
       fi
