@@ -32,7 +32,7 @@ concurrency:
 # on agent-board's main as in poll.yml, from which it differs only by
 # `changes --until`; move it with the others.
 env:
-  AGENT_BOARD_REV: fc47e06dc8b8d6333b9c89fe236a762b677fdbb6
+  AGENT_BOARD_REV: 7f422cc5eda825cef4ebe4a9409e307ed279d392
   SITE_REPO: cgwalters-forge/cgwalters-forge.github.io
 
 jobs:
