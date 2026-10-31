@@ -16,7 +16,7 @@ concurrency:
 # The agent-board commit the train runs. It is given the bot's token, so it
 # is a revision reviewed here, never agent-board's moving branch.
 env:
-  AGENT_BOARD_REV: 3f1010d7694b86e4cb46d2803421f24ffa83bd64
+  AGENT_BOARD_REV: fa78eab948db355f867860c9959b51f433777bee
 jobs:
   pass:
     if: ${{ (vars.RELEASE_TRAIN == 'dry-run' || vars.RELEASE_TRAIN == 'apply') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
