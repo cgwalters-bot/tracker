@@ -64,7 +64,7 @@ gh() {
     'run list')
       if [[ $* == *'--workflow supervisor.yml'* ]]; then
         [[ $FAIL != list ]] || return 1
-        echo "$LATEST"
+        jq -r "${@: -1}" <<< "$LATEST"
       else
         echo '[{"databaseId":100,"createdAt":"2027-01-15T07:59:00Z"}]'
       fi ;;
@@ -74,16 +74,19 @@ gh() {
   esac
 }
 "#;
+    const NONE: &str = "[]";
     for (name, setting, latest, failure, lists, dispatches) in [
-        ("unset", "", "", "", 0, 0),
-        ("disabled", "off", "", "", 0, 0),
-        ("recent", "apply", "2027-01-15T07:30:01Z", "", 1, 0),
-        ("thirty minutes", "preview", "2027-01-15T07:30:00Z", "", 1, 1),
-        ("stale", "apply", "2027-01-15T07:00:00Z", "", 1, 1),
-        ("no runs", "apply", "", "", 1, 1),
-        ("invalid timestamp", "apply", "invalid", "", 1, 0),
-        ("unreadable runs", "apply", "", "list", 4, 0),
-        ("dispatch failed", "apply", "", "dispatch", 1, 4),
+        ("unset", "", NONE, "", 0, 0),
+        ("disabled", "off", NONE, "", 0, 0),
+        ("recent", "apply", r#"[{"createdAt":"2027-01-15T07:30:01Z","event":"schedule"}]"#, "", 1, 0),
+        ("thirty minutes", "preview", r#"[{"createdAt":"2027-01-15T07:30:00Z","event":"schedule"}]"#, "", 1, 1),
+        ("stale", "apply", r#"[{"createdAt":"2027-01-15T07:00:00Z","event":"schedule"}]"#, "", 1, 1),
+        ("stale under comments", "apply", r#"[{"createdAt":"2027-01-15T07:59:00Z","event":"issue_comment"},{"createdAt":"2027-01-15T07:00:00Z","event":"workflow_dispatch"}]"#, "", 1, 1),
+        ("only comments", "apply", r#"[{"createdAt":"2027-01-15T07:59:00Z","event":"issue_comment"}]"#, "", 1, 1),
+        ("no runs", "apply", NONE, "", 1, 1),
+        ("invalid timestamp", "apply", r#"[{"createdAt":"invalid","event":"schedule"}]"#, "", 1, 0),
+        ("unreadable runs", "apply", NONE, "list", 4, 0),
+        ("dispatch failed", "apply", NONE, "dispatch", 1, 4),
     ] {
         let output = Command::new("bash")
             .args(["--noprofile", "--norc", "-eo", "pipefail", "-c", &format!("{mocks}\n{script}")])
@@ -92,10 +95,10 @@ gh() {
             .output().expect("run mocked next job");
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(output.status.success(), "{name}: {stderr}");
-        assert_eq!(stderr.matches("CALL run list --repo o/r --workflow supervisor.yml --branch main --limit 1 --json createdAt --jq").count(), lists, "{name}: {stderr}");
+        assert_eq!(stderr.matches("CALL run list --repo o/r --workflow supervisor.yml --branch main --limit 100 --json createdAt,event --jq").count(), lists, "{name}: {stderr}");
         assert_eq!(stderr.matches("CALL workflow run supervisor.yml --repo o/r --ref main -f prompt= -f session=false").count(), dispatches, "{name}: {stderr}");
         assert_eq!(stderr.matches("CALL workflow run poll.yml --repo o/r --ref main -f apply=true").count(), 1, "{name}: {stderr}");
-        if !failure.is_empty() || latest == "invalid" {
+        if !failure.is_empty() || latest.contains("invalid") {
             assert!(String::from_utf8_lossy(&output.stdout).contains("::warning::Could not start the supervisor"), "{name}");
         }
     }
