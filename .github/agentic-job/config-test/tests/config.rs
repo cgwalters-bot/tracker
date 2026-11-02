@@ -42,65 +42,30 @@ fn dispatch() -> String {
 }
 
 #[test]
-fn poll_wakes_only_a_stale_enabled_supervisor_without_ending_the_chain() {
+fn poll_next_passes_caller_settings_and_gates_the_supervisor() {
     let workflow = read("../workflows/poll.yml");
     let next = workflow.split_once("  next:\n").expect("next job").1;
     assert!(next.contains("SUPERVISOR: ${{ vars.SUPERVISOR }}"));
     let script = next.split_once("        run: |\n").expect("next script").1
         .lines().map(|line| line.strip_prefix("          ").unwrap_or(line))
         .collect::<Vec<_>>().join("\n");
-    // Execute the workflow itself. All API calls and waits are mocked;
-    // timeout's argument is checked rather than waiting through failures.
-    let mocks = r#"
-timeout() { [[ $1 == 30 ]] || return 90; shift; "$@"; }
-sleep() { :; }
-date() {
-  if [[ $1 == +%s ]]; then echo 1800000000; else command date "$@"; fi
-}
-gh() {
-  echo "CALL $*" >&2
-  case "$1 $2" in
-    'api '*) echo '2027-01-15T07:59:00Z' ;;
-    'run list')
-      if [[ $* == *'--workflow supervisor.yml'* ]]; then
-        [[ $FAIL != list ]] || return 1
-        jq -r "${@: -1}" <<< "$LATEST"
-      else
-        echo '[{"databaseId":100,"createdAt":"2027-01-15T07:59:00Z"}]'
-      fi ;;
-    'workflow run')
-      if [[ $3 == supervisor.yml && $FAIL == dispatch ]]; then return 1; fi ;;
-    *) return 91 ;;
-  esac
-}
-"#;
-    const NONE: &str = "[]";
-    for (name, setting, latest, failure, lists, dispatches) in [
-        ("unset", "", NONE, "", 0, 0),
-        ("disabled", "off", NONE, "", 0, 0),
-        ("recent", "apply", r#"[{"createdAt":"2027-01-15T07:30:01Z","event":"schedule"}]"#, "", 1, 0),
-        ("thirty minutes", "preview", r#"[{"createdAt":"2027-01-15T07:30:00Z","event":"schedule"}]"#, "", 1, 1),
-        ("stale", "apply", r#"[{"createdAt":"2027-01-15T07:00:00Z","event":"schedule"}]"#, "", 1, 1),
-        ("stale under comments", "apply", r#"[{"createdAt":"2027-01-15T07:59:00Z","event":"issue_comment"},{"createdAt":"2027-01-15T07:00:00Z","event":"workflow_dispatch"}]"#, "", 1, 1),
-        ("only comments", "apply", r#"[{"createdAt":"2027-01-15T07:59:00Z","event":"issue_comment"}]"#, "", 1, 1),
-        ("no runs", "apply", NONE, "", 1, 1),
-        ("invalid timestamp", "apply", r#"[{"createdAt":"invalid","event":"schedule"}]"#, "", 1, 0),
-        ("unreadable runs", "apply", NONE, "list", 4, 0),
-        ("dispatch failed", "apply", NONE, "dispatch", 1, 4),
-    ] {
+    // Only the caller wiring stays here; timing, listings and retries are
+    // agent-board's tests. A Bash function captures the exact executable's argv.
+    let mock = "mock/agent-board/bin/agent-board() { printf '%s\\n' \"$@\"; }";
+    for (setting, enabled) in [("", false), ("off", false), ("preview", true), ("apply", true)] {
         let output = Command::new("bash")
-            .args(["--noprofile", "--norc", "-eo", "pipefail", "-c", &format!("{mocks}\n{script}")])
-            .env("SUPERVISOR", setting).env("LATEST", latest).env("FAIL", failure)
-            .env("GITHUB_REPOSITORY", "o/r").env("DEFAULT_BRANCH", "main").env("RUN_ID", "100")
+            .args(["--noprofile", "--norc", "-eo", "pipefail", "-c", &format!("{mock}\n{script}")])
+            .env("SUPERVISOR", setting).env("RUNNER_TEMP", "mock").env("DEFAULT_BRANCH", "main")
             .output().expect("run mocked next job");
         let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(output.status.success(), "{name}: {stderr}");
-        assert_eq!(stderr.matches("CALL run list --repo o/r --workflow supervisor.yml --branch main --limit 100 --json createdAt,event --jq").count(), lists, "{name}: {stderr}");
-        assert_eq!(stderr.matches("CALL workflow run supervisor.yml --repo o/r --ref main -f prompt= -f session=false").count(), dispatches, "{name}: {stderr}");
-        assert_eq!(stderr.matches("CALL workflow run poll.yml --repo o/r --ref main -f apply=true").count(), 1, "{name}: {stderr}");
-        if !failure.is_empty() || latest.contains("invalid") {
-            assert!(String::from_utf8_lossy(&output.stdout).contains("::warning::Could not start the supervisor"), "{name}");
+        assert!(output.status.success(), "{setting}: {stderr}");
+        let mut expected = vec!["pass", "next", "--workflow", "poll.yml", "--branch", "main",
+            "--input", "apply=true", "--apply-title", "pass (apply)", "--wait-minutes", "10"];
+        if enabled {
+            expected.extend(["--supervisor-workflow", "supervisor.yml", "--supervisor-stale-minutes", "30",
+                "--supervisor-input", "prompt=", "--supervisor-input", "session=false"]);
         }
+        assert_eq!(String::from_utf8_lossy(&output.stdout).lines().collect::<Vec<_>>(), expected, "{setting}");
     }
 }
 
