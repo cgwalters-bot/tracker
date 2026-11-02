@@ -47,7 +47,7 @@
     "dailyCaps": {
       "comment": 20,
       "file_bug": 5,
-      "plan_epic": 3,
+      "plan_epic": 6,
       "create_issue": 15,
       "close": 10,
       "remove_needs_human": 12,
