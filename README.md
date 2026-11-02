@@ -376,7 +376,10 @@ with the job token and `actions: write`. `weekly-eval.yml`, on Tuesdays,
 does only that: it starts a `research` run that re-evaluates our tools against gh-aw
 and the like and comments on #519.
 
-`weekly-blog.yml`, on Sundays, gathers the week's material for the weekly
+`weekly-blog.yml`, on Sundays, runs agent-board's
+[`digest`](https://github.com/cgwalters-forge/agent-board/blob/main/docs/digest.md)
+with `.github/weekly-digest.json` for this deployment's templates and budgets.
+It gathers the week's material for the weekly
 notes on the organization site (cgwalters-forge/cgwalters-forge.github.io,
 `/blog/`): `agent-board changes --public-only` (the status updates are
 copied whole: they are public because the project is) from the Sunday
