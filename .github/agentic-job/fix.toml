@@ -35,18 +35,19 @@ max_patch_files = 50
 #
 # `bot/**` is the homegit era's branches: the bot's bootc-dev pull requests
 # from the midstream fork cgwalters-forge/bootc, and the staged ones within
-# cgwalters-forge/composefs-rs and cgwalters-forge/bootc (#710), which
-# midstream-fix.toml bounds with the same branches. Both globs
-# hold for every repository above and every head, as the bounds bound no
-# head repository; apply does (agentic-job's workflow/push.cjs). It
-# pushes only where the bot has write access, and there only to the bot's
+# cgwalters-forge/composefs-rs and cgwalters-forge/bootc (#710) and
+# cgwalters-forge/bcvk, which midstream-fix.toml bounds with the same
+# branches. Both globs hold for every repository above and every head, as
+# the bounds bound no head repository; apply does (agentic-job's
+# workflow/push.cjs). It pushes only where the bot has write access, and there only to the bot's
 # own fork, or to a fork of the target or the target itself whose default
 # branch has `.github/agentic-job/accept-owner-branches` naming it: the
 # bot's write access alone is not that acceptance. So the file, added by
 # hand to a repository's main, is what lets a head other than the bot's
-# fork take a push, on any branch these globs admit. Neither midstream
-# fork has it yet, so their pushes fail at apply until the operator adds
-# it, accepting that the fork's own workflows run the pushed commits.
+# fork take a push, on any branch these globs admit. composefs-rs and
+# bootc have it; bcvk does not yet, so pushes there fail at apply until the
+# operator adds it, accepting that the fork's own workflows run the pushed
+# commits.
 #
 # `release-train/**` is the release train's version-bump and pin pull
 # requests (.github/release-train), which the poll now follows like any

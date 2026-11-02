@@ -82,8 +82,10 @@ packages = ["python3-venv", "nftables", "just"]
 "cgwalters-forge/misctool" = ["cargo"]
 "cgwalters-bot/praxis-credential-broker" = ["cargo"]
 # The midstream forks (epic #160). composefs-rs builds with pkg-config and
-# OpenSSL for its HTTP fetch; bootc also links libostree, glib and zstd.
+# OpenSSL for its HTTP fetch, as bcvk does; bootc also links libostree,
+# glib and zstd.
 "cgwalters-forge/composefs-rs" = ["cargo", "pkg-config", "libssl-dev"]
+"cgwalters-forge/bcvk" = ["cargo", "pkg-config", "libssl-dev"]
 "cgwalters-forge/bootc" = ["cargo", "pkg-config", "libssl-dev", "libostree-dev", "libglib2.0-dev", "libzstd-dev"]
 
 # The window each broker model is given, which Vibe compacts at three
