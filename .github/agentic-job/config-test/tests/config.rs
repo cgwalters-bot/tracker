@@ -493,6 +493,30 @@ fn forge_infra_is_a_followed_target_without_unprotected_files() {
     assert!(follow.as_array().expect("agent-board.json's follow").contains(&json!(repo)));
 }
 
+// The midstream fork bcvk takes staged pull requests as composefs-rs and
+// bootc do: midstream bounds only, scheduled, followed for fix rounds by the
+// pass but never merged into, since its main tracks upstream.
+#[test]
+fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
+    let repo = "cgwalters-forge/bcvk";
+    for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
+        assert!(repos(name).iter().any(|r| r == repo), "{name}");
+    }
+    for name in ["dispatch.toml", "fix.toml"] {
+        assert!(!repos(name).iter().any(|r| r == repo), "{name}");
+    }
+    let board = json_file("../poll/agent-board.json");
+    assert!(board["schedule"]["repositories"].as_array().expect("schedule.repositories").contains(&json!(repo)));
+    assert!(!board["follow"].as_array().expect("agent-board.json's follow").contains(&json!(repo)));
+    let pass = json_file("../pass.json");
+    for key in ["follow", "workRepositories"] {
+        assert!(pass[key].as_array().expect(key).contains(&json!(repo)), "{key}");
+    }
+    assert!(pass["pr"]["noMerge"].as_array().expect("pr.noMerge").contains(&json!(repo)));
+    let proposals = &pass["holds"]["proposals"]["repositories"];
+    assert!(proposals.as_array().expect("holds.proposals.repositories").contains(&json!(repo)));
+}
+
 // Without `ready_when_complete` apply opens every pull request as a draft,
 // and the poll stops on each as "a draft with no checkpoint" (#646). The
 // other fields of each entry stay as they were.
@@ -552,7 +576,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
             })
             .collect()
     };
-    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc"]);
+    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk"]);
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
         assert!(!text.contains("ready_when_complete") && !has_line_starting(&text, "[unprotected_files]"), "{midstream}");
@@ -580,7 +604,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     let step = step_script("Resolve the bounds");
     // bootc-dev/bootc is upstream, no midstream; neither is a name that only contains one.
     for (repos, allow, fix) in [
-        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC"][..], "midstream.toml", "midstream-fix.toml"),
+        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk"][..], "midstream.toml", "midstream-fix.toml"),
         (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge"][..], "dispatch.toml", "fix.toml"),
     ] {
         for repo in repos {
@@ -632,7 +656,7 @@ fn agentic_job_policy_admits_bootc_dev_only_for_comments_and_fixes() {
     };
     // The bot's dispatch branches, and the homegit era's bot/** ones (#710),
     // in bootc-dev and in the midstream forks; no other branch pattern.
-    for repo in ["bootc-dev/bootc", "cgwalters-forge/bootc", "cgwalters-forge/composefs-rs"] {
+    for repo in ["bootc-dev/bootc", "cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk"] {
         for branch in ["dispatch/x", "bot/install-output", "bot/a/b"] {
             assert!(fix(repo, branch), "{repo} {branch}");
         }
@@ -640,11 +664,11 @@ fn agentic_job_policy_admits_bootc_dev_only_for_comments_and_fixes() {
             assert!(!fix(repo, branch), "{repo} {branch}");
         }
     }
-    // Another owner's bootc or composefs-rs is no target, even on bot/**.
+    // Another owner's bootc, composefs-rs or bcvk is no target, even on bot/**.
     // This is the target, not a pull request's head repository: the policy is
     // never told the head, which apply bounds instead (fix.toml's comment on
     // `bot/**`), so no test here can refuse a head owner.
-    for repo in ["someone/bootc", "cgwalters-bot/bootc", "containers/composefs-rs"] {
+    for repo in ["someone/bootc", "cgwalters-bot/bootc", "containers/composefs-rs", "cgwalters-bot/bcvk", "someone/bcvk"] {
         assert!(!fix(repo, "bot/x"), "{repo}");
     }
 }

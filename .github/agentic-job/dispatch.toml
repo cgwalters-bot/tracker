@@ -1,7 +1,7 @@
 # Bounds for dispatch.yml: the repositories a dispatched run may target.
 # Exact names, no globs; add a repository here before dispatching to it.
-# The midstream forks composefs-rs and bootc (epic #160) are not listed
-# here: their bounds are midstream.toml, which dispatch.yml picks for them,
+# The midstream forks composefs-rs and bootc (epic #160) and bcvk are not
+# listed here: their bounds are midstream.toml, which dispatch.yml picks for them,
 # so that every pull request there stays a draft (#336).
 # The bot-owned praxis-credential-broker is a target the poll does not
 # follow either (docs/bring-up.md).

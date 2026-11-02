@@ -53,7 +53,8 @@
       "cgwalters-forge/agenthome",
       "cgwalters-forge/misctool",
       "cgwalters-forge/composefs-rs",
-      "cgwalters-forge/bootc"
+      "cgwalters-forge/bootc",
+      "cgwalters-forge/bcvk"
     ]
   }
 }
