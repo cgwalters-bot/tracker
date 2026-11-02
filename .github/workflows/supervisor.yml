@@ -34,7 +34,7 @@ on:
         options: [claude, openai, mistral]
         default: claude
 permissions: {}
-# The agent-board commit both jobs build: the executor receives the bot's
+# The agent-board commit both jobs install: the executor receives the bot's
 # token, so it runs only a revision reviewed here, never agent-board's
 # moving branch, and health/trigger and execute agree within a run. At this
 # commit every write but the log is capped at zero unless config.json sets
@@ -149,7 +149,9 @@ jobs:
           echo 'read=true' >> "$GITHUB_OUTPUT"
       # Built fresh, never a cached binary that another job could replace
       # before token use.
-      - name: Build agent-board at the pinned revision
+      - name: Install verified agent-board at the pinned revision
+        env:
+          GH_TOKEN: ${{ github.token }}
         timeout-minutes: 10
         run: just build-agent-board "$AGENT_BOARD_REV"
       # health is always true; daily marks a request or a due sweep. Without
@@ -326,7 +328,9 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
-      - name: Build agent-board at the pinned revision
+      - name: Install verified agent-board at the pinned revision
+        env:
+          GH_TOKEN: ${{ github.token }}
         timeout-minutes: 10
         run: just build-agent-board "$AGENT_BOARD_REV"
       # Preview has no bot token and never calls execute, which always writes

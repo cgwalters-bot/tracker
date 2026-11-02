@@ -181,9 +181,9 @@ healthy observations, and fail once they have lasted
 `unavailableFailHours`: each pass reads the previous pass's `health.json`
 artifact for since when. API requests have deadlines and a total
 budget and a seven-minute collection deadline; the health step has an eight-minute
-limit, within a 25-minute job that also builds agent-board afresh using
+limit, within a 25-minute job that installs a verified agent-board binary using
 `just build-agent-board` at the commit pinned as `AGENT_BOARD_REV` in
-`supervisor.yml`, which the `execute` job builds too. As in `poll.yml`, it
+`supervisor.yml`, which the `execute` job installs too. As in `poll.yml`, it
 never follows agent-board's branch: the executor receives the bot's token, so
 a change to agent-board reaches it only when that pin moves here, after review. The newest health artifact among
 the last five completed runs is restored with a two-minute bound and passed as `--previous`;
@@ -310,7 +310,7 @@ lists requests and applies none, then compare a week of preview against the
 local loop before enabling apply with small caps.
 The pacing, the repeat check, the task composition and the preview are
 agent-board's `supervise due`, `repeat`, `compose` and `preview`, tested
-there. CI builds the supervisor workflow's exact pin with
+there. CI installs the supervisor workflow's exact pin with
 `just build-supervisor-agent-board`, and `just test-supervisor-config` runs
 `supervise trigger` on empty health checks, without `--daily`, to validate the
 shipped settings and executor policy without API calls or writes.
@@ -357,17 +357,32 @@ a version bump that was never released. `agent-board release-train --config
 
 ## The agent-board pin
 
-Every workflow that builds agent-board pins the same commit as
+Every workflow that installs agent-board pins the same commit as
 `AGENT_BOARD_REV`; `just agent-board-pin`, part of `just test` in CI, fails
 when they differ. `.github/workflows/agent-board-pin.yml` runs `just
 bump-agent-board`, started by the pass when agent-board's main is not the
 pin and has no pin PR yet, and hourly as a fallback: when agent-board's
-main is ahead of the pin and all its check runs passed, it opens or updates
+main is ahead of the pin, all its check runs passed and its published binary
+passes the shared installer's verification, it opens or updates
 one pull request from the bot's fork (branch `agent-board-pin`) moving
 every pin to it, listing the commits in between, and the review and the
 pass take it like any bot PR. It is off
 unless the repository variable `AGENT_BOARD_PIN` is `enabled`, and uses
 `CGWALTERS_BOT_PAT`, which needs the workflows permission on the fork.
+
+`just build-agent-board` retains its historical name and installs into
+`$RUNNER_TEMP/agent-board/bin/agent-board`, emitting `rev` to `GITHUB_OUTPUT`.
+It requires a full commit argument (or `AGENT_BOARD_REV`), never a moving
+branch. On Linux x86_64 it downloads `build-<commit>`'s static musl binaries,
+manifest, checksums and provenance. It verifies the manifest's attestation
+against agent-board's CI on main and the pinned source digest without a token,
+then checks the manifest identity and both binary digests before installation.
+This prevents substituted assets from running with the bot's write token.
+Downloads and attestation verification each have a 180-second limit. Missing
+assets, unsupported platforms and failed verification stop the job; there is
+no compilation fallback. Only the download step receives the ordinary job
+token; job permissions and mutation gates are unchanged. Fixture tests cover
+these failures and refuse bump selection without a verified binary.
 
 ## Weekly runs
 

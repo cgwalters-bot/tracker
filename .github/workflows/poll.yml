@@ -55,7 +55,9 @@ jobs:
       # Built each pass and never cached: a cache any job on the default
       # branch can write is not where a binary given the bot's token should
       # come from.
-      - name: Build agent-board
+      - name: Install verified agent-board
+        env:
+          GH_TOKEN: ${{ github.token }}
         timeout-minutes: 10
         run: just build-agent-board "$AGENT_BOARD_REV"
       # Stage 2 reads the broker's /usage over the tailnet. Without the
@@ -159,7 +161,7 @@ jobs:
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name == 'schedule' || inputs.apply) }}
     runs-on: ubuntu-26.04
-    # The build (10), ten-minute wait and bounded retries for both workflows.
+    # The verified download, ten-minute wait and bounded retries for both workflows.
     timeout-minutes: 30
     permissions:
       actions: write
@@ -170,7 +172,9 @@ jobs:
       - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
-      - name: Build agent-board
+      - name: Install verified agent-board
+        env:
+          GH_TOKEN: ${{ github.token }}
         timeout-minutes: 10
         run: just build-agent-board "$AGENT_BOARD_REV"
       - name: Start the next pass ten minutes after this one started

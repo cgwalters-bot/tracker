@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-gate test-forge-sync agent-board-pin
+test: test-agent-board-install test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-gate test-forge-sync agent-board-pin
 
 # poll must pass both of the fix bounds files dispatch selects per target.
 test-poll-bounds:
@@ -207,6 +207,12 @@ bump-agent-board:
     if ! jq -e 'length > 0 and all(.[]; .status == "completed" and (.conclusion | IN("success", "neutral", "skipped")))' <<< "$runs" > /dev/null; then
       echo "$head: CI is not green yet: $runs"; exit 0
     fi
+    # Publication follows CI: green source alone is not an installable pin.
+    if ! published=$(gh release view "build-$head" --repo "$upstream" --json isDraft --jq '.isDraft') || [[ $published != false ]]; then
+      echo "$head: no published binary release yet"; exit 0
+    fi
+    (export RUNNER_TEMP=$(mktemp -d); trap 'rm -rf "$RUNNER_TEMP"' EXIT
+      GITHUB_OUTPUT=/dev/null {{ just_executable() }} build-agent-board "$head")
     # Never backwards or onto rewritten history; compare lists at most 250 commits.
     compare=$(gh api "repos/$upstream/compare/$pin...$head")
     status=$(jq -r .status <<< "$compare")
@@ -440,20 +446,108 @@ build-supervisor-agent-board:
     [[ $rev =~ ^[0-9a-f]{40}$ ]] || { echo 'expected one supervisor pin' >&2; exit 1; }
     {{ just_executable() }} build-agent-board "$rev"
 
-# Without a revision, the configured branch's head; the workflows
-# pass a pinned commit so the program that holds the bot's token is the reviewed one.
-build-agent-board rev="":
+# No moving refs or source fallback: substituted assets must not run with the
+# bot's write token. The attested manifest binds both digests to reviewed CI.
+build-agent-board rev=env("AGENT_BOARD_REV", ""):
     #!/usr/bin/env bash
     set -euo pipefail
-    source=$(jq -er .source .github/poll/agent-board.json)
-    rev=${1:-}
-    if [[ -z $rev ]]; then
-      branch=$(jq -er .branch .github/poll/agent-board.json)
-      rev=$(git ls-remote --exit-code "$source" "refs/heads/$branch" | cut -f1)
-    fi
-    [[ $rev =~ ^[0-9a-f]{40}$ ]]
-    cargo install --locked --root "$RUNNER_TEMP/agent-board" --git "$source" --rev "$rev" agent-board
-    echo "rev=$rev" >> "$GITHUB_OUTPUT"
+    rev=$1
+    [[ $rev =~ ^[0-9a-f]{40}$ ]] || { echo 'expected a pinned 40-character AGENT_BOARD_REV' >&2; exit 1; }
+    [[ $(uname -s)-$(uname -m) == Linux-x86_64 ]] || { echo 'agent-board binaries support only Linux x86_64' >&2; exit 1; }
+    repo=cgwalters-forge/agent-board target=x86_64-unknown-linux-musl
+    tag=build-$rev
+    dest=$RUNNER_TEMP/agent-board/bin
+    mkdir -p "$dest"
+    rm -f "$dest/agent-board"
+    stage=$(mktemp -d "$RUNNER_TEMP/agent-board-download.XXXXXX")
+    trap 'rm -rf "$stage"' EXIT
+    timeout 180 gh release download "$tag" --repo "$repo" --dir "$stage" \
+      --pattern "*-$target" --pattern SHA256SUMS --pattern release.json --pattern provenance.jsonl
+    GH_TOKEN='' GITHUB_TOKEN='' timeout 180 gh attestation verify "$stage/release.json" \
+      --bundle "$stage/provenance.jsonl" --repo "$repo" \
+      --cert-identity "https://github.com/$repo/.github/workflows/ci.yml@refs/heads/main" \
+      --source-ref refs/heads/main --source-digest "$rev" --deny-self-hosted-runners
+    jq -e --arg repo "$repo" --arg tag "$tag" --arg commit "$rev" --arg target "$target" \
+      '.schema == "agent-board.release.v1" and .repository == $repo and .tag == $tag and .commit == $commit and .target == $target' "$stage/release.json" > /dev/null
+    # Accept only the two fixed filenames, never paths supplied by a manifest.
+    node -e 'const fs = require("node:fs"); const d = process.argv[1]; const s = JSON.parse(fs.readFileSync(d + "/release.json")).sha256sums; if (typeof s !== "string" || !/^[0-9a-f]{64}  agent-board-x86_64-unknown-linux-musl\n[0-9a-f]{64}  gh-agent-board-x86_64-unknown-linux-musl\n$/.test(s)) throw Error("invalid release checksums"); fs.writeFileSync(d + "/attested-SHA256SUMS", s);' "$stage"
+    cmp "$stage/SHA256SUMS" "$stage/attested-SHA256SUMS"
+    (cd "$stage" && sha256sum --check attested-SHA256SUMS)
+    install -m 755 "$stage/agent-board-$target" "$dest/agent-board"
+    echo "rev=$rev" >> "${GITHUB_OUTPUT:-/dev/null}"
+    echo "Installed agent-board $rev ($target)"
+
+# Offline transport fixtures exercise the real installer; no network or token.
+test-agent-board-install:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { spawnSync } = require('node:child_process');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-board-install-'));
+    const rev = 'a'.repeat(40);
+    const target = 'x86_64-unknown-linux-musl';
+    const stub = `#!/usr/bin/env node
+    const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
+    const args = process.argv.slice(2), mode = process.env.CASE;
+    if (process.env.BUMP) {
+      if (args[0] === 'api' && args.some(a => a.endsWith('/commits/main'))) { console.log('${rev}'); process.exit(0); }
+      if (args[0] === 'api' && args.some(a => a.endsWith('/check-runs'))) { console.log(JSON.stringify({name: 'ci', status: 'completed', conclusion: 'success'})); process.exit(0); }
+      if (args[0] === 'release' && args[1] === 'view') { console.log(mode === 'draft' ? 'true' : 'false'); process.exit(mode === 'missing-release' ? 1 : 0); }
+      if (args[0] === 'api' && args.some(a => a.includes('/compare/'))) { fs.writeFileSync(process.env.MARKER, 'selected'); console.log(JSON.stringify({status: 'ahead'})); process.exit(0); }
+      if (args[0] === 'pr' && args[1] === 'list') { console.log(JSON.stringify({title: 'workflows: Move agent-board to aaaaaaa'})); process.exit(0); }
+    }
+    if (args[0] === 'attestation') {
+      if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) process.exit(9);
+      for (const s of ['--source-digest', '${rev}', '--deny-self-hosted-runners', 'https://github.com/cgwalters-forge/agent-board/.github/workflows/ci.yml@refs/heads/main']) if (!args.includes(s)) process.exit(8);
+      process.exit(mode === 'attestation' ? 1 : 0);
+    }
+    if (['missing-release', 'download'].includes(mode)) process.exit(1);
+    const d = args[args.indexOf('--dir') + 1];
+    let sums = '';
+    for (const n of ['agent-board', 'gh-agent-board']) {
+      const name = n + '-${target}', data = '#!/bin/sh\\nexit 0\\n';
+      fs.writeFileSync(path.join(d, name), data);
+      sums += crypto.createHash('sha256').update(data).digest('hex') + '  ' + name + '\\n';
+    }
+    fs.writeFileSync(path.join(d, 'SHA256SUMS'), mode === 'sums' ? 'bad' : sums);
+    fs.writeFileSync(path.join(d, 'release.json'), JSON.stringify({schema: 'agent-board.release.v1', repository: 'cgwalters-forge/agent-board', tag: 'build-${rev}', commit: mode === 'commit' ? 'b'.repeat(40) : '${rev}', target: '${target}', sha256sums: sums}));
+    fs.writeFileSync(path.join(d, 'provenance.jsonl'), 'fixture');
+    if (mode === 'integrity') fs.appendFileSync(path.join(d, 'agent-board-${target}'), 'tampered');
+    if (mode === 'missing-asset') fs.unlinkSync(path.join(d, 'agent-board-${target}'));
+    `;
+    try {
+      fs.writeFileSync(path.join(dir, 'gh'), stub, {mode: 0o755});
+      fs.writeFileSync(path.join(dir, 'uname'), '#!/bin/sh\nif [ "$CASE" = platform ]; then printf Darwin; else /usr/bin/uname "$@"; fi\n', {mode: 0o755});
+      for (const mode of ['ok', 'missing-release', 'missing-asset', 'platform', 'download', 'attestation', 'commit', 'sums', 'integrity', 'revision']) {
+        const temp = fs.mkdtempSync(path.join(dir, 'run-'));
+        const output = path.join(temp, 'output');
+        const result = spawnSync('{{ just_executable() }}', ['build-agent-board', mode === 'revision' ? '' : rev], {encoding: 'utf8', env: {...process.env, PATH: `${dir}:${process.env.PATH}`, RUNNER_TEMP: temp, GITHUB_OUTPUT: output, GH_TOKEN: '', GITHUB_TOKEN: '', CASE: mode}});
+        assert.equal(result.status === 0, mode === 'ok', `${mode}: ${result.stdout}\n${result.stderr}`);
+        assert.equal(fs.existsSync(path.join(temp, 'agent-board/bin/agent-board')), mode === 'ok', mode);
+        if (mode === 'ok') assert.equal(fs.readFileSync(output, 'utf8'), `rev=${rev}\n`);
+        else assert.equal(fs.existsSync(output), false, mode);
+        console.log(`ok agent-board installer: ${mode}`);
+      }
+      for (const mode of ['ok', 'missing-release', 'draft', 'missing-asset', 'attestation', 'integrity']) {
+        const marker = path.join(dir, 'selected');
+        fs.rmSync(marker, {force: true});
+        const result = spawnSync('{{ just_executable() }}', ['bump-agent-board'], {encoding: 'utf8', env: {...process.env, PATH: `${dir}:${process.env.PATH}`, CASE: mode, BUMP: '1', MARKER: marker, GITHUB_REPOSITORY: 'cgwalters-forge/tracker'}});
+        assert.equal(result.status === 0, ['ok', 'missing-release', 'draft'].includes(mode), `${mode}: ${result.stdout}\n${result.stderr}`);
+        assert.equal(fs.existsSync(marker), mode === 'ok', `bump must verify before selecting: ${mode}`);
+        console.log(`ok agent-board bump: ${mode}`);
+      }
+      const pins = fs.mkdtempSync(path.join(dir, 'pins-'));
+      fs.mkdirSync(path.join(pins, '.github/workflows'), {recursive: true});
+      fs.copyFileSync('Justfile', path.join(pins, 'Justfile'));
+      const checkPin = () => spawnSync('{{ just_executable() }}', ['agent-board-pin'], {cwd: pins, encoding: 'utf8'});
+      fs.writeFileSync(path.join(pins, '.github/workflows/a.yml'), `env:\n  AGENT_BOARD_REV: ${rev}\n`);
+      assert.equal(checkPin().stdout.trim(), rev);
+      fs.writeFileSync(path.join(pins, '.github/workflows/b.yml'), `env:\n  AGENT_BOARD_REV: ${'b'.repeat(40)}\n`);
+      assert.notEqual(checkPin().status, 0);
+      console.log('ok agent-board pin agreement and mismatch');
+    } finally { fs.rmSync(dir, {recursive: true, force: true}); }
 
 # The shared workflow check that ci.yml's lint job calls, run locally from
 # a checkout of the forge's actions repository (its lint/README.md), the
