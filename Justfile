@@ -21,7 +21,8 @@ test-poll-bounds:
 # poll's `next` step script, run with a stub agent-board that prints its
 # arguments: the supervisor and release-train wakes are added only under
 # their variables' gates. Every flag it passes is checked against the
-# pinned CLI's help (AGENT_BOARD), which reads no token.
+# pinned CLI's help (AGENT_BOARD), which reads no token. The failure-only
+# fallback uses runner tools and makes just one dispatch attempt.
 test-poll-next:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
@@ -67,6 +68,55 @@ test-poll-next:
     } else {
       console.log('skipped: set AGENT_BOARD to check the flags against the pinned CLI');
     }
+    const fallback = /^ {2}next-fallback:\n([\s\S]+)$/m.exec(poll)?.[1];
+    assert.ok(fallback, 'the final fallback job');
+    assert.match(fallback, /^ {4}needs: next$/m);
+    const gate = /^ {4}if: \$\{\{ (.*) \}\}$/m.exec(fallback)[1];
+    for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
+      for (const cancelled of [false, true]) {
+        for (const apply of ['', 'enabled', 'disabled']) {
+          const got = require('node:vm').runInNewContext(gate, {
+            cancelled: () => cancelled, needs: { next: { result } }, vars: { PASS_APPLY: apply },
+          });
+          assert.equal(got, result === 'failure' && !cancelled && apply === 'enabled');
+        }
+      }
+    }
+    assert.match(fallback, /^ {4}timeout-minutes: 12$/m);
+    assert.match(fallback, /^ {4}permissions:\n {6}actions: write\n {4}steps:/m);
+    assert.doesNotMatch(fallback, /uses:|continue-on-error:|^ {2}\S/m);
+    assert.equal((fallback.match(/^ {6}- /gm) ?? []).length, 1, 'one step without setup');
+    assert.match(fallback, /^ {10}GH_TOKEN: \$\{\{ github.token \}\}$/m);
+    assert.match(fallback, /^ {10}DEFAULT_BRANCH: \$\{\{ github.event.repository.default_branch \}\}$/m);
+    const recovery = /^ {8}run: \|\n((?: {10}.*\n)+)/m.exec(fallback)[1].replace(/^ {10}/gm, '');
+    const sandbox = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'poll-fallback-'));
+    try {
+      fs.writeFileSync(path.join(sandbox, 'gh'), '#!/bin/bash\nif [[ $1 == api ]]; then printf "%s\\n" "$*" >&2; printf "2026-11-02T17:51:00Z\\n"; exit "${API_EXIT:-0}"; fi\nprintf "%s\\n" "$*"\nexit "${DISPATCH_EXIT:-0}"\n', { mode: 0o755 });
+      fs.writeFileSync(path.join(sandbox, 'date'), '#!/bin/bash\nif [[ $1 == -d ]]; then printf "1000\\n"; else printf "%s\\n" "$NOW"; fi\n', { mode: 0o755 });
+      fs.writeFileSync(path.join(sandbox, 'sleep'), '#!/bin/bash\nprintf "sleep %s\\n" "$*"\n', { mode: 0o755 });
+      const api = 'api repos/owner/repo/actions/runs/42 --jq .run_started_at';
+      const dispatch = 'workflow run poll.yml --repo owner/repo --ref main -f apply=true';
+      const recover = (env) => require('node:child_process').spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', recovery], {
+        env: { PATH: `${sandbox}:${process.env.PATH}`, GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '42', DEFAULT_BRANCH: 'main', ...env }, encoding: 'utf8',
+      });
+      for (const [now, delay] of [['1120', '480'], ['1600', null], ['1900', null], ['900', '600']]) {
+        const got = recover({ NOW: now });
+        assert.equal(got.status, 0, got.stderr);
+        assert.equal(got.stderr.trimEnd(), api);
+        assert.deepEqual(got.stdout.trimEnd().split('\n'), [...(delay ? [`sleep ${delay}`] : []), dispatch]);
+      }
+      const failed = recover({ NOW: '1900', DISPATCH_EXIT: '1' });
+      assert.equal(failed.status, 1, 'dispatch failure stays visible');
+      assert.equal(failed.stderr.trimEnd(), api);
+      assert.deepEqual(failed.stdout.trimEnd().split('\n'), [dispatch], 'no retry on failure');
+      const unreadable = recover({ NOW: '1900', API_EXIT: '1' });
+      assert.equal(unreadable.status, 1);
+      assert.equal(unreadable.stderr.trimEnd(), api);
+      assert.equal(unreadable.stdout, '', 'API failure stops recovery');
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
+    console.log('ok poll fallback is failure-only, waits at most ten minutes and dispatches once');
 
 # supervisor.yml's folded concurrency group and health `if`, evaluated as
 # JavaScript on events: a run the gate skips gets a group of its own
