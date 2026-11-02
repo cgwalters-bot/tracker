@@ -160,16 +160,16 @@ fn in_order(text: &str, parts: &[&str]) -> bool {
     })
 }
 
-/// The `[github.outputs]` table of a bounds file, as written.
+/// The `[outputs]` table of a bounds file, as written.
 fn outputs(name: &str) -> String {
     let text = read(name);
     let (_, after) = text
-        .split_once("[github.outputs]\n")
-        .unwrap_or_else(|| panic!("{name} has no [github.outputs]"));
+        .split_once("[outputs]\n")
+        .unwrap_or_else(|| panic!("{name} has no [outputs]"));
     before_table(after).to_owned()
 }
 
-/// The `key = value` lines of a `[github.outputs]` table, in order.
+/// The `key = value` lines of an `[outputs]` table, in order.
 fn output_entries(outputs: &str) -> Vec<(&str, &str)> {
     outputs
         .lines()
