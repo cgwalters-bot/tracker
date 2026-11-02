@@ -193,3 +193,26 @@ jobs:
           "$RUNNER_TEMP/agent-board/bin/agent-board" pass next --workflow poll.yml \
             --branch "$DEFAULT_BRANCH" --input apply=true --apply-title 'pass (apply)' \
             --wait-minutes 10 "${supervisor[@]}" "${train[@]}"
+
+  # A setup/download failure in `next` must not break the chain. Use only
+  # runner tools, and make one dispatch attempt: failure stays visible and
+  # has no further recovery job. Previews and cancelled runs never recover.
+  next-fallback:
+    needs: next
+    if: ${{ !cancelled() && needs.next.result == 'failure' && vars.PASS_APPLY == 'enabled' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 12
+    permissions:
+      actions: write
+    steps:
+      - name: Recover the next pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          started=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)
+          delay=$(( $(date -d "$started" +%s) + 600 - $(date +%s) ))
+          if (( delay > 600 )); then delay=600; fi
+          if (( delay > 0 )); then sleep "$delay"; fi
+          gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f apply=true
