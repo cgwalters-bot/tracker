@@ -32,7 +32,7 @@
   "implementBranchPrefix": "dispatch/implement/agent-run-",
   "agent": {
     "passConfig": ".github/pass.json",
-    "pool": "claude",
+    "pool": "openai",
     "cooldownHours": 1,
     "skipUnchangedFailures": false,
     "profile": { "repository": "cgwalters-forge/agenthome", "ref": "b04318245f2a4fb28df8856d7cb809cf990cfea5" },

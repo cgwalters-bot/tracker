@@ -26,7 +26,7 @@
   "rebaseRounds": 2,
   "mergeQueue": { "tries": 3 },
   "pace": { "repository": "cgwalters-forge/bot-ops", "issue": 1, "bot": "cgwalters-bot", "marginPercent": 5 },
-  "kindPools": { "triage": "claude", "research": "claude" },
+  "kindPools": { "triage": "openai", "research": "openai" },
   "review": {
     "targets": ["ostreedev/*", "bootc-dev/*", "containers/*", "coreos/*"],
     "checkbox": "Send the newest draft as cgwalters-bot"
