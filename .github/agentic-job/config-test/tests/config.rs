@@ -41,6 +41,66 @@ fn dispatch() -> String {
     read("../workflows/dispatch.yml")
 }
 
+#[test]
+fn poll_wakes_only_a_stale_enabled_supervisor_without_ending_the_chain() {
+    let workflow = read("../workflows/poll.yml");
+    let next = workflow.split_once("  next:\n").expect("next job").1;
+    assert!(next.contains("SUPERVISOR: ${{ vars.SUPERVISOR }}"));
+    let script = next.split_once("        run: |\n").expect("next script").1
+        .lines().map(|line| line.strip_prefix("          ").unwrap_or(line))
+        .collect::<Vec<_>>().join("\n");
+    // Execute the workflow itself. All API calls and waits are mocked;
+    // timeout's argument is checked rather than waiting through failures.
+    let mocks = r#"
+timeout() { [[ $1 == 30 ]] || return 90; shift; "$@"; }
+sleep() { :; }
+date() {
+  if [[ $1 == +%s ]]; then echo 1800000000; else command date "$@"; fi
+}
+gh() {
+  echo "CALL $*" >&2
+  case "$1 $2" in
+    'api '*) echo '2027-01-15T07:59:00Z' ;;
+    'run list')
+      if [[ $* == *'--workflow supervisor.yml'* ]]; then
+        [[ $FAIL != list ]] || return 1
+        echo "$LATEST"
+      else
+        echo '[{"databaseId":100,"createdAt":"2027-01-15T07:59:00Z"}]'
+      fi ;;
+    'workflow run')
+      if [[ $3 == supervisor.yml && $FAIL == dispatch ]]; then return 1; fi ;;
+    *) return 91 ;;
+  esac
+}
+"#;
+    for (name, setting, latest, failure, lists, dispatches) in [
+        ("unset", "", "", "", 0, 0),
+        ("disabled", "off", "", "", 0, 0),
+        ("recent", "apply", "2027-01-15T07:30:01Z", "", 1, 0),
+        ("thirty minutes", "preview", "2027-01-15T07:30:00Z", "", 1, 1),
+        ("stale", "apply", "2027-01-15T07:00:00Z", "", 1, 1),
+        ("no runs", "apply", "", "", 1, 1),
+        ("invalid timestamp", "apply", "invalid", "", 1, 0),
+        ("unreadable runs", "apply", "", "list", 4, 0),
+        ("dispatch failed", "apply", "", "dispatch", 1, 4),
+    ] {
+        let output = Command::new("bash")
+            .args(["--noprofile", "--norc", "-eo", "pipefail", "-c", &format!("{mocks}\n{script}")])
+            .env("SUPERVISOR", setting).env("LATEST", latest).env("FAIL", failure)
+            .env("GITHUB_REPOSITORY", "o/r").env("DEFAULT_BRANCH", "main").env("RUN_ID", "100")
+            .output().expect("run mocked next job");
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{name}: {stderr}");
+        assert_eq!(stderr.matches("CALL run list --repo o/r --workflow supervisor.yml --branch main --limit 1 --json createdAt --jq").count(), lists, "{name}: {stderr}");
+        assert_eq!(stderr.matches("CALL workflow run supervisor.yml --repo o/r --ref main -f prompt= -f session=false").count(), dispatches, "{name}: {stderr}");
+        assert_eq!(stderr.matches("CALL workflow run poll.yml --repo o/r --ref main -f apply=true").count(), 1, "{name}: {stderr}");
+        if !failure.is_empty() || latest == "invalid" {
+            assert!(String::from_utf8_lossy(&output.stdout).contains("::warning::Could not start the supervisor"), "{name}");
+        }
+    }
+}
+
 fn profile(name: &str) -> String {
     read(&format!("profiles/{name}.md"))
 }
