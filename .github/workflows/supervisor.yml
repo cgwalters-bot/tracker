@@ -202,14 +202,15 @@ jobs:
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise repeat \
             --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
             --previous "$RUNNER_TEMP/previous-health/health.json" ${DAILY:+"$DAILY"} >> "$GITHUB_OUTPUT"
-      # Decides from health.json and this workflow's own recent runs; the job
-      # token reads them. --daily bypasses cooldown, not an active agent, for
-      # explicit requests and the sweep; failures retain the normal cooldown.
+      # Decides from health.json and this workflow's own recent runs, and adds
+      # the day's use of each cap from the log, which is in a private repository
+      # the job token can't read. --daily bypasses cooldown, not an active agent,
+      # for explicit requests and the sweep; failures retain the normal cooldown.
       - name: Whether the agent runs
         id: trigger
         if: ${{ steps.due.outputs.health == 'true' && steps.repeat.outputs.skip != 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           DAILY: ${{ steps.due.outputs.daily == 'true' && '--daily' || '' }}
         run: |
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise trigger \
