@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-review-gate test-forge-sync agent-board-pin
+test: test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-gate test-forge-sync agent-board-pin
 
 # poll must pass both of the fix bounds files dispatch selects per target.
 test-poll-bounds:
@@ -17,6 +17,56 @@ test-poll-bounds:
     assert.deepEqual([...command.matchAll(/--fix-bounds (\S+)/g)].map(m => m[1]),
       ['.github/agentic-job/fix.toml', '.github/agentic-job/midstream-fix.toml']);
     console.log('ok poll passes both fix bounds files to agent-board pass');
+
+# poll's `next` step script, run with a stub agent-board that prints its
+# arguments: the supervisor and release-train wakes are added only under
+# their variables' gates. Every flag it passes is checked against the
+# pinned CLI's help (AGENT_BOARD), which reads no token.
+test-poll-next:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const { execFileSync } = require('node:child_process');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const poll = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
+    const step = /^ {6}- name: Start the next pass .*\n((?: {8}.*\n)+)/m.exec(poll)?.[1];
+    assert.ok(step, 'the next pass step');
+    assert.match(step, /^ {10}RELEASE_TRAIN: \$\{\{ vars\.RELEASE_TRAIN \}\}$/m);
+    const script = /^ {8}run: \|\n((?: {10}.*\n)+)/m.exec(step)[1].replace(/^ {10}/gm, '');
+    const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'poll-next-'));
+    const stub = path.join(temp, 'agent-board/bin/agent-board');
+    fs.mkdirSync(path.dirname(stub), { recursive: true });
+    fs.writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o755 });
+    const run = (env) => execFileSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, DEFAULT_BRANCH: 'main', SUPERVISOR: '', RELEASE_TRAIN: '', ...env },
+    }).toString().trimEnd().split('\n');
+    const base = ['pass', 'next', '--workflow', 'poll.yml', '--branch', 'main', '--input', 'apply=true',
+      '--apply-title', 'pass (apply)', '--wait-minutes', '10'];
+    const supervisor = ['--supervisor-workflow', 'supervisor.yml', '--supervisor-stale-minutes', '30',
+      '--supervisor-input', 'prompt=', '--supervisor-input', 'session=false'];
+    const train = ['--train-workflow', 'release-train.yml', '--train-stale-minutes', '60'];
+    for (const value of ['', 'enabled', 'Apply', ' apply', 'dry-run ', 'preview']) {
+      assert.deepEqual(run({ RELEASE_TRAIN: value }), base, `RELEASE_TRAIN=${JSON.stringify(value)}`);
+    }
+    for (const value of ['dry-run', 'apply']) {
+      assert.deepEqual(run({ RELEASE_TRAIN: value }), [...base, ...train], `RELEASE_TRAIN=${value}`);
+    }
+    for (const [value, enabled] of [['off', false], ['preview', true], ['apply', true]]) {
+      assert.deepEqual(run({ SUPERVISOR: value }), enabled ? [...base, ...supervisor] : base, `SUPERVISOR=${value}`);
+    }
+    const all = run({ SUPERVISOR: 'preview', RELEASE_TRAIN: 'apply' });
+    assert.deepEqual(all, [...base, ...supervisor, ...train]);
+    fs.rmSync(temp, { recursive: true });
+    console.log('ok poll next wakes the supervisor and release train only under their gates');
+    if (process.env.AGENT_BOARD) {
+      const help = execFileSync(process.env.AGENT_BOARD, ['pass', 'next', '--help']).toString();
+      for (const flag of new Set(all.filter(arg => arg.startsWith('--')))) {
+        assert.match(help, new RegExp(`${flag}(?![\\w-])`), `${flag} in agent-board pass next --help`);
+      }
+      console.log('ok the pinned agent-board pass next takes every flag poll next passes');
+    } else {
+      console.log('skipped: set AGENT_BOARD to check the flags against the pinned CLI');
+    }
 
 # supervisor.yml's folded concurrency group and health `if`, evaluated as
 # JavaScript on events: a run the gate skips gets a group of its own

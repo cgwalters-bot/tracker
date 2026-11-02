@@ -88,34 +88,6 @@ fn weekly_blog_passes_deployment_settings_and_partial_to_digest() {
     }
 }
 
-#[test]
-fn poll_next_passes_caller_settings_and_gates_the_supervisor() {
-    let workflow = read("../workflows/poll.yml");
-    let next = workflow.split_once("  next:\n").expect("next job").1;
-    assert!(next.contains("SUPERVISOR: ${{ vars.SUPERVISOR }}"));
-    let script = next.split_once("        run: |\n").expect("next script").1
-        .lines().map(|line| line.strip_prefix("          ").unwrap_or(line))
-        .collect::<Vec<_>>().join("\n");
-    // Only the caller wiring stays here; timing, listings and retries are
-    // agent-board's tests. A Bash function captures the exact executable's argv.
-    let mock = "mock/agent-board/bin/agent-board() { printf '%s\\n' \"$@\"; }";
-    for (setting, enabled) in [("", false), ("off", false), ("preview", true), ("apply", true)] {
-        let output = Command::new("bash")
-            .args(["--noprofile", "--norc", "-eo", "pipefail", "-c", &format!("{mock}\n{script}")])
-            .env("SUPERVISOR", setting).env("RUNNER_TEMP", "mock").env("DEFAULT_BRANCH", "main")
-            .output().expect("run mocked next job");
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(output.status.success(), "{setting}: {stderr}");
-        let mut expected = vec!["pass", "next", "--workflow", "poll.yml", "--branch", "main",
-            "--input", "apply=true", "--apply-title", "pass (apply)", "--wait-minutes", "10"];
-        if enabled {
-            expected.extend(["--supervisor-workflow", "supervisor.yml", "--supervisor-stale-minutes", "30",
-                "--supervisor-input", "prompt=", "--supervisor-input", "session=false"]);
-        }
-        assert_eq!(String::from_utf8_lossy(&output.stdout).lines().collect::<Vec<_>>(), expected, "{setting}");
-    }
-}
-
 fn profile(name: &str) -> String {
     read(&format!("profiles/{name}.md"))
 }

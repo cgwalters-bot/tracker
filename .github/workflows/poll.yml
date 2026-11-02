@@ -147,7 +147,10 @@ jobs:
     # to continue, can still leave two chains or none. Setting PASS_APPLY to
     # anything but `enabled`, or cancelling the waiting run, ends it. While
     # it waits, `next` keeps a hosted runner busy for up to ten minutes per
-    # pass.
+    # pass. While RELEASE_TRAIN is `dry-run` or `apply`, `next` also starts
+    # release-train.yml when its newest run is an hour old or absent, since
+    # GitHub drops its hourly schedule too; the train's own gate and
+    # concurrency still decide what that run does.
     concurrency:
       group: pass-next
       cancel-in-progress: true
@@ -175,6 +178,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SUPERVISOR: ${{ vars.SUPERVISOR }}
+          RELEASE_TRAIN: ${{ vars.RELEASE_TRAIN }}
         shell: bash
         run: |
           supervisor=()
@@ -182,6 +186,10 @@ jobs:
             supervisor=(--supervisor-workflow supervisor.yml --supervisor-stale-minutes 30
               --supervisor-input prompt= --supervisor-input session=false)
           fi
+          train=()
+          if [[ $RELEASE_TRAIN == dry-run || $RELEASE_TRAIN == apply ]]; then
+            train=(--train-workflow release-train.yml --train-stale-minutes 60)
+          fi
           "$RUNNER_TEMP/agent-board/bin/agent-board" pass next --workflow poll.yml \
             --branch "$DEFAULT_BRANCH" --input apply=true --apply-title 'pass (apply)' \
-            --wait-minutes 10 "${supervisor[@]}"
+            --wait-minutes 10 "${supervisor[@]}" "${train[@]}"
