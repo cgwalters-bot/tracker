@@ -64,7 +64,7 @@ jobs:
             --prompt "$PROMPT" >> "$GITHUB_OUTPUT"
   run:
     needs: profile
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@3bd115f01cc20d8255bc996bbe582b24542914c1
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
     permissions:
       contents: read
       issues: write
