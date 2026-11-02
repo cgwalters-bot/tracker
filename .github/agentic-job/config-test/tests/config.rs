@@ -42,6 +42,53 @@ fn dispatch() -> String {
 }
 
 #[test]
+fn weekly_blog_passes_deployment_settings_and_partial_to_digest() {
+    let config = json_file("../weekly-digest.json");
+    let board = json_file("../poll/agent-board.json");
+    for key in ["operator", "bot", "follow"] {
+        assert_eq!(config[key], board[key], "{key}");
+    }
+    let pass = json_file("../pass.json");
+    assert_eq!(config["owner"], pass["board"]["owner"]);
+    assert_eq!(config["project"], pass["board"]["project"]);
+    for (key, expected) in [
+        ("siteRepository", json!("cgwalters-forge/cgwalters-forge.github.io")),
+        ("title", json!("Weekly notes: week ending {week}")),
+        ("priority", json!("P0")),
+        ("changesChars", json!(26000)),
+        ("releaseBytes", json!(10000)),
+        ("bodyBytes", json!(56000)),
+        ("dispatchRepository", pass["dispatchRepo"].clone()),
+        ("dispatchWorkflow", json!("dispatch.yml")),
+        ("dispatchRef", json!("main")),
+    ] {
+        assert_eq!(config[key], expected, "{key}");
+    }
+    let workflow = read("../workflows/weekly-blog.yml");
+    for setting in [
+        "GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}",
+        "DISPATCH_TOKEN: ${{ github.token }}",
+        "PARTIAL: ${{ inputs.partial }}",
+        "vars.WEEKLY_BLOG == 'enabled'",
+        "cancel-in-progress: false",
+    ] {
+        assert!(workflow.contains(setting), "{setting}");
+    }
+    let script = workflow.rsplit_once("        run: |\n").expect("digest step").1;
+    for (partial, suffix) in [("", ""), ("false", ""), ("true", "--partial\n")] {
+        let output = Command::new("bash")
+            .args(["--noprofile", "--norc", "-euo", "pipefail", "-c",
+                &format!("digest_cli() {{ printf '%s\\n' \"$@\"; }}\n{script}")])
+            .env("AGENT_BOARD", "digest_cli")
+            .env("PARTIAL", partial)
+            .output().expect("run digest step with mocked CLI");
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(String::from_utf8(output.stdout).unwrap(),
+            format!("digest\n--config\n.github/weekly-digest.json\n{suffix}--apply\n"));
+    }
+}
+
+#[test]
 fn poll_next_passes_caller_settings_and_gates_the_supervisor() {
     let workflow = read("../workflows/poll.yml");
     let next = workflow.split_once("  next:\n").expect("next job").1;

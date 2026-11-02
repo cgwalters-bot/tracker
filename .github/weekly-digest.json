@@ -1,0 +1,27 @@
+{
+  "owner": "cgwalters-forge",
+  "project": 1,
+  "operator": "cgwalters",
+  "bot": "cgwalters-bot",
+  "follow": [
+    "cgwalters-forge/agentic-job",
+    "cgwalters-forge/agent-board",
+    "cgwalters-forge/tracker",
+    "cgwalters-forge/actions",
+    "cgwalters-forge/review",
+    "cgwalters-forge/agenthome",
+    "cgwalters-forge/forge-infra",
+    "cgwalters-forge/cgwalters-forge.github.io"
+  ],
+  "siteRepository": "cgwalters-forge/cgwalters-forge.github.io",
+  "title": "Weekly notes: week ending {week}",
+  "brief": "The material for the weekly notes post of the week ending {week}. A run that tracker's weekly-blog.yml starts writes the post, content/blog/{week}.md, from this issue alone, and opens a pull request that closes it. Below are the board's changes from {since} to {until} (`agent-board changes`), public releases, then the project's status updates in that window, oldest first.",
+  "task": "Write this week's post for the organization site's weekly notes from this issue's material only: its body, the board's changes of the week, public releases and the project's status updates. Add one file, content/blog/{week}.md, with TOML front matter giving title = \"Week ending {week}\" and date = {week}, as the repository's README shows, and change nothing else. Open with the week's releases, rolled up by project. Then give three to five highlights and one to three honest lowlights (outages, reverts, stalls), each linking to its pull requests or issues. Write plain prose, with no hype, in under about 600 words. Use only what is in the material and in the public repositories it links. Never mention security advisories, embargoed fixes, private repositories, infrastructure host names, or budget and spend figures (say a budget exists, not its amount). Write Markdown only: no raw HTML, script or embedded content. Open a pull request whose body says \"Closes #{issue}\".",
+  "priority": "P0",
+  "changesChars": 26000,
+  "releaseBytes": 10000,
+  "bodyBytes": 56000,
+  "dispatchRepository": "cgwalters-forge/tracker",
+  "dispatchWorkflow": "dispatch.yml",
+  "dispatchRef": "main"
+}
