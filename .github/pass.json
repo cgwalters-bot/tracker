@@ -40,7 +40,7 @@
   "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true, "maxAppliesPerPass": 3},
   "wip": 8,
   "bodyPlans": true,
-  "triage": {"scope": "epics"}, "sweep": {"weekday": "Monday", "hourUtc": 13}, "overlap": {"staleDraftHours": 4}, "triageFollowUpDays": 2, "triageClose": true, "replanAfterDays": 2,
+  "triage": {"scope": "epics"}, "sweep": {"weekday": "Monday", "hourUtc": 13}, "overlap": {"staleDraftHours": 4}, "triageFollowUpDays": 2, "triageClose": true, "replanAfterDays": 1,
   "revisit": {"perPass": 1, "afterDays": 14, "heldAfterDays": 7},
   "maintain": {"repos": {"sinceDays": 90, "min": 5, "max": 15, "include": ["ostreedev/ostree", "composefs/composefs", "composefs/composefs-rs", "bootc-dev/bootc", "coreos/rpm-ostree"], "exclude": ["bootc-dev/cgwalters-ci-sandbox", "bootc-dev/cgwalters-devspace-sandbox", "fullsend-ai/fullsend", "packit/ai-workflows"]}, "share": 0.2, "digest": {"repository": "cgwalters-forge/tracker", "issue": 965}, "hourUtc": 9},
   "planPools": ["openai"],
