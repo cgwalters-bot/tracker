@@ -24,7 +24,7 @@ permissions: {}
 # a revision reviewed here, never agent-board's moving branch: move it only
 # with a review of what that revision's `pass` does.
 env:
-  AGENT_BOARD_REV: f40ce339a8482862965ffa2bfeaba6e8825a44f4
+  AGENT_BOARD_REV: 6d1ce9ba5a90cf1456c3536249dc548b8d20dd9c
 
 jobs:
   pass:
@@ -156,79 +156,32 @@ jobs:
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name == 'schedule' || inputs.apply) }}
     runs-on: ubuntu-26.04
-    # The ten-minute wait plus bounded retries for both workflows.
-    timeout-minutes: 20
+    # The build (10), ten-minute wait and bounded retries for both workflows.
+    timeout-minutes: 30
     permissions:
       actions: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - name: Build agent-board
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
       - name: Start the next pass ten minutes after this one started
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.run_id }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           SUPERVISOR: ${{ vars.SUPERVISOR }}
         shell: bash
         run: |
-          # One GitHub 5xx must not end the chain (#1033): each call gets four
-          # tries, 2, 4 and 8 seconds apart, and none may hang the job.
-          retry() {
-            local try
-            for try in 1 2 3 4; do
-              timeout 30 "$@" && return 0
-              echo "attempt $try of '$1 $2' failed" >&2
-              if (( try < 4 )); then sleep $(( 2 ** try )); fi
-            done
-            echo "::error::'$1 $2' failed four times" >&2
-            return 1
-          }
-          started=$(retry gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq .run_started_at)
-          start=$(date -d "${started:?no start time for run $RUN_ID}" +%s)
-          wait=$(( start + 600 - $(date +%s) ))
-          if (( wait > 600 )); then wait=600; fi
-          if (( wait > 0 )); then sleep "$wait"; fi
-          # Dropped crons must not leave an enabled supervisor asleep. Read
-          # its newest default-branch run but for issue_comment's: any comment
-          # in this repository starts one, and those do nothing unless the
-          # operator's on the requests issue. An unreadable census is not an
-          # absent run. No prompt or session: supervisor-health cannot evict
-          # an operator's queued prompt/session in supervisor-agent.
-          wake_supervisor() {
-            local latest age
-            latest=$(retry gh run list --repo "$GITHUB_REPOSITORY" --workflow supervisor.yml --branch "$DEFAULT_BRANCH" --limit 100 \
-              --json createdAt,event --jq 'map(select(.event != "issue_comment"))[0].createdAt // empty') || return 1
-            if [[ -n $latest ]]; then
-              age=$(date -d "$latest" +%s) || return 1
-              if (( $(date +%s) - age < 1800 )); then return 0; fi
-            fi
-            retry gh workflow run supervisor.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f prompt= -f session=false
-          }
+          supervisor=()
           if [[ $SUPERVISOR == preview || $SUPERVISOR == apply ]]; then
-            wake_supervisor || echo '::warning::Could not start the supervisor; continuing the poll chain'
+            supervisor=(--supervisor-workflow supervisor.yml --supervisor-stale-minutes 30
+              --supervisor-input prompt= --supervisor-input session=false)
           fi
-          # Applying runs are the schedule's (PASS_APPLY is enabled here) and
-          # those dispatched with apply, which run-name marks. The newest 200
-          # must reach back to this run, else a newer one may be unseen.
-          newer() {
-            local runs
-            runs=$(retry gh run list --repo "$GITHUB_REPOSITORY" --workflow poll.yml --branch "$DEFAULT_BRANCH" --limit 200 \
-              --json databaseId,status,createdAt,event,displayTitle,headBranch) || return 1
-            jq -r --argjson id "$RUN_ID" --arg branch "$DEFAULT_BRANCH" '
-              (map(select(.databaseId == $id)) | first // error("run \($id) is not among the newest runs")) as $me
-              | map(select(.databaseId != $id and .headBranch == $branch
-                  and (.status | IN("queued", "waiting", "pending", "requested", "in_progress"))
-                  and (.event == "schedule" or (.event == "workflow_dispatch" and .displayTitle == "pass (apply)"))
-                  and [.createdAt, .databaseId] > [$me.createdAt, $me.databaseId]))
-              | first.databaseId // empty' <<< "$runs"
-          }
-          # A dispatch that errored may still have been accepted, so list the
-          # runs again before each try; that narrows, but cannot rule out, a
-          # second chain.
-          for try in 1 2 3 4; do
-            next=$(newer)
-            if [[ -n $next ]]; then echo "run $next continues the chain; not starting another"; exit 0; fi
-            if timeout 30 gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f apply=true; then exit 0; fi
-            echo "attempt $try of 'gh workflow run' failed" >&2
-            if (( try < 4 )); then sleep $(( 2 ** try )); fi
-          done
-          echo "::error::'gh workflow run' failed four times" >&2
-          exit 1
+          "$RUNNER_TEMP/agent-board/bin/agent-board" pass next --workflow poll.yml \
+            --branch "$DEFAULT_BRANCH" --input apply=true --apply-title 'pass (apply)' \
+            --wait-minutes 10 "${supervisor[@]}"
