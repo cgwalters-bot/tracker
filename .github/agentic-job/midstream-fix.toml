@@ -10,7 +10,7 @@ max_outputs = 3
 max_patch_bytes = 1048576
 max_patch_files = 50
 
-[github.outputs]
+[outputs]
 # The branches and replacement as fix.toml's, whose comment says what each
 # glob is for and how apply bounds the head repository: `bot/**` holds the
 # staged pull requests within these forks (#710).

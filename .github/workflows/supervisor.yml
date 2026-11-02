@@ -255,7 +255,7 @@ jobs:
   agent:
     needs: health
     if: ${{ (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') && needs.health.outputs.act == 'true' }}
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@3bd115f01cc20d8255bc996bbe582b24542914c1
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@ecc7d9d1bb91e4e7b99de02ca0aa18873dc67f97
     permissions:
       contents: read
       issues: write

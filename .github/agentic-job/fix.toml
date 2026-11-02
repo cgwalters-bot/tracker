@@ -24,7 +24,7 @@ max_outputs = 3
 max_patch_bytes = 1048576
 max_patch_files = 50
 
-[github.outputs]
+[outputs]
 # `replacement_max_commits` is what lets a fix rewrite the branch
 # (agentic-job's docs/safe-outputs.md, "Replacing the complete series"):
 # review feedback is folded into the commit it corrects, never a commit of
