@@ -62,6 +62,7 @@
   "budget": {"weeklyUsd": 2000},
   "pr": {"staleDays": 0, "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs"], 
     "reviewWorkflow": "review.yml",
+    "checkReruns": true,
     "fixPools": ["claude", "openai"],
     "mergeAuthors": ["dependabot[bot]"],
     "headOwners": ["cgwalters-bot", "cgwalters-forge"],
