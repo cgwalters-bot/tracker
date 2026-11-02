@@ -187,13 +187,15 @@ jobs:
           if (( wait > 600 )); then wait=600; fi
           if (( wait > 0 )); then sleep "$wait"; fi
           # Dropped crons must not leave an enabled supervisor asleep. Read
-          # only its newest default-branch run; an unreadable census is not
-          # an absent run. No prompt or session: supervisor-health cannot
-          # evict an operator's queued prompt/session in supervisor-agent.
+          # its newest default-branch run but for issue_comment's: any comment
+          # in this repository starts one, and those do nothing unless the
+          # operator's on the requests issue. An unreadable census is not an
+          # absent run. No prompt or session: supervisor-health cannot evict
+          # an operator's queued prompt/session in supervisor-agent.
           wake_supervisor() {
             local latest age
-            latest=$(retry gh run list --repo "$GITHUB_REPOSITORY" --workflow supervisor.yml --branch "$DEFAULT_BRANCH" --limit 1 \
-              --json createdAt --jq '.[0].createdAt // empty') || return 1
+            latest=$(retry gh run list --repo "$GITHUB_REPOSITORY" --workflow supervisor.yml --branch "$DEFAULT_BRANCH" --limit 100 \
+              --json createdAt,event --jq 'map(select(.event != "issue_comment"))[0].createdAt // empty') || return 1
             if [[ -n $latest ]]; then
               age=$(date -d "$latest" +%s) || return 1
               if (( $(date +%s) - age < 1800 )); then return 0; fi
