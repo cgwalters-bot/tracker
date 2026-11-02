@@ -156,7 +156,8 @@ jobs:
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name == 'schedule' || inputs.apply) }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 15
+    # The ten-minute wait plus bounded retries for both workflows.
+    timeout-minutes: 20
     permissions:
       actions: write
     steps:
@@ -165,6 +166,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ github.run_id }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          SUPERVISOR: ${{ vars.SUPERVISOR }}
         shell: bash
         run: |
           # One GitHub 5xx must not end the chain (#1033): each call gets four
@@ -184,6 +186,23 @@ jobs:
           wait=$(( start + 600 - $(date +%s) ))
           if (( wait > 600 )); then wait=600; fi
           if (( wait > 0 )); then sleep "$wait"; fi
+          # Dropped crons must not leave an enabled supervisor asleep. Read
+          # only its newest default-branch run; an unreadable census is not
+          # an absent run. No prompt or session: supervisor-health cannot
+          # evict an operator's queued prompt/session in supervisor-agent.
+          wake_supervisor() {
+            local latest age
+            latest=$(retry gh run list --repo "$GITHUB_REPOSITORY" --workflow supervisor.yml --branch "$DEFAULT_BRANCH" --limit 1 \
+              --json createdAt --jq '.[0].createdAt // empty') || return 1
+            if [[ -n $latest ]]; then
+              age=$(date -d "$latest" +%s) || return 1
+              if (( $(date +%s) - age < 1800 )); then return 0; fi
+            fi
+            retry gh workflow run supervisor.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f prompt= -f session=false
+          }
+          if [[ $SUPERVISOR == preview || $SUPERVISOR == apply ]]; then
+            wake_supervisor || echo '::warning::Could not start the supervisor; continuing the poll chain'
+          fi
           # Applying runs are the schedule's (PASS_APPLY is enabled here) and
           # those dispatched with apply, which run-name marks. The newest 200
           # must reach back to this run, else a newer one may be unseen.

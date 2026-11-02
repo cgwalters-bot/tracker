@@ -5,8 +5,9 @@
 # each in the supervisor log issue. The agent and the executor are off until
 # SUPERVISOR is preview or apply; only apply executes requests.
 name: supervisor
-# Its own crons start it; the poll no longer does. Every run is a health
-# pass; `agent-board supervise due` makes it a sweep every two hours.
+# Its own crons start it; an applying poll also starts a prompt-less health
+# pass when enabled and no run on the default branch is newer than thirty
+# minutes. `agent-board supervise due` makes it a sweep every two hours.
 on:
   schedule:
     - cron: '*/15 * * * *'
