@@ -1,0 +1,26 @@
+{
+  "schema": "architecture-review.results.v1",
+  "version": "0.1.0",
+  "status": "unfinished",
+  "held_out_claim": false,
+  "authoring_artifact_sha256": {
+    "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
+    "prompt.md": "59413d4e2bc392e1c72e9b52b94d3be95298e4290ab86d8b216960c22fbdd27d",
+    "sample.json": "99ad41d203c41dfc31094f69327c97cced33a556c8b59ff4a3d8f51dfc9d50c9",
+    "references.json": "8afe1cf920b0ce3cee55914ce29bbe044e2eb9232916d1dabd2b841903c6c886"
+  },
+  "selected_prs": 3,
+  "candidate_prs_with_design_feedback": 2,
+  "rejected_prs": 1,
+  "executed_reviews": 0,
+  "compared_prs": 0,
+  "audited_inline_comments": 8,
+  "architecture_concerns": 4,
+  "excluded_nits": 3,
+  "excluded_acknowledgements": 1,
+  "matched": null,
+  "missed": null,
+  "unmatched": null,
+  "runs": [],
+  "reason": "Feedback was inspected by the prompt author during sample audit; no isolated historical review execution was established. One candidate lacks design-request feedback and one base needed reconstruction. Null counts mean not measured, not zero findings."
+}
