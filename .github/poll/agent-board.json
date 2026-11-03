@@ -19,7 +19,8 @@
     "cgwalters-forge/review",
     "cgwalters-forge/agenthome",
     "cgwalters-forge/forge-infra",
-    "cgwalters-forge/cgwalters-forge.github.io"
+    "cgwalters-forge/cgwalters-forge.github.io",
+    "cgwalters-forge/atomic-linux-sandbox"
   ],
   "fixPools": ["claude", "openai"],
   "toilFixPool": "openai",
@@ -54,7 +55,8 @@
       "cgwalters-forge/composefs-rs",
       "cgwalters-forge/bootc",
       "cgwalters-forge/bcvk",
-      "cgwalters-forge/rpm-ostree"
+      "cgwalters-forge/rpm-ostree",
+      "cgwalters-forge/atomic-linux-sandbox"
     ]
   }
 }
