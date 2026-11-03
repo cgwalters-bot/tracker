@@ -138,6 +138,11 @@ pass does not read the issue.
 
 ## Epics
 
+The [3 November 2026 composefs (C) CI inventory](docs/composefs-c-ci-2026-11-03.md)
+records the read-only 30-day baseline for #1222 under the green-CI epic #1215,
+including zero default-branch activity and evidence/coverage limits. It is not
+the ongoing monitor or a CI fix.
+
 ### Plans for review
 
 Design-level work is planned with the operator before any of it runs
