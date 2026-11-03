@@ -43,14 +43,6 @@ allow-sockets = [
 
 # The egress proxy and the network rules are on by default: no [egress].
 
-# A long model 429 backoff can leave ACP silent and make the ordinary stall
-# watchdog resend the task. Observe it through the existing broker front:
-# after Retry-After >120s and 60s of silence, stop as inference_rate_limited
-# without a resend. Both upstream options are off by default (agentic-job#2827).
-[inference]
-front = true
-stop-long-retry-after = true
-
 [setup]
 # The egress proxy runs in a Python environment of its own, behind
 # nftables rules. Otherwise only what the ubuntu-26.04 image lacks: it has
