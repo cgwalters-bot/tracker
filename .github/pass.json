@@ -15,7 +15,8 @@
     "cgwalters-forge/bootc",
     "cgwalters-forge/composefs-rs",
     "cgwalters-forge/bcvk",
-    "cgwalters-forge/rpm-ostree"
+    "cgwalters-forge/rpm-ostree",
+    "cgwalters-forge/atomic-linux-sandbox"
   ],
   "workRepositories": [
     "cgwalters-forge/tracker",
@@ -29,6 +30,7 @@
     "cgwalters-forge/bootc",
     "cgwalters-forge/bcvk",
     "cgwalters-forge/rpm-ostree",
+    "cgwalters-forge/atomic-linux-sandbox",
     "cgwalters-bot/praxis-credential-broker"
   ],
   "prices": {
@@ -63,6 +65,7 @@
         "cgwalters-forge/bootc",
         "cgwalters-forge/bcvk",
         "cgwalters-forge/rpm-ostree",
+        "cgwalters-forge/atomic-linux-sandbox",
         "cgwalters-bot/praxis-credential-broker"
       ]}},
   "budget": {"weeklyUsd": 2000},

@@ -480,6 +480,27 @@ fn forge_infra_is_a_followed_target_without_unprotected_files() {
     assert!(follow.as_array().expect("agent-board.json's follow").contains(&json!(repo)));
 }
 
+#[test]
+fn atomic_linux_sandbox_is_a_followed_work_target_not_a_midstream_fork() {
+    let repo = "cgwalters-forge/atomic-linux-sandbox";
+    for name in ["dispatch.toml", "fix.toml", "comment.toml"] {
+        assert!(repos(name).iter().any(|r| r == repo), "{name}");
+    }
+    for name in ["midstream.toml", "midstream-fix.toml"] {
+        assert!(!repos(name).iter().any(|r| r == repo), "{name}");
+    }
+    let board = json_file("../poll/agent-board.json");
+    for list in [&board["follow"], &board["schedule"]["repositories"]] {
+        assert!(list.as_array().expect("board repositories").contains(&json!(repo)));
+    }
+    let pass = json_file("../pass.json");
+    for key in ["follow", "workRepositories"] {
+        assert!(pass[key].as_array().expect(key).contains(&json!(repo)), "{key}");
+    }
+    assert!(pass["holds"]["proposals"]["repositories"].as_array().unwrap().contains(&json!(repo)));
+    assert!(!pass["pr"]["noMerge"].as_array().unwrap().contains(&json!(repo)));
+}
+
 // The midstream fork bcvk takes staged pull requests as composefs-rs and
 // bootc do: midstream bounds only, scheduled, followed for fix rounds by the
 // pass but never merged into, since its main tracks upstream.
