@@ -14,7 +14,8 @@
     "cgwalters-forge/cgwalters-forge.github.io",
     "cgwalters-forge/bootc",
     "cgwalters-forge/composefs-rs",
-    "cgwalters-forge/bcvk"
+    "cgwalters-forge/bcvk",
+    "cgwalters-forge/rpm-ostree"
   ],
   "workRepositories": [
     "cgwalters-forge/tracker",
@@ -27,6 +28,7 @@
     "cgwalters-forge/composefs-rs",
     "cgwalters-forge/bootc",
     "cgwalters-forge/bcvk",
+    "cgwalters-forge/rpm-ostree",
     "cgwalters-bot/praxis-credential-broker"
   ],
   "prices": {
@@ -60,10 +62,11 @@
         "cgwalters-forge/composefs-rs",
         "cgwalters-forge/bootc",
         "cgwalters-forge/bcvk",
+        "cgwalters-forge/rpm-ostree",
         "cgwalters-bot/praxis-credential-broker"
       ]}},
   "budget": {"weeklyUsd": 2000},
-  "pr": {"staleDays": 0, "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk"], 
+  "pr": {"staleDays": 0, "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree"], 
     "reviewWorkflow": "review.yml",
     "checkReruns": true,
     "fixPools": ["claude", "openai"],

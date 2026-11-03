@@ -53,7 +53,8 @@
       "cgwalters-forge/misctool",
       "cgwalters-forge/composefs-rs",
       "cgwalters-forge/bootc",
-      "cgwalters-forge/bcvk"
+      "cgwalters-forge/bcvk",
+      "cgwalters-forge/rpm-ostree"
     ]
   }
 }

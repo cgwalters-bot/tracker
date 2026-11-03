@@ -87,6 +87,7 @@ packages = ["python3-venv", "nftables", "just"]
 # glib and zstd.
 "cgwalters-forge/composefs-rs" = ["cargo", "pkg-config", "libssl-dev"]
 "cgwalters-forge/bcvk" = ["cargo", "pkg-config", "libssl-dev"]
+"cgwalters-forge/rpm-ostree" = ["cargo", "pkg-config", "libssl-dev"]
 "cgwalters-forge/bootc" = ["cargo", "pkg-config", "libssl-dev", "libostree-dev", "libglib2.0-dev", "libzstd-dev"]
 
 # The window each broker model is given, which Vibe compacts at three
