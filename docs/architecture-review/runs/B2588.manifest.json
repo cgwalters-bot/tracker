@@ -1,0 +1,63 @@
+{
+  "schema": "architecture-review.packet.v1",
+  "id": "B2588",
+  "repository": "bootc-dev/bootc",
+  "base": "69057a88013a8e1a41830806d7a0b66e4fc453b7",
+  "head": "024643ef4830c529ef8b541f0f09891586b52a5b",
+  "ancestry": {
+    "compare_status": "ahead",
+    "merge_base": "69057a88013a8e1a41830806d7a0b66e4fc453b7",
+    "total_commits": 1
+  },
+  "commits": [
+    {
+      "sha": "024643ef4830c529ef8b541f0f09891586b52a5b",
+      "committed": "2026-10-24T12:41:29Z"
+    }
+  ],
+  "first_feedback_at": "2026-10-26T18:10:13Z",
+  "title_description": "unavailable: no historical snapshot established; current text omitted",
+  "project_guidance": "not supplied",
+  "limits": {
+    "max_files": 30,
+    "max_bytes": 100000
+  },
+  "total_bytes": 47224,
+  "files": [
+    {
+      "name": "diff.patch",
+      "revision": "69057a88013a8e1a41830806d7a0b66e4fc453b7...024643ef4830c529ef8b541f0f09891586b52a5b",
+      "bytes": 4672,
+      "sha256": "b1be14de82552af1b55a76086a8b90f1c60593c504f87e089cd257b7650b9abe"
+    },
+    {
+      "name": "head/tmt__tests__booted__test-install-shared-propagation.nu",
+      "path": "tmt/tests/booted/test-install-shared-propagation.nu",
+      "revision": "024643ef4830c529ef8b541f0f09891586b52a5b",
+      "bytes": 1319,
+      "sha256": "f98273e2e6a6dc1bccdd91ea0cfee3415d4af13362308a5e9bc2f42bd2f3766f"
+    },
+    {
+      "name": "head/tmt__tests__tests.fmf",
+      "path": "tmt/tests/tests.fmf",
+      "revision": "024643ef4830c529ef8b541f0f09891586b52a5b",
+      "bytes": 7859,
+      "sha256": "232c6be471270141bf03b5a37aa14cf0158ff134f78d2da09724e6cc9258d394"
+    },
+    {
+      "name": "head/tmt__plans__integration.fmf",
+      "path": "tmt/plans/integration.fmf",
+      "revision": "024643ef4830c529ef8b541f0f09891586b52a5b",
+      "bytes": 11095,
+      "sha256": "ac5667513ee22b342cf9fe0f2a68a9f6e06befb992cf7e63e053a314bb4e2bbe"
+    },
+    {
+      "name": "head/crates__lib__src__podstorage.rs",
+      "path": "crates/lib/src/podstorage.rs",
+      "revision": "024643ef4830c529ef8b541f0f09891586b52a5b",
+      "bytes": 22279,
+      "sha256": "c4c22af59919767eabbd47fec8b8f22d370c3d1b2d41e544f0a4dcec145e1184"
+    }
+  ],
+  "omitted": []
+}

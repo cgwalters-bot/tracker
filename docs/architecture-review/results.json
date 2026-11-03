@@ -1,26 +1,48 @@
 {
-  "schema": "architecture-review.results.v1",
+  "schema": "architecture-review.results.v2",
   "version": "0.1.0",
-  "status": "unfinished",
+  "status": "development_pilot",
   "held_out_claim": false,
-  "authoring_artifact_sha256": {
+  "artifact_sha256": {
     "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
-    "prompt.md": "59413d4e2bc392e1c72e9b52b94d3be95298e4290ab86d8b216960c22fbdd27d",
-    "sample.json": "99ad41d203c41dfc31094f69327c97cced33a556c8b59ff4a3d8f51dfc9d50c9",
-    "references.json": "8afe1cf920b0ce3cee55914ce29bbe044e2eb9232916d1dabd2b841903c6c886"
+    "prompt.md": "41fff6f107981d80956cc4bebc30a782a6f9c9b17fe630e305c8e881f6170e9e",
+    "references.json": "771045ba21c8eac23c82338576f1aef2c9fa6095f6f0c7cab21a8e16ce26bb24",
+    "sample.json": "df4173160093c61e208264040430acbe663cbe3e78daff7cce7ecc7e4e22b426"
   },
-  "selected_prs": 3,
-  "candidate_prs_with_design_feedback": 2,
+  "selected_prs": 4,
+  "evaluated_prs": 3,
   "rejected_prs": 1,
-  "executed_reviews": 0,
-  "compared_prs": 0,
-  "audited_inline_comments": 8,
-  "architecture_concerns": 4,
+  "executed_reviews": 3,
+  "compared_prs": 3,
+  "audited_inline_comments": 9,
+  "architecture_concerns": 5,
   "excluded_nits": 3,
   "excluded_acknowledgements": 1,
-  "matched": null,
-  "missed": null,
-  "unmatched": null,
-  "runs": [],
-  "reason": "Feedback was inspected by the prompt author during sample audit; no isolated historical review execution was established. One candidate lacks design-request feedback and one base needed reconstruction. Null counts mean not measured, not zero findings."
+  "concerns": [
+    {"id": "B2603-r4427310071", "stratum": "concern", "scorable": true, "matched_by": null},
+    {"id": "B2603-r4427441326", "stratum": "question", "scorable": true, "matched_by": null,
+     "partial": "B2603 Q4 raised only the leak half, which the operator withdrew; importer reuse was missed."},
+    {"id": "B2603-r4427457789", "stratum": "concern", "scorable": false, "matched_by": null,
+     "unscorable_reason": "Depends on an earlier composefs support decision that is not in the packet."},
+    {"id": "B2588-r4380813753", "stratum": "question", "scorable": true, "matched_by": "B2588 Q1"},
+    {"id": "O3664-r4234529344", "stratum": "concern", "scorable": true, "matched_by": null}
+  ],
+  "findings": {
+    "defects": {"total": 2, "matched": 0, "unmatched": 2},
+    "questions": {"total": 10, "matched": 1, "unmatched": 9}
+  },
+  "unmatched_audit": {"audited": 3, "supported": 2, "unsupported": 1, "unresolved": 0},
+  "runs": [
+    {"id": "B2603", "output": "runs/B2603.md", "manifest": "runs/B2603.manifest.json",
+     "output_sha256": "a6a7f3ca0d388951954a37d59ca74fb48511453e8e9a3e9b0ccea76c575302f2",
+     "manifest_sha256": "e65ba9a77bcab747b85388f7ae517d82e1c45d9b76578f27ec2cfb932174f9f4"},
+    {"id": "B2588", "output": "runs/B2588.md", "manifest": "runs/B2588.manifest.json",
+     "output_sha256": "47ecbbffe96aa76fefd45a43020c8d2bc395dfea95c4c4755e4069b71727cad1",
+     "manifest_sha256": "466cafe2b277766bbe3a06455aa3bc62321a2fcda06e23c5707b76dc00fd90ad"},
+    {"id": "O3664", "output": "runs/O3664.md", "manifest": "runs/O3664.manifest.json",
+     "output_sha256": "8da3a94d6c126f5bbcb77dc0ee2bfe084b1bf8707835a0a1914ca3bd0d3291b0",
+     "manifest_sha256": "11733a199781cc11448ce341303bf67c3bbb7ec16da1309a8d1dc853a2ff7a2f"}
+  ],
+  "run_provenance": "Three parallel subagent sessions requested as claude-opus-5-5 on 2026-11-03 from 23:37:33Z, each told to read only its staged directory (patterns.md, references.json, prompt.md, packet/) with file-read tools and no network. Isolation was by instruction, not enforced.",
+  "reason": "Development pilot on candidates whose labels the prompt author saw; not held out. Labels were classified by one controller and need a second human adjudication."
 }

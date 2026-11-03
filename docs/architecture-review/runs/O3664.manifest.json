@@ -1,0 +1,56 @@
+{
+  "schema": "architecture-review.packet.v1",
+  "id": "O3664",
+  "repository": "ostreedev/ostree",
+  "base": "9fc54d6104c79c9520a9744b6d7e9130f232ce55",
+  "head": "8fe1681229dc30210c4137e3c3ef8ee35114f716",
+  "ancestry": {
+    "compare_status": "ahead",
+    "merge_base": "9fc54d6104c79c9520a9744b6d7e9130f232ce55",
+    "total_commits": 1
+  },
+  "commits": [
+    {
+      "sha": "8fe1681229dc30210c4137e3c3ef8ee35114f716",
+      "committed": "2026-10-07T21:32:34Z"
+    }
+  ],
+  "first_feedback_at": "2026-10-09T21:03:03Z",
+  "title_description": "unavailable: no historical snapshot established; current text omitted",
+  "project_guidance": "not supplied",
+  "limits": {
+    "max_files": 30,
+    "max_bytes": 100000
+  },
+  "total_bytes": 35054,
+  "files": [
+    {
+      "name": "diff.patch",
+      "revision": "9fc54d6104c79c9520a9744b6d7e9130f232ce55...8fe1681229dc30210c4137e3c3ef8ee35114f716",
+      "bytes": 3600,
+      "sha256": "1d4e7f77841bac614c8e8dd7c6e64a347e1f65b7d946bc8877907abebfa116f5"
+    },
+    {
+      "name": "head/tmt__tests__tests.fmf",
+      "path": "tmt/tests/tests.fmf",
+      "revision": "8fe1681229dc30210c4137e3c3ef8ee35114f716",
+      "bytes": 832,
+      "sha256": "2d3d0438ea248890b85c0ba0f3876c497f47cc886aa28e8cf91c9e6c50307eff"
+    },
+    {
+      "name": "head/tests__bootc-integration__src__tests__privileged.rs",
+      "path": "tests/bootc-integration/src/tests/privileged.rs",
+      "revision": "8fe1681229dc30210c4137e3c3ef8ee35114f716",
+      "bytes": 8801,
+      "sha256": "23a4cf35e870483f9b872d6ad1c9c5ad20d61f8862bfc7ad3116711188548f19"
+    },
+    {
+      "name": "head/src__libostree__ostree-impl-system-generator.c",
+      "path": "src/libostree/ostree-impl-system-generator.c",
+      "revision": "8fe1681229dc30210c4137e3c3ef8ee35114f716",
+      "bytes": 21821,
+      "sha256": "3740f8fecf845759f03998152e01cb2af0c0ef7c335ea7d4cb08ca5e479d89d1"
+    }
+  ],
+  "omitted": []
+}
