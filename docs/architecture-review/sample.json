@@ -1,0 +1,39 @@
+{
+  "schema": "architecture-review.sample.v1",
+  "frozen_before_prompt_authoring": true,
+  "selection": "Manual title-based selection from up to eight reviewed-by:cgwalters search results per repository; no feedback bodies read at freeze. Corpus release unavailable. Not a random or representative sample.",
+  "samples": [
+    {
+      "id": "B2603",
+      "repository": "bootc-dev/bootc",
+      "pr": 2603,
+      "title": "switch: Add --target-imgref to Support a separate update image reference",
+      "head": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "candidate_base": "c0e56cda3f88711e006a736be08927fa296703c9",
+      "reconstructed_base": "d0a449a7983d560331def4bc48e17da0b140bd99",
+      "base_note": "Initial candidate came from the current PR commit list and is not an ancestor. Compare API recovered this head's merge base. Historical completeness still needs audit; do not use current PR diff.",
+      "review": "https://github.com/bootc-dev/bootc/pull/2603#pullrequestreview-5717113152",
+      "feedback_at": "2026-10-30T18:43:54Z"
+    },
+    {
+      "id": "B2588",
+      "repository": "bootc-dev/bootc",
+      "pr": 2588,
+      "title": "podstorage: Make the storage bind mount namespace private",
+      "head": "024643ef4830c529ef8b541f0f09891586b52a5b",
+      "candidate_base": "69057a88013a8e1a41830806d7a0b66e4fc453b7",
+      "review": "https://github.com/bootc-dev/bootc/pull/2588#pullrequestreview-5656806196",
+      "feedback_at": "2026-10-26T18:12:19Z"
+    },
+    {
+      "id": "O3680",
+      "repository": "ostreedev/ostree",
+      "pr": 3680,
+      "title": "rofiles-fuse: Check hardlinks for O_TRUNC opens and removexattr",
+      "head": "cca97fca7129d764819ff2f6a8774688e80ee75b",
+      "candidate_base": "7d35183ee21c7a2c73cad0befc6010dabce78d89",
+      "review": "https://github.com/ostreedev/ostree/pull/3680#pullrequestreview-5654611213",
+      "feedback_at": "2026-10-26T15:31:35Z"
+    }
+  ]
+}

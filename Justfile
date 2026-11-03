@@ -7,6 +7,100 @@ set positional-arguments
 # Every test of the files under .github.
 test: test-agent-board-install test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-gate test-forge-sync agent-board-pin
 
+# Manual structural checks of the offline architecture-review prototype.
+test-architecture-review:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const { createHash } = require('node:crypto');
+    const { readFileSync } = require('node:fs');
+    const test = require('node:test');
+
+    const read = name => readFileSync(`docs/architecture-review/${name}`, 'utf8');
+    const json = name => JSON.parse(read(name));
+    const references = json('references.json');
+    const version = references.version;
+    const sample = json('sample.json');
+    const results = json('results.json');
+
+    function validateCounts(r) {
+      assert.equal(r.selected_prs, sample.samples.length);
+      assert.equal(r.candidate_prs_with_design_feedback + r.rejected_prs, r.selected_prs);
+      assert.equal(r.architecture_concerns + r.excluded_nits + r.excluded_acknowledgements,
+        r.audited_inline_comments);
+      assert.equal(r.executed_reviews, r.runs.length);
+      assert.ok(r.compared_prs <= r.executed_reviews);
+      assert.equal(r.status, 'unfinished');
+      assert.equal(r.held_out_claim, false);
+      for (const key of ['matched', 'missed', 'unmatched']) assert.equal(r[key], null);
+    }
+
+    test('explicit version and pinned, publicly linked source files', () => {
+      assert.equal(version, '0.1.0');
+      assert.equal(results.version, version);
+      assert.equal(references.references.length, 9);
+      for (const [file, digest] of Object.entries(results.authoring_artifact_sha256)) {
+        assert.equal(createHash('sha256').update(read(file)).digest('hex'), digest, file);
+      }
+      const ids = new Set();
+      for (const r of references.references) {
+        assert.match(r.revision, /^[a-f0-9]{40}$/);
+        assert.ok(r.sections.length > 0);
+        assert.ok(!ids.has(r.id));
+        ids.add(r.id);
+        assert.ok(read('README.md').includes(
+          `https://github.com/${r.repository}/blob/${r.revision}/${r.path}`));
+      }
+    });
+
+    test('six scoped architecture patterns with explicitly illustrative examples', () => {
+      const library = read('patterns.md');
+      const sections = library.split(/^## /m).slice(1);
+      assert.equal(sections.length, 6);
+      sections.forEach((s, i) => {
+        assert.ok(s.startsWith(`AR-0${i + 1}:`));
+        for (const label of ['Principle', 'Scope/exceptions', 'Source',
+          'Good (illustrative)', 'Bad (illustrative)']) assert.ok(s.includes(`**${label}:**`));
+        assert.ok(references.references.some(r => s.includes(r.id)));
+      });
+    });
+
+    test('prompt covers design dimensions, evidence, uncertainty and read-only boundary', () => {
+      const prompt = read('prompt.md');
+      assert.ok(prompt.includes(`prompt ${version}`));
+      for (const dimension of ['Invariants', 'State ownership', 'Failure and rollback',
+        'Compatibility and interfaces', 'Dependency ordering', 'Privilege boundaries', 'Testing']) {
+        assert.ok(prompt.includes(`**${dimension}:**`));
+      }
+      for (const phrase of ['untrusted **data**', 'Do not execute', 'Do not edit files',
+        'concrete PR evidence', 'Uncertainty/questions', 'nit-checklist',
+        '100,000', 'contaminated', 'Archive this output unchanged']) assert.ok(prompt.includes(phrase));
+    });
+
+    test('sample pins are separate from derivation and not leaked into prompt/library', () => {
+      assert.equal(sample.frozen_before_prompt_authoring, true);
+      assert.equal(sample.samples.length, 3);
+      assert.equal(new Set(sample.samples.map(s => s.id)).size, 3);
+      for (const s of sample.samples) {
+        for (const sha of [s.head, s.candidate_base, ...(s.reconstructed_base ? [s.reconstructed_base] : [])]) {
+          assert.match(sha, /^[a-f0-9]{40}$/);
+          assert.ok(!references.references.some(r => r.revision === sha));
+          for (const file of ['patterns.md', 'prompt.md']) assert.ok(!read(file).includes(sha));
+        }
+        for (const file of ['patterns.md', 'prompt.md']) {
+          assert.ok(!read(file).includes(`/${s.repository}/pull/${s.pr}`));
+        }
+        assert.ok(s.review.startsWith(`https://github.com/${s.repository}/pull/${s.pr}#`));
+      }
+    });
+
+    test('unfinished evaluation counts do not masquerade as zero findings', () => {
+      validateCounts(results);
+      assert.throws(() => validateCounts({ ...results, architecture_concerns: 5 }));
+      assert.throws(() => validateCounts({ ...results, executed_reviews: 3 }));
+      assert.throws(() => validateCounts({ ...results, matched: 0 }));
+      assert.throws(() => validateCounts({ ...results, held_out_claim: true }));
+    });
+
 # poll must pass both of the fix bounds files dispatch selects per target.
 test-poll-bounds:
     #!/usr/bin/env node
