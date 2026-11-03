@@ -327,6 +327,34 @@ fn path_of(name: &str) -> String {
 }
 
 #[test]
+fn hosted_configs_opt_into_observed_long_rate_limit_stops() {
+    let hosted = toml_file("hosted.toml");
+    let experiment = toml_file("acp-experiment.toml");
+    assert_eq!(hosted.get("inference"), experiment.get("inference"), "hosted copy parity");
+    for (name, config) in [("hosted.toml", hosted), ("acp-experiment.toml", experiment)] {
+        for key in ["front", "stop-long-retry-after"] {
+            assert_eq!(config.get("inference").and_then(|v| v.get(key)).and_then(toml::Value::as_bool), Some(true), "{name}: inference.{key}");
+        }
+    }
+    if !agentic_job_installed() {
+        return;
+    }
+    for name in ["hosted.toml", "acp-experiment.toml"] {
+        let composed = agentic_job_ok(&[
+            "config", "--from", &path_of(name), "--repo", "cgwalters-forge/tracker",
+            "--string", "agent.name=opencode", "--string", "agent.model=m",
+            "--string", "inference.url=http://192.0.2.1:18080", "--string", "inference.register=github-oidc",
+            "--string", "inference.audience=a", "--integer", "limits.timeout-minutes=75",
+            "--integer", "limits.budget=500", "--integer", "limits.max-requests=400",
+        ]);
+        let config: toml::Table = composed.parse().expect("composed config is TOML");
+        for key in ["front", "stop-long-retry-after"] {
+            assert_eq!(config["inference"][key].as_bool(), Some(true), "{name}: composed inference.{key}");
+        }
+    }
+}
+
+#[test]
 fn acp_experiment_is_hosted_and_a_child_agent_and_hosted_has_none() {
     let hosted = read("hosted.toml");
     let experiment = read("acp-experiment.toml");
@@ -394,17 +422,24 @@ fn supervisor_config_preserves_hosted_sandbox_and_session_without_a_listener() {
     if !agentic_job_installed() {
         return;
     }
-    let check = |file: &str| agentic_job_ok(&["config", "--from", &path_of(file), "--host"]);
-    let supervisor = check("supervisor.toml");
-    let base = check("hosted.toml");
-    for table in ["sandbox", "sandbox.check", "setup", "session"] {
-        let section = |text: &str| {
-            let after = text.split(&format!("[{table}]\n")).nth(1).unwrap_or_else(|| panic!("no [{table}]"));
-            after.split("\n[").next().unwrap_or_default().to_owned()
-        };
-        assert_eq!(section(&supervisor), section(&base), "[{table}]");
+    let check = |file: &str| agentic_job_ok(&[
+        "config", "--from", &path_of(file), "--host",
+        "--string", "inference.url=http://192.0.2.1:18080", "--string", "inference.register=github-oidc",
+        "--string", "inference.audience=a",
+    ]);
+    let normalized = |file: &str| {
+        let mut config: toml::Table = check(file).parse().unwrap();
+        // Service stop order does not affect the sandbox policy.
+        let services = sorted(strings(&config["sandbox"]["stop-services"], "stop-services"));
+        config["sandbox"]["stop-services"] = toml::Value::Array(services.into_iter().map(toml::Value::String).collect());
+        config
+    };
+    let supervisor = normalized("supervisor.toml");
+    let base = normalized("hosted.toml");
+    for table in ["sandbox", "setup", "session"] {
+        assert_eq!(supervisor[table], base[table], "[{table}] including subtables");
     }
-    assert!(!supervisor.contains("listen = true"));
+    assert_ne!(supervisor["session"].get("listen").and_then(toml::Value::as_bool), Some(true));
 }
 
 #[test]
@@ -443,6 +478,8 @@ fn agentic_job_config_takes_acp_experiment_and_refuses_it_without_the_cap() {
     let hosted = agentic_job_ok(&[
         "config", "--from", &path_of("hosted.toml"), "--repo", "o/r",
         "--string", "agent.name=fake", "--integer", "limits.timeout-minutes=75", "--boolean", "limits.uncapped=true",
+        "--string", "inference.url=http://192.0.2.1:18080", "--string", "inference.register=github-oidc",
+        "--string", "inference.audience=a",
     ]);
     assert!(!hosted.contains("child-agent"));
 }
