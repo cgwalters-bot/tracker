@@ -44,9 +44,10 @@
     "maxDispatchesPerDay": 40,
     "tracker": "cgwalters-forge/tracker",
     "project": "PVT_kwDOE9oHIs4BlJLc",
+    "bugEpic": 680,
     "dailyCaps": {
       "comment": 20,
-      "file_bug": 5,
+      "file_bug": 10,
       "plan_epic": 6,
       "create_issue": 15,
       "close": 10,
