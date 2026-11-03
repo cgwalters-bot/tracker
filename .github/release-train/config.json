@@ -20,6 +20,8 @@
     "files": [
       ".github/workflows/cgwalters-agentic-job.yml",
       ".github/workflows/cgwalters-review.yml",
+      ".github/workflows/secure-host.yml",
+      "workflow/review.test.cjs",
       "README.md"
     ]
   },
