@@ -22,24 +22,39 @@ test-architecture-review:
     const sample = json('sample.json');
     const results = json('results.json');
 
+    const sha256 = text => createHash('sha256').update(text).digest('hex');
+
     function validateCounts(r) {
+      const evaluated = sample.samples.filter(s => s.status === 'evaluated');
       assert.equal(r.selected_prs, sample.samples.length);
-      assert.equal(r.candidate_prs_with_design_feedback + r.rejected_prs, r.selected_prs);
+      assert.equal(r.evaluated_prs, evaluated.length);
+      assert.equal(r.evaluated_prs + r.rejected_prs, r.selected_prs);
       assert.equal(r.architecture_concerns + r.excluded_nits + r.excluded_acknowledgements,
         r.audited_inline_comments);
+      assert.equal(r.architecture_concerns, r.concerns.length);
       assert.equal(r.executed_reviews, r.runs.length);
+      assert.deepEqual(r.runs.map(run => run.id), evaluated.map(s => s.id));
       assert.ok(r.compared_prs <= r.executed_reviews);
-      assert.equal(r.status, 'unfinished');
+      assert.equal(r.status, 'development_pilot');
       assert.equal(r.held_out_claim, false);
-      for (const key of ['matched', 'missed', 'unmatched']) assert.equal(r[key], null);
+      for (const c of r.concerns) {
+        assert.ok(['concern', 'question'].includes(c.stratum), c.id);
+        assert.ok(r.runs.some(run => c.id.startsWith(`${run.id}-`)), c.id);
+        if (c.matched_by) assert.ok(c.scorable && c.matched_by.startsWith(c.id.split('-')[0]), c.id);
+        if (!c.scorable) assert.ok(c.unscorable_reason, c.id);
+      }
+      for (const f of Object.values(r.findings)) assert.equal(f.matched + f.unmatched, f.total);
+      const a = r.unmatched_audit;
+      assert.equal(a.supported + a.unsupported + a.unresolved, a.audited);
+      assert.ok(a.audited <= r.findings.defects.unmatched + r.findings.questions.unmatched);
     }
 
     test('explicit version and pinned, publicly linked source files', () => {
       assert.equal(version, '0.1.0');
       assert.equal(results.version, version);
       assert.equal(references.references.length, 9);
-      for (const [file, digest] of Object.entries(results.authoring_artifact_sha256)) {
-        assert.equal(createHash('sha256').update(read(file)).digest('hex'), digest, file);
+      for (const [file, digest] of Object.entries(results.artifact_sha256)) {
+        assert.equal(sha256(read(file)), digest, file);
       }
       const ids = new Set();
       for (const r of references.references) {
@@ -73,14 +88,20 @@ test-architecture-review:
       }
       for (const phrase of ['untrusted **data**', 'Do not execute', 'Do not edit files',
         'concrete PR evidence', 'Uncertainty/questions', 'nit-checklist',
-        '100,000', 'contaminated', 'Archive this output unchanged']) assert.ok(prompt.includes(phrase));
+        '100,000', 'contaminated', 'Archive this output unchanged', 'references.json'
+      ]) assert.ok(prompt.includes(phrase));
     });
 
     test('sample pins are separate from derivation and not leaked into prompt/library', () => {
-      assert.equal(sample.frozen_before_prompt_authoring, true);
-      assert.equal(sample.samples.length, 3);
-      assert.equal(new Set(sample.samples.map(s => s.id)).size, 3);
+      const ids = new Set(sample.samples.map(s => s.id));
+      assert.equal(ids.size, sample.samples.length);
       for (const s of sample.samples) {
+        assert.ok(['evaluated', 'rejected'].includes(s.status), s.id);
+        if (s.status === 'rejected') assert.ok(s.rejection, s.id);
+        // A later replacement must name what it replaces, never substitute silently.
+        if (!s.frozen_before_prompt_authoring) {
+          assert.equal(sample.samples.find(r => r.id === s.replaces)?.status, 'rejected', s.id);
+        }
         for (const sha of [s.head, s.candidate_base, ...(s.reconstructed_base ? [s.reconstructed_base] : [])]) {
           assert.match(sha, /^[a-f0-9]{40}$/);
           assert.ok(!references.references.some(r => r.revision === sha));
@@ -93,12 +114,35 @@ test-architecture-review:
       }
     });
 
-    test('unfinished evaluation counts do not masquerade as zero findings', () => {
+    test('archived runs match their pinned packets and recorded hashes', () => {
+      for (const run of results.runs) {
+        const s = sample.samples.find(x => x.id === run.id);
+        const manifest = json(run.manifest);
+        assert.equal(manifest.head, s.head, run.id);
+        assert.equal(manifest.base, s.reconstructed_base ?? s.candidate_base, run.id);
+        assert.equal(manifest.ancestry.compare_status, 'ahead', run.id);
+        assert.ok(manifest.commits.every(c => c.committed <= s.feedback_at), run.id);
+        assert.ok(manifest.files.length <= manifest.limits.max_files, run.id);
+        assert.ok(manifest.total_bytes <= manifest.limits.max_bytes, run.id);
+        assert.equal(sha256(read(run.manifest)), run.manifest_sha256, run.id);
+        const output = read(run.output);
+        assert.equal(sha256(output), run.output_sha256, run.id);
+        assert.ok(output.startsWith('Architecture review'), run.id);
+        assert.ok(output.includes(s.head), run.id);
+      }
+    });
+
+    test('evaluation counts are consistent and make no held-out claim', () => {
       validateCounts(results);
-      assert.throws(() => validateCounts({ ...results, architecture_concerns: 5 }));
-      assert.throws(() => validateCounts({ ...results, executed_reviews: 3 }));
-      assert.throws(() => validateCounts({ ...results, matched: 0 }));
+      assert.throws(() => validateCounts({ ...results, architecture_concerns: 4 }));
+      assert.throws(() => validateCounts({ ...results, executed_reviews: 2 }));
       assert.throws(() => validateCounts({ ...results, held_out_claim: true }));
+      assert.throws(() => validateCounts({
+        ...results, concerns: results.concerns.map(c => ({ ...c, scorable: true, unscorable_reason: undefined, matched_by: c.matched_by ?? 'X1' })),
+      }));
+      assert.throws(() => validateCounts({
+        ...results, unmatched_audit: { ...results.unmatched_audit, supported: 3 },
+      }));
     });
 
 # poll must pass both of the fix bounds files dispatch selects per target.

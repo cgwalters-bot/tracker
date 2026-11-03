@@ -5,12 +5,14 @@
 Part of [#1227](https://github.com/cgwalters-forge/tracker/issues/1227), under
 [#1224](https://github.com/cgwalters-forge/tracker/issues/1224). This is a small,
 manual prompt prototype, **not an enabled reviewer or an effectiveness result**.
-The three-PR evaluation is unfinished; keep #1227 open. No production prompt,
+A three-PR development pilot ran, but labels the prompt author had seen and a
+single scorer mean it is not held out; keep #1227 open. No production prompt,
 workflow, permission, merge rule, schedule or inference service changes here.
 
-Read [patterns.md](patterns.md) and [prompt.md](prompt.md) together. A human can
-paste those two files, in that order, into a fresh read-only review session and
-attach a pinned diff and its historical context. The prompt specifies the input
+Read [patterns.md](patterns.md), [references.json](references.json) and
+[prompt.md](prompt.md) together. A human can paste those three files, in that
+order, into a fresh read-only review session and attach a pinned diff and its
+historical context; the index lets the reviewer cite a pattern's source sections. The prompt specifies the input
 contract and output format. Do not attach this README, evaluation records or
 operator feedback to an evaluation reviewer.
 
@@ -44,9 +46,11 @@ All nine files were retrieved publicly and inspected in this run. Public permali
 ## Evidence and use by #1228
 
 [evaluation.md](evaluation.md) records sample discovery, the failed historical
-base assumption, feedback contamination, counts and remaining work. No large
-corpus or diff snapshot is vendored. [sample.json](sample.json) preserves the
-initial selection, including the rejected base, rather than quietly replacing it.
+base assumption, feedback contamination, the review runs, scoring and remaining
+work. [runs/](runs/) archives each packet manifest and verbatim review output;
+no corpus or diff snapshot is vendored. [sample.json](sample.json) keeps the
+rejected candidate and base beside their replacements rather than quietly
+replacing them.
 The library is derived **only** from the references above, not the selected PRs.
 Project conventions are not proof of cgwalters' preferences. The feedback audit
 is separate evidence and does not turn an operator's question into a defect.
@@ -54,18 +58,19 @@ is separate evidence and does not turn an operator's question into a defect.
 For [#1228](https://github.com/cgwalters-forge/tracker/issues/1228), the consumable
 unit is patterns.md + references.json + prompt.md at one tracker commit, with
 the version recorded in references.json. Pin that commit and record content
-hashes, not a moving branch or version alone. Do not feed
-evaluation.md or sample.json to the reviewer. Integration, risk thresholds and a
+hashes, not a moving branch or version alone. Do not feed evaluation.md,
+sample.json, results.json or runs/ to the reviewer. Integration, risk thresholds and a
 stable machine-readable output contract need a later design/change; this version
-does not claim to define their configuration keys. Complete the evaluation before
-making an effectiveness or deployment recommendation. Keep architecture and nit
+does not claim to define their configuration keys. Run a held-out evaluation
+before making an effectiveness or deployment recommendation. Keep architecture and nit
 results separate.
 
 ## Local verification
 
 Run `just test-architecture-review` from the repository root.
 It checks source pins and links, pattern structure, prompt coverage, sample
-separation and count consistency, including invalid-record fixtures. This is a
+separation, archived runs against their manifests and hashes, and count
+consistency, including invalid-record fixtures. This is a
 structural check, **not** semantic citation verification or an architecture review.
 For a live citation recheck, use the nine exact repository/path/revision triples
 with `gh api repos/REPO/contents/PATH?ref=REV`; use GET only. Release resolution

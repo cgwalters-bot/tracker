@@ -38,8 +38,9 @@ cgwalters' instructions.
 ## Review drafts
 
 The [offline architecture-review prototype](docs/architecture-review/README.md)
-contains a versioned pattern library and manual review procedure. Its historical
-evaluation is unfinished; it is not wired into the production review step.
+contains a versioned pattern library and manual review procedure. It has only a
+three-PR development pilot, no held-out result, and is not wired into the
+production review step.
 
 Agent-drafted reviews of others' pull requests wait as issues labelled
 `review-draft` (`is:open label:review-draft` is the queue). To send the
