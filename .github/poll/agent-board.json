@@ -54,7 +54,16 @@
       "cgwalters-forge/composefs-rs",
       "cgwalters-forge/bootc",
       "cgwalters-forge/bcvk",
-      "cgwalters-forge/rpm-ostree"
+      "cgwalters-forge/rpm-ostree",
+      "cgwalters-forge/image-builder",
+      "cgwalters-forge/infra",
+      "cgwalters-forge/bootc-dev-actions",
+      "cgwalters-forge/gh-agentic-workflows",
+      "cgwalters-forge/bootupd",
+      "cgwalters-forge/dracut",
+      "cgwalters-forge/osbuild",
+      "cgwalters-forge/containers-image-proxy-rs",
+      "cgwalters-forge/cargo-vendor-filterer"
     ]
   }
 }
