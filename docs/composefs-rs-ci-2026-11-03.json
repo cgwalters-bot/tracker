@@ -1,0 +1,4751 @@
+{
+  "window": {
+    "start": "2026-10-04T22:56:45Z",
+    "end": "2026-11-03T22:56:45Z",
+    "selection": "created_at inclusive; attempts observed before end"
+  },
+  "repositories": [
+    {
+      "repository": "composefs/composefs-rs",
+      "default_branch": "main",
+      "listed_runs": 143,
+      "populations": {
+        "PR": 63,
+        "default": 14,
+        "excluded-queue": 51,
+        "excluded-maintenance": 4,
+        "excluded-branch": 11
+      }
+    },
+    {
+      "repository": "cgwalters-forge/composefs-rs",
+      "default_branch": "forge",
+      "listed_runs": 0,
+      "populations": {}
+    }
+  ],
+  "groups": {
+    "G1": {
+      "name": "Invalid bootc-revdep workflow expression",
+      "classification": "real",
+      "distinct_runs": 19,
+      "failed_workflow_runs": 19,
+      "attempts": 19,
+      "utc_days": 8,
+      "members": [
+        {
+          "run_id": 40659936423,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-28"
+        },
+        {
+          "run_id": 40552387563,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-27"
+        },
+        {
+          "run_id": 40535433220,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-27"
+        },
+        {
+          "run_id": 40296405572,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-26"
+        },
+        {
+          "run_id": 39805637220,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-22"
+        },
+        {
+          "run_id": 39787254968,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-22"
+        },
+        {
+          "run_id": 39668988418,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39668207595,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39667326275,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39666725488,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39650901867,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39638593151,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39574939050,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39399306218,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-20"
+        },
+        {
+          "run_id": 39313511366,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39313471710,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39282020567,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39281598106,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 37928909126,
+          "attempt": 1,
+          "job_id": null,
+          "date": "2026-10-09"
+        }
+      ]
+    },
+    "G2": {
+      "name": "Integration tests: skopeo proxy too old",
+      "classification": "real",
+      "distinct_runs": 6,
+      "failed_workflow_runs": 6,
+      "attempts": 6,
+      "utc_days": 2,
+      "members": [
+        {
+          "run_id": 39650904652,
+          "attempt": 1,
+          "job_id": 119402144467,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39650904652,
+          "attempt": 1,
+          "job_id": 119402144626,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39638595244,
+          "attempt": 1,
+          "job_id": 119360095410,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39638595244,
+          "attempt": 1,
+          "job_id": 119360095502,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39574940832,
+          "attempt": 1,
+          "job_id": 119141243060,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39574940832,
+          "attempt": 1,
+          "job_id": 119141243092,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39313513325,
+          "attempt": 1,
+          "job_id": 118272139330,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39313513325,
+          "attempt": 1,
+          "job_id": 118272139482,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39282022260,
+          "attempt": 1,
+          "job_id": 118160795628,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39282022260,
+          "attempt": 1,
+          "job_id": 118160795775,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39274907145,
+          "attempt": 1,
+          "job_id": 118140825190,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39274907145,
+          "attempt": 1,
+          "job_id": 118140825376,
+          "date": "2026-10-19"
+        }
+      ]
+    },
+    "G3": {
+      "name": "Example tests: Azure apt archive connection failures",
+      "classification": "infra",
+      "distinct_runs": 4,
+      "failed_workflow_runs": 4,
+      "attempts": 4,
+      "utc_days": 3,
+      "members": [
+        {
+          "run_id": 41257977229,
+          "attempt": 1,
+          "job_id": 124705107214,
+          "date": "2026-11-01"
+        },
+        {
+          "run_id": 40357855858,
+          "attempt": 1,
+          "job_id": 121695020456,
+          "date": "2026-10-26"
+        },
+        {
+          "run_id": 40296407652,
+          "attempt": 1,
+          "job_id": 121483420153,
+          "date": "2026-10-26"
+        },
+        {
+          "run_id": 39805639946,
+          "attempt": 1,
+          "job_id": 119917998225,
+          "date": "2026-10-22"
+        }
+      ]
+    },
+    "G4": {
+      "name": "nightly: containers-image-proxy missing package version",
+      "classification": "real",
+      "distinct_runs": 6,
+      "failed_workflow_runs": 3,
+      "attempts": 6,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 39668992282,
+          "attempt": 1,
+          "job_id": 119461861680,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39668210825,
+          "attempt": 1,
+          "job_id": 119459086786,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39667328915,
+          "attempt": 1,
+          "job_id": 119456356070,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39666728625,
+          "attempt": 1,
+          "job_id": 119453630539,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39650904652,
+          "attempt": 1,
+          "job_id": 119398647769,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39638595244,
+          "attempt": 1,
+          "job_id": 119355868213,
+          "date": "2026-10-21"
+        }
+      ]
+    },
+    "G5": {
+      "name": "Integration tests: OpenImage empty storage option",
+      "classification": "real",
+      "distinct_runs": 2,
+      "failed_workflow_runs": 2,
+      "attempts": 2,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 39638595244,
+          "attempt": 1,
+          "job_id": 119360095410,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39638595244,
+          "attempt": 1,
+          "job_id": 119360095502,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39574940832,
+          "attempt": 1,
+          "job_id": 119141243060,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39574940832,
+          "attempt": 1,
+          "job_id": 119141243092,
+          "date": "2026-10-21"
+        }
+      ]
+    },
+    "G6": {
+      "name": "fedora: clippy collapsible_if",
+      "classification": "real",
+      "distinct_runs": 2,
+      "failed_workflow_runs": 2,
+      "attempts": 2,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 39313473782,
+          "attempt": 1,
+          "job_id": 118268816508,
+          "date": "2026-10-19"
+        },
+        {
+          "run_id": 39283563089,
+          "attempt": 1,
+          "job_id": 118163143047,
+          "date": "2026-10-19"
+        }
+      ]
+    },
+    "G7": {
+      "name": "fedora: clippy too_many_arguments",
+      "classification": "real",
+      "distinct_runs": 2,
+      "failed_workflow_runs": 2,
+      "attempts": 2,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 39638595244,
+          "attempt": 1,
+          "job_id": 119355867382,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39574940832,
+          "attempt": 1,
+          "job_id": 119138017371,
+          "date": "2026-10-21"
+        }
+      ]
+    },
+    "G8": {
+      "name": "Example test_basic: reboot SSH exit 255",
+      "classification": "unresolved",
+      "distinct_runs": 2,
+      "failed_workflow_runs": 2,
+      "attempts": 2,
+      "utc_days": 2,
+      "members": [
+        {
+          "run_id": 41063545506,
+          "attempt": 1,
+          "job_id": 124089027728,
+          "date": "2026-10-30"
+        },
+        {
+          "run_id": 37826138338,
+          "attempt": 1,
+          "job_id": 113479377346,
+          "date": "2026-10-08"
+        }
+      ]
+    },
+    "G9": {
+      "name": "fedora: cstor.rs formatting",
+      "classification": "real",
+      "distinct_runs": 2,
+      "failed_workflow_runs": 1,
+      "attempts": 2,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 39667328915,
+          "attempt": 1,
+          "job_id": 119456356654,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39650904652,
+          "attempt": 1,
+          "job_id": 119398648505,
+          "date": "2026-10-21"
+        }
+      ]
+    },
+    "G10": {
+      "name": "Integration container build: Quay 502/EOF",
+      "classification": "infra",
+      "distinct_runs": 1,
+      "failed_workflow_runs": 1,
+      "attempts": 2,
+      "utc_days": 2,
+      "members": [
+        {
+          "run_id": 40033977048,
+          "attempt": 1,
+          "job_id": 120691428297,
+          "date": "2026-10-23"
+        },
+        {
+          "run_id": 40033977048,
+          "attempt": 1,
+          "job_id": 120691428342,
+          "date": "2026-10-23"
+        },
+        {
+          "run_id": 40033977048,
+          "attempt": 2,
+          "job_id": 121168032771,
+          "date": "2026-10-25"
+        }
+      ]
+    },
+    "G11": {
+      "name": "Integration tests: obsolete ext4 hardlink assertion",
+      "classification": "real",
+      "distinct_runs": 1,
+      "failed_workflow_runs": 1,
+      "attempts": 1,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 39650904652,
+          "attempt": 1,
+          "job_id": 119402144467,
+          "date": "2026-10-21"
+        },
+        {
+          "run_id": 39650904652,
+          "attempt": 1,
+          "job_id": 119402144626,
+          "date": "2026-10-21"
+        }
+      ]
+    },
+    "G12": {
+      "name": "Stock-skopeo tests: missing OpenVarlinkSocket and VM image context",
+      "classification": "real",
+      "distinct_runs": 1,
+      "failed_workflow_runs": 1,
+      "attempts": 1,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 40552390119,
+          "attempt": 1,
+          "job_id": 122362404167,
+          "date": "2026-10-27"
+        }
+      ]
+    },
+    "G13": {
+      "name": "Stock-skopeo equivalence: image not found",
+      "classification": "unresolved",
+      "distinct_runs": 1,
+      "failed_workflow_runs": 1,
+      "attempts": 1,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 40552390119,
+          "attempt": 1,
+          "job_id": 122362404167,
+          "date": "2026-10-27"
+        }
+      ]
+    },
+    "G14": {
+      "name": "Standalone composefs-boot: lockfile needs generation",
+      "classification": "real",
+      "distinct_runs": 1,
+      "failed_workflow_runs": 0,
+      "attempts": 1,
+      "utc_days": 1,
+      "members": [
+        {
+          "run_id": 37277919693,
+          "attempt": 1,
+          "job_id": 111659010687,
+          "date": "2026-10-05"
+        }
+      ]
+    }
+  },
+  "runs": [
+    {
+      "id": 41557564859,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "fix/setup-root-transient-root",
+      "head_sha": "eee9eb92702153d926befd9dff86a564264b4193",
+      "created_at": "2026-11-03T01:06:55Z",
+      "status": "completed",
+      "conclusion": "action_required",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "action_required",
+          "run_started_at": "2026-11-03T01:06:55Z",
+          "head_sha": "eee9eb92702153d926befd9dff86a564264b4193",
+          "jobs_total": 0,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 41355870064,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "b41cec22319f8d76dcb0a8f82f259d23ad904157",
+      "created_at": "2026-11-01T22:11:31Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-11-01T22:11:31Z",
+          "head_sha": "b41cec22319f8d76dcb0a8f82f259d23ad904157",
+          "jobs_total": 16,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 13105015175,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 162450,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 41355868744,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-434-bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+      "head_sha": "b41cec22319f8d76dcb0a8f82f259d23ad904157",
+      "created_at": "2026-11-01T22:11:30Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 41351740314,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-434-bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+      "head_sha": "b41cec22319f8d76dcb0a8f82f259d23ad904157",
+      "created_at": "2026-11-01T21:23:10Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 41351740330,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-434-bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+      "head_sha": "b41cec22319f8d76dcb0a8f82f259d23ad904157",
+      "created_at": "2026-11-01T21:23:10Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 41287379845,
+      "name": "Create Release PR",
+      "event": "schedule",
+      "head_branch": "main",
+      "head_sha": "bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+      "created_at": "2026-11-01T09:05:39Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-maintenance"
+    },
+    {
+      "id": 41257977229,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bootc-renovate/rust",
+      "head_sha": "6b4ef7d494482b8b50fb0a12132574af7f23a443",
+      "created_at": "2026-11-01T00:43:14Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 2,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-11-01T00:43:14Z",
+          "head_sha": "6b4ef7d494482b8b50fb0a12132574af7f23a443",
+          "jobs_total": 16,
+          "failed_jobs": [
+            {
+              "id": 124705107214,
+              "name": "Example tests (bls/fedora-compat)",
+              "started_at": "2026-11-01T00:43:17Z",
+              "completed_at": "2026-11-01T00:46:56Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Get a newer podman for heredoc support (from plucky)"
+              ],
+              "groups": [
+                "G3"
+              ]
+            },
+            {
+              "id": 124713875722,
+              "name": "required-checks",
+              "started_at": "2026-11-01T01:24:11Z",
+              "completed_at": "2026-11-01T01:24:14Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        },
+        {
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-11-01T21:15:44Z",
+          "head_sha": "6b4ef7d494482b8b50fb0a12132574af7f23a443",
+          "jobs_total": 16,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 13065146864,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 162219,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 41257970909,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "bootc-renovate/rust",
+      "head_sha": "6b4ef7d494482b8b50fb0a12132574af7f23a443",
+      "created_at": "2026-11-01T00:43:09Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 41063545506,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+      "created_at": "2026-10-30T13:28:32Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-30T13:28:32Z",
+          "head_sha": "bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+          "jobs_total": 16,
+          "failed_jobs": [
+            {
+              "id": 124089027728,
+              "name": "Example tests (uki/fedora)",
+              "started_at": "2026-10-30T13:28:35Z",
+              "completed_at": "2026-10-30T13:35:20Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run example tests"
+              ],
+              "groups": [
+                "G8"
+              ]
+            },
+            {
+              "id": 124107027164,
+              "name": "required-checks",
+              "started_at": "2026-10-30T14:05:29Z",
+              "completed_at": "2026-10-30T14:05:33Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 41063542146,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-417-d015204b9936d0f8cb1fc62300a6cccca70a5095",
+      "head_sha": "bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+      "created_at": "2026-10-30T13:28:31Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 41057321855,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-417-d015204b9936d0f8cb1fc62300a6cccca70a5095",
+      "head_sha": "bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+      "created_at": "2026-10-30T12:42:07Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 41057321869,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-417-d015204b9936d0f8cb1fc62300a6cccca70a5095",
+      "head_sha": "bb5c6124d5595ec93ca7e4c08da8d98b98165c5a",
+      "created_at": "2026-10-30T12:42:07Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40659938503,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "8f57ca1e58bcfb417544687c0f47650cbbd4136f",
+      "created_at": "2026-10-28T08:52:34Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-28T08:52:34Z",
+          "head_sha": "8f57ca1e58bcfb417544687c0f47650cbbd4136f",
+          "jobs_total": 16,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40659936423,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "8f57ca1e58bcfb417544687c0f47650cbbd4136f",
+      "created_at": "2026-10-28T08:52:33Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-28T08:52:33Z",
+          "head_sha": "8f57ca1e58bcfb417544687c0f47650cbbd4136f",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40552390119,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "90e38dae86ccaa00bce7c8f57d25e778cc559fb2",
+      "created_at": "2026-10-27T17:37:45Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-27T17:37:45Z",
+          "head_sha": "90e38dae86ccaa00bce7c8f57d25e778cc559fb2",
+          "jobs_total": 16,
+          "failed_jobs": [
+            {
+              "id": 122362404167,
+              "name": "Integration tests (centos-stream10-stock-skopeo)",
+              "started_at": "2026-10-27T17:43:32Z",
+              "completed_at": "2026-10-27T19:30:46Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G12",
+                "G13"
+              ]
+            },
+            {
+              "id": 122420576096,
+              "name": "required-checks",
+              "started_at": "2026-10-27T19:30:49Z",
+              "completed_at": "2026-10-27T19:30:52Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12763827914,
+          "name": "vm-logs-centos-stream10-stock-skopeo",
+          "size_in_bytes": 1903033,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 40552387563,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "90e38dae86ccaa00bce7c8f57d25e778cc559fb2",
+      "created_at": "2026-10-27T17:37:44Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-27T17:37:44Z",
+          "head_sha": "90e38dae86ccaa00bce7c8f57d25e778cc559fb2",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40535436017,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "6842474df473379c5f7db368d5543f896ed3ef0d",
+      "created_at": "2026-10-27T15:53:19Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-27T15:53:19Z",
+          "head_sha": "6842474df473379c5f7db368d5543f896ed3ef0d",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40535433220,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "6842474df473379c5f7db368d5543f896ed3ef0d",
+      "created_at": "2026-10-27T15:53:18Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-27T15:53:18Z",
+          "head_sha": "6842474df473379c5f7db368d5543f896ed3ef0d",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40504824268,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "d015204b9936d0f8cb1fc62300a6cccca70a5095",
+      "created_at": "2026-10-27T12:34:26Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-27T12:34:26Z",
+          "head_sha": "d015204b9936d0f8cb1fc62300a6cccca70a5095",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40504822164,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-421-ff0cd57331232808683f642af559210c97bee0c9",
+      "head_sha": "d015204b9936d0f8cb1fc62300a6cccca70a5095",
+      "created_at": "2026-10-27T12:34:26Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40497458609,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-421-ff0cd57331232808683f642af559210c97bee0c9",
+      "head_sha": "d015204b9936d0f8cb1fc62300a6cccca70a5095",
+      "created_at": "2026-10-27T11:36:50Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40497458678,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-421-ff0cd57331232808683f642af559210c97bee0c9",
+      "head_sha": "d015204b9936d0f8cb1fc62300a6cccca70a5095",
+      "created_at": "2026-10-27T11:36:50Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40488562470,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "swallow-ignored-mount-errors",
+      "head_sha": "74dfed7d17f7484af6df81cda9f6ffb930bcbe99",
+      "created_at": "2026-10-27T10:27:05Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-27T10:27:05Z",
+          "head_sha": "74dfed7d17f7484af6df81cda9f6ffb930bcbe99",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40488554047,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "swallow-ignored-mount-errors",
+      "head_sha": "74dfed7d17f7484af6df81cda9f6ffb930bcbe99",
+      "created_at": "2026-10-27T10:27:01Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 40357855858,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "ff0cd57331232808683f642af559210c97bee0c9",
+      "created_at": "2026-10-26T16:18:32Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-26T16:18:32Z",
+          "head_sha": "ff0cd57331232808683f642af559210c97bee0c9",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 121695020456,
+              "name": "Example tests (unified-secureboot/fedora)",
+              "started_at": "2026-10-26T16:18:35Z",
+              "completed_at": "2026-10-26T17:14:14Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Get a newer podman for heredoc support (from plucky)"
+              ],
+              "groups": [
+                "G3"
+              ]
+            },
+            {
+              "id": 121729526233,
+              "name": "required-checks",
+              "started_at": "2026-10-26T17:20:47Z",
+              "completed_at": "2026-10-26T17:20:50Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40357853040,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-424-86d7744fdbd8d32a1b1cd362edd57ad1b05d1995",
+      "head_sha": "ff0cd57331232808683f642af559210c97bee0c9",
+      "created_at": "2026-10-26T16:18:31Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40349007176,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-424-86d7744fdbd8d32a1b1cd362edd57ad1b05d1995",
+      "head_sha": "ff0cd57331232808683f642af559210c97bee0c9",
+      "created_at": "2026-10-26T15:24:30Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40349005798,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-424-86d7744fdbd8d32a1b1cd362edd57ad1b05d1995",
+      "head_sha": "ff0cd57331232808683f642af559210c97bee0c9",
+      "created_at": "2026-10-26T15:24:29Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40304417932,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-432-0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "head_sha": "86d7744fdbd8d32a1b1cd362edd57ad1b05d1995",
+      "created_at": "2026-10-26T10:03:42Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40304419453,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "86d7744fdbd8d32a1b1cd362edd57ad1b05d1995",
+      "created_at": "2026-10-26T10:03:42Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-26T10:03:42Z",
+          "head_sha": "86d7744fdbd8d32a1b1cd362edd57ad1b05d1995",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40296407652,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "64276dcfec607b6df70eabe3c4d8db08029a3e65",
+      "created_at": "2026-10-26T09:01:28Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 2,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-26T09:01:28Z",
+          "head_sha": "64276dcfec607b6df70eabe3c4d8db08029a3e65",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 121483420153,
+              "name": "Example tests (bls/fedora-compat)",
+              "started_at": "2026-10-26T09:01:30Z",
+              "completed_at": "2026-10-26T09:58:57Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Get a newer podman for heredoc support (from plucky)"
+              ],
+              "groups": [
+                "G3"
+              ]
+            },
+            {
+              "id": 121526529208,
+              "name": "required-checks",
+              "started_at": "2026-10-26T10:41:50Z",
+              "completed_at": "2026-10-26T10:41:52Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        },
+        {
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-26T11:41:41Z",
+          "head_sha": "64276dcfec607b6df70eabe3c4d8db08029a3e65",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12642284199,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 162410,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 40296405572,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "64276dcfec607b6df70eabe3c4d8db08029a3e65",
+      "created_at": "2026-10-26T09:01:27Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-26T09:01:27Z",
+          "head_sha": "64276dcfec607b6df70eabe3c4d8db08029a3e65",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40296344002,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-432-0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "head_sha": "86d7744fdbd8d32a1b1cd362edd57ad1b05d1995",
+      "created_at": "2026-10-26T09:00:58Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40296342437,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-432-0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "head_sha": "86d7744fdbd8d32a1b1cd362edd57ad1b05d1995",
+      "created_at": "2026-10-26T09:00:57Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40274753373,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-432-0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "head_sha": "6d612099a16288f958e4ee0448e77c4382a484bf",
+      "created_at": "2026-10-26T05:32:19Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40274752770,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-432-0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "head_sha": "6d612099a16288f958e4ee0448e77c4382a484bf",
+      "created_at": "2026-10-26T05:32:19Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40198228646,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "created_at": "2026-10-25T13:34:29Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-25T13:34:29Z",
+          "head_sha": "0f9e1f00411178ea404a742a0688dd5664aed7fa",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40198227778,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-422-bcd1848d3c2bcf7add52aff925b98002fbe7fa22",
+      "head_sha": "0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "created_at": "2026-10-25T13:34:28Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40196362068,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "bcd1848d3c2bcf7add52aff925b98002fbe7fa22",
+      "created_at": "2026-10-25T13:09:58Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-25T13:09:58Z",
+          "head_sha": "bcd1848d3c2bcf7add52aff925b98002fbe7fa22",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40196361249,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-433-6747c6d5fe0f0ba1287b4734ee65c2101f655a5d",
+      "head_sha": "bcd1848d3c2bcf7add52aff925b98002fbe7fa22",
+      "created_at": "2026-10-25T13:09:57Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40195485376,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-422-bcd1848d3c2bcf7add52aff925b98002fbe7fa22",
+      "head_sha": "0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "created_at": "2026-10-25T12:58:21Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40195485395,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-422-bcd1848d3c2bcf7add52aff925b98002fbe7fa22",
+      "head_sha": "0f9e1f00411178ea404a742a0688dd5664aed7fa",
+      "created_at": "2026-10-25T12:58:21Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40195484667,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "6747c6d5fe0f0ba1287b4734ee65c2101f655a5d",
+      "created_at": "2026-10-25T12:58:20Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-25T12:58:20Z",
+          "head_sha": "6747c6d5fe0f0ba1287b4734ee65c2101f655a5d",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40195483875,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-431-ea07386b3b74351f11990235d55a6c7b1e9aa10d",
+      "head_sha": "6747c6d5fe0f0ba1287b4734ee65c2101f655a5d",
+      "created_at": "2026-10-25T12:58:19Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40193640785,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-433-6747c6d5fe0f0ba1287b4734ee65c2101f655a5d",
+      "head_sha": "bcd1848d3c2bcf7add52aff925b98002fbe7fa22",
+      "created_at": "2026-10-25T12:33:34Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40193640752,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-433-6747c6d5fe0f0ba1287b4734ee65c2101f655a5d",
+      "head_sha": "bcd1848d3c2bcf7add52aff925b98002fbe7fa22",
+      "created_at": "2026-10-25T12:33:34Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40193315149,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-431-ea07386b3b74351f11990235d55a6c7b1e9aa10d",
+      "head_sha": "6747c6d5fe0f0ba1287b4734ee65c2101f655a5d",
+      "created_at": "2026-10-25T12:29:17Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40193314931,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-431-ea07386b3b74351f11990235d55a6c7b1e9aa10d",
+      "head_sha": "6747c6d5fe0f0ba1287b4734ee65c2101f655a5d",
+      "created_at": "2026-10-25T12:29:17Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40193203633,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-426-bd9a2e2a2c5d89a904491350cfd22deff4940a3c",
+      "head_sha": "ea07386b3b74351f11990235d55a6c7b1e9aa10d",
+      "created_at": "2026-10-25T12:27:45Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40193202701,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-426-bd9a2e2a2c5d89a904491350cfd22deff4940a3c",
+      "head_sha": "ea07386b3b74351f11990235d55a6c7b1e9aa10d",
+      "created_at": "2026-10-25T12:27:44Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40193162076,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-430-b094bb258c5d60eb21290a89d2f3c6c2b49e8000",
+      "head_sha": "bd9a2e2a2c5d89a904491350cfd22deff4940a3c",
+      "created_at": "2026-10-25T12:27:12Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40193161812,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-430-b094bb258c5d60eb21290a89d2f3c6c2b49e8000",
+      "head_sha": "bd9a2e2a2c5d89a904491350cfd22deff4940a3c",
+      "created_at": "2026-10-25T12:27:11Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40192960203,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-423-3280e06f562c732205bf4d832809ac8a0fde4ad3",
+      "head_sha": "b094bb258c5d60eb21290a89d2f3c6c2b49e8000",
+      "created_at": "2026-10-25T12:24:26Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40192960157,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-423-3280e06f562c732205bf4d832809ac8a0fde4ad3",
+      "head_sha": "b094bb258c5d60eb21290a89d2f3c6c2b49e8000",
+      "created_at": "2026-10-25T12:24:26Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 40034055668,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/composefs-pedantic-ioctls-splitdirfd",
+      "head_sha": "77572d0288614a23e3546688ea2955f68f7c2e77",
+      "created_at": "2026-10-23T22:30:29Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:30:29Z",
+          "head_sha": "77572d0288614a23e3546688ea2955f68f7c2e77",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033977048,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/composefs-fs-copy-eintr",
+      "head_sha": "24cfb8c19bf76bd1bcfce716730432a3ca103fef",
+      "created_at": "2026-10-23T22:29:50Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 3,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-23T22:29:50Z",
+          "head_sha": "24cfb8c19bf76bd1bcfce716730432a3ca103fef",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 120691428297,
+              "name": "Integration tests (centos-stream10)",
+              "started_at": "2026-10-23T22:37:09Z",
+              "completed_at": "2026-10-23T22:45:58Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G10"
+              ]
+            },
+            {
+              "id": 120691428342,
+              "name": "Integration tests (centos-stream9)",
+              "started_at": "2026-10-23T22:37:09Z",
+              "completed_at": "2026-10-23T23:37:02Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G10"
+              ]
+            },
+            {
+              "id": 120710740250,
+              "name": "required-checks",
+              "started_at": "2026-10-23T23:37:05Z",
+              "completed_at": "2026-10-23T23:37:08Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        },
+        {
+          "run_attempt": 2,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-25T12:25:57Z",
+          "head_sha": "24cfb8c19bf76bd1bcfce716730432a3ca103fef",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 121168032771,
+              "name": "Integration tests (centos-stream9)",
+              "started_at": "2026-10-25T12:26:02Z",
+              "completed_at": "2026-10-25T12:30:15Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G10"
+              ]
+            },
+            {
+              "id": 121174634732,
+              "name": "required-checks",
+              "started_at": "2026-10-25T12:55:25Z",
+              "completed_at": "2026-10-25T12:55:28Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        },
+        {
+          "run_attempt": 3,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-26T05:01:46Z",
+          "head_sha": "24cfb8c19bf76bd1bcfce716730432a3ca103fef",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033913389,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/ioctls-error-tests",
+      "head_sha": "8ca49c46a9d4424b9ce770a0832f59160b0e0816",
+      "created_at": "2026-10-23T22:29:11Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:29:11Z",
+          "head_sha": "8ca49c46a9d4424b9ce770a0832f59160b0e0816",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033835767,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/doctests-splitstream-dumpfile",
+      "head_sha": "cff73c281f54c72d1a82ee9c68febc1141ae7619",
+      "created_at": "2026-10-23T22:28:29Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:28:29Z",
+          "head_sha": "cff73c281f54c72d1a82ee9c68febc1141ae7619",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033771807,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/erofs-junk",
+      "head_sha": "499446d8de92cf7d2a520624ff4b666c42c97d3d",
+      "created_at": "2026-10-23T22:27:52Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:27:52Z",
+          "head_sha": "499446d8de92cf7d2a520624ff4b666c42c97d3d",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12538360375,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 162215,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 40033705571,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/fuzz-dumpfile-splitstream",
+      "head_sha": "687f21263f3d6ddda1f3b8c3a04ef31373b55e4d",
+      "created_at": "2026-10-23T22:27:15Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:27:15Z",
+          "head_sha": "687f21263f3d6ddda1f3b8c3a04ef31373b55e4d",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033644713,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/fuse-tests",
+      "head_sha": "25d21e3c35f0df81b09c6b9b3544e54381c31a25",
+      "created_at": "2026-10-23T22:26:40Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:26:40Z",
+          "head_sha": "25d21e3c35f0df81b09c6b9b3544e54381c31a25",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033581908,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/let-chains",
+      "head_sha": "31ad0287b576adca8df31a4f03060cc7d64a4e33",
+      "created_at": "2026-10-23T22:26:04Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:26:04Z",
+          "head_sha": "31ad0287b576adca8df31a4f03060cc7d64a4e33",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033511828,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/fsck-layout",
+      "head_sha": "f107b2c148f704599d7a99ba4f17ed65e8d387fd",
+      "created_at": "2026-10-23T22:25:26Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:25:26Z",
+          "head_sha": "f107b2c148f704599d7a99ba4f17ed65e8d387fd",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033442509,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/lookup-error-context",
+      "head_sha": "c93a010602487a81eac6fa26a0f0a709b66e524d",
+      "created_at": "2026-10-23T22:24:49Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:24:49Z",
+          "head_sha": "c93a010602487a81eac6fa26a0f0a709b66e524d",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033363918,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/cfs-214",
+      "head_sha": "59d4fbd8b505cab5c4219565f6a848fc963124f5",
+      "created_at": "2026-10-23T22:24:06Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:24:06Z",
+          "head_sha": "59d4fbd8b505cab5c4219565f6a848fc963124f5",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 40033284416,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/cfs-319",
+      "head_sha": "4c6dae7320ac066bae4d056f9da0ca27fdf53b4c",
+      "created_at": "2026-10-23T22:23:24Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-23T22:23:24Z",
+          "head_sha": "4c6dae7320ac066bae4d056f9da0ca27fdf53b4c",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39805639946,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "fc825f87f4ed4edc80d82fded1b5497ecaadcd5e",
+      "created_at": "2026-10-22T15:31:29Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-22T15:31:29Z",
+          "head_sha": "fc825f87f4ed4edc80d82fded1b5497ecaadcd5e",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 119917998225,
+              "name": "Example tests (unified-secureboot/fedora)",
+              "started_at": "2026-10-22T15:31:32Z",
+              "completed_at": "2026-10-22T16:14:31Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Get a newer podman for heredoc support (from plucky)"
+              ],
+              "groups": [
+                "G3"
+              ]
+            },
+            {
+              "id": 119971320630,
+              "name": "required-checks",
+              "started_at": "2026-10-22T17:14:02Z",
+              "completed_at": "2026-10-22T17:14:06Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39805637220,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "fc825f87f4ed4edc80d82fded1b5497ecaadcd5e",
+      "created_at": "2026-10-22T15:31:28Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-22T15:31:28Z",
+          "head_sha": "fc825f87f4ed4edc80d82fded1b5497ecaadcd5e",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39796526071,
+      "name": "Running Copilot Code Review",
+      "event": "dynamic",
+      "head_branch": "main",
+      "head_sha": "3280e06f562c732205bf4d832809ac8a0fde4ad3",
+      "created_at": "2026-10-22T14:32:32Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-maintenance"
+    },
+    {
+      "id": 39787257455,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "073321b131d40c10aadec634368d5a35d9c634f7",
+      "created_at": "2026-10-22T13:29:15Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-22T13:29:15Z",
+          "head_sha": "073321b131d40c10aadec634368d5a35d9c634f7",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12433237040,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 162963,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 39787254968,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "073321b131d40c10aadec634368d5a35d9c634f7",
+      "created_at": "2026-10-22T13:29:14Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-22T13:29:14Z",
+          "head_sha": "073321b131d40c10aadec634368d5a35d9c634f7",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39668992282,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "37355bd745067cac772258fafeab5167b82358e1",
+      "created_at": "2026-10-21T20:17:19Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T20:17:19Z",
+          "head_sha": "37355bd745067cac772258fafeab5167b82358e1",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 119461861680,
+              "name": "nightly",
+              "started_at": "2026-10-21T20:18:04Z",
+              "completed_at": "2026-10-21T20:18:19Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run cargo +nightly -Z package-workspace package"
+              ],
+              "groups": [
+                "G4"
+              ]
+            },
+            {
+              "id": 119481897220,
+              "name": "required-checks",
+              "started_at": "2026-10-21T20:58:07Z",
+              "completed_at": "2026-10-21T20:58:10Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39668988418,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "37355bd745067cac772258fafeab5167b82358e1",
+      "created_at": "2026-10-21T20:17:18Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T20:17:18Z",
+          "head_sha": "37355bd745067cac772258fafeab5167b82358e1",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39668210825,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "1267e5938aaa5a34c0d05970d65367d6c5090f2c",
+      "created_at": "2026-10-21T20:12:03Z",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "run_started_at": "2026-10-21T20:12:03Z",
+          "head_sha": "1267e5938aaa5a34c0d05970d65367d6c5090f2c",
+          "jobs_total": 14,
+          "failed_jobs": [
+            {
+              "id": 119459086786,
+              "name": "nightly",
+              "started_at": "2026-10-21T20:12:40Z",
+              "completed_at": "2026-10-21T20:12:56Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run cargo +nightly -Z package-workspace package"
+              ],
+              "groups": [
+                "G4"
+              ]
+            },
+            {
+              "id": 119461816315,
+              "name": "required-checks",
+              "started_at": "2026-10-21T20:17:59Z",
+              "completed_at": "2026-10-21T20:18:02Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39668207595,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "1267e5938aaa5a34c0d05970d65367d6c5090f2c",
+      "created_at": "2026-10-21T20:12:01Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T20:12:01Z",
+          "head_sha": "1267e5938aaa5a34c0d05970d65367d6c5090f2c",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39667328915,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "f9841ad0226754c07452cbc3df962a3d26e01bde",
+      "created_at": "2026-10-21T20:05:52Z",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "run_started_at": "2026-10-21T20:05:52Z",
+          "head_sha": "f9841ad0226754c07452cbc3df962a3d26e01bde",
+          "jobs_total": 14,
+          "failed_jobs": [
+            {
+              "id": 119456356070,
+              "name": "nightly",
+              "started_at": "2026-10-21T20:07:14Z",
+              "completed_at": "2026-10-21T20:07:30Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run cargo +nightly -Z package-workspace package"
+              ],
+              "groups": [
+                "G4"
+              ]
+            },
+            {
+              "id": 119456356654,
+              "name": "fedora",
+              "started_at": "2026-10-21T20:07:14Z",
+              "completed_at": "2026-10-21T20:09:37Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run all checks (clippy, fmt, feature combos, tests)"
+              ],
+              "groups": [
+                "G9"
+              ]
+            },
+            {
+              "id": 119459033080,
+              "name": "required-checks",
+              "started_at": "2026-10-21T20:12:34Z",
+              "completed_at": "2026-10-21T20:12:37Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39667326275,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "f9841ad0226754c07452cbc3df962a3d26e01bde",
+      "created_at": "2026-10-21T20:05:50Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T20:05:50Z",
+          "head_sha": "f9841ad0226754c07452cbc3df962a3d26e01bde",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39666728625,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "1267e5938aaa5a34c0d05970d65367d6c5090f2c",
+      "created_at": "2026-10-21T20:01:45Z",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "run_started_at": "2026-10-21T20:01:45Z",
+          "head_sha": "1267e5938aaa5a34c0d05970d65367d6c5090f2c",
+          "jobs_total": 14,
+          "failed_jobs": [
+            {
+              "id": 119453630539,
+              "name": "nightly",
+              "started_at": "2026-10-21T20:01:48Z",
+              "completed_at": "2026-10-21T20:02:04Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run cargo +nightly -Z package-workspace package"
+              ],
+              "groups": [
+                "G4"
+              ]
+            },
+            {
+              "id": 119456300760,
+              "name": "required-checks",
+              "started_at": "2026-10-21T20:07:07Z",
+              "completed_at": "2026-10-21T20:07:11Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39666725488,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "1267e5938aaa5a34c0d05970d65367d6c5090f2c",
+      "created_at": "2026-10-21T20:01:44Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T20:01:44Z",
+          "head_sha": "1267e5938aaa5a34c0d05970d65367d6c5090f2c",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39650904652,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "f9841ad0226754c07452cbc3df962a3d26e01bde",
+      "created_at": "2026-10-21T18:14:19Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T18:14:19Z",
+          "head_sha": "f9841ad0226754c07452cbc3df962a3d26e01bde",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 119398647769,
+              "name": "nightly",
+              "started_at": "2026-10-21T18:14:22Z",
+              "completed_at": "2026-10-21T18:14:39Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run cargo +nightly -Z package-workspace package"
+              ],
+              "groups": [
+                "G4"
+              ]
+            },
+            {
+              "id": 119398648505,
+              "name": "fedora",
+              "started_at": "2026-10-21T18:14:22Z",
+              "completed_at": "2026-10-21T18:17:21Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run all checks (clippy, fmt, feature combos, tests)"
+              ],
+              "groups": [
+                "G9"
+              ]
+            },
+            {
+              "id": 119402144467,
+              "name": "Integration tests (centos-stream10)",
+              "started_at": "2026-10-21T18:21:04Z",
+              "completed_at": "2026-10-21T18:50:47Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2",
+                "G11"
+              ]
+            },
+            {
+              "id": 119402144626,
+              "name": "Integration tests (centos-stream9)",
+              "started_at": "2026-10-21T18:21:04Z",
+              "completed_at": "2026-10-21T18:46:21Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2",
+                "G11"
+              ]
+            },
+            {
+              "id": 119417613307,
+              "name": "required-checks",
+              "started_at": "2026-10-21T18:50:49Z",
+              "completed_at": "2026-10-21T18:50:53Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12372575279,
+          "name": "vm-logs-centos-stream10",
+          "size_in_bytes": 376959,
+          "expired": false
+        },
+        {
+          "id": 12372175982,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 322554,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 39650901867,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "f9841ad0226754c07452cbc3df962a3d26e01bde",
+      "created_at": "2026-10-21T18:14:18Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T18:14:18Z",
+          "head_sha": "f9841ad0226754c07452cbc3df962a3d26e01bde",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39638595244,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "aa7bd508f8f41ea56157eb757cbf9867d3f61735",
+      "created_at": "2026-10-21T16:51:54Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T16:51:54Z",
+          "head_sha": "aa7bd508f8f41ea56157eb757cbf9867d3f61735",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 119355867382,
+              "name": "fedora",
+              "started_at": "2026-10-21T16:51:57Z",
+              "completed_at": "2026-10-21T16:53:49Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run all checks (clippy, fmt, feature combos, tests)"
+              ],
+              "groups": [
+                "G7"
+              ]
+            },
+            {
+              "id": 119355868213,
+              "name": "nightly",
+              "started_at": "2026-10-21T16:51:57Z",
+              "completed_at": "2026-10-21T16:52:13Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run cargo +nightly -Z package-workspace package"
+              ],
+              "groups": [
+                "G4"
+              ]
+            },
+            {
+              "id": 119360095410,
+              "name": "Integration tests (centos-stream10)",
+              "started_at": "2026-10-21T17:00:07Z",
+              "completed_at": "2026-10-21T17:25:45Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2",
+                "G5"
+              ]
+            },
+            {
+              "id": 119360095502,
+              "name": "Integration tests (centos-stream9)",
+              "started_at": "2026-10-21T17:00:07Z",
+              "completed_at": "2026-10-21T17:25:06Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2",
+                "G5"
+              ]
+            },
+            {
+              "id": 119373611882,
+              "name": "required-checks",
+              "started_at": "2026-10-21T17:25:47Z",
+              "completed_at": "2026-10-21T17:25:50Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12367035351,
+          "name": "vm-logs-centos-stream10",
+          "size_in_bytes": 746749,
+          "expired": false
+        },
+        {
+          "id": 12365189535,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 653818,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 39638593151,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "aa7bd508f8f41ea56157eb757cbf9867d3f61735",
+      "created_at": "2026-10-21T16:51:53Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T16:51:53Z",
+          "head_sha": "aa7bd508f8f41ea56157eb757cbf9867d3f61735",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39574940832,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "191f079d25432799a16180b3f467192e9deaff68",
+      "created_at": "2026-10-21T09:10:49Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T09:10:49Z",
+          "head_sha": "191f079d25432799a16180b3f467192e9deaff68",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 119138017371,
+              "name": "fedora",
+              "started_at": "2026-10-21T09:10:51Z",
+              "completed_at": "2026-10-21T09:12:59Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run all checks (clippy, fmt, feature combos, tests)"
+              ],
+              "groups": [
+                "G7"
+              ]
+            },
+            {
+              "id": 119141243060,
+              "name": "Integration tests (centos-stream9)",
+              "started_at": "2026-10-21T09:18:22Z",
+              "completed_at": "2026-10-21T09:47:14Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2",
+                "G5"
+              ]
+            },
+            {
+              "id": 119141243092,
+              "name": "Integration tests (centos-stream10)",
+              "started_at": "2026-10-21T09:18:22Z",
+              "completed_at": "2026-10-21T09:45:33Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2",
+                "G5"
+              ]
+            },
+            {
+              "id": 119153786487,
+              "name": "required-checks",
+              "started_at": "2026-10-21T09:47:17Z",
+              "completed_at": "2026-10-21T09:47:20Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12336056663,
+          "name": "vm-logs-centos-stream10",
+          "size_in_bytes": 751596,
+          "expired": false
+        },
+        {
+          "id": 12335572992,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 650238,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 39574939050,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "191f079d25432799a16180b3f467192e9deaff68",
+      "created_at": "2026-10-21T09:10:48Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-21T09:10:48Z",
+          "head_sha": "191f079d25432799a16180b3f467192e9deaff68",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39460285965,
+      "name": "Running Copilot Code Review",
+      "event": "dynamic",
+      "head_branch": "swallow-ignored-mount-errors",
+      "head_sha": "e11ab4c57005200fed13c57f5f5961fccb0a8b09",
+      "created_at": "2026-10-20T16:45:48Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-maintenance"
+    },
+    {
+      "id": 39450052444,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "3280e06f562c732205bf4d832809ac8a0fde4ad3",
+      "created_at": "2026-10-20T15:36:58Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-20T15:36:58Z",
+          "head_sha": "3280e06f562c732205bf4d832809ac8a0fde4ad3",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39450049704,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-420-1b0feeccaa843b2cbc6647bf80c8756c52eabef0",
+      "head_sha": "3280e06f562c732205bf4d832809ac8a0fde4ad3",
+      "created_at": "2026-10-20T15:36:57Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39448456000,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "swallow-ignored-mount-errors",
+      "head_sha": "e11ab4c57005200fed13c57f5f5961fccb0a8b09",
+      "created_at": "2026-10-20T15:26:44Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-20T15:26:44Z",
+          "head_sha": "e11ab4c57005200fed13c57f5f5961fccb0a8b09",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39448414338,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "swallow-ignored-mount-errors",
+      "head_sha": "e11ab4c57005200fed13c57f5f5961fccb0a8b09",
+      "created_at": "2026-10-20T15:26:27Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 39444810460,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-420-1b0feeccaa843b2cbc6647bf80c8756c52eabef0",
+      "head_sha": "3280e06f562c732205bf4d832809ac8a0fde4ad3",
+      "created_at": "2026-10-20T15:02:53Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39444810232,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-420-1b0feeccaa843b2cbc6647bf80c8756c52eabef0",
+      "head_sha": "3280e06f562c732205bf4d832809ac8a0fde4ad3",
+      "created_at": "2026-10-20T15:02:53Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39439339931,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "overlayfs-selinux",
+      "head_sha": "f755e8e797d8fbd4071eb11482a8cfd4d1d00cf1",
+      "created_at": "2026-10-20T14:27:15Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-20T14:27:15Z",
+          "head_sha": "f755e8e797d8fbd4071eb11482a8cfd4d1d00cf1",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39439271040,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "overlayfs-selinux",
+      "head_sha": "f755e8e797d8fbd4071eb11482a8cfd4d1d00cf1",
+      "created_at": "2026-10-20T14:26:48Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 39418697897,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "1b0feeccaa843b2cbc6647bf80c8756c52eabef0",
+      "created_at": "2026-10-20T11:57:44Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-20T11:57:44Z",
+          "head_sha": "1b0feeccaa843b2cbc6647bf80c8756c52eabef0",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39418696145,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-419-9ea173336a2e0f188e0269f4b2fe762677d56361",
+      "head_sha": "1b0feeccaa843b2cbc6647bf80c8756c52eabef0",
+      "created_at": "2026-10-20T11:57:43Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39415012136,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-419-9ea173336a2e0f188e0269f4b2fe762677d56361",
+      "head_sha": "1b0feeccaa843b2cbc6647bf80c8756c52eabef0",
+      "created_at": "2026-10-20T11:26:54Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39415012106,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-419-9ea173336a2e0f188e0269f4b2fe762677d56361",
+      "head_sha": "1b0feeccaa843b2cbc6647bf80c8756c52eabef0",
+      "created_at": "2026-10-20T11:26:54Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39399309156,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "lock-images",
+      "head_sha": "f19ba332aa1c74c166b2511329d25e6148d5a8e0",
+      "created_at": "2026-10-20T09:15:08Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-20T09:15:08Z",
+          "head_sha": "f19ba332aa1c74c166b2511329d25e6148d5a8e0",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39399306218,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "lock-images",
+      "head_sha": "f19ba332aa1c74c166b2511329d25e6148d5a8e0",
+      "created_at": "2026-10-20T09:15:06Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-20T09:15:06Z",
+          "head_sha": "f19ba332aa1c74c166b2511329d25e6148d5a8e0",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39313513325,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "5d6194e526cccdede3c7cbf85f32fbf3f7895524",
+      "created_at": "2026-10-19T19:44:40Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T19:44:40Z",
+          "head_sha": "5d6194e526cccdede3c7cbf85f32fbf3f7895524",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 118272139330,
+              "name": "Integration tests (centos-stream9)",
+              "started_at": "2026-10-19T19:51:28Z",
+              "completed_at": "2026-10-19T20:13:19Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2"
+              ]
+            },
+            {
+              "id": 118272139482,
+              "name": "Integration tests (centos-stream10)",
+              "started_at": "2026-10-19T19:51:28Z",
+              "completed_at": "2026-10-19T20:22:05Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2"
+              ]
+            },
+            {
+              "id": 118286844790,
+              "name": "required-checks",
+              "started_at": "2026-10-19T20:22:10Z",
+              "completed_at": "2026-10-19T20:22:14Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12219845681,
+          "name": "vm-logs-centos-stream10",
+          "size_in_bytes": 801017,
+          "expired": false
+        },
+        {
+          "id": 12218792137,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 689576,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 39313511366,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "5d6194e526cccdede3c7cbf85f32fbf3f7895524",
+      "created_at": "2026-10-19T19:44:39Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T19:44:39Z",
+          "head_sha": "5d6194e526cccdede3c7cbf85f32fbf3f7895524",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39313473782,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "lock-images",
+      "head_sha": "49cb7496893d5495f538e59396e3c9a5cde50e3c",
+      "created_at": "2026-10-19T19:44:23Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T19:44:23Z",
+          "head_sha": "49cb7496893d5495f538e59396e3c9a5cde50e3c",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 118268816508,
+              "name": "fedora",
+              "started_at": "2026-10-19T19:44:26Z",
+              "completed_at": "2026-10-19T19:45:50Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run all checks (clippy, fmt, feature combos, tests)"
+              ],
+              "groups": [
+                "G6"
+              ]
+            },
+            {
+              "id": 118285778085,
+              "name": "required-checks",
+              "started_at": "2026-10-19T20:19:54Z",
+              "completed_at": "2026-10-19T20:19:57Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39313471710,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "lock-images",
+      "head_sha": "49cb7496893d5495f538e59396e3c9a5cde50e3c",
+      "created_at": "2026-10-19T19:44:22Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T19:44:22Z",
+          "head_sha": "49cb7496893d5495f538e59396e3c9a5cde50e3c",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39312279467,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "9ea173336a2e0f188e0269f4b2fe762677d56361",
+      "created_at": "2026-10-19T19:35:37Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-19T19:35:37Z",
+          "head_sha": "9ea173336a2e0f188e0269f4b2fe762677d56361",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39312276918,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-418-f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "head_sha": "9ea173336a2e0f188e0269f4b2fe762677d56361",
+      "created_at": "2026-10-19T19:35:36Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39307305885,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-418-f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "head_sha": "9ea173336a2e0f188e0269f4b2fe762677d56361",
+      "created_at": "2026-10-19T19:00:24Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39307305753,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-418-f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "head_sha": "9ea173336a2e0f188e0269f4b2fe762677d56361",
+      "created_at": "2026-10-19T19:00:24Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 39283563089,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "lock-images",
+      "head_sha": "b41be43c0cc453f47f76493834760e786125a822",
+      "created_at": "2026-10-19T16:11:57Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T16:11:57Z",
+          "head_sha": "b41be43c0cc453f47f76493834760e786125a822",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 118163143047,
+              "name": "fedora",
+              "started_at": "2026-10-19T16:12:00Z",
+              "completed_at": "2026-10-19T16:13:08Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run all checks (clippy, fmt, feature combos, tests)"
+              ],
+              "groups": [
+                "G6"
+              ]
+            },
+            {
+              "id": 118185228930,
+              "name": "required-checks",
+              "started_at": "2026-10-19T16:52:31Z",
+              "completed_at": "2026-10-19T16:52:33Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12205006665,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 162394,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 39282022260,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "90aeb882e35a69ccb37ac8440d1a709ed5a35b85",
+      "created_at": "2026-10-19T15:59:29Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T15:59:29Z",
+          "head_sha": "90aeb882e35a69ccb37ac8440d1a709ed5a35b85",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 118160795628,
+              "name": "Integration tests (centos-stream9)",
+              "started_at": "2026-10-19T16:07:06Z",
+              "completed_at": "2026-10-19T16:36:48Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2"
+              ]
+            },
+            {
+              "id": 118160795775,
+              "name": "Integration tests (centos-stream10)",
+              "started_at": "2026-10-19T16:07:06Z",
+              "completed_at": "2026-10-19T16:39:14Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2"
+              ]
+            },
+            {
+              "id": 118177416523,
+              "name": "required-checks",
+              "started_at": "2026-10-19T16:39:16Z",
+              "completed_at": "2026-10-19T16:39:19Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12204825800,
+          "name": "vm-logs-centos-stream10",
+          "size_in_bytes": 800130,
+          "expired": false
+        },
+        {
+          "id": 12203232885,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 703006,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 39282020567,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "90aeb882e35a69ccb37ac8440d1a709ed5a35b85",
+      "created_at": "2026-10-19T15:59:28Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T15:59:28Z",
+          "head_sha": "90aeb882e35a69ccb37ac8440d1a709ed5a35b85",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39281687698,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo-prep",
+      "head_sha": "57ee0ed7f4df50186141bd2ed334c507eb27e814",
+      "created_at": "2026-10-19T15:56:28Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-19T15:56:28Z",
+          "head_sha": "57ee0ed7f4df50186141bd2ed334c507eb27e814",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39281599919,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "028dbeb0d33738a8ce5dd6e3621d8633ec7b69c0",
+      "created_at": "2026-10-19T15:55:43Z",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "run_started_at": "2026-10-19T15:55:43Z",
+          "head_sha": "028dbeb0d33738a8ce5dd6e3621d8633ec7b69c0",
+          "jobs_total": 14,
+          "failed_jobs": [
+            {
+              "id": 118158240747,
+              "name": "required-checks",
+              "started_at": "2026-10-19T16:00:07Z",
+              "completed_at": "2026-10-19T16:00:14Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39281598106,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "028dbeb0d33738a8ce5dd6e3621d8633ec7b69c0",
+      "created_at": "2026-10-19T15:55:42Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T15:55:42Z",
+          "head_sha": "028dbeb0d33738a8ce5dd6e3621d8633ec7b69c0",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 39278987813,
+      "name": "Running Copilot Code Review",
+      "event": "dynamic",
+      "head_branch": "main",
+      "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "created_at": "2026-10-19T15:34:02Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-maintenance"
+    },
+    {
+      "id": 39274907145,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "splitfdstream-from-skopeo",
+      "head_sha": "f3db15fbd2508ac680579a2dcd1cc474743578d5",
+      "created_at": "2026-10-19T15:05:47Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-19T15:05:47Z",
+          "head_sha": "f3db15fbd2508ac680579a2dcd1cc474743578d5",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 118140825190,
+              "name": "Integration tests (centos-stream10)",
+              "started_at": "2026-10-19T15:14:01Z",
+              "completed_at": "2026-10-19T15:50:19Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2"
+              ]
+            },
+            {
+              "id": 118140825376,
+              "name": "Integration tests (centos-stream9)",
+              "started_at": "2026-10-19T15:14:01Z",
+              "completed_at": "2026-10-19T15:38:15Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run integration tests (unprivileged + privileged via VM)"
+              ],
+              "groups": [
+                "G2"
+              ]
+            },
+            {
+              "id": 118154723759,
+              "name": "required-checks",
+              "started_at": "2026-10-19T15:50:22Z",
+              "completed_at": "2026-10-19T15:50:29Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": [
+        {
+          "id": 12199547541,
+          "name": "vm-logs-centos-stream9",
+          "size_in_bytes": 1339363,
+          "expired": false
+        },
+        {
+          "id": 12199053010,
+          "name": "vm-logs-centos-stream10",
+          "size_in_bytes": 1555986,
+          "expired": false
+        }
+      ]
+    },
+    {
+      "id": 37928910772,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bot/capi-externalpath",
+      "head_sha": "eaa436642ba4714e9f1a79a0ca086d2082616a83",
+      "created_at": "2026-10-09T12:16:03Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-09T12:16:03Z",
+          "head_sha": "eaa436642ba4714e9f1a79a0ca086d2082616a83",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37928909126,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "pull_request",
+      "head_branch": "bot/capi-externalpath",
+      "head_sha": "eaa436642ba4714e9f1a79a0ca086d2082616a83",
+      "created_at": "2026-10-09T12:16:02Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-09T12:16:02Z",
+          "head_sha": "eaa436642ba4714e9f1a79a0ca086d2082616a83",
+          "jobs_total": 0,
+          "failed_jobs": [],
+          "pre_job_groups": [
+            "G1"
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37909053906,
+      "name": "Release",
+      "event": "push",
+      "head_branch": "v0.9.4",
+      "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "created_at": "2026-10-09T09:05:39Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 37909053943,
+      "name": "Publish to crates.io",
+      "event": "push",
+      "head_branch": "v0.9.4",
+      "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "created_at": "2026-10-09T09:05:39Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 37909052239,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-415-a0a3847a10498527203cdbac914106369c85b6c6",
+      "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "created_at": "2026-10-09T09:05:38Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37908856410,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "created_at": "2026-10-09T09:03:50Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-09T09:03:50Z",
+          "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37908854937,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-415-a0a3847a10498527203cdbac914106369c85b6c6",
+      "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "created_at": "2026-10-09T09:03:49Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37905022495,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-415-a0a3847a10498527203cdbac914106369c85b6c6",
+      "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "created_at": "2026-10-09T08:27:05Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37905022338,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-415-a0a3847a10498527203cdbac914106369c85b6c6",
+      "head_sha": "f5aa0a21c2c22d1b83b81fae7ffb932d2cd2615a",
+      "created_at": "2026-10-09T08:27:05Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37901337500,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bump-version-0-9-4",
+      "head_sha": "1f69889ecdc70add09c68c1c6849d172c59dabbf",
+      "created_at": "2026-10-09T07:50:30Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-09T07:50:30Z",
+          "head_sha": "1f69889ecdc70add09c68c1c6849d172c59dabbf",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37901331732,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "bump-version-0-9-4",
+      "head_sha": "1f69889ecdc70add09c68c1c6849d172c59dabbf",
+      "created_at": "2026-10-09T07:50:26Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 37900210429,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "bump-version-0-9-4",
+      "head_sha": "aaaa790ab647e49ad3a72778342864459d7cb74c",
+      "created_at": "2026-10-09T07:38:46Z",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "run_started_at": "2026-10-09T07:38:46Z",
+          "head_sha": "aaaa790ab647e49ad3a72778342864459d7cb74c",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 113724750170,
+              "name": "required-checks",
+              "started_at": "2026-10-09T07:51:48Z",
+              "completed_at": "2026-10-09T07:51:51Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37900164803,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "bump-version-0-9-4",
+      "head_sha": "aaaa790ab647e49ad3a72778342864459d7cb74c",
+      "created_at": "2026-10-09T07:38:17Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 37826138338,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "a0a3847a10498527203cdbac914106369c85b6c6",
+      "created_at": "2026-10-08T18:40:46Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "failure",
+          "run_started_at": "2026-10-08T18:40:46Z",
+          "head_sha": "a0a3847a10498527203cdbac914106369c85b6c6",
+          "jobs_total": 15,
+          "failed_jobs": [
+            {
+              "id": 113479377346,
+              "name": "Example tests (unified-secureboot/fedora)",
+              "started_at": "2026-10-08T18:40:49Z",
+              "completed_at": "2026-10-08T18:48:20Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run example tests"
+              ],
+              "groups": [
+                "G8"
+              ]
+            },
+            {
+              "id": 113500102706,
+              "name": "required-checks",
+              "started_at": "2026-10-08T19:28:24Z",
+              "completed_at": "2026-10-08T19:28:28Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37826136463,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-414-5e9000a08767a61d53edce50714ac941cf8077e7",
+      "head_sha": "a0a3847a10498527203cdbac914106369c85b6c6",
+      "created_at": "2026-10-08T18:40:45Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37821394736,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-414-5e9000a08767a61d53edce50714ac941cf8077e7",
+      "head_sha": "a0a3847a10498527203cdbac914106369c85b6c6",
+      "created_at": "2026-10-08T18:03:56Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37821394398,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-414-5e9000a08767a61d53edce50714ac941cf8077e7",
+      "head_sha": "a0a3847a10498527203cdbac914106369c85b6c6",
+      "created_at": "2026-10-08T18:03:55Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37803281812,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "aboot-boot-only",
+      "head_sha": "17d0e9b4f43b6a609910f9eae292046f79fbf553",
+      "created_at": "2026-10-08T15:44:52Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-08T15:44:52Z",
+          "head_sha": "17d0e9b4f43b6a609910f9eae292046f79fbf553",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37803259850,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "aboot-boot-only",
+      "head_sha": "17d0e9b4f43b6a609910f9eae292046f79fbf553",
+      "created_at": "2026-10-08T15:44:42Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 37321153150,
+      "name": "CI",
+      "event": "push",
+      "head_branch": "main",
+      "head_sha": "5e9000a08767a61d53edce50714ac941cf8077e7",
+      "created_at": "2026-10-05T13:59:54Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "default",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-05T13:59:54Z",
+          "head_sha": "5e9000a08767a61d53edce50714ac941cf8077e7",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37321151381,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-413-e0529af46f41236b1cc605317da2c0f5e386390f",
+      "head_sha": "5e9000a08767a61d53edce50714ac941cf8077e7",
+      "created_at": "2026-10-05T13:59:53Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37317046451,
+      "name": "CI",
+      "event": "merge_group",
+      "head_branch": "gh-readonly-queue/main/pr-413-e0529af46f41236b1cc605317da2c0f5e386390f",
+      "head_sha": "5e9000a08767a61d53edce50714ac941cf8077e7",
+      "created_at": "2026-10-05T13:28:19Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37317045727,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "gh-readonly-queue/main/pr-413-e0529af46f41236b1cc605317da2c0f5e386390f",
+      "head_sha": "5e9000a08767a61d53edce50714ac941cf8077e7",
+      "created_at": "2026-10-05T13:28:18Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-queue"
+    },
+    {
+      "id": 37278091078,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "ci-test-composefs-integration",
+      "head_sha": "5764d4317afe50c293f3f8af92df6ba844156ac3",
+      "created_at": "2026-10-05T07:30:12Z",
+      "status": "completed",
+      "conclusion": "success",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "success",
+          "run_started_at": "2026-10-05T07:30:12Z",
+          "head_sha": "5764d4317afe50c293f3f8af92df6ba844156ac3",
+          "jobs_total": 15,
+          "failed_jobs": []
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37278086371,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "ci-test-composefs-integration",
+      "head_sha": "5764d4317afe50c293f3f8af92df6ba844156ac3",
+      "created_at": "2026-10-05T07:30:09Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    },
+    {
+      "id": 37277919693,
+      "name": "CI",
+      "event": "pull_request",
+      "head_branch": "ci-test-composefs-integration",
+      "head_sha": "66f1ea6b621a4513ad380a65e35a81f340fa1cfa",
+      "created_at": "2026-10-05T07:28:19Z",
+      "status": "completed",
+      "conclusion": "cancelled",
+      "run_attempt": 1,
+      "population": "PR",
+      "attempts": [
+        {
+          "run_attempt": 1,
+          "status": "completed",
+          "conclusion": "cancelled",
+          "run_started_at": "2026-10-05T07:28:19Z",
+          "head_sha": "66f1ea6b621a4513ad380a65e35a81f340fa1cfa",
+          "jobs_total": 14,
+          "failed_jobs": [
+            {
+              "id": 111659010687,
+              "name": "Standalone composefs-boot",
+              "started_at": "2026-10-05T07:28:21Z",
+              "completed_at": "2026-10-05T07:28:36Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Build composefs-boot without composefs integration"
+              ],
+              "groups": [
+                "G14"
+              ]
+            },
+            {
+              "id": 111659704628,
+              "name": "required-checks",
+              "started_at": "2026-10-05T07:30:43Z",
+              "completed_at": "2026-10-05T07:30:47Z",
+              "conclusion": "failure",
+              "failed_steps": [
+                "Run exit 1"
+              ],
+              "excluded_reason": "Cascading sentinel; not a root cause"
+            }
+          ]
+        }
+      ],
+      "artifacts": []
+    },
+    {
+      "id": 37277902657,
+      "name": ".github/workflows/bootc-revdep.yml",
+      "event": "push",
+      "head_branch": "ci-test-composefs-integration",
+      "head_sha": "66f1ea6b621a4513ad380a65e35a81f340fa1cfa",
+      "created_at": "2026-10-05T07:28:08Z",
+      "status": "completed",
+      "conclusion": "failure",
+      "run_attempt": 1,
+      "population": "excluded-branch"
+    }
+  ],
+  "artifact_inspection": [
+    {
+      "run_id": 41257977229,
+      "artifact_id": 13065146864,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json"
+      ],
+      "test_directories": [
+        "privileged_test_digest_equivalence_debian_bootc-1"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 1,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 40552390119,
+      "artifact_id": 12763827914,
+      "name": "vm-logs-centos-stream10-stock-skopeo",
+      "exit_code": 0,
+      "files": [
+        "privileged_test_cstor_additional_image_store-1/console.txt",
+        "privileged_test_cstor_additional_image_store-1/journal-initrd.json",
+        "privileged_test_cstor_additional_image_store-1/journal.json",
+        "privileged_test_cstor_additional_image_store-2/console.txt",
+        "privileged_test_cstor_additional_image_store-2/journal-initrd.json",
+        "privileged_test_cstor_additional_image_store-2/journal.json",
+        "privileged_test_cstor_bootable-1/console.txt",
+        "privileged_test_cstor_bootable-1/journal-initrd.json",
+        "privileged_test_cstor_bootable-1/journal.json",
+        "privileged_test_cstor_bootable-2/console.txt",
+        "privileged_test_cstor_bootable-2/journal-initrd.json",
+        "privileged_test_cstor_bootable-2/journal.json",
+        "privileged_test_cstor_idempotent_import-1/console.txt",
+        "privileged_test_cstor_idempotent_import-1/journal-initrd.json",
+        "privileged_test_cstor_idempotent_import-1/journal.json",
+        "privileged_test_cstor_idempotent_import-2/console.txt",
+        "privileged_test_cstor_idempotent_import-2/journal-initrd.json",
+        "privileged_test_cstor_idempotent_import-2/journal.json",
+        "privileged_test_cstor_import_with_reference-1/console.txt",
+        "privileged_test_cstor_import_with_reference-1/journal.json",
+        "privileged_test_cstor_import_with_reference-1/journal-initrd.json",
+        "privileged_test_cstor_import_with_reference-2/console.txt",
+        "privileged_test_cstor_import_with_reference-2/journal-initrd.json",
+        "privileged_test_cstor_import_with_reference-2/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_test_cstor_additional_image_store-1",
+        "privileged_test_cstor_additional_image_store-2",
+        "privileged_test_cstor_bootable-1",
+        "privileged_test_cstor_bootable-2",
+        "privileged_test_cstor_idempotent_import-1",
+        "privileged_test_cstor_idempotent_import-2",
+        "privileged_test_cstor_import_with_reference-1",
+        "privileged_test_cstor_import_with_reference-2",
+        "privileged_test_cstor_vs_skopeo_equivalence-1",
+        "privileged_test_cstor_vs_skopeo_equivalence-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 0,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": []
+    },
+    {
+      "run_id": 40296407652,
+      "artifact_id": 12642284199,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json"
+      ],
+      "test_directories": [
+        "privileged_test_digest_equivalence_debian_bootc-1"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 1,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 39650904652,
+      "artifact_id": 12372575279,
+      "name": "vm-logs-centos-stream10",
+      "exit_code": 0,
+      "files": [
+        "privileged_cstor_import_ext4_hardlink-1/console.txt",
+        "privileged_cstor_import_ext4_hardlink-1/journal.json",
+        "privileged_cstor_import_ext4_hardlink-1/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/console.txt",
+        "privileged_cstor_import_ext4_hardlink-2/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_cstor_import_ext4_hardlink-1",
+        "privileged_cstor_import_ext4_hardlink-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 0,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": []
+    },
+    {
+      "run_id": 39650904652,
+      "artifact_id": 12372175982,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_cstor_import_ext4_hardlink-1/console.txt",
+        "privileged_cstor_import_ext4_hardlink-1/journal.json",
+        "privileged_cstor_import_ext4_hardlink-1/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/console.txt",
+        "privileged_cstor_import_ext4_hardlink-2/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_cstor_import_ext4_hardlink-1",
+        "privileged_cstor_import_ext4_hardlink-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 2,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 39638595244,
+      "artifact_id": 12367035351,
+      "name": "vm-logs-centos-stream10",
+      "exit_code": 0,
+      "files": [
+        "privileged_cstor_import_ext4_hardlink-1/console.txt",
+        "privileged_cstor_import_ext4_hardlink-1/journal.json",
+        "privileged_cstor_import_ext4_hardlink-1/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/console.txt",
+        "privileged_cstor_import_ext4_hardlink-2/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/journal.json",
+        "privileged_cstor_import_xfs_reflink-1/console.txt",
+        "privileged_cstor_import_xfs_reflink-1/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-1/journal.json",
+        "privileged_cstor_import_xfs_reflink-2/console.txt",
+        "privileged_cstor_import_xfs_reflink-2/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_cstor_import_ext4_hardlink-1",
+        "privileged_cstor_import_ext4_hardlink-2",
+        "privileged_cstor_import_xfs_reflink-1",
+        "privileged_cstor_import_xfs_reflink-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 0,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": []
+    },
+    {
+      "run_id": 39638595244,
+      "artifact_id": 12365189535,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_cstor_import_ext4_hardlink-1/console.txt",
+        "privileged_cstor_import_ext4_hardlink-1/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-1/journal.json",
+        "privileged_cstor_import_ext4_hardlink-2/console.txt",
+        "privileged_cstor_import_ext4_hardlink-2/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/journal.json",
+        "privileged_cstor_import_xfs_reflink-1/console.txt",
+        "privileged_cstor_import_xfs_reflink-1/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-1/journal.json",
+        "privileged_cstor_import_xfs_reflink-2/console.txt",
+        "privileged_cstor_import_xfs_reflink-2/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_cstor_import_ext4_hardlink-1",
+        "privileged_cstor_import_ext4_hardlink-2",
+        "privileged_cstor_import_xfs_reflink-1",
+        "privileged_cstor_import_xfs_reflink-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 4,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 39574940832,
+      "artifact_id": 12336056663,
+      "name": "vm-logs-centos-stream10",
+      "exit_code": 0,
+      "files": [
+        "privileged_cstor_import_ext4_hardlink-1/console.txt",
+        "privileged_cstor_import_ext4_hardlink-1/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-1/journal.json",
+        "privileged_cstor_import_ext4_hardlink-2/console.txt",
+        "privileged_cstor_import_ext4_hardlink-2/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/journal.json",
+        "privileged_cstor_import_xfs_reflink-1/console.txt",
+        "privileged_cstor_import_xfs_reflink-1/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-1/journal.json",
+        "privileged_cstor_import_xfs_reflink-2/console.txt",
+        "privileged_cstor_import_xfs_reflink-2/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_cstor_import_ext4_hardlink-1",
+        "privileged_cstor_import_ext4_hardlink-2",
+        "privileged_cstor_import_xfs_reflink-1",
+        "privileged_cstor_import_xfs_reflink-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 0,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": []
+    },
+    {
+      "run_id": 39574940832,
+      "artifact_id": 12335572992,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_cstor_import_ext4_hardlink-1/console.txt",
+        "privileged_cstor_import_ext4_hardlink-1/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-1/journal.json",
+        "privileged_cstor_import_ext4_hardlink-2/console.txt",
+        "privileged_cstor_import_ext4_hardlink-2/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/journal.json",
+        "privileged_cstor_import_xfs_reflink-1/console.txt",
+        "privileged_cstor_import_xfs_reflink-1/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-1/journal.json",
+        "privileged_cstor_import_xfs_reflink-2/console.txt",
+        "privileged_cstor_import_xfs_reflink-2/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_cstor_import_ext4_hardlink-1",
+        "privileged_cstor_import_ext4_hardlink-2",
+        "privileged_cstor_import_xfs_reflink-1",
+        "privileged_cstor_import_xfs_reflink-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 4,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 39313513325,
+      "artifact_id": 12219845681,
+      "name": "vm-logs-centos-stream10",
+      "exit_code": 0,
+      "files": [
+        "privileged_test_cstor_vs_skopeo_equivalence-1/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_test_cstor_vs_skopeo_equivalence-1",
+        "privileged_test_cstor_vs_skopeo_equivalence-2",
+        "privileged_test_digest_equivalence_debian_bootc-1",
+        "privileged_test_digest_equivalence_debian_bootc-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 0,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": []
+    },
+    {
+      "run_id": 39313513325,
+      "artifact_id": 12218792137,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_test_cstor_vs_skopeo_equivalence-1/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_test_cstor_vs_skopeo_equivalence-1",
+        "privileged_test_cstor_vs_skopeo_equivalence-2",
+        "privileged_test_digest_equivalence_debian_bootc-1",
+        "privileged_test_digest_equivalence_debian_bootc-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 4,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 39283563089,
+      "artifact_id": 12205006665,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json"
+      ],
+      "test_directories": [
+        "privileged_test_digest_equivalence_debian_bootc-1"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 1,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 39282022260,
+      "artifact_id": 12204825800,
+      "name": "vm-logs-centos-stream10",
+      "exit_code": 0,
+      "files": [
+        "privileged_test_cstor_vs_skopeo_equivalence-1/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_test_cstor_vs_skopeo_equivalence-1",
+        "privileged_test_cstor_vs_skopeo_equivalence-2",
+        "privileged_test_digest_equivalence_debian_bootc-1",
+        "privileged_test_digest_equivalence_debian_bootc-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 0,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": []
+    },
+    {
+      "run_id": 39282022260,
+      "artifact_id": 12203232885,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_test_cstor_vs_skopeo_equivalence-1/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_test_cstor_vs_skopeo_equivalence-1",
+        "privileged_test_cstor_vs_skopeo_equivalence-2",
+        "privileged_test_digest_equivalence_debian_bootc-1",
+        "privileged_test_digest_equivalence_debian_bootc-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 4,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 39274907145,
+      "artifact_id": 12199547541,
+      "name": "vm-logs-centos-stream9",
+      "exit_code": 0,
+      "files": [
+        "privileged_cstor_import_ext4_hardlink-1/console.txt",
+        "privileged_cstor_import_ext4_hardlink-1/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-1/journal.json",
+        "privileged_cstor_import_ext4_hardlink-2/console.txt",
+        "privileged_cstor_import_ext4_hardlink-2/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/journal.json",
+        "privileged_cstor_import_xfs_reflink-1/console.txt",
+        "privileged_cstor_import_xfs_reflink-1/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-1/journal.json",
+        "privileged_cstor_import_xfs_reflink-2/console.txt",
+        "privileged_cstor_import_xfs_reflink-2/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-2/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_cstor_import_ext4_hardlink-1",
+        "privileged_cstor_import_ext4_hardlink-2",
+        "privileged_cstor_import_xfs_reflink-1",
+        "privileged_cstor_import_xfs_reflink-2",
+        "privileged_test_cstor_vs_skopeo_equivalence-1",
+        "privileged_test_cstor_vs_skopeo_equivalence-2",
+        "privileged_test_digest_equivalence_debian_bootc-1",
+        "privileged_test_digest_equivalence_debian_bootc-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 8,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": [
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so.",
+        "/sbin/ldconfig: Cannot mmap file /lib64/libSegFault.so."
+      ]
+    },
+    {
+      "run_id": 39274907145,
+      "artifact_id": 12199053010,
+      "name": "vm-logs-centos-stream10",
+      "exit_code": 0,
+      "files": [
+        "privileged_cstor_import_ext4_hardlink-1/console.txt",
+        "privileged_cstor_import_ext4_hardlink-1/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-1/journal.json",
+        "privileged_cstor_import_ext4_hardlink-2/console.txt",
+        "privileged_cstor_import_ext4_hardlink-2/journal-initrd.json",
+        "privileged_cstor_import_ext4_hardlink-2/journal.json",
+        "privileged_cstor_import_xfs_reflink-1/console.txt",
+        "privileged_cstor_import_xfs_reflink-1/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-1/journal.json",
+        "privileged_cstor_import_xfs_reflink-2/console.txt",
+        "privileged_cstor_import_xfs_reflink-2/journal-initrd.json",
+        "privileged_cstor_import_xfs_reflink-2/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-1/journal.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/console.txt",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal-initrd.json",
+        "privileged_test_cstor_vs_skopeo_equivalence-2/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-1/journal.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/console.txt",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal-initrd.json",
+        "privileged_test_digest_equivalence_debian_bootc-2/journal.json"
+      ],
+      "test_directories": [
+        "privileged_cstor_import_ext4_hardlink-1",
+        "privileged_cstor_import_ext4_hardlink-2",
+        "privileged_cstor_import_xfs_reflink-1",
+        "privileged_cstor_import_xfs_reflink-2",
+        "privileged_test_cstor_vs_skopeo_equivalence-1",
+        "privileged_test_cstor_vs_skopeo_equivalence-2",
+        "privileged_test_digest_equivalence_debian_bootc-1",
+        "privileged_test_digest_equivalence_debian_bootc-2"
+      ],
+      "signal_counts": {
+        "panic": 0,
+        "segfault": 0,
+        "out of memory": 0,
+        "OpenVarlinkSocket": 0,
+        "unable to parse key/value": 0,
+        "hardlink": 0
+      },
+      "segfault_messages": []
+    }
+  ]
+}
