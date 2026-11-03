@@ -921,7 +921,7 @@ fn workflows_follow_our_own_repositories_at_main_review_excepted_and_pin_the_res
 // (.github/release-train/config.json), so it stays in this form.
 #[test]
 fn review_wrapper_uses_the_release_pin() {
-    let pin = r"cgwalters-review\.yml@6b85ec754cd6fda84fe9cb05d78d5d038bc34852 # main, agentic-job v0\.6\.7 \(actions#67\)";
+    let pin = r"cgwalters-review\.yml@2fbd935b211761efcb38ceab91d5d58821de0b25 # main, agentic-job v0\.6\.8 \(actions#67\)";
     let pin = pin.replace('\\', "");
     let workflow = read("../workflows/review.yml");
     let pinned = workflow.lines().any(|line| {
