@@ -1,6 +1,6 @@
 {
   "_comment": "The forge-native repositories and the CI files each must have (#544). Each needs a .github/workflows/review.yml that uses cgwalters-review.yml at review_pin, which is the pin of this repository's own review.yml (test-forge-sync checks that), a .github/dependabot.yml with a daily github-actions update, and a root Justfile. Each also needs a renovate.json or .github/renovate.json whose `extends` lists renovate_preset, the runner-label preset cgwalters-forge/actions publishes (renovate/README.md there), so that a stale runner label gets a Renovate pull request (#1054). No such pull request has been seen in the forge yet: as of 2026-10-31 every listed repository's literal labels are current, and the Renovate app's installation and repository access are not visible to this repository's tokens (the org installations API answers 403, which does not show it is missing). An organization owner has to check the app's repository access and prove a pull request as that README describes. A repository is exempt from one of these, named review, dependabot, justfile or renovate, only through an entry in its `exempt` object whose value is the reason. `just forge-sync` reports each repository's drift from this file.",
-  "review_pin": "21e01807d611619f90fe04ec9e70d3b421486f09",
+  "review_pin": "6b85ec754cd6fda84fe9cb05d78d5d038bc34852",
   "renovate_preset": "github>cgwalters-forge/actions//renovate/runners",
   "repos": [
     {
