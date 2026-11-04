@@ -346,6 +346,26 @@ fn acp_experiment_is_hosted_and_a_child_agent_and_hosted_has_none() {
     assert_eq!(pools()["mistral"]["model"], "zai-glm-5-3");
 }
 
+// A Rust target's run gets the distribution's rustfmt and clippy with cargo
+// (agentic-job 2159c17); acp-experiment.toml's copy is held to hosted.toml above.
+#[test]
+fn every_rust_target_gets_rustfmt_and_clippy_with_cargo() {
+    let hosted = toml_file("hosted.toml");
+    let entries = hosted["setup"]["repo-packages"].as_table().expect("[setup.repo-packages]");
+    for (repo, packages) in entries {
+        let packages = strings(packages, repo);
+        if packages.iter().any(|p| p == "cargo") {
+            assert_eq!(packages.iter().take(3).collect::<Vec<_>>(), ["cargo", "rustfmt", "rust-clippy"], "{repo}");
+        } else {
+            assert!(!packages.iter().any(|p| p == "rustfmt" || p == "rust-clippy"), "{repo}");
+        }
+    }
+    assert_eq!(
+        strings(&entries["cgwalters-forge/bootc"], "bootc")[3..],
+        ["pkg-config", "libssl-dev", "libostree-dev", "libglib2.0-dev", "libzstd-dev"]
+    );
+}
+
 // Pool settings may name a tier for its automatic pools (tracker#837), so
 // every pool has one; fable's allowance is apart, so only a person spends it.
 #[test]
