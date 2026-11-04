@@ -1,0 +1,137 @@
+# Publishes cgwalters' public review feedback on other people's pull
+# requests as this repository's `review-corpus` release, and refreshes it
+# weekly (#1230, part of #1224); docs/review-corpus.md says what it holds and
+# how to pin it. misctool's `review-corpus collect` resumes from the state
+# file kept in the release, so a backfill cut short by the job token's rate
+# limit continues in the next run. Off unless the repository variable
+# REVIEW_CORPUS is `enabled`.
+name: review-corpus
+on:
+  schedule:
+    # Sundays 05:17 UTC.
+    - cron: '17 5 * * 0'
+  workflow_dispatch:
+permissions: {}
+# The collector's state allows one writer: two runs would each upload over
+# the other's corpus and state.
+concurrency:
+  group: review-corpus
+  cancel-in-progress: false
+env:
+  # A reviewed misctool release, run only after its binary is verified
+  # against the attestation misctool's release.yml made for this tag.
+  MISCTOOL_VERSION: v0.1.0
+  RELEASE: review-corpus
+  LOGIN: cgwalters
+  SINCE: '2020-11-01'
+jobs:
+  collect:
+    if: ${{ vars.REVIEW_CORPUS == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-26.04
+    # The collection (300) and the rest, within GitHub's six-hour job limit.
+    timeout-minutes: 350
+    # The collector reads public data only. Its job token can write nothing,
+    # so neither it nor the comment text it reads can change the release.
+    permissions: {}
+    outputs:
+      collected: ${{ steps.collect.outcome }}
+    steps:
+      - name: Install verified misctool
+        env:
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 5
+        run: |
+          bin=$RUNNER_TEMP/misctool
+          gh release download "$MISCTOOL_VERSION" --repo cgwalters-forge/misctool --dir "$bin" --pattern cgwalters-forge-misctool
+          gh attestation verify "$bin/cgwalters-forge-misctool" --repo cgwalters-forge/misctool \
+            --cert-identity "https://github.com/cgwalters-forge/misctool/.github/workflows/release.yml@refs/tags/$MISCTOOL_VERSION" \
+            --source-ref "refs/tags/$MISCTOOL_VERSION" --deny-self-hosted-runners
+          chmod +x "$bin/cgwalters-forge-misctool"
+          echo "$bin" >> "$GITHUB_PATH"
+      - name: Download the current corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 10
+        # Only a missing or empty release (the first run) starts from nothing.
+        # Anything else must hold the corpus, which an interrupted --clobber
+        # upload can leave deleted, so a run never publishes a fresh partial
+        # corpus over the full one.
+        run: |
+          if ! assets=$(gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>&1); then
+            [[ $assets == *'release not found'* ]] || { echo "$assets" >&2; exit 1; }
+          elif [[ -n $assets ]]; then
+            grep -qx review-corpus.jsonl.zst <<< "$assets" || { echo "$RELEASE has no review-corpus.jsonl.zst; restore it from a run's artifact" >&2; exit 1; }
+            gh release download "$RELEASE" --repo "$GITHUB_REPOSITORY" \
+              --pattern review-corpus.jsonl.zst --pattern review-corpus-state.json
+            zstd -d --rm review-corpus.jsonl.zst
+          fi
+      - name: Collect
+        id: collect
+        # On a rate-limit wait over an hour, exhausted retries or this step's
+        # limit, the collector stops with output and state consistent: the
+        # rest of the run publishes what it has and the next run resumes.
+        continue-on-error: true
+        timeout-minutes: 300
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cgwalters-forge-misctool review-corpus collect --login "$LOGIN" --since "$SINCE" \
+            --out review-corpus.jsonl --state review-corpus-state.json
+      - name: Pack
+        timeout-minutes: 15
+        run: |
+          mkdir dist
+          cgwalters-forge-misctool review-corpus stats review-corpus.jsonl > dist/stats.json
+          zstd -q -19 -T0 review-corpus.jsonl -o dist/review-corpus.jsonl.zst
+          cp review-corpus-state.json dist/
+          (cd dist && sha256sum review-corpus.jsonl.zst review-corpus-state.json > SHA256SUMS)
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: review-corpus
+          path: dist/
+          if-no-files-found: error
+          # Longer than the schedule, so a release left without its corpus
+          # can be restored from the last run's copy.
+          retention-days: 30
+
+  publish:
+    needs: collect
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    # What lets the job token create the review-corpus release and replace
+    # its assets and notes; nothing else in this job runs code.
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: review-corpus
+          path: dist
+      - name: Write the release notes
+        env:
+          COLLECTED: ${{ needs.collect.outputs.collected }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          state=$([[ $COLLECTED == success ]] && echo complete || echo 'stopped early (rate limit, time limit or error; see the run)')
+          { echo "$LOGIN's public review feedback on other people's pull requests since $SINCE, collected by misctool $MISCTOOL_VERSION's \`review-corpus\` ([schema](https://github.com/cgwalters-forge/misctool/blob/$MISCTOOL_VERSION/README.md#jsonl-schema-version-1)). See [docs/review-corpus.md]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$DEFAULT_BRANCH/docs/review-corpus.md)."
+            printf '\nRefreshed %s by %s; collection %s.\n\n~~~\n' "$(date -u +%F)" "$RUN" "$state"
+            cat dist/SHA256SUMS
+            printf '~~~\n\nStats:\n\n~~~json\n'; cat dist/stats.json; printf '~~~\n'; } > notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Corpus, then state, then checksums: a run cut short leaves the state
+        # behind the corpus, never ahead, and the next run repeats that work.
+        run: |
+          gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" > /dev/null ||
+            gh release create "$RELEASE" --repo "$GITHUB_REPOSITORY" --title 'Review corpus' --notes-file notes.md --latest=false
+          for asset in review-corpus.jsonl.zst review-corpus-state.json SHA256SUMS; do
+            gh release upload "$RELEASE" "dist/$asset" --repo "$GITHUB_REPOSITORY" --clobber
+          done
+          gh release edit "$RELEASE" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+      - name: Report an early stop
+        if: ${{ needs.collect.outputs.collected != 'success' }}
+        run: |
+          echo '::error::The collector stopped early on a rate limit, the time limit or an error (see its step in the collect job). What it had is published; the next run resumes, but an error will recur until fixed.'
+          exit 1

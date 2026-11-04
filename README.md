@@ -41,6 +41,10 @@ contains a versioned pattern library and manual review procedure. It has only a
 three-PR development pilot, no held-out result, and is not wired into the
 production review step.
 
+[docs/review-corpus.md](docs/review-corpus.md) describes the corpus of
+cgwalters' public review feedback, which is published as the `review-corpus`
+release and refreshed weekly. It explains how to pin and download a version.
+
 Agent-drafted reviews of others' pull requests wait as issues labelled
 `review-draft` (`is:open label:review-draft` is the queue). To send the
 newest draft as cgwalters-bot, tick the body's
