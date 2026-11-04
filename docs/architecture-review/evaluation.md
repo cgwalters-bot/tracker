@@ -88,11 +88,23 @@ From the repository root, `just test-architecture-review rebuild B2588`:
    Diff consumes one file slot. Omissions record path, HEAD, source byte size
    and archived reason string. Library/prompt/index/manifest metadata are outside
    the reviewed-material budget, as in the original manifests.
-5. Writes reviewed material only to `/tmp/opencode/architecture-review-ID/`.
-   Writes separate `runs/ID.rebuild.json` with expected/actual sizes and SHA-256
-   digests for **every** archived file, total, order, omissions and ancestry.
-   Mismatch exits 1; old manifests/outputs/hashes never change. `verify ID`
-   rehashes the local packet without network. Reports, not sources, are archived.
+5. Requires reconstruction comparison to match before writing a fresh sibling
+   staging directory. Checks staged bytes and exact entries, then replaces the
+   whole `/tmp/opencode/architecture-review-ID/` tree, removing any stale HEAD or
+   feedback material. Writes separate `runs/ID.rebuild.json` only after packet
+   publication, with expected/actual sizes and SHA-256 digests for **every**
+   archived file, total, order, omissions and ancestry. Retrieval/comparison
+   failure publishes no new packet or success report; existing evidence is left
+   alone, not certified by that failed attempt. Staging is cleaned on failure.
+   Old manifests/outputs/hashes never change. Reports, not sources, are archived.
+6. `verify ID` requires exactly the manifest's regular files and their necessary
+   directories: root `diff.patch`, plus `head/` with exactly the listed flat HEAD
+   filenames if any. No other files/directories or symlinks, including at root,
+   are allowed. It then checks byte counts and hashes without network. Exact
+   directory integrity stops extra context that listed-file hash checking alone
+   misses; neither check proves historical blinding or recomputes selection.
+   This manual workspace is not designed for concurrent writers/readers during
+   replacement.
 
 The tie rule and collision refusal make unexercised cases explicit, not a claim
 that the ephemeral original handled them identically. GitHub can change diff
@@ -112,6 +124,28 @@ The three `runs/*.rebuild.json` records list every expected/actual digest and
 byte count. No historical review was rerun or given a newly invented packet.
 patterns.md, prompt.md, references.json, sample.json, original outputs and
 manifests remain byte-identical to merged tracker#1236.
+
+### Packet-hygiene follow-up to #1240's final review
+
+The final review identified stale unmanifested context surviving rebuild and
+verify, and duplicate report IDs potentially hiding unevaluated packets. The
+recipe now enforces exact directory integrity and fresh staged replacement as
+described above, and report IDs must be unique and exactly cover evaluated run
+IDs. Frozen historical reports, manifests, outputs, feedback and the 0.1.0
+prompt/library are preserved; no historical review or feedback refresh ran.
+
+`just test-architecture-review e2e` runs the actual recipe dispatch in a VM with
+canned API responses and filesystem calls redirected to a temporary workspace;
+there is no alternate production API option or caller. It exercises successful
+rebuild/verify, stale HEAD and feedback files/directories, extra and expected-path
+symlinks, missing/mismatched bytes, repeated rebuild, failed retrieval and failed
+reconstruction/staged-byte comparisons. Failures must not publish a new packet
+or success report. The standard structural tests include duplicate, missing and
+unknown report-ID negative fixtures. No live GitHub or inference is required.
+
+This fixes packet hygiene only, not semantic review quality, human adjudication
+or effectiveness. Leave #1227 open pending human adjudication and a separately
+scoped label-blind evaluation; contaminated historical reviews are not rerun.
 
 ## Original review runs (not rerun)
 

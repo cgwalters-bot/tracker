@@ -78,13 +78,36 @@ structural check, **not** semantic citation verification or an architecture revi
 `just test-architecture-review fixtures` also runs the deterministic offline
 packet fixtures (and the structural checks). The existing recipe preserves the
 builder without adding a script file or changing the new-file policy.
+`just test-architecture-review e2e` additionally exercises the actual rebuild and
+verify dispatch with canned API responses and temporary filesystem isolation.
+It requires no live GitHub access or inference. Cases include stale HEAD files,
+feedback files/directories, symlinks, repeated rebuild, mismatched/missing bytes,
+and failed retrieval, reconstruction comparison and staged-byte comparison.
+Report-ID fixtures reject duplicate, missing and unknown evaluated-run IDs.
 
 For explicit, bounded network reconstruction, run
-`just test-architecture-review rebuild ID` with B2588, B2603 or O3664. It writes
-only reconstructed reviewed bytes under `/tmp/opencode/architecture-review-ID/`
-and a separate `runs/ID.rebuild.json`, never old manifests or outputs. Then
-`just test-architecture-review verify ID` hashes the local reviewed bytes without
-network (it does not independently recompute source selection/omissions).
+`just test-architecture-review rebuild ID` with B2588, B2603 or O3664. The concrete
+threat is stale source or scoring feedback beside matching reviewed files being
+mistaken for frozen reviewer input. Rebuild compares reconstructed selection and
+bytes before writing a fresh sibling staging directory, checks that directory,
+then replaces the entire `/tmp/opencode/architecture-review-ID/` tree. Stale
+material cannot survive a successful rebuild. Failed retrieval/comparison does
+not publish a new packet or success report; an older packet/report, if present,
+is not evidence that the failed attempt succeeded. Replacement is not a
+concurrent-reader transaction; do not share this manual packet workspace while
+rebuilding. A separate `runs/ID.rebuild.json` is written only after publication,
+never old manifests or outputs.
+
+`just test-architecture-review verify ID` checks **exact directory integrity** as
+well as every local reviewed-byte count and hash, without network. The allowed
+entries are exactly the manifest's regular files (`diff.patch` and named flat
+files under `head/`), plus the root and `head/` directory only when needed. Extra
+files, directories, missing entries and symlinks (including the root) fail. This
+is stronger than checking hashes of listed files while ignoring other entries.
+It does not independently recompute selection/omissions, establish historical
+blinding or remove prior prompt-author contamination. This fixes packet hygiene
+only; #1227 remains open pending human adjudication and a separately scoped
+label-blind evaluation.
 The [evaluation](evaluation.md#recovered-executable-packet-recipe) specifies exact
 annotation, byte encoding, file selection, omissions and historical checks, and
 records successful comparisons of every archived digest, including diff.patch.
