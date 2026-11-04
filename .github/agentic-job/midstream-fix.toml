@@ -4,7 +4,7 @@
 # job of dispatch.yml passes this file as the wrapper's `fix-allow` for a
 # target listed here.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree"]
+repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/osbuild"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576

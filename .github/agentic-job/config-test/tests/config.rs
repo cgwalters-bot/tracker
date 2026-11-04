@@ -529,12 +529,9 @@ fn atomic_linux_sandbox_is_a_followed_work_target_not_a_midstream_fork() {
     assert!(!pass["pr"]["noMerge"].as_array().unwrap().contains(&json!(repo)));
 }
 
-// The midstream fork bcvk takes staged pull requests as composefs-rs and
-// bootc do: midstream bounds only, scheduled, followed for fix rounds by the
-// pass but never merged into, since its main tracks upstream.
-#[test]
-fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
-    let repo = "cgwalters-forge/bcvk";
+// Midstream targets are scheduled and followed for fix rounds by the pass,
+// but never merged into, since their main tracks upstream.
+fn assert_midstream_target(repo: &str) {
     for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
         assert!(repos(name).iter().any(|r| r == repo), "{name}");
     }
@@ -551,6 +548,16 @@ fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
     assert!(pass["pr"]["noMerge"].as_array().expect("pr.noMerge").contains(&json!(repo)));
     let proposals = &pass["holds"]["proposals"]["repositories"];
     assert!(proposals.as_array().expect("holds.proposals.repositories").contains(&json!(repo)));
+}
+
+#[test]
+fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
+    assert_midstream_target("cgwalters-forge/bcvk");
+}
+
+#[test]
+fn osbuild_is_a_midstream_target_that_is_never_merged_into() {
+    assert_midstream_target("cgwalters-forge/osbuild");
 }
 
 // Without `ready_when_complete` apply opens every pull request as a draft,
@@ -612,7 +619,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
             })
             .collect()
     };
-    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree"]);
+    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/osbuild"]);
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
         assert!(!text.contains("ready_when_complete") && !has_line_starting(&text, "[unprotected_files]"), "{midstream}");
@@ -640,8 +647,8 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     let step = step_script("Resolve the bounds");
     // bootc-dev/bootc is upstream, no midstream; neither is a name that only contains one.
     for (repos, allow, fix) in [
-        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree"][..], "midstream.toml", "midstream-fix.toml"),
-        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge"][..], "dispatch.toml", "fix.toml"),
+        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/osbuild"][..], "midstream.toml", "midstream-fix.toml"),
+        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge", "osbuild/osbuild", "cgwalters-forge/osbuild-x", "someone/osbuild"][..], "dispatch.toml", "fix.toml"),
     ] {
         for repo in repos {
             for kind in KINDS {
@@ -692,8 +699,8 @@ fn agentic_job_policy_admits_bootc_dev_only_for_comments_and_fixes() {
     };
     // The bot's dispatch branches, and the homegit era's bot/** ones (#710),
     // in bootc-dev and in the midstream forks; no other branch pattern.
-    for repo in ["bootc-dev/bootc", "cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk"] {
-        for branch in ["dispatch/x", "bot/install-output", "bot/a/b"] {
+    for repo in ["bootc-dev/bootc", "cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/osbuild"] {
+        for branch in ["dispatch/x", "bot/install-output", "bot/a/b", "release-train/x"] {
             assert!(fix(repo, branch), "{repo} {branch}");
         }
         for branch in ["main", "feature/x", "BOT/x", "bots/x", "x/bot/y"] {
@@ -706,6 +713,40 @@ fn agentic_job_policy_admits_bootc_dev_only_for_comments_and_fixes() {
     // `bot/**`), so no test here can refuse a head owner.
     for repo in ["someone/bootc", "cgwalters-bot/bootc", "containers/composefs-rs", "cgwalters-bot/bcvk", "someone/bcvk"] {
         assert!(!fix(repo, "bot/x"), "{repo}");
+    }
+}
+
+// Admission of the fork must not grant upstream or lookalike repositories
+// any comment, PR or fix authority, even if given the midstream bounds directly.
+#[test]
+fn agentic_job_policy_admits_only_the_osbuild_midstream() {
+    if !agentic_job_installed() {
+        return;
+    }
+    let head = "0".repeat(40);
+    for repo in ["cgwalters-forge/osbuild", "osbuild/osbuild", "cgwalters-bot/osbuild", "someone/osbuild", "cgwalters-forge/osbuild-x"] {
+        for (file, kind, output) in [
+            ("dispatch.toml", "branch", "create_pull_request"),
+            ("midstream.toml", "branch", "create_pull_request"),
+            ("comment.toml", "analysis", "add_comment"),
+            ("fix.toml", "branch", "push_to_pull_request_branch"),
+            ("midstream-fix.toml", "branch", "push_to_pull_request_branch"),
+        ] {
+            let file_path = path_of(file);
+            let clone_url = format!("https://github.com/{repo}");
+            let mut args = vec![
+                "policy", "--allow", &file_path, "--repo", repo, "--clone-url", &clone_url,
+                "--kind", kind, "--outputs", output, "--max-outputs", "3", "--base",
+            ];
+            if output == "push_to_pull_request_branch" {
+                args.extend_from_slice(&["bot/x", "--pull-request", "1", "--head", &head, "--output-repo", repo]);
+            } else {
+                args.push("main");
+            }
+            let expected = repo == "cgwalters-forge/osbuild" && !["dispatch.toml", "fix.toml"].contains(&file);
+            let out = agentic_job(&args);
+            assert_eq!(out.status.success(), expected, "{repo} {file}: {}", String::from_utf8_lossy(&out.stderr));
+        }
     }
 }
 
@@ -733,6 +774,7 @@ fn agentic_job_policy_keeps_ready_when_complete_from_both_bounds_and_the_midstre
     for (repo, allow, fix, expected) in [
         ("cgwalters-forge/tracker", "dispatch.toml", "fix.toml", true),
         ("cgwalters-forge/composefs-rs", "midstream.toml", "midstream-fix.toml", false),
+        ("cgwalters-forge/osbuild", "midstream.toml", "midstream-fix.toml", false),
     ] {
         assert_eq!(ready(repo, allow, "create_pull_request", &["--base", "main"]), expected, "{allow}");
         let args = ["--base", "dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", repo];
