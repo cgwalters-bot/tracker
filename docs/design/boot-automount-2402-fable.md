@@ -4,7 +4,7 @@
 > Nothing in it was run.
 
 Analysis for [tracker#1244](https://github.com/cgwalters-forge/tracker/issues/1244),
-read from ostree `a4cb678`, bootc `2b3ef76`, systemd `923be84`, rpm-ostree `e5f67f1`
+based on ostree `a4cb678`, bootc `2b3ef76`, systemd `923be84`, rpm-ostree `e5f67f1`
 and bootupd `a100a09` (2026-11-03/04). Issue text was read as data.
 
 ## Mechanism
@@ -86,7 +86,7 @@ searches `/efi` first [25] and bootupd lists it as a known ESP path [26].
 - *Upgrade and rollback.* Pure image content; old deployments keep today's behaviour.
   No partition, fstab or karg edits. No ostree or bootc change.
 - *Changes.* systemd: ~15 lines plus man page and NEWS. Base images: one directory.
-  Fedora and C10S: backports. Nothing until they ship, so pair with option 3.
+  Fedora and C10S: backports. This won't help until they ship, so pair with option 3.
 - *CI.* Below.
 
 ### 2. Drop the bind mount, always use `/sysroot/boot` (direction 2)
@@ -101,7 +101,7 @@ same-partition layout, and adjust `RequiresMountsFor=/boot` in its units [20][27
 - *Upgrade and rollback.* Old deployments still generate the bind, so new code must
   handle both shapes forever. Safe on rollback; hard to revert later.
 - *Changes.* ostree (large), rpm-ostree, bootupd, docs. Months, several releases, no
-  relief meanwhile. Not recommended.
+  relief in the meantime. Not recommended.
 
 ### 3. Install-time fstab bind (uses two existing opt-outs)
 

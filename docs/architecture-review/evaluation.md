@@ -7,7 +7,7 @@ effectiveness result.** The prompt author inspected candidates' feedback before
 writing the prompt; no rerun on these PRs can become held out. This follow-up
 preserves executable packet reconstruction, completes the accessible feedback
 inventory and adds an independent read-only **agent scoring pass, not human
-review**. Human adjudication is requested and has not occurred. Keep #1227 open;
+review**. Human adjudication has been requested but has not happened. Keep #1227 open;
 do not promote this into production. [results.json](results.json) records current
 counts and the original pilot's narrower counts separately.
 
@@ -80,7 +80,7 @@ From the repository root, `just test-architecture-review rebuild B2588`:
    `repos/REPO/contents/ENCODED_PATH?ref=HEAD` as JSON, encoding each path segment.
    Requires base64 file content; decodes and checks API `size`. Renames use new
    paths; removed files have diff only. Invalid UTF-8 fails rather than replacing
-   bytes. Responses are bounded to 8 MiB and 20 seconds each. No reviewed code runs.
+   bytes. Responses are limited to 8 MiB and 20 seconds each. No reviewed code runs.
 4. Places complete annotated diff first; refuses if it alone exceeds the packet
    limits. Sorts HEAD files by decoded byte length, then UTF-8 path bytes for
    ties. Maps `/` to `__` under `head/`; refuses mapping collisions. Adds whole
@@ -94,7 +94,7 @@ From the repository root, `just test-architecture-review rebuild B2588`:
    feedback material. Writes separate `runs/ID.rebuild.json` only after packet
    publication, with expected/actual sizes and SHA-256 digests for **every**
    archived file, total, order, omissions and ancestry. Retrieval/comparison
-   failure publishes no new packet or success report; existing evidence is left
+   failure does not publish a new packet or success report. Existing evidence is left
    alone, not certified by that failed attempt. Staging is cleaned on failure.
    Old manifests/outputs/hashes never change. Reports, not sources, are archived.
 6. `verify ID` requires exactly the manifest's regular files and their necessary
@@ -108,7 +108,7 @@ From the repository root, `just test-architecture-review rebuild B2588`:
 
 The tie rule and collision refusal make unexercised cases explicit, not a claim
 that the ephemeral original handled them identically. GitHub can change diff
-rendering at pinned revisions; hashes detect that, not make the service immutable.
+rendering at pinned revisions; hashes detect that but do not make the service immutable.
 This is a small textual-packet builder, not a binary/submodule corpus collector.
 
 Actual commands on 2026-11-04:
