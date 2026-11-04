@@ -352,6 +352,10 @@ fn acp_experiment_is_hosted_and_a_child_agent_and_hosted_has_none() {
 fn every_rust_target_gets_rustfmt_and_clippy_with_cargo() {
     let hosted = toml_file("hosted.toml");
     let entries = hosted["setup"]["repo-packages"].as_table().expect("[setup.repo-packages]");
+    assert_eq!(
+        strings(&entries["cgwalters-forge/agenthome"], "agenthome"),
+        ["cargo", "rustfmt", "rust-clippy"]
+    );
     for (repo, packages) in entries {
         let packages = strings(packages, repo);
         if packages.iter().any(|p| p == "cargo") {
