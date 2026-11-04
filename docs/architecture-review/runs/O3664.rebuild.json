@@ -1,0 +1,67 @@
+{
+  "schema": "architecture-review.rebuild.v1",
+  "id": "O3664",
+  "builder": "Justfile test-architecture-review rebuild",
+  "historical_identity": "Only matching bytes are reconstructed evidence; no new historical review ran.",
+  "manifest_sha256": "11733a199781cc11448ce341303bf67c3bbb7ec16da1309a8d1dc853a2ff7a2f",
+  "ancestry": {
+    "status": "ahead",
+    "merge_base": "9fc54d6104c79c9520a9744b6d7e9130f232ce55",
+    "commits_match": true,
+    "pre_feedback": true
+  },
+  "files": [
+    {
+      "name": "diff.patch",
+      "expected_bytes": 3600,
+      "actual_bytes": 3600,
+      "expected_sha256": "1d4e7f77841bac614c8e8dd7c6e64a347e1f65b7d946bc8877907abebfa116f5",
+      "actual_sha256": "1d4e7f77841bac614c8e8dd7c6e64a347e1f65b7d946bc8877907abebfa116f5",
+      "match": true
+    },
+    {
+      "name": "head/tmt__tests__tests.fmf",
+      "expected_bytes": 832,
+      "actual_bytes": 832,
+      "expected_sha256": "2d3d0438ea248890b85c0ba0f3876c497f47cc886aa28e8cf91c9e6c50307eff",
+      "actual_sha256": "2d3d0438ea248890b85c0ba0f3876c497f47cc886aa28e8cf91c9e6c50307eff",
+      "match": true
+    },
+    {
+      "name": "head/tests__bootc-integration__src__tests__privileged.rs",
+      "expected_bytes": 8801,
+      "actual_bytes": 8801,
+      "expected_sha256": "23a4cf35e870483f9b872d6ad1c9c5ad20d61f8862bfc7ad3116711188548f19",
+      "actual_sha256": "23a4cf35e870483f9b872d6ad1c9c5ad20d61f8862bfc7ad3116711188548f19",
+      "match": true
+    },
+    {
+      "name": "head/src__libostree__ostree-impl-system-generator.c",
+      "expected_bytes": 21821,
+      "actual_bytes": 21821,
+      "expected_sha256": "3740f8fecf845759f03998152e01cb2af0c0ef7c335ea7d4cb08ca5e479d89d1",
+      "actual_sha256": "3740f8fecf845759f03998152e01cb2af0c0ef7c335ea7d4cb08ca5e479d89d1",
+      "match": true
+    }
+  ],
+  "expected_total_bytes": 35054,
+  "actual_total_bytes": 35054,
+  "expected_file_order": [
+    "diff.patch",
+    "head/tmt__tests__tests.fmf",
+    "head/tests__bootc-integration__src__tests__privileged.rs",
+    "head/src__libostree__ostree-impl-system-generator.c"
+  ],
+  "actual_file_order": [
+    "diff.patch",
+    "head/tmt__tests__tests.fmf",
+    "head/tests__bootc-integration__src__tests__privileged.rs",
+    "head/src__libostree__ostree-impl-system-generator.c"
+  ],
+  "expected_omitted": [],
+  "actual_omitted": [],
+  "total_match": true,
+  "ordering_match": true,
+  "omissions_match": true,
+  "all_match": true
+}

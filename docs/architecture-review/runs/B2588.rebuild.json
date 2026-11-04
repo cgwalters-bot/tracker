@@ -1,0 +1,77 @@
+{
+  "schema": "architecture-review.rebuild.v1",
+  "id": "B2588",
+  "builder": "Justfile test-architecture-review rebuild",
+  "historical_identity": "Only matching bytes are reconstructed evidence; no new historical review ran.",
+  "manifest_sha256": "466cafe2b277766bbe3a06455aa3bc62321a2fcda06e23c5707b76dc00fd90ad",
+  "ancestry": {
+    "status": "ahead",
+    "merge_base": "69057a88013a8e1a41830806d7a0b66e4fc453b7",
+    "commits_match": true,
+    "pre_feedback": true
+  },
+  "files": [
+    {
+      "name": "diff.patch",
+      "expected_bytes": 4672,
+      "actual_bytes": 4672,
+      "expected_sha256": "b1be14de82552af1b55a76086a8b90f1c60593c504f87e089cd257b7650b9abe",
+      "actual_sha256": "b1be14de82552af1b55a76086a8b90f1c60593c504f87e089cd257b7650b9abe",
+      "match": true
+    },
+    {
+      "name": "head/tmt__tests__booted__test-install-shared-propagation.nu",
+      "expected_bytes": 1319,
+      "actual_bytes": 1319,
+      "expected_sha256": "f98273e2e6a6dc1bccdd91ea0cfee3415d4af13362308a5e9bc2f42bd2f3766f",
+      "actual_sha256": "f98273e2e6a6dc1bccdd91ea0cfee3415d4af13362308a5e9bc2f42bd2f3766f",
+      "match": true
+    },
+    {
+      "name": "head/tmt__tests__tests.fmf",
+      "expected_bytes": 7859,
+      "actual_bytes": 7859,
+      "expected_sha256": "232c6be471270141bf03b5a37aa14cf0158ff134f78d2da09724e6cc9258d394",
+      "actual_sha256": "232c6be471270141bf03b5a37aa14cf0158ff134f78d2da09724e6cc9258d394",
+      "match": true
+    },
+    {
+      "name": "head/tmt__plans__integration.fmf",
+      "expected_bytes": 11095,
+      "actual_bytes": 11095,
+      "expected_sha256": "ac5667513ee22b342cf9fe0f2a68a9f6e06befb992cf7e63e053a314bb4e2bbe",
+      "actual_sha256": "ac5667513ee22b342cf9fe0f2a68a9f6e06befb992cf7e63e053a314bb4e2bbe",
+      "match": true
+    },
+    {
+      "name": "head/crates__lib__src__podstorage.rs",
+      "expected_bytes": 22279,
+      "actual_bytes": 22279,
+      "expected_sha256": "c4c22af59919767eabbd47fec8b8f22d370c3d1b2d41e544f0a4dcec145e1184",
+      "actual_sha256": "c4c22af59919767eabbd47fec8b8f22d370c3d1b2d41e544f0a4dcec145e1184",
+      "match": true
+    }
+  ],
+  "expected_total_bytes": 47224,
+  "actual_total_bytes": 47224,
+  "expected_file_order": [
+    "diff.patch",
+    "head/tmt__tests__booted__test-install-shared-propagation.nu",
+    "head/tmt__tests__tests.fmf",
+    "head/tmt__plans__integration.fmf",
+    "head/crates__lib__src__podstorage.rs"
+  ],
+  "actual_file_order": [
+    "diff.patch",
+    "head/tmt__tests__booted__test-install-shared-propagation.nu",
+    "head/tmt__tests__tests.fmf",
+    "head/tmt__plans__integration.fmf",
+    "head/crates__lib__src__podstorage.rs"
+  ],
+  "expected_omitted": [],
+  "actual_omitted": [],
+  "total_match": true,
+  "ordering_match": true,
+  "omissions_match": true,
+  "all_match": true
+}
