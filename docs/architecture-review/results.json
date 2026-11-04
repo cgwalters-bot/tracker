@@ -1,5 +1,5 @@
 {
-  "schema": "architecture-review.results.v2",
+  "schema": "architecture-review.results.v3",
   "version": "0.1.0",
   "status": "development_pilot",
   "held_out_claim": false,
@@ -14,17 +14,35 @@
   "rejected_prs": 1,
   "executed_reviews": 3,
   "compared_prs": 3,
-  "audited_inline_comments": 9,
-  "architecture_concerns": 5,
+  "audited_inline_comments": 8,
+  "audited_review_bodies": 4,
+  "audited_pr_comments": 0,
+  "audited_feedback_records": 12,
+  "classification_units": 13,
+  "split_extra_units": 1,
+  "architecture_concerns": 7,
   "excluded_nits": 3,
-  "excluded_acknowledgements": 1,
+  "excluded_acknowledgements": 0,
+  "excluded_empty_reviews": 3,
+  "feedback_inventory": "feedback.json",
+  "independent_scoring": "scoring.json",
+  "scoring_passes": 2,
+  "human_adjudication": "requested; not obtained; agent disposition is not human approval",
+  "strata": {
+    "concerns": {"total": 4, "scorable": 3, "matched": 0, "missed": 3, "unscorable": 1},
+    "questions": {"total": 3, "scorable": 3, "matched": 1, "missed": 2, "unscorable": 0}
+  },
+  "original_pilot": {"scope": "Inline-only pilot including rejected O3680 acknowledgement; retained as historical counts, not the completed inventory denominator.", "audited_inline_comments": 9, "architecture_concerns": 5, "excluded_nits": 3, "excluded_acknowledgements": 1, "scorable_concerns": 2, "matched_concerns": 0, "scorable_questions": 2, "matched_questions": 1},
   "concerns": [
     {"id": "B2603-r4427310071", "stratum": "concern", "scorable": true, "matched_by": null},
     {"id": "B2603-r4427441326", "stratum": "question", "scorable": true, "matched_by": null,
-     "partial": "B2603 Q4 raised only the leak half, which the operator withdrew; importer reuse was missed."},
+     "partial": "Importer reuse was missed. Q4 overlaps the ref/GC subject only, not source retention or importer reuse."},
+    {"id": "B2603-r4427441326-source-ref", "stratum": "question", "scorable": true, "matched_by": null,
+     "partial": "Source-retention question immediately doubted by operator. Q4 instead concerns premature target overwrite; subject overlap only."},
     {"id": "B2603-r4427457789", "stratum": "concern", "scorable": false, "matched_by": null,
      "unscorable_reason": "Depends on an earlier composefs support decision that is not in the packet."},
     {"id": "B2588-r4380813753", "stratum": "question", "scorable": true, "matched_by": "B2588 Q1"},
+    {"id": "B2588-review5656806196", "stratum": "concern", "scorable": true, "matched_by": null},
     {"id": "O3664-r4234529344", "stratum": "concern", "scorable": true, "matched_by": null}
   ],
   "findings": {
@@ -44,5 +62,6 @@
      "manifest_sha256": "11733a199781cc11448ce341303bf67c3bbb7ec16da1309a8d1dc853a2ff7a2f"}
   ],
   "run_provenance": "Three parallel subagent sessions requested as claude-opus-5-5 on 2026-11-03 from 23:37:33Z, each told to read only its staged directory (patterns.md, references.json, prompt.md, packet/) with file-read tools and no network. Isolation was by instruction, not enforced.",
-  "reason": "Development pilot on candidates whose labels the prompt author saw; not held out. Labels were classified by one controller and need a second human adjudication."
+  "packet_rebuilds": ["runs/B2603.rebuild.json", "runs/B2588.rebuild.json", "runs/O3664.rebuild.json"],
+  "reason": "Development pilot on candidates whose labels the prompt author saw; not held out. Completed paginated inventory and second independent agent scoring do not remove contamination or replace requested human adjudication. New label-blind sample remains separate work."
 }

@@ -1,0 +1,71 @@
+{
+  "schema": "architecture-review.scoring.v1",
+  "provenance": {
+    "date": "2026-11-04",
+    "kind": "independent read-only scoring agent; not human review",
+    "agent": "praxis/gpt-6.1-sol",
+    "task_id": "ses_e5bf77a72ffe6ahnQg41ywwKPG",
+    "feedback_sha256": "a6e247857781facb2f6b75bd826294769252c749d184d7422794756695d70e00",
+    "capture": "Controller structured transcription of returned scoring record, not verbatim output. Controller disposition is separate below.",
+    "inputs": ["feedback.json", "sample.json", "runs/B2603.md", "runs/B2588.md", "runs/O3664.md", "runs/B2603.manifest.json", "runs/B2588.manifest.json", "runs/O3664.manifest.json"],
+    "packet_reads": [
+      "B2603/diff.patch (complete)", "B2603/head/docs__src__man__bootc-switch.8.md",
+      "B2588/diff.patch", "B2588/head/crates__lib__src__podstorage.rs", "B2588/head/tmt__tests__booted__test-install-shared-propagation.nu",
+      "O3664/diff.patch", "O3664/head/src__libostree__ostree-impl-system-generator.c:270-573", "O3664/head/tests__bootc-integration__src__tests__privileged.rs:240-287"
+    ],
+    "packet_location": "/tmp/opencode/architecture-review-ID; reconstructed from pinned revisions; no labels in packet directories",
+    "additional_pinned_evidence": {
+      "repository": "bootc-dev/bootc",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "retrieval": "gh api --method GET repos/bootc-dev/bootc/contents/PATH?ref=REV; base64 decode; static inspection only",
+      "paths": ["crates/lib/src/bootc_composefs/finalize.rs (full)", "crates/lib/src/bootc_composefs/update.rs:316-510,639-705", "crates/lib/src/bootc_composefs/rollback.rs:209-319", "crates/lib/src/bootc_composefs/status.rs:576-715"],
+      "availability": "Full-file context for this later audit was not supplied to the original reviewer. Do not retroactively enlarge its packet."
+    },
+    "tools": "read/glob, shell environment checks, read-only pinned gh API GETs; no reviewed code execution, tests, writes or upstream comments",
+    "independence": "Fresh scoring session; explicitly withheld results.json, evaluation.md and controller label reasoning. Shared model family is not independent human validation. Historical reviewers were not resumed or given later feedback.",
+    "hashes": "Scorer read manifest digests but did not recompute them; controller rebuild reports separately establish byte identity."
+  },
+  "rubric": {
+    "classification": "Design concern, question/tradeoff, local nit/test suggestion, acknowledgement/empty. Split independent root causes inside a comment, but do not split alternative remedies or count acknowledgements attached to a retained concern again.",
+    "match": "Same root cause and affected component/evidence at the frozen revision, not shared pattern or terminology. Partial overlap receives no full-match credit. Questions are never counted as caught defects.",
+    "scorability": "A question can be raised from packet evidence without proving its answer. A concern requiring an absent historical policy decision is unscorable, not missed.",
+    "audit": "Unmatched is not false. Static support does not validate every scenario, severity or remedy."
+  },
+  "units": [
+    {"sample": "B2603", "record_id": 4427310071, "url": "https://github.com/bootc-dev/bootc/pull/2603#discussion_r4427310071", "roots": ["B2603-r4427310071"], "classification": "concern", "reason": "Central parser ownership and existing ImageReference parser reuse are one design root cause.", "scorable": true, "matched_by": null},
+    {"sample": "B2603", "record_id": 4427315205, "url": "https://github.com/bootc-dev/bootc/pull/2603#discussion_r4427315205", "roots": [], "classification": "nit", "reason": "clap typed conversion is a local implementation suggestion, not a distinct architecture concern."},
+    {"sample": "B2603", "record_id": 4427441326, "url": "https://github.com/bootc-dev/bootc/pull/2603#discussion_r4427441326", "roots": ["B2603-r4427441326-source-ref", "B2603-r4427441326"], "classification": "question", "reason": "Two distinct questions: source-reference retention/GC (immediately doubted by operator) and reuse of importer support. Keep the withdrawn concern as a qualified question, not a defect. Both can be raised from the diff, though resolving them needs omitted context.", "scorable": true, "matched_by": null, "partial": "B2603 Q4 is about overwriting target T before staging, not retaining source S; shared ref/GC topic is not the same failure."},
+    {"sample": "B2603", "record_id": 4427457789, "url": "https://github.com/bootc-dev/bootc/pull/2603#discussion_r4427457789", "roots": ["B2603-r4427457789"], "classification": "concern", "reason": "Earlier composefs support policy is absent from packet; synthetic status semantics Q3 is different.", "scorable": false, "matched_by": null},
+    {"sample": "B2603", "record_id": 5717113152, "url": "https://github.com/bootc-dev/bootc/pull/2603#pullrequestreview-5717113152", "roots": [], "classification": "empty", "reason": "Empty review body, no additional concern inferred from review state."},
+    {"sample": "B2603", "record_id": 5717286549, "url": "https://github.com/bootc-dev/bootc/pull/2603#pullrequestreview-5717286549", "roots": [], "classification": "empty", "reason": "Empty review body; associated inline roots already counted."},
+    {"sample": "B2588", "record_id": 4380793898, "url": "https://github.com/bootc-dev/bootc/pull/2588#discussion_r4380793898", "roots": [], "classification": "nit", "reason": "Historical hunk anchors necessity question to composefs test skip, not production namespace isolation."},
+    {"sample": "B2588", "record_id": 4380795873, "url": "https://github.com/bootc-dev/bootc/pull/2588#discussion_r4380795873", "roots": [], "classification": "nit", "reason": "Test consolidation; ok-for-now acknowledgement is not another root."},
+    {"sample": "B2588", "record_id": 4380813753, "url": "https://github.com/bootc-dev/bootc/pull/2588#discussion_r4380813753", "roots": ["B2588-r4380813753"], "classification": "question", "reason": "PRIVATE versus SLAVE, lost inbound host propagation, same child namespace. Human says probably immaterial for short-lived process.", "scorable": true, "matched_by": "B2588 Q1", "qualification": "Human emphasizes incoming mounts; output emphasizes unmounts, device pinning and a hypothetical long-lived service. Match the propagation tradeoff only, not proof of the output's impact."},
+    {"sample": "B2588", "record_id": 5656806196, "url": "https://github.com/bootc-dev/bootc/pull/2588#pullrequestreview-5656806196", "roots": ["B2588-review5656806196"], "classification": "concern", "reason": "Installer-level unshare placement is distinct from child propagation. Packet podstorage.rs:137-140 explicitly says to-existing-root skips usual unshare, enough to raise tentative recommendation. Full install.rs needed to prove remedy or defect, not to raise this concern.", "scorable": true, "matched_by": null},
+    {"sample": "O3664", "record_id": 4234529344, "url": "https://github.com/ostreedev/ostree/pull/3664#discussion_r4234529344", "roots": ["O3664-r4234529344"], "classification": "concern", "reason": "Cross-generator ownership objection; /efi coordination and undoing /boot bind are alternative remedies for one root. Opening reference to earlier PR is not a separate assessable concern.", "scorable": true, "matched_by": null},
+    {"sample": "O3664", "record_id": 5475331979, "url": "https://github.com/ostreedev/ostree/pull/3664#pullrequestreview-5475331979", "roots": [], "classification": "empty", "reason": "Empty review body."}
+  ],
+  "independent_totals": {"feedback_records": 12, "roots": 7, "scorable_concerns": 3, "matched_concerns": 0, "scorable_questions": 3, "matched_questions": 1, "unscorable_concerns": 1, "excluded_nits": 3, "excluded_empty_reviews": 3},
+  "finding_dispositions": [
+    {"finding": "B2603 D1", "matched_by_feedback": null, "audit": "supported", "qualification": "Stale pending state poisons status and rollback/finalize paths. Booting another entry while state persists is conditional; only escape is too absolute because matching-ID deletion/out-of-band repair exist. No boot transition or every CLI caller independently tested."},
+    {"finding": "B2603 D2", "matched_by_feedback": null, "audit": "supported", "qualification": "Cancellation precedes fallible boot-layout, mount, merge and staging operations; pinned update.rs:386-499 and rollback.rs:259-306 show no restoration. Proposed remedy is not validated; durable state alone is not the complete staging commit boundary."},
+    {"finding": "B2603 Q1", "matched_by_feedback": null, "audit": "unsupported", "qualification": "Ordinary valid locked pending change projects download_only and finalize returns Ok before inner lock rejection. Frozen output correctly allowed this possibility as a missing-context question; not an additional defect."},
+    {"finding": "B2603 Q2", "matched_by_feedback": null, "audit": "not audited"},
+    {"finding": "B2603 Q3", "matched_by_feedback": null, "audit": "not audited"},
+    {"finding": "B2603 Q4", "matched_by_feedback": null, "audit": "not audited", "partial": "Ref/cache subject overlap, but source retention and target overwrite are different roots."},
+    {"finding": "B2588 Q1", "matched_by_feedback": 4380813753, "audit": "not audited", "qualification": "Propagation tradeoff match, not corroboration of long-lived-service impact."},
+    {"finding": "B2588 Q2", "matched_by_feedback": null, "audit": "not audited"},
+    {"finding": "B2588 Q3", "matched_by_feedback": null, "audit": "not audited"},
+    {"finding": "O3664 Q1", "matched_by_feedback": null, "audit": "not audited"},
+    {"finding": "O3664 Q2", "matched_by_feedback": null, "audit": "not audited"},
+    {"finding": "O3664 Q3", "matched_by_feedback": null, "audit": "not audited"}
+  ],
+  "controller_disposition": [
+    {"topic": "Old pilot counted source-retention/importer comment as one question", "decision": "Accept independent split into two roots. This increases questions from 2 to 3 including B2588; neither B2603 component fully matches Q4.", "human_adjudication": "requested"},
+    {"topic": "Old pilot said Q4 raised the withdrawn leak half", "decision": "Correct to partial subject overlap only: Q4 overwrites target T; operator doubts retaining source S. No full-match count changes.", "human_adjudication": "requested"},
+    {"topic": "Previously unclassified B2588 review body", "decision": "Retain scorable design concern. Primary controller considered missing install.rs potentially unscorable, but the explicit packet comment supplies enough premise to raise isolation-placement question. Distinguish raising concern from proving fix.", "human_adjudication": "requested"},
+    {"topic": "B2588 Q1 match scope", "decision": "Keep root-cause match, qualify incoming mounts versus unmounts and unproven long-lived impact. Do not promote a tradeoff match to a caught defect.", "human_adjudication": "requested"},
+    {"topic": "Three unmatched audits", "decision": "Retain 2 supported mechanisms and 1 unsupported proposed failure. Narrow D1 recovery absolutes and D2 remedy confidence per independent audit. Other 8 unmatched findings remain unaudited.", "human_adjudication": "requested"}
+  ],
+  "remaining": "Human adjudication of classifications, root splitting, scorability, matches, audit qualifications and severity requested, not obtained or required as an unavailable execution prerequisite. New label-blind sample separately required before held-out/deployment claims."
+}

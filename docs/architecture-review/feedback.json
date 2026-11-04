@@ -1,0 +1,266 @@
+{
+  "schema": "architecture-review.feedback.v1",
+  "author": "cgwalters",
+  "retrieved_at": "2026-11-04T00:49:21.853Z",
+  "purpose": "Scoring only; never historical reviewer input.",
+  "samples": [
+    {
+      "id": "B2603",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2603/comments",
+          "per_page": 100,
+          "page_sizes": [
+            23
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2603/reviews",
+          "per_page": 100,
+          "page_sizes": [
+            10
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2603/comments",
+          "per_page": 100,
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        }
+      ],
+      "units": [
+        {
+          "channel": "inline",
+          "id": 4427310071,
+          "url": "https://github.com/bootc-dev/bootc/pull/2603#discussion_r4427310071",
+          "body": "I think this function needs to live in some place more central. It's not obvious to me why we can't directly use `containers_image_proxy::ImageReference::try_from` here.\n",
+          "created_at": "2026-10-30T18:43:10Z",
+          "updated_at": "2026-10-30T18:43:54Z",
+          "commit_id": "cc0574aee3089c02db16eea3d7bc1c5884b82958",
+          "in_reply_to_id": null,
+          "path": "crates/lib/src/cli.rs",
+          "original_line": 1694,
+          "diff_hunk": "@@ -1686,13 +1690,22 @@ pub(crate) fn target_imgref_for_switch(opts: &SwitchOpts) -> Result<Option<Image\n         return Ok(None);\n     };\n \n-    let imgref = containers_image_proxy::ImageReference::try_from(target_imgref.as_str())\n+    let prefixed;\n+    let value = if target_imgref.split_once(':').is_some_and(|(transport, _)| {"
+        },
+        {
+          "channel": "inline",
+          "id": 4427315205,
+          "url": "https://github.com/bootc-dev/bootc/pull/2603#discussion_r4427315205",
+          "body": "BTW one thing that would also likely here is to use clap's `try_from` functionality so that we directly parse into the value structure instead of `String`",
+          "created_at": "2026-10-30T18:43:48Z",
+          "updated_at": "2026-10-30T18:43:54Z",
+          "commit_id": "cc0574aee3089c02db16eea3d7bc1c5884b82958",
+          "in_reply_to_id": null,
+          "path": "crates/lib/src/cli.rs",
+          "original_line": 259,
+          "diff_hunk": "@@ -248,10 +248,14 @@ pub(crate) struct SwitchOpts {\n     #[clap(flatten)]\n     pub(crate) uki_addon_opts: UkiAddonOpts,\n \n-    /// The image to use for subsequent upgrades\n-    /// Useful when switching to an, say containers-storage, image\n-    /// but subsequent updates are to be pulled from registry\n-    #[clap(long)]\n+    /// Record a different image reference for subsequent updates.\n+    ///\n+    /// The positional image and --transport select where to fetch now. This\n+    /// reference is recorded without fetching it. Accepts a registry image name\n+    /// or a transport-prefixed reference, such as docker://quay.io/example/os:latest.\n+    /// Repeating the same source and update origin leaves the deployment unchanged.\n+    /// Use --from-downloaded to unlock a deployment staged with --download-only.\n+    #[clap(long, conflicts_with_all = [\"from_downloaded\", \"mutate_in_place\", \"from_delta\"])]\n     pub(crate) target_imgref: Option<String>,"
+        },
+        {
+          "channel": "inline",
+          "id": 4427441326,
+          "url": "https://github.com/bootc-dev/bootc/pull/2603#discussion_r4427441326",
+          "body": "Hmm but since we also set a reference for the non-target image...I think we may \"leak\" it? Or I guess not since we always end up source-of-truth limiting to the bootloader entries.\n\nBut anyways I think the importer has direct support for this?",
+          "created_at": "2026-10-30T18:58:00Z",
+          "updated_at": "2026-10-30T19:00:09Z",
+          "commit_id": "a63c7f49d87ccde3ab094af8cca5b3adcde17e68",
+          "in_reply_to_id": null,
+          "path": "crates/lib/src/deploy.rs",
+          "original_line": 566,
+          "diff_hunk": "@@ -562,6 +562,13 @@ pub(crate) async fn prepare_for_pull(\n     }\n     let prep = match imp.prepare().await? {\n         PrepareResult::AlreadyPresent(c) => {\n+            if let Some(target) = target_imgref {\n+                ostree_container::store::set_image_reference("
+        },
+        {
+          "channel": "inline",
+          "id": 4427457789,
+          "url": "https://github.com/bootc-dev/bootc/pull/2603#discussion_r4427457789",
+          "body": "We have a bug for this I'm pretty sure and had decided there to disallow this for composefs. I think it's definitely better if we support it, but we should rationalize that.",
+          "created_at": "2026-10-30T18:59:58Z",
+          "updated_at": "2026-10-30T19:00:09Z",
+          "commit_id": "7818ea5253a062f1a76631a4572da85c2d8159ba",
+          "in_reply_to_id": null,
+          "path": "crates/lib/src/bootc_composefs/switch.rs",
+          "original_line": 197,
+          "diff_hunk": "@@ -178,3 +192,60 @@ pub(crate) async fn switch_composefs(\n \n     Ok(())\n }\n+\n+/// Reuse only an identical OCI image, never just an identical composefs root.\n+fn switch_origin("
+        },
+        {
+          "channel": "review",
+          "id": 5717113152,
+          "url": "https://github.com/bootc-dev/bootc/pull/2603#pullrequestreview-5717113152",
+          "body": "",
+          "created_at": "2026-10-30T18:43:54Z",
+          "updated_at": null,
+          "commit_id": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+          "in_reply_to_id": null,
+          "path": null,
+          "original_line": null,
+          "diff_hunk": null
+        },
+        {
+          "channel": "review",
+          "id": 5717286549,
+          "url": "https://github.com/bootc-dev/bootc/pull/2603#pullrequestreview-5717286549",
+          "body": "",
+          "created_at": "2026-10-30T19:00:09Z",
+          "updated_at": null,
+          "commit_id": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+          "in_reply_to_id": null,
+          "path": null,
+          "original_line": null,
+          "diff_hunk": null
+        }
+      ]
+    },
+    {
+      "id": "B2588",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2588/comments",
+          "per_page": 100,
+          "page_sizes": [
+            3
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2588/reviews",
+          "per_page": 100,
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2588/comments",
+          "per_page": 100,
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        }
+      ],
+      "units": [
+        {
+          "channel": "inline",
+          "id": 4380793898,
+          "url": "https://github.com/bootc-dev/bootc/pull/2588#discussion_r4380793898",
+          "body": "This doesn't seem strictly necessary? ",
+          "created_at": "2026-10-26T18:10:13Z",
+          "updated_at": "2026-10-26T18:12:19Z",
+          "commit_id": "024643ef4830c529ef8b541f0f09891586b52a5b",
+          "in_reply_to_id": null,
+          "path": "tmt/tests/booted/test-install-shared-propagation.nu",
+          "original_line": 7,
+          "diff_hunk": "@@ -0,0 +1,41 @@\n+# number: 63\n+# tmt:\n+#   summary: Install from a shared mount namespace without leaking the storage bind mount\n+#   duration: 30m\n+# extra:\n+#   # bootloader=none is not supported for composefs (see test-install-no-boot-dir.nu)\n+#   fixme_skip_if_composefs: true"
+        },
+        {
+          "channel": "inline",
+          "id": 4380795873,
+          "url": "https://github.com/bootc-dev/bootc/pull/2588#discussion_r4380795873",
+          "body": "I think this could be glommed onto an existing test, but ok for now.",
+          "created_at": "2026-10-26T18:10:25Z",
+          "updated_at": "2026-10-26T18:12:19Z",
+          "commit_id": "024643ef4830c529ef8b541f0f09891586b52a5b",
+          "in_reply_to_id": null,
+          "path": "tmt/tests/booted/test-install-shared-propagation.nu",
+          "original_line": 35,
+          "diff_hunk": "@@ -0,0 +1,41 @@\n+# number: 63\n+# tmt:\n+#   summary: Install from a shared mount namespace without leaking the storage bind mount\n+#   duration: 30m\n+# extra:\n+#   # bootloader=none is not supported for composefs (see test-install-no-boot-dir.nu)\n+#   fixme_skip_if_composefs: true\n+#\n+# Regression test for https://github.com/bootc-dev/bootc/issues/2455\n+#\n+# Installing with --source-imgref skips bootc's own mount namespace unshare,\n+# so on a host where / is shared (the systemd default) the bind mount made\n+# for podman onto /run/bootc/storage used to propagate back and stay mounted.\n+# run_install already uses MountFlags=slave, which hides that, so make /\n+# shared again inside that namespace before installing.\n+\n+use std assert\n+use tap.nu\n+\n+def main [] {\n+    tap begin \"install to-filesystem with shared mount propagation\"\n+\n+    bootc image copy-to-storage\n+    let target_image = \"containers-storage:localhost/bootc\"\n+\n+    mkdir /var/mnt\n+    truncate -s 10G disk.img\n+    mkfs.ext4 disk.img\n+    mount -o loop disk.img /var/mnt\n+\n+    setenforce 0\n+\n+    tap run_install $\"mount --make-rshared /\n+bootc install to-filesystem --disable-selinux --bootloader=none --source-imgref ($target_image) /var/mnt\n+if findmnt /run/bootc/storage; then echo 'error: /run/bootc/storage mount leaked'; exit 1; fi\""
+        },
+        {
+          "channel": "inline",
+          "id": 4380813753,
+          "url": "https://github.com/bootc-dev/bootc/pull/2588#discussion_r4380813753",
+          "body": "I think this is fine, but probably going forward we should actually prefer `SLAVE` so we do pick up mounts from the host into our mountns. But it's unlikely to matter because the process here is short-lived.",
+          "created_at": "2026-10-26T18:12:14Z",
+          "updated_at": "2026-10-26T18:12:19Z",
+          "commit_id": "024643ef4830c529ef8b541f0f09891586b52a5b",
+          "in_reply_to_id": null,
+          "path": "crates/lib/src/podstorage.rs",
+          "original_line": 144,
+          "diff_hunk": "@@ -126,13 +126,24 @@ pub(crate) fn bind_storage_roots(\n             // But...how did we avoid that circular dependency by using the process cwd?\n             //\n             // I tried making the mounts recursively private, but that didn't help.\n+            // (We do make them private below, but for a different reason.)\n             let oldwd = rustix::fs::open(\n                 \".\",\n                 OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::RDONLY,\n                 Mode::empty(),\n             )?;\n             rustix::process::fchdir(&storage_root)?;\n             rustix::thread::unshare_unsafe(rustix::thread::UnshareFlags::NEWNS)?;\n+            // The new namespace inherits the caller's propagation. If that is shared\n+            // (e.g. `install to-existing-root --source-imgref` run directly on a systemd\n+            // host, which skips our usual unshare), the bind below would propagate back\n+            // and stay mounted on the host's /run/bootc/storage after we exit.\n+            // https://github.com/bootc-dev/bootc/issues/2455\n+            rustix::mount::mount_change(\n+                c\"/\",\n+                rustix::mount::MountPropagationFlags::PRIVATE"
+        },
+        {
+          "channel": "review",
+          "id": 5656806196,
+          "url": "https://github.com/bootc-dev/bootc/pull/2588#pullrequestreview-5656806196",
+          "body": "Hmm...I think we should be doing the unshare in the `to-existing-root` case most likely too.",
+          "created_at": "2026-10-26T18:12:19Z",
+          "updated_at": null,
+          "commit_id": "024643ef4830c529ef8b541f0f09891586b52a5b",
+          "in_reply_to_id": null,
+          "path": null,
+          "original_line": null,
+          "diff_hunk": null
+        }
+      ]
+    },
+    {
+      "id": "O3664",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3664/comments",
+          "per_page": 100,
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3664/reviews",
+          "per_page": 100,
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3664/comments",
+          "per_page": 100,
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        }
+      ],
+      "units": [
+        {
+          "channel": "inline",
+          "id": 4234529344,
+          "url": "https://github.com/ostreedev/ostree/pull/3664#discussion_r4234529344",
+          "body": "Someone else already tried to do a similar PR right? I don't like this because it just basically disables part of the gpt auto generator behind its back.\n\nThe fix that seems cleanest to me is something like changing the systemd generator to prefer mounting at `/efi` first (and we create that dir).\n\nAlternatively though here, we could try reverting the change to have the `/boot` bind mount and change our logic so that we always handle the case of being in a running sysroot and look at that path. That feels...tractable. It's effectively reverting the PR that added this bind mount in the first place of course and we'd need to go back through the rationale and ensure this doesn't break anything.\n",
+          "created_at": "2026-10-09T21:03:03Z",
+          "updated_at": "2026-10-09T21:03:08Z",
+          "commit_id": "8fe1681229dc30210c4137e3c3ef8ee35114f716",
+          "in_reply_to_id": null,
+          "path": "src/libostree/ostree-impl-system-generator.c",
+          "original_line": 390,
+          "diff_hunk": "@@ -378,6 +378,19 @@ boot_mount_generator (const char *normal_dir, GError **error)\n   if (symlinkat (\"../boot.mount\", normal_dir_dfd, \"local-fs.target.requires/boot.mount\") < 0)\n     return glnx_throw_errno_prefix (error, \"symlinkat\");\n \n+  /* When it can find the root disk, systemd-gpt-auto-generator sees our\n+   * still-empty /boot and claims it for the ESP, generating boot.mount (which\n+   * the unit above overrides) and a boot.automount with an idle timeout. That\n+   * automount then fronts our bind mount: once idle it unmounts /boot (and\n+   * stops local-fs.target, which requires boot.mount), and at shutdown\n+   * stopping it detaches /boot underneath ostree-finalize-staged.service.\n+   * /boot is ours here, so mask the automount.\n+   *\n+   * https://github.com/bootc-dev/bootc/issues/2402\n+   */"
+        },
+        {
+          "channel": "review",
+          "id": 5475331979,
+          "url": "https://github.com/ostreedev/ostree/pull/3664#pullrequestreview-5475331979",
+          "body": "",
+          "created_at": "2026-10-09T21:03:08Z",
+          "updated_at": null,
+          "commit_id": "8fe1681229dc30210c4137e3c3ef8ee35114f716",
+          "in_reply_to_id": null,
+          "path": null,
+          "original_line": null,
+          "diff_hunk": null
+        }
+      ]
+    }
+  ]
+}

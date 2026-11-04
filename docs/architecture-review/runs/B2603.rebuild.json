@@ -1,0 +1,259 @@
+{
+  "schema": "architecture-review.rebuild.v1",
+  "id": "B2603",
+  "builder": "Justfile test-architecture-review rebuild",
+  "historical_identity": "Only matching bytes are reconstructed evidence; no new historical review ran.",
+  "manifest_sha256": "e65ba9a77bcab747b85388f7ae517d82e1c45d9b76578f27ec2cfb932174f9f4",
+  "ancestry": {
+    "status": "ahead",
+    "merge_base": "d0a449a7983d560331def4bc48e17da0b140bd99",
+    "commits_match": true,
+    "pre_feedback": true
+  },
+  "files": [
+    {
+      "name": "diff.patch",
+      "expected_bytes": 78369,
+      "actual_bytes": 78369,
+      "expected_sha256": "876b9bc534e148eaf279c5b2808d2990e4db9b9288037ed7a4cedd39161e9ab1",
+      "actual_sha256": "876b9bc534e148eaf279c5b2808d2990e4db9b9288037ed7a4cedd39161e9ab1",
+      "match": true
+    },
+    {
+      "name": "head/crates__lib__src__bootc_composefs__mod.rs",
+      "expected_bytes": 551,
+      "actual_bytes": 551,
+      "expected_sha256": "e412fec514532b4dca84a6fe83bc39ab61dd82a5594924691dadbf56d157d625",
+      "actual_sha256": "e412fec514532b4dca84a6fe83bc39ab61dd82a5594924691dadbf56d157d625",
+      "match": true
+    },
+    {
+      "name": "head/docs__src__man__bootc-switch.8.md",
+      "expected_bytes": 5222,
+      "actual_bytes": 5222,
+      "expected_sha256": "9277949717d038604fdbb2d1499177fd32fca46bbef10ca435e9a348ea08f5ce",
+      "actual_sha256": "9277949717d038604fdbb2d1499177fd32fca46bbef10ca435e9a348ea08f5ce",
+      "match": true
+    },
+    {
+      "name": "head/tmt__tests__booted__test-switch-target-imgref.nu",
+      "expected_bytes": 7047,
+      "actual_bytes": 7047,
+      "expected_sha256": "a916c08dcabd3c6ac4fb29ee9dbd4a2ed8bce625dc3191dad95b4efdf1993efb",
+      "actual_sha256": "a916c08dcabd3c6ac4fb29ee9dbd4a2ed8bce625dc3191dad95b4efdf1993efb",
+      "match": true
+    },
+    {
+      "name": "head/tmt__tests__tests.fmf",
+      "expected_bytes": 8578,
+      "actual_bytes": 8578,
+      "expected_sha256": "6b23068418a63d09458693fe4d2e7c3151700965eb19f96d6d2c946bdc9a4941",
+      "actual_sha256": "6b23068418a63d09458693fe4d2e7c3151700965eb19f96d6d2c946bdc9a4941",
+      "match": true
+    }
+  ],
+  "expected_total_bytes": 99767,
+  "actual_total_bytes": 99767,
+  "expected_file_order": [
+    "diff.patch",
+    "head/crates__lib__src__bootc_composefs__mod.rs",
+    "head/docs__src__man__bootc-switch.8.md",
+    "head/tmt__tests__booted__test-switch-target-imgref.nu",
+    "head/tmt__tests__tests.fmf"
+  ],
+  "actual_file_order": [
+    "diff.patch",
+    "head/crates__lib__src__bootc_composefs__mod.rs",
+    "head/docs__src__man__bootc-switch.8.md",
+    "head/tmt__tests__booted__test-switch-target-imgref.nu",
+    "head/tmt__tests__tests.fmf"
+  ],
+  "expected_omitted": [
+    {
+      "path": "crates/lib/src/bootc_composefs/switch.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 9383,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/delete.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 9731,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/finalize.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 10770,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/rollback.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 11467,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "tmt/plans/integration.fmf",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 12025,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/origin.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 14207,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/state.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 14218,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/generator.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 29036,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/update.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 29763,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/deploy.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 75981,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/status.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 83460,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/ostree-ext/src/container/store.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 100871,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/cli.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 135713,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/install.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 136843,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/boot.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 140971,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    }
+  ],
+  "actual_omitted": [
+    {
+      "path": "crates/lib/src/bootc_composefs/switch.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 9383,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/delete.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 9731,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/finalize.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 10770,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/rollback.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 11467,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "tmt/plans/integration.fmf",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 12025,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/origin.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 14207,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/state.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 14218,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/generator.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 29036,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/update.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 29763,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/deploy.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 75981,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/status.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 83460,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/ostree-ext/src/container/store.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 100871,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/cli.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 135713,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/install.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 136843,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "crates/lib/src/bootc_composefs/boot.rs",
+      "revision": "8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53",
+      "bytes": 140971,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    }
+  ],
+  "total_match": true,
+  "ordering_match": true,
+  "omissions_match": true,
+  "all_match": true
+}

@@ -5,8 +5,10 @@
 Part of [#1227](https://github.com/cgwalters-forge/tracker/issues/1227), under
 [#1224](https://github.com/cgwalters-forge/tracker/issues/1224). This is a small,
 manual prompt prototype, **not an enabled reviewer or an effectiveness result**.
-A three-PR development pilot ran, but labels the prompt author had seen and a
-single scorer mean it is not held out; keep #1227 open. No production prompt,
+A three-PR development pilot ran, but labels the prompt author had seen mean
+it is not held out. A follow-up reconstructs its packets and adds a complete
+accessible feedback inventory and independent agent scoring, not human review;
+human adjudication and a new label-blind sample remain outstanding. Keep #1227 open. No production prompt,
 workflow, permission, merge rule, schedule or inference service changes here.
 
 Read [patterns.md](patterns.md), [references.json](references.json) and
@@ -14,7 +16,8 @@ Read [patterns.md](patterns.md), [references.json](references.json) and
 order, into a fresh read-only review session and attach a pinned diff and its
 historical context; the index lets the reviewer cite a pattern's source sections. The prompt specifies the input
 contract and output format. Do not attach this README, evaluation records or
-operator feedback to an evaluation reviewer.
+operator feedback to a historical evaluation reviewer. The later scoring pass
+does receive the feedback explicitly; it is not a new historical review run.
 
 The concrete threats are a reviewed patch redirecting its reviewer (prompt
 injection), and feedback/later fixes leaking into a retrospective result. The
@@ -72,6 +75,26 @@ It checks source pins and links, pattern structure, prompt coverage, sample
 separation, archived runs against their manifests and hashes, and count
 consistency, including invalid-record fixtures. This is a
 structural check, **not** semantic citation verification or an architecture review.
+`just test-architecture-review fixtures` also runs the deterministic offline
+packet fixtures (and the structural checks). The existing recipe preserves the
+builder without adding a script file or changing the new-file policy.
+
+For explicit, bounded network reconstruction, run
+`just test-architecture-review rebuild ID` with B2588, B2603 or O3664. It writes
+only reconstructed reviewed bytes under `/tmp/opencode/architecture-review-ID/`
+and a separate `runs/ID.rebuild.json`, never old manifests or outputs. Then
+`just test-architecture-review verify ID` hashes the local reviewed bytes without
+network (it does not independently recompute source selection/omissions).
+The [evaluation](evaluation.md#recovered-executable-packet-recipe) specifies exact
+annotation, byte encoding, file selection, omissions and historical checks, and
+records successful comparisons of every archived digest, including diff.patch.
+Nothing runs automatically or adds a production caller setting.
+
+`just test-architecture-review feedback` explicitly refreshes `feedback.json`
+from paginated API GETs. Do not refresh it casually: it is the scoring snapshot,
+hash-pinned by [scoring.json](scoring.json), which archives the second scorer's
+provenance, rubric, disagreements and controller disposition. Feedback, results,
+scoring and rebuilt evidence reports are **not** historical-reviewer inputs.
 For a live citation recheck, use the nine exact repository/path/revision triples
 with `gh api repos/REPO/contents/PATH?ref=REV`; use GET only. Release resolution
 commands and actual outcomes are recorded in evaluation.md. Production automation
