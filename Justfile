@@ -15,7 +15,7 @@ test-architecture-review mode="test" id="B2588":
     const { readFileSync } = require('node:fs');
     const test = require('node:test');
     const { execFileSync } = require('node:child_process');
-    const { mkdirSync, writeFileSync } = require('node:fs');
+    const { mkdirSync, writeFileSync, lstatSync, readdirSync, mkdtempSync, rmSync, renameSync } = require('node:fs');
 
     const read = name => readFileSync(`docs/architecture-review/${name}`, 'utf8');
     const json = name => JSON.parse(read(name));
@@ -102,16 +102,38 @@ test-architecture-review mode="test" id="B2588":
       assert.deepEqual(comparison.commits.map(c => ({ sha: c.sha, committed: c.commit.committer.date })), manifest.commits);
     }
 
+    // Hashes alone miss extra context (especially feedback) beside reviewed files.
+    // The only allowed directories are the root and head, if the manifest uses it.
+    function readPacket(directory, manifest) {
+      const names = manifest.files.map(f => f.name);
+      assert.equal(new Set(names).size, names.length, 'duplicate packet filename');
+      assert.ok(names.includes('diff.patch'), 'missing diff.patch');
+      for (const name of names) assert.match(name, /^(?:diff\.patch|head\/[^/]+)$/);
+      for (const name of names) assert.ok(!['head/.', 'head/..'].includes(name), 'unsafe packet filename');
+      const directories = names.some(n => n.startsWith('head/')) ? ['', 'head'] : [''];
+      for (const dir of directories) {
+        const path = dir ? `${directory}/${dir}` : directory;
+        assert.ok(lstatSync(path).isDirectory(), `not a real directory: ${path}`);
+        const expected = dir ? names.filter(n => n.startsWith('head/')).map(n => n.slice(5)) :
+          ['diff.patch', ...(directories.includes('head') ? ['head'] : [])];
+        assert.deepEqual([...readdirSync(path)].sort(), expected.sort(), `unexpected packet entries: ${path}`);
+      }
+      return names.map(name => {
+        const path = `${directory}/${name}`;
+        assert.ok(lstatSync(path).isFile(), `not a regular packet file: ${path}`);
+        return { name, data: readFileSync(path) };
+      });
+    }
+
     if (process.argv[2] === 'verify') {
       const id = process.argv[3];
       assert.ok(sample.samples.some(s => s.id === id && s.status === 'evaluated'), 'unknown evaluated sample');
       const manifest = json(`runs/${id}.manifest.json`);
-      const files = manifest.files.map(f => ({ name: f.name,
-        data: readFileSync(`/tmp/opencode/architecture-review-${id}/${f.name}`) }));
+      const files = readPacket(`/tmp/opencode/architecture-review-${id}`, manifest);
       const report = comparePacket({ files, omitted: manifest.omitted,
         total_bytes: files.reduce((sum, f) => sum + f.data.length, 0) }, manifest);
-      // This mode checks reviewed bytes only, not independently reconstructed selection/omissions.
-      console.log(`${id}: reviewed-byte verification ${report.all_match ? 'matches' : 'MISMATCH'}`);
+      // Exact directory integrity and bytes, not independently reconstructed selection/omissions.
+      console.log(`${id}: exact packet verification ${report.all_match ? 'matches' : 'MISMATCH'}`);
       if (!report.all_match) console.log(JSON.stringify(report, null, 2));
       process.exit(report.all_match ? 0 : 1);
     }
@@ -137,17 +159,28 @@ test-architecture-review mode="test" id="B2588":
       });
       const packet = select(diff, sources, manifest.limits);
       const directory = `/tmp/opencode/architecture-review-${id}`;
-      mkdirSync(`${directory}/head`, { recursive: true });
-      for (const file of packet.files) writeFileSync(`${directory}/${file.name}`, file.data);
       const report = { schema: 'architecture-review.rebuild.v1', id, builder: 'Justfile test-architecture-review rebuild',
         historical_identity: 'Only matching bytes are reconstructed evidence; no new historical review ran.',
         manifest_sha256: sha256(read(`runs/${id}.manifest.json`)),
         ancestry: { status: comparison.status, merge_base: comparison.merge_base_commit.sha, commits_match: true, pre_feedback: true },
         ...comparePacket(packet, manifest) };
+      assert.ok(report.all_match, `reconstructed packet MISMATCH: ${JSON.stringify(report)}`);
+      const staging = mkdtempSync(`${directory}.staging-`);
+      try {
+        if (packet.files.some(f => f.name.startsWith('head/'))) mkdirSync(`${staging}/head`);
+        for (const file of packet.files) writeFileSync(`${staging}/${file.name}`, file.data);
+        const files = readPacket(staging, manifest);
+        assert.ok(comparePacket({ ...packet, files }, manifest).all_match, 'staged packet MISMATCH');
+        // Replace the entire old tree: no stale source or scoring material survives.
+        // Publication is after comparison; a failed retrieval never publishes new bytes.
+        rmSync(directory, { recursive: true, force: true });
+        renameSync(staging, directory);
+      } finally {
+        rmSync(staging, { recursive: true, force: true });
+      }
       save(`runs/${id}.rebuild.json`, report);
-      console.log(`${id}: packet ${report.all_match ? 'matches' : 'MISMATCH'}; details in runs/${id}.rebuild.json`);
-      if (!report.all_match) console.log(JSON.stringify(report, null, 2));
-      process.exit(report.all_match ? 0 : 1);
+      console.log(`${id}: exact packet matches; details in runs/${id}.rebuild.json`);
+      process.exit(0);
     }
 
     if (process.argv[2] === 'feedback') {
@@ -183,7 +216,126 @@ test-architecture-review mode="test" id="B2588":
       process.exit(0);
     }
 
-    assert.ok(['test', 'fixtures'].includes(process.argv[2]), 'expected test, fixtures, rebuild, verify or feedback');
+    assert.ok(['test', 'fixtures', 'e2e'].includes(process.argv[2]), 'expected test, fixtures, e2e, rebuild, verify or feedback');
+    if (process.argv[2] === 'e2e') test('offline canned-API rebuild/verify dispatch', () => {
+      const fs = require('node:fs');
+      const vm = require('node:vm');
+      const sandbox = fs.mkdtempSync('/tmp/opencode/architecture-review-test-');
+      const source = /^test-architecture-review .*:\n((?:    .*\n|\n)+)/m.exec(fs.readFileSync('Justfile', 'utf8'))[1]
+        .replace(/^    /gm, '');
+      const id = 'B2588';
+      const s = sample.samples.find(s => s.id === id);
+      const base = s.reconstructed_base ?? s.candidate_base;
+      const endpoint = `repos/${s.repository}/compare/${base}...${s.head}`;
+      const diff = '@@ -1 +1 @@\n-old\n+new\n';
+      const data = Buffer.from('new\n');
+      const packet = select(Buffer.from(diff), [{ path: 'x', revision: s.head, data }], { max_files: 30, max_bytes: 100000 });
+      const manifest = { files: packet.files.map(f => ({ name: f.name, bytes: f.data.length, sha256: sha256(f.data) })),
+        total_bytes: packet.total_bytes, omitted: [], limits: { max_files: 30, max_bytes: 100000 },
+        first_feedback_at: s.feedback_at, commits: [{ sha: s.head, committed: s.feedback_at }] };
+      const history = { status: 'ahead', merge_base_commit: { sha: base }, total_commits: 1,
+        commits: [{ sha: s.head, commit: { committer: { date: s.feedback_at } } }], files: [{ filename: 'x', status: 'modified' }] };
+      const directory = `${sandbox}/packet`;
+      const map = path => typeof path === 'string' && path.startsWith(`/tmp/opencode/architecture-review-${id}`) ?
+        path.replace(`/tmp/opencode/architecture-review-${id}`, directory) : path;
+      const exit = {};
+      let failure = null;
+      let calls = 0;
+      const wrappedFS = { ...fs };
+      for (const method of ['readFileSync', 'lstatSync', 'readdirSync', 'mkdirSync', 'mkdtempSync', 'rmSync', 'writeFileSync']) {
+        wrappedFS[method] = (path, ...args) => {
+          if (path === `docs/architecture-review/runs/${id}.manifest.json` && method === 'readFileSync') return JSON.stringify(manifest);
+          if (path === `docs/architecture-review/runs/${id}.rebuild.json` && method === 'writeFileSync') path = `${sandbox}/report.json`;
+          if (failure === 'staging' && method === 'writeFileSync' && path.includes('.staging-') && path.endsWith('/head/x')) args[0] = 'damaged staging';
+          return fs[method](map(path), ...args);
+        };
+      }
+      wrappedFS.renameSync = (from, to) => fs.renameSync(map(from), map(to));
+      const dispatch = mode => {
+        let status = null;
+        try {
+          vm.runInNewContext(source, { Buffer, TextDecoder, console: { log() {} },
+            process: { argv: ['node', 'recipe', mode, id], exit(code) { status = code; throw exit; } },
+            require(name) {
+              if (name === 'node:fs') return wrappedFS;
+              if (name === 'node:child_process') return { execFileSync(command, args, options) {
+                calls++;
+                assert.equal(command, 'gh');
+                assert.equal(args[0], 'api');
+                assert.equal(options.timeout, 20000);
+                assert.equal(options.maxBuffer, 8 * 1024 * 1024);
+                if (failure === 'retrieval') throw new Error('canned retrieval failure');
+                if (args[1] === endpoint) return Buffer.from(args.includes('Accept: application/vnd.github.diff') ?
+                  (failure === 'comparison' ? diff + 'bad' : diff) : JSON.stringify(history));
+                assert.equal(args[1], `repos/${s.repository}/contents/x?ref=${s.head}`);
+                return Buffer.from(JSON.stringify({ type: 'file', encoding: 'base64', content: data.toString('base64'), size: data.length }));
+              } };
+              return require(name);
+            } });
+        } catch (error) {
+          if (error !== exit) return { status: 1, error };
+        }
+        return { status };
+      };
+      const succeeds = mode => { const result = dispatch(mode); assert.equal(result.status, 0, `${mode}: ${result.error?.stack ?? ''}`); };
+      const fails = mode => assert.equal(dispatch(mode).status, 1, mode);
+      try {
+        succeeds('rebuild');
+        succeeds('verify');
+        const before = calls;
+        for (const [name, kind] of [['head/obsolete.txt', 'file'], ['feedback.json', 'file'],
+          ['feedback', 'directory'], ['head/extra', 'directory'], ['head/link', 'symlink']]) {
+          const path = `${directory}/${name}`;
+          if (kind === 'directory') fs.mkdirSync(path);
+          else if (kind === 'symlink') fs.symlinkSync(`${directory}/diff.patch`, path);
+          else fs.writeFileSync(path, 'stale feedback');
+          fails('verify');
+          succeeds('rebuild');
+          assert.equal(fs.existsSync(path), false, name);
+          succeeds('verify');
+        }
+        assert.ok(calls > before);
+        succeeds('rebuild'); // Repeated reconstruction has the same exact packet.
+        for (const name of ['diff.patch', 'head/x']) {
+          fs.rmSync(`${directory}/${name}`);
+          fs.symlinkSync(`${sandbox}/report.json`, `${directory}/${name}`);
+          fails('verify');
+          succeeds('rebuild');
+        }
+        fs.renameSync(`${directory}/head`, `${sandbox}/old-head`);
+        fs.symlinkSync(`${sandbox}/old-head`, `${directory}/head`);
+        fails('verify');
+        succeeds('rebuild');
+        fs.renameSync(directory, `${sandbox}/old-packet`);
+        fs.symlinkSync(`${sandbox}/old-packet`, directory);
+        fails('verify');
+        succeeds('rebuild');
+        fs.writeFileSync(`${directory}/head/x`, 'bad\n');
+        fails('verify');
+        for (const reason of ['retrieval', 'comparison', 'staging']) {
+          failure = reason;
+          const oldReport = fs.readFileSync(`${sandbox}/report.json`, 'utf8');
+          fails('rebuild');
+          assert.equal(fs.readFileSync(`${directory}/head/x`, 'utf8'), 'bad\n', 'failed rebuild does not publish');
+          assert.equal(fs.readFileSync(`${sandbox}/report.json`, 'utf8'), oldReport);
+          fails('verify');
+          fs.rmSync(directory, { recursive: true });
+          fails('rebuild');
+          assert.equal(fs.existsSync(directory), false, 'failed rebuild does not create a packet');
+          failure = null;
+          succeeds('rebuild');
+          fs.writeFileSync(`${directory}/head/x`, 'bad\n');
+        }
+        fs.rmSync(`${directory}/head/x`);
+        fails('verify');
+        failure = null;
+        succeeds('rebuild');
+        succeeds('verify');
+        assert.deepEqual(fs.readdirSync(sandbox).filter(n => n.includes('.staging-')), []);
+      } finally {
+        fs.rmSync(sandbox, { recursive: true, force: true });
+      }
+    });
     test('offline packet annotation and selection fixtures', () => {
       const diff = 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n-old\n+new\n same\n\\ No newline at end of file\n';
       assert.equal(annotate(diff), 'diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1,2 +1,2 @@\n     -old\n   1 +new\n   2  same\n\\ No newline at end of file\n');
@@ -339,10 +491,20 @@ test-architecture-review mode="test" id="B2588":
       }
     });
 
+    function validateReportIDs(reports) {
+      const ids = reports.map(r => r.id);
+      assert.equal(new Set(ids).size, ids.length, 'duplicate rebuild report ID');
+      assert.deepEqual([...ids].sort(), sample.samples.filter(s => s.status === 'evaluated').map(s => s.id).sort(),
+        'rebuild report IDs must exactly cover evaluated runs');
+    }
+
     test('rebuild reports compare every recorded size/digest and selection with frozen manifests', () => {
-      assert.equal(results.packet_rebuilds.length, results.runs.length);
-      for (const file of results.packet_rebuilds) {
-        const report = json(file);
+      const reports = results.packet_rebuilds.map(json);
+      validateReportIDs(reports);
+      assert.throws(() => validateReportIDs([reports[0], reports[0], reports[0]]), /duplicate/);
+      assert.throws(() => validateReportIDs(reports.slice(1)), /exactly cover/);
+      assert.throws(() => validateReportIDs(reports.map((r, i) => i ? r : { ...r, id: 'unknown' })), /exactly cover/);
+      for (const report of reports) {
         const run = results.runs.find(r => r.id === report.id);
         const manifest = json(run.manifest);
         assert.equal(report.manifest_sha256, sha256(read(run.manifest)));
