@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-gate test-forge-sync agent-board-pin
+test: test-agent-board-install test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-caller test-review-gate test-forge-sync agent-board-pin
 
 # Manual structural checks of the offline architecture-review prototype.
 test-architecture-review mode="test" id="B2588":
@@ -606,6 +606,53 @@ test-architecture-review mode="test" id="B2588":
         ...results, unmatched_audit: { ...results.unmatched_audit, supported: 3 },
       }));
     });
+
+# Guard the disabled cutover until a compatible wrapper is pinned. Replace
+# these guards with dispatch/exact-head/record-only contract coverage then.
+test-review-caller:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const { runInNewContext } = require('node:vm');
+    const { execFileSync } = require('node:child_process');
+    const workflow = fs.readFileSync('.github/workflows/review.yml', 'utf8');
+    const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
+    assert.ok(!Object.hasOwn(pass.pr, 'reviewPools'), 'reviewPools is global across follow');
+    assert.doesNotMatch(workflow, /^  workflow_dispatch:/m);
+    assert.doesNotMatch(workflow, /\$\{\{[^\n]*(?:inputs\.|vars\.REVIEW_(?:RECORD_ONLY|POOLS))/);
+    assert.doesNotMatch(workflow, /^    with:/m, 'do not guess inputs for the old wrapper');
+    const gate = /^    if: >-\n((?: {6}.*\n)+)/m.exec(workflow)?.[1].trim();
+    assert.ok(gate);
+    for (const [event_name, pull, body, want] of [
+      ['pull_request_target', false, '', true],
+      ['issue_comment', true, '/review', true],
+      ['issue_comment', true, '/review again', true],
+      ['issue_comment', true, 'not /review', false],
+      ['issue_comment', false, '/review', false],
+      ['workflow_dispatch', false, '', false],
+    ]) {
+      const github = { event_name, event: { issue: { pull_request: pull }, comment: { body } } };
+      assert.equal(runInNewContext(gate, { github, startsWith: (s, prefix) => s.startsWith(prefix) }), want,
+        `${event_name}: ${body}`);
+    }
+    assert.match(workflow, /^    types: \[opened, synchronize, reopened, ready_for_review\]$/m);
+    assert.match(workflow, /^    types: \[created\]$/m);
+    // Parse the actual trigger tables: commented-out or misplaced fields
+    // must not stand in for command authorization or fork admission.
+    const files = ['workflow/review.toml', 'workflow/review-command.toml'];
+    const bounds = JSON.parse(execFileSync('python3', ['-c',
+      'import json, sys, tomllib; print(json.dumps([tomllib.load(open(p, "rb")) for p in sys.argv[1:]]))', ...files], { encoding: 'utf8' }));
+    const triggers = [
+      { events: ['pull_request_target', 'pull_request'], roles: ['all'], bots: ['dependabot[bot]'], forks: true },
+      { events: ['issue_comment'], roles: ['admin', 'maintain', 'write'], bots: [], forks: true, commands: ['/review'] },
+    ];
+    for (const [i, bound] of bounds.entries()) {
+      assert.deepEqual(bound.github?.trigger, triggers[i], files[i]);
+      assert.deepEqual(bound.hosts, ['github.com'], files[i]);
+      assert.deepEqual(bound.repos, ['cgwalters-forge/tracker'], files[i]);
+      assert.deepEqual(bound.bases, ['main'], files[i]);
+    }
+    console.log('ok legacy review routing and paced-review default-off guards (compatible wrapper pending)');
 
 # poll must pass both of the fix bounds files dispatch selects per target.
 test-poll-bounds:

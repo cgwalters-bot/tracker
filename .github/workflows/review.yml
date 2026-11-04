@@ -21,6 +21,9 @@
 # head, so for every change to .github/ and workflow/ the model's verdict
 # is the only gate.
 name: review
+# Paced dispatch is not wired: this pin has no dispatch input contract or
+# record-only mode. Keep event reviews until the coordinated cutover in
+# README.md, "Paced-review cutover"; adding dispatch alone would double-start.
 on:
   # Runs this file from the base branch. No job here checks out the pull
   # request: the agent fetches the head as data inside its sandbox, with
