@@ -82,6 +82,9 @@ packages = ["python3-venv", "nftables", "just"]
 "cgwalters-forge/agent-board" = ["cargo", "rustfmt", "rust-clippy"]
 "cgwalters-forge/tracker" = ["cargo", "rustfmt", "rust-clippy"]
 "cgwalters-forge/misctool" = ["cargo", "rustfmt", "rust-clippy"]
+# Their JavaScript is being ported to Rust (tracker#1260).
+"cgwalters-forge/agenthome" = ["cargo", "rustfmt", "rust-clippy"]
+"cgwalters-forge/actions" = ["cargo", "rustfmt", "rust-clippy"]
 "cgwalters-bot/praxis-credential-broker" = ["cargo", "rustfmt", "rust-clippy"]
 # The midstream forks (epic #160). composefs-rs builds with pkg-config and
 # OpenSSL for its HTTP fetch, as bcvk does; bootc also links libostree,
