@@ -83,8 +83,9 @@ packages = ["python3-venv", "nftables", "just"]
 "cgwalters-forge/agent-board" = ["cargo", "rustfmt", "rust-clippy"]
 "cgwalters-forge/tracker" = ["cargo", "rustfmt", "rust-clippy"]
 "cgwalters-forge/misctool" = ["cargo", "rustfmt", "rust-clippy"]
-# Their JavaScript is being ported to Rust (tracker#1260).
+# agenthome needs Rust 1.85, below Ubuntu 26.04's 1.93 (agenthome#61).
 "cgwalters-forge/agenthome" = ["cargo", "rustfmt", "rust-clippy"]
+# Their JavaScript is being ported to Rust (tracker#1260).
 "cgwalters-forge/actions" = ["cargo", "rustfmt", "rust-clippy"]
 "cgwalters-bot/praxis-credential-broker" = ["cargo", "rustfmt", "rust-clippy"]
 # The midstream forks (epic #160). composefs-rs builds with pkg-config and
