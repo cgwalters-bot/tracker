@@ -58,20 +58,20 @@ Draft upstream issue text (not posted):
 
 Pins: **O** = ostreedev/ostree `a4cb6781b92da59107a6e6c44bee77898054cc25`; **B** = bootc-dev/bootc `2b3ef761982fa3a73fc89cef0c119ab6b39bf47b`; **S** = systemd/systemd `7ad5ff04a915fed31bc73a7d459eb19cd6fecf14`. Ranges below are file:line citations; historical links intentionally use their named revision.
 
-- **O1:** [ostree-impl-system-generator.c:279–379](https://github.com/ostreedev/ostree/blob/a4cb6781b92da59107a6e6c44bee77898054cc25/src/libostree/ostree-impl-system-generator.c#L279-L379).
-- **O2:** [ostree-prepare-root.c:192–226](https://github.com/ostreedev/ostree/blob/a4cb6781b92da59107a6e6c44bee77898054cc25/src/switchroot/ostree-prepare-root.c#L192-L226).
-- **O3:** [ostree-sysroot.c:386–464](https://github.com/ostreedev/ostree/blob/a4cb6781b92da59107a6e6c44bee77898054cc25/src/libostree/ostree-sysroot.c#L386-L464); [ostree-core.c:2717–2736](https://github.com/ostreedev/ostree/blob/a4cb6781b92da59107a6e6c44bee77898054cc25/src/libostree/ostree-core.c#L2717-L2736).
-- **O4:** [ostree-sysroot-deploy.c:4124–4233](https://github.com/ostreedev/ostree/blob/a4cb6781b92da59107a6e6c44bee77898054cc25/src/libostree/ostree-sysroot-deploy.c#L4124-L4233).
-- **O5:** [original bind rationale, 598530da](https://github.com/ostreedev/ostree/commit/598530daf45a8bcb3be171732569b8aad0f4345d); [#3571 relocation, a88e66ea](https://github.com/ostreedev/ostree/commit/a88e66eaf86a3c7b0060073757c02245196f759d); [otcore-prepare-root.c:451–478](https://github.com/ostreedev/ostree/blob/a4cb6781b92da59107a6e6c44bee77898054cc25/src/libotcore/otcore-prepare-root.c#L451-L478).
-- **O6:** [ostree-grub-generator:68–79](https://github.com/ostreedev/ostree/blob/a4cb6781b92da59107a6e6c44bee77898054cc25/src/boot/grub2/ostree-grub-generator#L68-L79); [BLS write, ostree-sysroot-deploy.c:2171–2173](https://github.com/ostreedev/ostree/blob/a4cb6781b92da59107a6e6c44bee77898054cc25/src/libostree/ostree-sysroot-deploy.c#L2171-L2173).
-- **B1:** [cli.rs:1243–1274](https://github.com/bootc-dev/bootc/blob/2b3ef761982fa3a73fc89cef0c119ab6b39bf47b/crates/lib/src/cli.rs#L1243-L1274).
-- **B2:** [store/mod.rs:379–494](https://github.com/bootc-dev/bootc/blob/2b3ef761982fa3a73fc89cef0c119ab6b39bf47b/crates/lib/src/store/mod.rs#L379-L494).
-- **B3:** [bootc_composefs/finalize.rs:227–250](https://github.com/bootc-dev/bootc/blob/2b3ef761982fa3a73fc89cef0c119ab6b39bf47b/crates/lib/src/bootc_composefs/finalize.rs#L227-L250).
-- **B4:** [Justfile:293–298](https://github.com/bootc-dev/bootc/blob/2b3ef761982fa3a73fc89cef0c119ab6b39bf47b/Justfile#L293-L298); [CI bcvk setup:673–685](https://github.com/bootc-dev/bootc/blob/2b3ef761982fa3a73fc89cef0c119ab6b39bf47b/.github/workflows/ci.yml#L673-L685).
-- **S1:** [gpt-auto-generator.c:589–738](https://github.com/systemd/systemd/blob/7ad5ff04a915fed31bc73a7d459eb19cd6fecf14/src/gpt-auto-generator/gpt-auto-generator.c#L589-L738); [timeout:77](https://github.com/systemd/systemd/blob/7ad5ff04a915fed31bc73a7d459eb19cd6fecf14/src/gpt-auto-generator/gpt-auto-generator.c#L77).
-- **S2:** [automount.c:1086–1106](https://github.com/systemd/systemd/blob/7ad5ff04a915fed31bc73a7d459eb19cd6fecf14/src/core/automount.c#L1086-L1106).
-- **S3:** [gpt-auto-generator.c:456–484](https://github.com/systemd/systemd/blob/7ad5ff04a915fed31bc73a7d459eb19cd6fecf14/src/gpt-auto-generator/gpt-auto-generator.c#L456-L484).
-- **S4:** [gpt-auto-generator.c:1096–1204](https://github.com/systemd/systemd/blob/7ad5ff04a915fed31bc73a7d459eb19cd6fecf14/src/gpt-auto-generator/gpt-auto-generator.c#L1096-L1204).
-- **S5:** [v232 introduction](https://github.com/systemd/systemd/commit/b52a109ad3); [v252 gpt-auto-generator.c:474–520](https://github.com/systemd/systemd/blob/v252/src/gpt-auto-generator/gpt-auto-generator.c#L474-L520); [v254 reversal](https://github.com/systemd/systemd/commit/6a488fa7cc); [v258:652–676](https://github.com/systemd/systemd/blob/v258/src/gpt-auto-generator/gpt-auto-generator.c#L652-L676).
-- **S6:** [dissect-image.c:1433–1437](https://github.com/systemd/systemd/blob/7ad5ff04a915fed31bc73a7d459eb19cd6fecf14/src/shared/dissect-image.c#L1433-L1437).
-- **S7:** [systemd.automount.xml:167–174](https://github.com/systemd/systemd/blob/7ad5ff04a915fed31bc73a7d459eb19cd6fecf14/man/systemd.automount.xml#L167-L174).
+- **O1:** ostree-impl-system-generator.c:279–379 (`ostreedev/ostree` `a4cb6781b9` `src/libostree/ostree-impl-system-generator.c:279–379`).
+- **O2:** ostree-prepare-root.c:192–226 (`ostreedev/ostree` `a4cb6781b9` `src/switchroot/ostree-prepare-root.c:192–226`).
+- **O3:** ostree-sysroot.c:386–464 (`ostreedev/ostree` `a4cb6781b9` `src/libostree/ostree-sysroot.c:386–464`); ostree-core.c:2717–2736 (`ostreedev/ostree` `a4cb6781b9` `src/libostree/ostree-core.c:2717–2736`).
+- **O4:** ostree-sysroot-deploy.c:4124–4233 (`ostreedev/ostree` `a4cb6781b9` `src/libostree/ostree-sysroot-deploy.c:4124–4233`).
+- **O5:** original bind rationale, 598530da (ostreedev/ostree commit `598530daf4`); #3571 relocation, a88e66ea (ostreedev/ostree commit `a88e66eaf8`); otcore-prepare-root.c:451–478 (`ostreedev/ostree` `a4cb6781b9` `src/libotcore/otcore-prepare-root.c:451–478`).
+- **O6:** ostree-grub-generator:68–79 (`ostreedev/ostree` `a4cb6781b9` `src/boot/grub2/ostree-grub-generator:68–79`); BLS write, ostree-sysroot-deploy.c:2171–2173 (`ostreedev/ostree` `a4cb6781b9` `src/libostree/ostree-sysroot-deploy.c:2171–2173`).
+- **B1:** cli.rs:1243–1274 (`bootc-dev/bootc` `2b3ef76198` `crates/lib/src/cli.rs:1243–1274`).
+- **B2:** store/mod.rs:379–494 (`bootc-dev/bootc` `2b3ef76198` `crates/lib/src/store/mod.rs:379–494`).
+- **B3:** bootc_composefs/finalize.rs:227–250 (`bootc-dev/bootc` `2b3ef76198` `crates/lib/src/bootc_composefs/finalize.rs:227–250`).
+- **B4:** Justfile:293–298 (`bootc-dev/bootc` `2b3ef76198` `Justfile:293–298`); CI bcvk setup:673–685 (`bootc-dev/bootc` `2b3ef76198` `.github/workflows/ci.yml:673–685`).
+- **S1:** gpt-auto-generator.c:589–738 (`systemd/systemd` `7ad5ff04a9` `src/gpt-auto-generator/gpt-auto-generator.c:589–738`); timeout:77 (`systemd/systemd` `7ad5ff04a9` `src/gpt-auto-generator/gpt-auto-generator.c:77`).
+- **S2:** automount.c:1086–1106 (`systemd/systemd` `7ad5ff04a9` `src/core/automount.c:1086–1106`).
+- **S3:** gpt-auto-generator.c:456–484 (`systemd/systemd` `7ad5ff04a9` `src/gpt-auto-generator/gpt-auto-generator.c:456–484`).
+- **S4:** gpt-auto-generator.c:1096–1204 (`systemd/systemd` `7ad5ff04a9` `src/gpt-auto-generator/gpt-auto-generator.c:1096–1204`).
+- **S5:** v232 introduction (systemd/systemd commit `b52a109ad3`); v252 gpt-auto-generator.c:474–520 (`systemd/systemd` `v252` `src/gpt-auto-generator/gpt-auto-generator.c:474–520`); v254 reversal (systemd/systemd commit `6a488fa7cc`); v258:652–676 (`systemd/systemd` `v258` `src/gpt-auto-generator/gpt-auto-generator.c:652–676`).
+- **S6:** dissect-image.c:1433–1437 (`systemd/systemd` `7ad5ff04a9` `src/shared/dissect-image.c:1433–1437`).
+- **S7:** systemd.automount.xml:167–174 (`systemd/systemd` `7ad5ff04a9` `man/systemd.automount.xml:167–174`).
