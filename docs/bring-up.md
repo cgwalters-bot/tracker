@@ -10,12 +10,12 @@ and derives board Status (the README's "The pass"). Its writes are off until
 the repository variable `PASS_APPLY` is `enabled`; until then it only
 previews, in the run's summary. Once enabled, each pass starts the next;
 unsetting the variable stops them. A person
-at a machine holding nothing but credentials only checks on it, dispatches
-by hand where it does not, and answers what it cannot; everything they need
-is on the forge, and what is not yet is listed at the end.
+at a machine with only credentials checks on it, manually dispatches work
+it does not dispatch, and answers questions it cannot answer. Everything they need
+is on the forge, except for the items listed at the end.
 [cgwalters-bot/homegit](https://github.com/cgwalters-bot/homegit), whose
 `bin/bot-runs`, `bin/bot-board`, `bin/bot-git` and `bin/bot-capacity` did
-this from one machine, is frozen history: nothing here needs a checkout of
+this from one machine, is now frozen: nothing here needs a checkout of
 it ([homegit-freeze.md](homegit-freeze.md) lists what replaced it). A
 change to a repository, this one's notes included, is a dispatched run's
 pull request, not a commit made on the machine.
@@ -34,9 +34,9 @@ before dispatching anything: briefs and decisions are checked against them,
 and a new instruction is appended there, verbatim and dated, in a pull
 request. The wrapper every run goes through,
 [cgwalters-forge/actions](https://github.com/cgwalters-forge/actions), is
-followed at its main in `.github/workflows/dispatch.yml` and needs no clone;
-it brings [cgwalters-forge/agentic-job](https://github.com/cgwalters-forge/agentic-job)
-at whatever commit its main takes.
+used from its main in `.github/workflows/dispatch.yml`; you don't need to clone it.
+It brings [cgwalters-forge/agentic-job](https://github.com/cgwalters-forge/agentic-job)
+at the commit selected by its main.
 
 Besides `gh`, one tool: [agent-board](https://github.com/cgwalters-forge/agent-board),
 the board's CLI, built from source as its README says (Rust supporting
@@ -49,7 +49,7 @@ cargo install --locked --git https://github.com/cgwalters-forge/agent-board agen
 
 ## Credentials and settings
 
-On the machine, two files, neither of them in any repository. The bot
+The machine needs two files, neither of them in any repository. The bot
 account's token is in a file of its own, and `~/.config/bot-supervisor.env`
 names that file in `BOT_SUPERVISOR_GH_TOKEN_FILE`. Every shell starts the
 same way, and never prints the token:
@@ -59,16 +59,16 @@ set -a; . ~/.config/bot-supervisor.env; set +a
 export GH_TOKEN="$(cat "$BOT_SUPERVISOR_GH_TOKEN_FILE")"
 ```
 
-On the forge, already in place and only to be checked: the organization
-secret `CGWALTERS_BOT_PAT`, which apply and the pass act with, and the
-environment `agent-apply` here, which gates apply. The wrapper has a
+On the forge, check the existing organization secret `CGWALTERS_BOT_PAT`,
+which apply and the pass use, and the environment `agent-apply` here,
+which gates apply. The wrapper has a
 default for each deployment setting, and this repository's variables
 override them: `AGENT`, `AGENT_MODEL`, `INFERENCE_URL`,
 `INFERENCE_AUDIENCE`, `AGENT_RUNNER`, `AGENT_CONFIG_REPO` and
 `AGENT_CONFIG_PATH`. `gh variable list -R cgwalters-forge/tracker` and
 `gh secret list -o cgwalters-forge` show the names; the secret's value is
 cgwalters' to store, and the bot never copies or prints it. The inference
-proxy and the tailnet the runs join are a host of his, with its own policy,
+proxy and the tailnet the runs join are on a host of his, with its own policy,
 and are not brought up from here. A manual `poll.yml` run with `apply=true`
 can write even with `PASS_APPLY` unset; the variable gates scheduled apply
 and the successor chain, not that manual input.
@@ -79,7 +79,7 @@ The pass starts board work by itself (a triage run where an issue has no
 accepted plan, then the implement plan it proposes) and the fix rounds of
 pull requests, once `PASS_APPLY` is `enabled`. New work it can take is put
 on the board with a Priority. Anything else is started by
-hand: write the sentences particular to the task in a file and name the
+hand: write the task-specific instructions in a file and name the
 target. Run it on the default branch, which the wrapper requires. The task
 is public, in the run's inputs; `pool` may be left out:
 
@@ -106,13 +106,13 @@ it, so its pull requests are reviewed and merged by hand, and its
 deployment stays in the operator's private infrastructure.
 
 The standing
-instructions of each kind are not part of the brief: `dispatch.yml` puts
+instructions for each kind are separate from the brief: `dispatch.yml` puts
 `.github/agentic-job/profiles/KIND.md` before it, so they change by a pull
 request here and a brief says only what this item needs. An implement run
 with `claude` or `opencode` also gets agentic-job's skills (its
 `docs/skills.md`): its implement skill carries the procedure, the
-self-review with a subagent included, and `profiles/implement.md` only
-what is ours. `vibe` gets no skills, so an implement that would run it,
+self-review with a subagent included, and `profiles/implement.md` contains only
+our additions. `vibe` gets no skills, so an implement run that would use it,
 from the pool or the variable `AGENT`, gets `profiles/implement-full.md`
 instead, which spells the procedure out. Fix has no skill yet and
 keeps its full profile. Implement and fix also get agenthome's skills
@@ -127,12 +127,12 @@ with `claude-opus-5-5`, `opencode` with `praxis/gpt-6.1-sol`, `vibe` with
 `zai-glm-5-3`) and a run budget in AIC, hundredths of a dollar
 (`budget`); left empty, the repository variables `AGENT` and `AGENT_MODEL`
 apply. Any other value fails the run before it starts. A pool may also say
-what its provider allows a period, for tools to pace runs against where the
+what its provider allows per period, so tools can pace runs when the
 provider reports no quota: `allowance` is `amount` in `currency` per
 `period`, which is `calendar-month` (`mistral`: 300 USD). Nothing in this
 repository enforces it. Every pool has a `tier`, 1 (`claude`, `openai`,
 `fable`) or 2 (`mistral`); `"auto": false` keeps `fable`, whose allowance
-is apart, for dispatch by hand. The pass paces its runs on the pools
+is separate, for manual dispatch. The pass paces its runs on the pools
 `.github/pass.json` names, and alternates fix rounds between its
 `pr.fixPools`, except that a first round that is only toil goes to
 `pr.toilFixPool`. The run applies
@@ -144,7 +144,7 @@ cgwalters-forge/tracker --json jobs -q '.jobs[] | select(.conclusion ==
 
 ## Board writes, questions and status updates
 
-By hand, with agent-board and the bot's `GH_TOKEN`. Each write only prints
+Use agent-board and the bot's `GH_TOKEN` for manual writes. Each write only prints
 what it would do until given `--apply`:
 
 ```sh
@@ -161,11 +161,11 @@ $board project status-update --status on-track --body FILE
 repository `-R` names (without it, next to the item it blocks), and sets it
 and the item it blocks to Needs human; `ask resolve` comments, closes and sets it
 Done. `project status-update` writes at once.
-Read commands (`item list`, `item view`, `ask list`, `project view`) need no
+Read commands (`item list`, `item view`, `ask list`, `project view`) don't need
 `--apply`. A job plan is sent with
 `agent-board dispatch ISSUE --dry-run` first, then `--apply`, with
-`--caller cgwalters-forge/tracker --workflow dispatch.yml`; an epic plan only
-by the pass, which pins it. To unblock an epic held on its plan, comment on
+`--caller cgwalters-forge/tracker --workflow dispatch.yml`. Only the pass sends
+an epic plan, which it pins. To unblock an epic held on its plan, comment on
 it as the operator; the next pass plans it again.
 
 ## What is in flight
@@ -177,7 +177,7 @@ It is enabled in `.github/agentic-job/session.json`, which sets the fixed
 tracker repository and session issue; `[session] operators` (tailnet logins,
 not GitHub logins) and `origins` are in `hosted.toml`, and it needs the
 repository variable `TAILNET_DOMAIN`. The login
-list prevents other tailnet users prompting the agent; the origin list prevents
+list prevents other tailnet users from prompting the agent; the origin list prevents
 cross-site WebSocket hijacking from another page in the operator's browser.
 Never take these lists or the publication issue from dispatch inputs.
 
@@ -206,12 +206,12 @@ mid-session writes, the review site's pane and a scripted fake-agent end-to-end
 run remain follow-ups. `session.yml` composes the task with agent-board's
 `supervise session`, at the commit `supervisor.yml` pins, where it is tested.
 
-Nothing has to be remembered by the coordinator. The runs themselves are
+The coordinator doesn't need to remember anything. List the runs with
 `gh run list -R cgwalters-forge/tracker` (the run name is the kind and the
-item). What they opened is the bot's open pull requests on `dispatch/`
-branches, `gh pr list -R OWNER/REPO --author cgwalters-bot`, in each
-repository the bounds name. Where each of those stands, its fix rounds and
-the run working on it, is in the one comment the pass keeps on the pull
+item). Find the bot's open pull requests on `dispatch/`
+branches with `gh pr list -R OWNER/REPO --author cgwalters-bot` in each
+repository named in the bounds. Each pull request's status, fix rounds and
+active run are in the single comment the pass maintains on the pull
 request (it carries a `tracker-poll` marker); `needs-human` labels the ones
 the pass gave up on.
 
@@ -346,7 +346,7 @@ finite time/request/spending limits; do not inherit this deployment's
 allowlists or `.github` exemptions. Follow agentic-job's
 [scripted trial](https://github.com/cgwalters-forge/agentic-job/blob/main/docs/dispatch.md#ten-minute-scripted-trial)
 for the first model-free research run on a throwaway issue. The wrapper
-supports `agent: fake`; that run needs no broker or tailnet.
+supports `agent: fake`; that run doesn't need a broker or tailnet.
 
 The README's minimal caller is enough for that manual trial, **not** for
 automatic pass work. Before enabling pools, extend it to accept `pool`
@@ -425,9 +425,9 @@ agent-board pass --config pass.json --max-dispatch 0 --max-writes 0 --max-status
 ```
 
 No `--apply`. Zero caps bound dispatch/write proposals; more than five
-Status changes refuses that stage whole. These prevent an unexpectedly
-large first census from becoming an approved batch, not replace the write
-gate. Inspect every error and held line before progressing.
+Status changes rejects the entire stage. These caps prevent an unexpectedly
+large first census from becoming an approved batch; they don't replace the write
+gate. Inspect every error and held line before proceeding.
 
 To preview automatic candidates, choose positive `wip` and `pools` with
 your own private `usage.repository`/`issue`. Set `usage.url` only when the

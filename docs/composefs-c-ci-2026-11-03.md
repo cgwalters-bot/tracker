@@ -6,8 +6,8 @@ This is the read-only baseline for [tracker#1222](https://github.com/cgwalters-f
 part of [#1215](https://github.com/cgwalters-forge/tracker/issues/1215), observing
 **composefs/composefs (C), not composefs-rs**. Four available ordinary-PR
 workflow runs succeeded, across two revisions of one PR. There were no available
-default-branch push runs. No recurring **failed** job/test signature was evidenced;
-there is no supported flake/infra/real classification or new fix issue to propose.
+default-branch push runs. No evidence of a recurring **failed** job/test signature was found,
+so there is no basis for a flake/infra/real classification or a new fix issue.
 This does not establish default-branch health, fix CI, or supply the ongoing
 monitor owned by [tracker#1229](https://github.com/cgwalters-forge/tracker/issues/1229)
 and [agent-board#649](https://github.com/cgwalters-forge/agent-board/issues/649).
@@ -19,11 +19,11 @@ interval is **[2026-10-04T23:15:52Z, 2026-11-03T23:15:52Z)** (2,592,000 seconds)
 Runs enter by `created_at`, not completion/update time; a rerun belongs to its
 original run, not a new denominator. REST's inclusive `created=start..end` query
 was checked locally against the half-open interval; no boundary run occurred.
-Subsequent reads validate this frozen census rather than advance the cutoff.
+Subsequent reads validate this frozen census rather than move the cutoff.
 Conclusions are as retrieved, not a reconstruction of status at the cutoff.
 
-Only GET requests through `gh api` were made. The repository metadata discovered
-default branch `main`; its head was
+Only GET requests through `gh api` were made. The repository metadata identified
+the default branch as `main`; its head was
 `ec2573a0f68f548ae91f3e10acc990a08f9122dc` (28 July 2026).
 Issue bodies and comments on #1222 and #1215 were read as data. Their comment
 lists contained six and five entries respectively, all on one page of 100;
@@ -36,7 +36,7 @@ per run), and **12 job-log requests**, at most **2 MiB captured per response**
 and **16 MiB captured in total**. Multi-call collection commands had 20–30-second
 timeouts; the validation/log subprocesses had 20-second request timeouts and
 the combined validation had a 120-second limit. These are collection bounds,
-not new CI controls. A hit means unknown coverage, never a green observation.
+not new CI controls. Reaching a bound means coverage is unknown, not that the result is green.
 `gh`/redirects can make additional HTTP exchanges: the request ceiling counts
 explicit API invocations, not network packets or redirect hops. The capture
 limit does not claim to bound bytes downloaded internally by `gh`.
@@ -224,8 +224,8 @@ merged 12 June 2026) and [#416](https://github.com/composefs/composefs/pull/416)
 not explanations for failures in this window. Tracker's matching verity issues
 #334 and #360 concern composefs-rs, not ownership of this C inventory.
 
-Since no uncovered recurring failure is evidenced, there is no invented fix,
-quarantine owner or repeated-run acceptance issue. If later evidence justifies
+Since there is no evidence of an uncovered recurring failure, no fix,
+quarantine owner or repeated-run acceptance issue is invented here. If later evidence justifies
 one, its acceptance must name the exact tested merge/head revision and an exact
 repetition count; these two different revisions are not repeated-run validation
 of any fix.

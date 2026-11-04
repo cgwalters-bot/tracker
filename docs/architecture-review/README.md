@@ -5,16 +5,17 @@
 Part of [#1227](https://github.com/cgwalters-forge/tracker/issues/1227), under
 [#1224](https://github.com/cgwalters-forge/tracker/issues/1224). This is a small,
 manual prompt prototype, **not an enabled reviewer or an effectiveness result**.
-A three-PR development pilot ran, but labels the prompt author had seen mean
-it is not held out. A follow-up reconstructs its packets and adds a complete
-accessible feedback inventory and independent agent scoring, not human review;
-human adjudication and a new label-blind sample remain outstanding. Keep #1227 open. No production prompt,
-workflow, permission, merge rule, schedule or inference service changes here.
+A three-PR development pilot ran, but it is not held out because the prompt
+author had seen its labels. A follow-up reconstructs its packets, inventories
+all accessible feedback and adds independent agent scoring, not human review.
+Human adjudication and a new label-blind sample are still needed. Keep #1227 open.
+This does not change any production prompt, workflow, permission, merge rule,
+schedule or inference service.
 
 Read [patterns.md](patterns.md), [references.json](references.json) and
 [prompt.md](prompt.md) together. A human can paste those three files, in that
 order, into a fresh read-only review session and attach a pinned diff and its
-historical context; the index lets the reviewer cite a pattern's source sections. The prompt specifies the input
+historical context. The index lets the reviewer cite a pattern's source sections. The prompt specifies the input
 contract and output format. Do not attach this README, evaluation records or
 operator feedback to a historical evaluation reviewer. The later scoring pass
 does receive the feedback explicitly; it is not a new historical review run.
@@ -58,8 +59,8 @@ The library is derived **only** from the references above, not the selected PRs.
 Project conventions are not proof of cgwalters' preferences. The feedback audit
 is separate evidence and does not turn an operator's question into a defect.
 
-For [#1228](https://github.com/cgwalters-forge/tracker/issues/1228), the consumable
-unit is patterns.md + references.json + prompt.md at one tracker commit, with
+For [#1228](https://github.com/cgwalters-forge/tracker/issues/1228), use
+patterns.md + references.json + prompt.md from one tracker commit, with
 the version recorded in references.json. Pin that commit and record content
 hashes, not a moving branch or version alone. Do not feed evaluation.md,
 sample.json, results.json or runs/ to the reviewer. Integration, risk thresholds and a
@@ -80,7 +81,7 @@ packet fixtures (and the structural checks). The existing recipe preserves the
 builder without adding a script file or changing the new-file policy.
 `just test-architecture-review e2e` additionally exercises the actual rebuild and
 verify dispatch with canned API responses and temporary filesystem isolation.
-It requires no live GitHub access or inference. Cases include stale HEAD files,
+It doesn't need live GitHub access or inference. Cases include stale HEAD files,
 feedback files/directories, symlinks, repeated rebuild, mismatched/missing bytes,
 and failed retrieval, reconstruction comparison and staged-byte comparison.
 Report-ID fixtures reject duplicate, missing and unknown evaluated-run IDs.
@@ -96,7 +97,7 @@ not publish a new packet or success report; an older packet/report, if present,
 is not evidence that the failed attempt succeeded. Replacement is not a
 concurrent-reader transaction; do not share this manual packet workspace while
 rebuilding. A separate `runs/ID.rebuild.json` is written only after publication,
-never old manifests or outputs.
+old manifests and outputs are never overwritten.
 
 `just test-architecture-review verify ID` checks **exact directory integrity** as
 well as every local reviewed-byte count and hash, without network. The allowed

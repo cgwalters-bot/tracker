@@ -24,7 +24,7 @@ locally. There are no new controls or caller options.
 Pinned end: **2026-11-03T22:56:45Z**. Preceding 30 days:
 **2026-10-04T22:56:45Z through 2026-11-03T22:56:45Z**, selected inclusively by
 Actions `created_at`. No record falls exactly on a boundary. Repository metadata
-discovered the default branches: `composefs/composefs-rs` = `main`,
+identified the default branches: `composefs/composefs-rs` = `main`,
 `cgwalters-forge/composefs-rs` = `forge`.
 
 An eligible default-branch run is CI triggered by `push` to that default branch;
@@ -90,7 +90,7 @@ Ranking uses distinct eligible runs with a failed workflow attempt, including
 ones that later passed. The `Cancelled extras` column records additional eligible
 runs whose workflow was cancelled but had an independently failed job. These
 extras do not turn cancellation into workflow failure. Affected attempts count
-distinct `(run, attempt)` containing the signature, including those extras;
+distinct `(run, attempt)` pairs containing the signature, including those extras;
 matrix jobs and nextest's two in-job tries are not separate workflow attempts.
 Days are distinct UTC dates of affected job starts (run creation for pre-job
 failures), not elapsed calendar spans.
@@ -488,8 +488,8 @@ All 81 eligible attempts were inspected; zero-job failure/approval cases
 were retained, not inferred as skipped tests.
 
 All causal failed-job logs were retrieved. The CLI initially refused ANSI
-escape sequences; allowing them into the private analysis buffer resolved
-that display restriction, not an API denial. No raw logs are published here.
+escape sequences. Allowing them into the private analysis buffer resolved
+that display restriction; it was not an API denial. No raw logs are published here.
 The G1 workflow log endpoint for run `40659936423` returns **404**: there is
 no job log. Approval-held run `41557564859` has no jobs. No other eligible
 failed-job log was missing or denied.

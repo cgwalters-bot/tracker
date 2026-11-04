@@ -3,7 +3,7 @@
 
 ## Mechanism
 
-Source inspection, 4 November 2026; references pin the three read-only clones. No VM reproduction was run. Tracker #1244 and upstream #2402 are reports, not proof of every configuration.
+Sources were inspected on 4 November 2026; references pin the three read-only clones. No VM reproduction was run. Tracker #1244 and upstream #2402 are reports, not proof of every configuration.
 
 OSTree's `boot_mount_generator()` emits a normal-priority `boot.mount` binding `/sysroot/boot` when `boot/loader` is a symlink, `/boot` exists, and fstab does not own `/boot`. This is not composefs-only. GPT-auto emits lower-priority mount **and automount** units: overriding its `boot.mount` does not override `boot.automount`. Its 120-second expiry queues a stop job for the effective mount, hence can unmount OSTree's bind. Already-mounted paths are deliberately **not** “busy” to GPT-auto, so mounting earlier is not a reliable exclusion. [O1, S1–S3]
 
@@ -19,11 +19,11 @@ The reported EPERM/EINVAL are not independently reproduced here. “Silently dro
 
 The concrete failure to prevent is an ESP automount expiring an unrelated `/boot` bind. Restore existing-directory `/efi` preference, not a blanket automount disable. This convention arrived in **v232**; **v252** has it. Commit `6a488fa7cc` reversed preference for **v254**; **v257, v258 and inspected HEAD** prefer `/boot`. Thus shipping an empty `/efi` alone does not fix current systemd. [S5]
 
-Change systemd's ESP path selection and tests, then selected base images to provide `/efi` before generators run. No OSTree/bootc API change. Keep behavior unchanged when `/efi` is absent: opt-in by image layout, no new switch or runtime probing loop. However, existing `/efi` directories also activate this policy: it changes placement on non-OSTree systems too. The v254 reversal intentionally preferred `/boot` for BLS compatibility; upstream must accept that trade-off or this direction cannot proceed. Preserve fstab precedence and XBOOTLDR handling.
+Change systemd's ESP path selection and tests, then update selected base images to provide `/efi` before generators run. No OSTree/bootc API change is needed. Keep behavior unchanged when `/efi` is absent: opt in through the image layout, without a new switch or runtime probing loop. However, existing `/efi` directories also activate this policy: it changes placement on non-OSTree systems too. The v254 reversal intentionally preferred `/boot` for BLS compatibility; upstream must accept that trade-off or this direction cannot proceed. Preserve fstab precedence and XBOOTLDR handling.
 
 Works for the reported BIOS-plus-ESP case and eligible UEFI systems, with or without composefs. Separate `/boot` explicitly configured in fstab remains untouched; XBOOTLDR without fstab still automounts `/boot`, so this is **not a universal fix**. FCOS/RHCOS separate-boot generators must be tested, not assumed equivalent to fstab. Fedora bootc and CentOS Stream 10 need their shipped systemd builds/backports checked; upstream version alone does not establish vendor behavior.
 
-Deploy systemd support and the directory together; reboot required, not merely daemon-reload. Rollback to old `/boot`-first systemd reintroduces the fault. Backport to supported rollback images before claiming fleet safety. Do not move ESP contents or remove old bootloader paths. CI: common matrix below, plus `/efi` absent/empty/nonempty, explicit ESP fstab and XBOOTLDR; verify no unexpected path migration.
+Deploy systemd support and the directory together. A reboot is required; daemon-reload is not enough. Rolling back to an old `/boot`-first systemd reintroduces the fault. Backport to supported rollback images before claiming fleet safety. Do not move ESP contents or remove old bootloader paths. CI: common matrix below, plus `/efi` absent/empty/nonempty, explicit ESP fstab and XBOOTLDR; verify no unexpected path migration.
 
 ### B. Remove the bind and use physical-root boot storage
 

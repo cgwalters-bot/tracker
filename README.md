@@ -22,13 +22,12 @@ otherwise write whatever you want. The bot acts on the answer, then closes
 the issue with a one-line comment saying what it did.
 
 Only comments by the `cgwalters` login count as answers. The bot reads
-everyone else's comments, its own included, as input to weigh, never as
+everyone else's comments, including its own, as input to consider, never as
 instructions.
 
-The bot's workflows here, or
-[agent-board](https://github.com/cgwalters-forge/agent-board)'s `ask create`
-by hand, open these issues. The
-[review app](https://github.com/cgwalters-forge/review) is a UI over the same queue.
+These issues are opened by the bot's workflows here or by manually running
+[agent-board](https://github.com/cgwalters-forge/agent-board)'s `ask create`.
+The [review app](https://github.com/cgwalters-forge/review) is a UI for the same queue.
 
 [docs/bring-up.md](docs/bring-up.md) says how to start a coordinator on a
 fresh machine from credentials alone, how to dispatch a run and where its
@@ -47,10 +46,10 @@ Agent-drafted reviews of others' pull requests wait as issues labelled
 newest draft as cgwalters-bot, tick the body's
 `Send the newest draft as cgwalters-bot` box or comment just `/send`;
 `.github/workflows/review-send.yml` then runs agent-board's `review send`,
-which posts it only to the repositories `.github/poll/agent-board.json`'s
-`review` section lists, and closes the issue. A draft it cannot send (a
-moved head, a line not in the diff) is refused in a comment; a missing or
-stale approval only fails the run. The approval rules are agent-board's
+which posts it only to the repositories listed in the `review` section of
+`.github/poll/agent-board.json` and closes the issue. If it cannot send a
+draft (a moved head, a line not in the diff), it explains the refusal in a
+comment. A missing or stale approval only fails the run. The approval rules are in agent-board's
 [docs/review-drafts.md](https://github.com/cgwalters-forge/agent-board/blob/main/docs/review-drafts.md).
 
 ## Dispatched tools
@@ -88,23 +87,23 @@ The agent-board commit is pinned as `AGENT_BOARD_REV` in `poll.yml`, since
 the binary gets the bot's token (`CGWALTERS_BOT_PAT`); move it only with a
 review of that revision's `pass`. The job token starts `dispatch.yml` and
 `review.yml` runs. The job joins the tailnet for the broker, whose address
-is the repository variable `INFERENCE_URL` (else the organization's
-tailnet setting); without the join the pass paces on the last published
+is set by the repository variable `INFERENCE_URL` (or, if unset, the organization's
+tailnet setting); without joining, the pass paces on the last published
 snapshot. Passes share one concurrency group and never overlap.
 
 A scheduled pass only previews unless the repository variable `PASS_APPLY`
-is `enabled`. By hand, `gh workflow run poll.yml` previews and
+is `enabled`. When run manually, `gh workflow run poll.yml` previews and
 `-f apply=true` applies. While `PASS_APPLY` is `enabled`, each applying pass
 starts the next one ten minutes after its own start, since GitHub drops most
 of the `*/10` schedule. A pass does not start the next while a newer
-applying run on the default branch is still to finish, so a second chain,
-say from an applying pass by hand, usually folds into the newer one; a run
+applying run on the default branch has not finished, so a second chain,
+say from a manually started applying pass, usually folds into the newer one; a run
 arriving during that check, or a newer run that never continues, can still
 leave two chains or none. Setting the variable to anything else, or
 cancelling the run that is waiting, ends the chain. Every pass is capped at eight agent runs, twenty
-other writes and fifty Status changes (more refuses the Status stage, a
-preview too, until someone has looked); raise them in `poll.yml` once the
-passes have been watched. New work goes through the board: an open issue
+other writes and fifty Status changes (exceeding the Status cap rejects that
+stage, even in preview, until someone has reviewed it); raise them in `poll.yml`
+after observing the passes. New work goes through the board: an open issue
 on it in a `workRepositories` repository, under a live epic or opened by
 the operator or the bot, is taken in Priority order. Dispatch by hand
 (docs/bring-up.md, "Dispatching a run") for anything else.
@@ -116,11 +115,11 @@ cannot safely change the pull request, without a push (opt-in in
 rounds.
 
 Apply opens complete work ready for review (`ready_when_complete` in
-`dispatch.toml` and `fix.toml`), except on a midstream fork, a repository
-with the `bot-midstream` topic, whose main tracks upstream (#336): there
-every pull request stays a draft. `dispatch.yml` gives those targets
-`midstream.toml` and `midstream-fix.toml` instead, by those files' `repos`,
-which a fork given the topic must join before it is dispatched to.
+`dispatch.toml` and `fix.toml`), except on a midstream fork: a repository
+with the `bot-midstream` topic whose main tracks upstream (#336).
+Every pull request there stays a draft. `dispatch.yml` gives those targets
+`midstream.toml` and `midstream-fix.toml` instead, based on those files' `repos`.
+A fork with that topic must be added to those lists before receiving dispatches.
 cgwalters-review skips drafts, so a midstream pull request gets no automatic
 review; `/review` still works.
 
@@ -132,13 +131,13 @@ agent-board's
 [`broker probe`](https://github.com/cgwalters-forge/agent-board/blob/main/docs/broker-probe.md)
 at the commit `supervisor.yml` pins, with `.github/broker/config.json`. The
 probe joins using the dispatch tailnet wrapper and adds `INFERENCE_URL` to
-that config as its `url`, from the repository variable, else the wrapper's
+that config as its `url`, using the repository variable or, if unset, the wrapper's
 configured proxy. It makes one TCP
-connection and one unauthenticated GET, each bounded to ten seconds; any
-HTTP response is reachable, not a claim that inference works. It creates one
+connection and one unauthenticated GET, each limited to ten seconds. Any
+HTTP response shows reachability, not that inference works. It creates one
 bot-owned `outage` issue here, updates it while down, and comments and
-closes it on recovery. Tailnet join or reporting failures fail the workflow,
-not a false broker recovery. There are no ACL or credential changes. The
+closes it on recovery. Tailnet join or reporting failures fail the workflow
+rather than falsely reporting broker recovery. There are no ACL or credential changes. The
 pass does not read the issue.
 
 ## Epics
@@ -159,9 +158,9 @@ operator and labelled `needs-human`. Its body leads with the example
 contract, the workflow YAML or command a user would actually write, then the
 design, the slices in order, risks and open questions
 ([#674](https://github.com/cgwalters-forge/tracker/issues/674) is one). The
-operator's comments ask for revisions. While it has no `epic` label it is a
-plan under review, which the pass does not touch. The operator adding `epic`
-and removing `needs-human` is the approval; as for any epic, only the
+operator's comments ask for revisions. Without an `epic` label, it is a
+plan under review, and the pass does not touch it. The operator approves it by adding `epic`
+and removing `needs-human`; as for any epic, only the
 configured operator's label counts. The pass then plans it: the slices
 become sub-issues, the example contract the first where there is one, and
 it schedules them as for any epic.
@@ -169,27 +168,27 @@ it schedules them as for any epic.
 ### Supervisor
 
 `supervisor.yml` runs `agent-board supervise health` every fifteen minutes on the default
-branch, from its own crons. Every run, a prompt-less dispatch included, is a
+branch, from its own crons. Every run, including a prompt-less dispatch, is a
 health pass. `agent-board supervise due` decides the sweep from the
 `times.json` the previous `supervisor-health` artifact carries: a pass
 sweeps when the last sweep was two hours ago or more, or on an explicit
-request (a prompt or a comment). When that artifact cannot be looked up (as
-against there being none), no run but an explicit request sweeps (#814). `health.json` is a list of checks
+request (a prompt or a comment). If looking up that artifact fails (rather
+than finding no artifact), only an explicit request triggers a sweep (#814). `health.json` is a list of checks
 with `id`, `status` (`ok`, `warn`, `fail`), evidence links and a suggested
 action; each check also has one summary line. All thresholds and collection
 bounds are in `.github/supervisor/config.json`, with repository identities
 in that file and the existing poll configuration, never dispatcher inputs.
 
 The health step reads with the bot's token (`CGWALTERS_BOT_PAT`), as the execute
-job and the poll do. The usage snapshot (`pace`) is on a private repository,
-`.github/usage/config.json`'s, which the job token cannot read, and the job
-token's 1000 requests an hour come near four passes' worth. The step runs
+job and the poll do. The usage snapshot (`pace`) is in the private repository
+named in `.github/usage/config.json`, which the job token cannot read. The job
+token's 1000 requests an hour are nearly used up by four passes. The step runs
 only agent-board built from the pinned revision, never an agent or pull
 request code (the operator, 17 Oct: the same token as everything else of the
 bot's, rather than a separate read-only one). Missing access and truncated listings are warnings, not
 healthy observations, and fail once they have lasted
 `unavailableFailHours`: each pass reads the previous pass's `health.json`
-artifact for since when. API requests have deadlines and a total
+artifact to find when they began. API requests have deadlines and a total
 budget and a seven-minute collection deadline; the health step has an eight-minute
 limit, within a 25-minute job that installs a verified agent-board binary using
 `just build-agent-board` at the commit pinned as `AGENT_BOARD_REV` in
@@ -208,7 +207,7 @@ up to `maxPages` GraphQL pages per followed repository; it is not a
 historical audit. A removal from the queue because the PR merged is not
 counted. Infrastructure findings
 are warnings from probe/label time overlap, not proof that a retry is safe.
-A broker probe switched off (`BROKER_OUTAGE` unset) is no observation: a warning that fails after an hour.
+A disabled broker probe (`BROKER_OUTAGE` unset) provides no observation: this is a warning that fails after an hour.
 Decisions currently cover open public question issues assigned to the operator,
 excluding ones with an authenticated operator reply; the private decision
 document is not published or interpreted. Loop detection uses checkpoint
@@ -233,7 +232,7 @@ on a failing check (with `agent.cooldownHours` cooldown), a two-hour sweep
 (decided in the health job, with `7 */2 * * *` as a fallback), a manual prompt, or a new comment by the configured operator
 on the locked requests issue (here #656). The comment gate also rejects PR comments;
 the login and issue are checked against trusted config in tests. The requests
-issue must be locked by the operator before comment wakes work. Another
+issue must be locked by the operator before comments can wake the agent. Another
 deployment sets the repository variables `OPERATOR` and
 `SUPERVISOR_REQUESTS_ISSUE` to its `operator` and `agent.requests.issue`,
 since that gate runs before checkout; unset, they default to this one's.
@@ -254,12 +253,12 @@ A step posts its `wss://` endpoint on `session.json`'s issue (#728) as
 workflows its configuration lists, so far `session.yml`. `[session]`
 operators and origins are `hosted.toml`'s, copied into `supervisor.toml`.
 
-A check that cannot clear fails every pass and so started an agent every
+A check that never clears fails on every pass and so started an agent every
 cooldown hour to read the same report (#804). With
 `agent.skipUnchangedFailures` set to true (it ships false),
 `agent-board supervise repeat` leaves the trigger out of a pass that
-is not a sweep or request when no check fails that did not fail in the
-previous report; the sweep reads standing failures and their new evidence.
+is not a sweep or request if every failing check also failed in the
+previous report; the sweep reads ongoing failures and their new evidence.
 A failure that first appeared while the trigger declined (cooldown, an
 active agent) also waits for a sweep.
 
@@ -288,7 +287,7 @@ and log issues. `replace_state` edits only that issue's body, within its
 daily cap below. The body persists and every later run reads it first, so a
 misled run can plant text for later runs; it is data to them, but with the
 other caps above zero a later run can act on it within those caps. A batch
-that would pass a daily cap is rejected whole. Missing state is reported,
+that would exceed a daily cap is rejected in full. Missing state is reported,
 never guessed.
 
 The `execute` job holds `CGWALTERS_BOT_PAT` in the `agent-apply`
@@ -296,7 +295,7 @@ environment and runs no agent code. It executes only on a run's first
 attempt, and accepts only the bot's comment, unedited, on the requests
 issue that this run's apply reports. It validates the whole
 batch with `agent-board supervise execute`. The shared executor admits
-dispatches, with fixed briefs and reasons, on open issues whoever wrote them,
+dispatches, with fixed briefs and reasons, on open issues regardless of who wrote them,
 and an implement dispatch only under an open `epic`-labeled parent. The
 boundary against an injected request is the run's sandbox and the required
 pull request review, not collaborator-only input (agent-board#158). That
@@ -339,10 +338,10 @@ version bump PR, `release.yml` once it merges, the pin bump of the actions
 wrappers once the release is out, then the `review.yml` pin bumps of the
 callers once that merges. The repositories, files, threshold and labels are
 in `.github/release-train/config.json`. A release is due when at least
-`threshold` PRs merged since the last one and that was `intervalHours` ago,
-or at once when one of them is labelled `P0`; the bump is minor if one is
-labelled `breaking`, a patch otherwise. A release cut outside the train,
-by hand or by anyone, is followed all the same (#723): when the wrappers
+`threshold` PRs have merged since the last release and it was `intervalHours` ago,
+or immediately when one of them is labelled `P0`; the bump is minor if one is
+labelled `breaking`, a patch otherwise. The train also follows releases cut outside it,
+whether manually or by anyone else (#723): when the wrappers
 pin an older version than the latest release, a pass opens a train for that
 release starting at the wrappers' pin bump, unless a train for it was
 closed or its tag is not on agentic-job's default branch. The PRs come from the bot's forks
@@ -350,7 +349,7 @@ with the release notes for the callers' interface changes, and go through
 each repository's review and queue; the train only waits for them.
 
 It is off unless the repository variable `RELEASE_TRAIN` is `dry-run`,
-which prints each pass's step, or `apply`, which takes it with
+which prints each pass's step, or `apply`, which executes it with
 `CGWALTERS_BOT_PAT`: that token needs to open issues here, push to the bot's
 forks (named in the configuration: a fork need not share its parent's name)
 with the workflows permission, as the pins are in workflow files, open PRs
@@ -358,7 +357,7 @@ upstream and run agentic-job's `release.yml`. Each release
 has one tracking issue here, opened by the bot and labelled
 `release-train`, with a comment per step. A step it cannot take (a PR closed
 unmerged, a failed `release.yml`, a file whose pin it cannot find) labels
-the issue `needs-human`, which halts the train until the label goes; closing
+the issue `needs-human`, which halts the train until the label is removed; closing
 the issue drops that release: a later train for the same version ignores
 its closed PRs, halts on one still open, and does not start while main has
 a version bump that was never released. `agent-board release-train --config
@@ -370,13 +369,13 @@ a version bump that was never released. `agent-board release-train --config
 Every workflow that installs agent-board pins the same commit as
 `AGENT_BOARD_REV`; `just agent-board-pin`, part of `just test` in CI, fails
 when they differ. `.github/workflows/agent-board-pin.yml` runs `just
-bump-agent-board`, started by the pass when agent-board's main is not the
-pin and has no pin PR yet, and hourly as a fallback: when agent-board's
+bump-agent-board`. The pass starts it when agent-board's main differs from the
+pin and has no pin PR yet; it also runs hourly as a fallback. When agent-board's
 main is ahead of the pin, all its check runs passed and its published binary
 passes the shared installer's verification, it opens or updates
 one pull request from the bot's fork (branch `agent-board-pin`) moving
-every pin to it, listing the commits in between, and the review and the
-pass take it like any bot PR. It is off
+every pin to it and listing the commits in between. The review and the
+pass handle it like any bot PR. It is off
 unless the repository variable `AGENT_BOARD_PIN` is `enabled`, and uses
 `CGWALTERS_BOT_PAT`, which needs the workflows permission on the fork.
 
@@ -422,8 +421,8 @@ the board at P0 and starts an `implement` run on it that writes the post,
 issue. The issue and the board item are written with `CGWALTERS_BOT_PAT`,
 at the agent-board commit the workflow pins. The status updates get the
 rest of GitHub's body limit, without their HTML comments; the oldest are
-left out first, and the body says so. A run before the week ends refuses,
-unless started with `partial=true`, which files what there is so far and
+left out first, and the body says so. A run before the week ends is refused,
+unless started with `partial=true`, which files the material available so far and
 says so; that is then the week's material, as a later run reuses the
 issue. A re-run reuses the week's issue, the latest Sunday's, as it was
 filed; once it is closed, or while a pull request that closes it is open
