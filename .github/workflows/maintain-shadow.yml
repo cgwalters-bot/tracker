@@ -2,7 +2,9 @@
 # poll --dry-run` on agentic-job alone, with pass.json's operator, bot,
 # review workflow and the `pr` policy agent-board.json can express. It takes
 # no step and writes only its job summary, to be compared with what the pass
-# (poll.yml) actually did there.
+# (poll.yml) actually did there. With repository variable MAINTAIN_SHADOW
+# `enabled`, poll.yml's `next` starts it when its newest default-branch run
+# is at least thirty minutes old or absent; the cron is the fallback.
 name: maintain-shadow
 
 on:
