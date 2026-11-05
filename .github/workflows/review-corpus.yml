@@ -1,10 +1,12 @@
 # Publishes cgwalters' public review feedback on other people's pull
-# requests as this repository's `review-corpus` release, and refreshes it
-# weekly (#1230, part of #1224); docs/review-corpus.md says what it holds and
-# how to pin it. misctool's `review-corpus collect` resumes from the state
-# file kept in the release, so a backfill cut short by the job token's rate
-# limit continues in the next run. Off unless the repository variable
-# REVIEW_CORPUS is `enabled`.
+# requests as a dated `review-corpus-YYYYMMDD-HHMMSS` release of this
+# repository, a new one each refresh, weekly (#1230, part of #1224);
+# docs/review-corpus.md says what it holds and how to pin it. This
+# repository's releases are immutable once published, so each is created as
+# a draft, given its assets and only then published. misctool's
+# `review-corpus collect` resumes from the state file in the newest one, so
+# a backfill cut short by the job token's rate limit continues in the next
+# run. Off unless the repository variable REVIEW_CORPUS is `enabled`.
 name: review-corpus
 on:
   schedule:
@@ -12,8 +14,9 @@ on:
     - cron: '17 5 * * 0'
   workflow_dispatch:
 permissions: {}
-# The collector's state allows one writer: two runs would each upload over
-# the other's corpus and state.
+# The collector's state allows one writer: two runs resuming from the same
+# release would publish diverging corpora. One run at a time also keeps the
+# second-resolution release names unique.
 concurrency:
   group: review-corpus
   cancel-in-progress: false
@@ -21,7 +24,11 @@ env:
   # A reviewed misctool release, run only after its binary is verified
   # against the attestation misctool's release.yml made for this tag.
   MISCTOOL_VERSION: v0.1.0
-  RELEASE: review-corpus
+  # Each release is this prefix and the UTC time its run began collecting,
+  # YYYYMMDD-HHMMSS,
+  # so the newest sorts last. The undated `review-corpus` release an earlier
+  # version of this workflow left empty does not match and is ignored.
+  RELEASE_PREFIX: review-corpus-
   LOGIN: cgwalters
   SINCE: '2020-11-01'
 jobs:
@@ -35,6 +42,7 @@ jobs:
     permissions: {}
     outputs:
       collected: ${{ steps.collect.outcome }}
+      stamp: ${{ steps.download.outputs.stamp }}
     steps:
       - name: Install verified misctool
         env:
@@ -49,20 +57,27 @@ jobs:
           chmod +x "$bin/cgwalters-forge-misctool"
           echo "$bin" >> "$GITHUB_PATH"
       - name: Download the current corpus
+        id: download
         env:
           GH_TOKEN: ${{ github.token }}
         timeout-minutes: 10
-        # Only a missing or empty release (the first run) starts from nothing.
-        # Anything else must hold the corpus, which an interrupted --clobber
-        # upload can leave deleted, so a run never publishes a fresh partial
-        # corpus over the full one.
+        # Resumes from the newest published dated release; drafts, which an
+        # interrupted publish leaves, are never read. Only when there is none
+        # (the first run) does it start from nothing; a release missing either
+        # file stops the run rather than starting over on top of a corpus.
+        # The new release is named for this time, before collecting, so a
+        # failed publish job re-run late still sorts before later runs.
         run: |
-          if ! assets=$(gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>&1); then
-            [[ $assets == *'release not found'* ]] || { echo "$assets" >&2; exit 1; }
-          elif [[ -n $assets ]]; then
-            grep -qx review-corpus.jsonl.zst <<< "$assets" || { echo "$RELEASE has no review-corpus.jsonl.zst; restore it from a run's artifact" >&2; exit 1; }
-            gh release download "$RELEASE" --repo "$GITHUB_REPOSITORY" \
+          echo "stamp=$(date -u +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+          latest=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1000 --json tagName \
+            --jq "[.[].tagName | select(test(\"^${RELEASE_PREFIX}[0-9]{8}-[0-9]{6}\$\"))] | sort | last // empty")
+          if [[ -n $latest ]]; then
+            echo "Resuming from $latest"
+            gh release download "$latest" --repo "$GITHUB_REPOSITORY" \
               --pattern review-corpus.jsonl.zst --pattern review-corpus-state.json
+            for f in review-corpus.jsonl.zst review-corpus-state.json; do
+              [[ -f $f ]] || { echo "$latest has no $f" >&2; exit 1; }
+            done
             zstd -d --rm review-corpus.jsonl.zst
           fi
       - name: Collect
@@ -90,16 +105,15 @@ jobs:
           name: review-corpus
           path: dist/
           if-no-files-found: error
-          # Longer than the schedule, so a release left without its corpus
-          # can be restored from the last run's copy.
-          retention-days: 30
+          # Long enough to re-run a failed publish job.
+          retention-days: 7
 
   publish:
     needs: collect
     runs-on: ubuntu-26.04
     timeout-minutes: 15
-    # What lets the job token create the review-corpus release and replace
-    # its assets and notes; nothing else in this job runs code.
+    # What lets the job token create and publish this run's release;
+    # nothing else in this job runs code.
     permissions:
       contents: write
     steps:
@@ -121,15 +135,16 @@ jobs:
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
-        # Corpus, then state, then checksums: a run cut short leaves the state
-        # behind the corpus, never ahead, and the next run repeats that work.
+          STAMP: ${{ needs.collect.outputs.stamp }}
+        # A draft can still take assets; publishing makes it immutable, so it
+        # is published only once all three are uploaded. A run cut short
+        # leaves a draft that the next run ignores.
         run: |
-          gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" > /dev/null ||
-            gh release create "$RELEASE" --repo "$GITHUB_REPOSITORY" --title 'Review corpus' --notes-file notes.md --latest=false
-          for asset in review-corpus.jsonl.zst review-corpus-state.json SHA256SUMS; do
-            gh release upload "$RELEASE" "dist/$asset" --repo "$GITHUB_REPOSITORY" --clobber
-          done
-          gh release edit "$RELEASE" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+          tag=$RELEASE_PREFIX$STAMP
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --latest=false \
+            --target "$GITHUB_SHA" --title "Review corpus $STAMP" --notes-file notes.md \
+            dist/review-corpus.jsonl.zst dist/review-corpus-state.json dist/SHA256SUMS
+          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
       - name: Report an early stop
         if: ${{ needs.collect.outputs.collected != 'success' }}
         run: |

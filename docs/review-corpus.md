@@ -6,13 +6,18 @@ The review corpus is cgwalters' public review feedback on other people's
 pull requests: inline review comments, review bodies and pull request
 comments, one JSON object per comment. It is the input for the review
 checklist work in [#1224](https://github.com/cgwalters-forge/tracker/issues/1224).
-It is too large for git, so it is published as the
-[`review-corpus` release](https://github.com/cgwalters-forge/tracker/releases/tag/review-corpus)
-of this repository, never committed here.
+It is too large for git, so it is published as
+[releases](https://github.com/cgwalters-forge/tracker/releases) of this
+repository, never committed here. Each refresh is a new release tagged
+`review-corpus-YYYYMMDD-HHMMSS`, the UTC time its run began collecting; the
+newest holds the current corpus.
+This repository's releases are immutable, so a published one never changes.
+The undated `review-corpus` release is an empty leftover from before this
+scheme; ignore it.
 
 ## What it holds
 
-The release has three assets:
+Each release has three assets:
 
 - `review-corpus.jsonl.zst`: the corpus, zstd-compressed JSON Lines. Its
   schema is misctool's
@@ -40,8 +45,10 @@ change with each refresh.
 `.github/workflows/review-corpus.yml` runs weekly and on manual dispatch,
 once the repository variable `REVIEW_CORPUS` is `enabled`. It installs the
 pinned misctool release and verifies its build attestation. It downloads the
-current corpus and state, collects from where the state left off and replaces
-the assets. The first run creates the release.
+corpus and state of the newest published `review-corpus-*` release, collects
+from where the state left off and publishes the result as a new release:
+created as a draft, given its three assets, then published. The first run,
+finding none, starts from nothing.
 
 The collector uses the job token. Its rate limit, about 1,000 requests an
 hour, is shared by every workflow in this repository. A run uses up that
@@ -53,28 +60,37 @@ limit or an error, still publishes what it has. It records that it stopped
 early in the notes, and the run fails. Dispatch it again (or wait for the
 schedule) to resume. The collector runs with a job token that cannot write.
 The publishing job's token can write the repository's contents, but the job
-runs only `gh release` commands on this release.
+runs only `gh release` commands on its own new release.
 
-If an upload is interrupted, the release can be left without
-`review-corpus.jsonl.zst`. The next run then stops rather than starting
-over. To recover, upload the three files from the last run's
-`review-corpus` artifact, kept for 30 days, in the workflow's order: corpus,
-state, then `SHA256SUMS`.
+If an upload is interrupted, the run leaves an unpublished draft release.
+The next run ignores drafts and resumes from the last published release, so
+nothing is lost but that run's work; delete the draft by hand. The
+`review-corpus` artifact the run kept for seven days lets the failed publish
+job be re-run instead.
 
 To move to a newer misctool, change `MISCTOOL_VERSION` in the workflow and the
 schema link above.
 
 ## Pinning and downloading a version
 
-Each refresh replaces the assets in place, so older versions do not remain
-on GitHub. To pin one, record its checksum from `SHA256SUMS` or the release
-notes, and keep your own copy if you need to read it again later:
+A version is a release tag. The newest is the last `review-corpus-*` tag in
+sort order, skipping the undated `review-corpus`:
 
 ```sh
-gh release download review-corpus --repo cgwalters-forge/tracker --pattern review-corpus.jsonl.zst
-echo "SHA256  review-corpus.jsonl.zst" | sha256sum --check
+tag=$(gh release list --repo cgwalters-forge/tracker --exclude-drafts --limit 1000 --json tagName \
+  --jq '[.[].tagName | select(test("^review-corpus-[0-9]{8}-[0-9]{6}$"))] | sort | last // empty')
+gh release download "$tag" --repo cgwalters-forge/tracker --pattern review-corpus.jsonl.zst --pattern SHA256SUMS
+sha256sum --check --ignore-missing SHA256SUMS
 zstd -d review-corpus.jsonl.zst
 ```
 
-Replace `SHA256` with the pinned checksum. A failed check means the corpus
-has been refreshed since that pin.
+That check only catches a corrupt download. To pin a version, record its
+tag and the corpus checksum from `SHA256SUMS` or the release notes, then
+download that tag and check against the recorded value:
+
+```sh
+echo "SHA256  review-corpus.jsonl.zst" | sha256sum --check
+```
+
+Published releases are immutable, so a pinned tag keeps serving the same
+file.
