@@ -142,6 +142,36 @@ for a run and fails unless it succeeds; `gh run view RUN -R
 cgwalters-forge/tracker --json jobs -q '.jobs[] | select(.conclusion ==
 "failure") | .name'` names its failed jobs.
 
+### gh-agentic-workflows upgrade handoff (#258)
+
+To prevent staged changes from advancing an upstream-tracking fork main,
+`cgwalters-forge/gh-agentic-workflows` uses the existing midstream implement
+and fix bounds: PRs stay draft, and the pass follows them for fix rounds
+but `pr.noMerge` prohibits merging into the fork. It is not an ordinary
+ready-when-complete target. This admission retains all protected-file
+restrictions, including `.github/`; it does not yet authorize the upgrade's
+workflow edits.
+
+The remaining handoff follows the
+[current-release-on-fork direction](https://github.com/cgwalters-forge/tracker/issues/258#issuecomment-6640207439):
+open a fork issue in `cgwalters-forge/gh-agentic-workflows` linked to #258,
+then obtain a separately reviewed workflow-edit exception. Before admitting
+that exception, verify the existing review gate on the fork's main requires
+an approving review and dismisses stale approvals on push, and include it
+in the review-gate checks; do not weaken those requirements or broadly
+exempt midstream protected files to unblock the work.
+
+Only after that admission, stage a fork-only draft PR upgrading gh-aw to
+the current stable release (v1.0.1 was observed at triage; recheck before
+pinning). Compile `drafter`, `review`, `fix`, `queue-triage` and `ci-triage`
+with the pinned CLI and run the fork repository's tests, recording the pin,
+commands and results in the PR. Compilation alone does not prove live
+`bootc-bot[bot]` PR checkout: live review/checkout verification remains a
+separate step with run evidence. This tracker prerequisite changes no
+repository settings, opens no upstream PR, retriggers no upstream run and
+does not close #258. Protected-workflow admission and live verification
+remain outstanding before any later upstream delivery.
+
 ## Board writes, questions and status updates
 
 Use agent-board and the bot's `GH_TOKEN` for manual writes. Each write only prints

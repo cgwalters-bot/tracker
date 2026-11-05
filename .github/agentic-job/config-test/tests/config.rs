@@ -553,6 +553,24 @@ fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
     assert!(proposals.as_array().expect("holds.proposals.repositories").contains(&json!(repo)));
 }
 
+#[test]
+fn gh_agentic_workflows_is_a_protected_midstream_target_that_is_never_merged_into() {
+    let repo = "cgwalters-forge/gh-agentic-workflows";
+    for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
+        assert!(repos(name).iter().any(|r| r == repo), "{name}");
+        assert!(!has_line_starting(&read(name), "[unprotected_files]"), "{name}");
+    }
+    for name in ["dispatch.toml", "fix.toml"] {
+        for list in lists(name) {
+            assert!(!list.iter().any(|r| r == repo), "{name}");
+        }
+    }
+    let pass = json_file("../pass.json");
+    for list in [&pass["follow"], &pass["workRepositories"], &pass["pr"]["noMerge"]] {
+        assert!(list.as_array().expect("pass repository list").contains(&json!(repo)));
+    }
+}
+
 // Without `ready_when_complete` apply opens every pull request as a draft,
 // and the poll stops on each as "a draft with no checkpoint" (#646). The
 // other fields of each entry stay as they were.
@@ -612,7 +630,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
             })
             .collect()
     };
-    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree"]);
+    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"]);
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
         assert!(!text.contains("ready_when_complete") && !has_line_starting(&text, "[unprotected_files]"), "{midstream}");
@@ -640,8 +658,8 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     let step = step_script("Resolve the bounds");
     // bootc-dev/bootc is upstream, no midstream; neither is a name that only contains one.
     for (repos, allow, fix) in [
-        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree"][..], "midstream.toml", "midstream-fix.toml"),
-        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge"][..], "dispatch.toml", "fix.toml"),
+        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"][..], "midstream.toml", "midstream-fix.toml"),
+        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge", "bootc-dev/gh-agentic-workflows", "cgwalters-forge/gh-agentic-workflows-x"][..], "dispatch.toml", "fix.toml"),
     ] {
         for repo in repos {
             for kind in KINDS {
@@ -733,6 +751,7 @@ fn agentic_job_policy_keeps_ready_when_complete_from_both_bounds_and_the_midstre
     for (repo, allow, fix, expected) in [
         ("cgwalters-forge/tracker", "dispatch.toml", "fix.toml", true),
         ("cgwalters-forge/composefs-rs", "midstream.toml", "midstream-fix.toml", false),
+        ("cgwalters-forge/gh-agentic-workflows", "midstream.toml", "midstream-fix.toml", false),
     ] {
         assert_eq!(ready(repo, allow, "create_pull_request", &["--base", "main"]), expected, "{allow}");
         let args = ["--base", "dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", repo];
