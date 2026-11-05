@@ -122,6 +122,148 @@ systemctl --user start praxis-credential-broker-pod.service
 Check: `curl -fsS http://$BROKER_ADDR:18080/healthz`, then a dispatched
 run that reaches inference.
 
+### Deferred broker admission inventory — 5 Nov 2026
+
+This is the public-source inventory slice of [tracker#452](https://github.com/cgwalters-forge/tracker/issues/452),
+not a restoration of hardening. The [4 Nov decision context](https://github.com/cgwalters-forge/tracker/issues/452#issuecomment-6640227524)
+keeps the work deferred and calls for readable evidence without host-policy changes.
+The concrete threat a later restriction would stop is another workflow or changed
+branch/commit, on a runner able to reach the broker, registering a run and spending
+the shared subscription. OIDC identity verification alone does not restrict that
+set to reviewed workflows. No control or option is added here.
+
+The earlier deployment completion note above is historical, not verification of
+admission hardening. In particular, the old instruction to list dispatch alone is
+not a current policy recipe. **Deployment remains unverified**: the mounted policy,
+running image/commit, enabled registration routes, consumer assignments and host
+restart state were not inspected. The [broker's Quadlet documentation](https://github.com/cgwalters-bot/praxis-credential-broker/blob/b57ff815cfd68196ead02adf4db047f41a704088/INTERNALS.md#quadlet)
+describes operator-mounted policy; its repository example is not that policy.
+No workflows, pins, admission configuration, host policy, services or board
+priority change in this inventory. No host credentials, live registration or new
+runs were requested or accessed; tokens and private addresses are not reproduced.
+The hardening issue stays open.
+
+#### Observed callers and registering jobs
+
+Observation is bounded to tracker at `d679a3d26c5fc169f47fabf867eaddd2eb2e85ba`,
+actions `main` resolving to `02d0342d682cf1c265668d7823009ae1936c4061`, and
+agentic-job `main` resolving to `225c16a8ee911350a2477c5d1de7b0f60a12a562`.
+These are source snapshots on 5 Nov, not claims about every run's resolution.
+In the table, `actions/…` abbreviates the literal prefix
+`cgwalters-forge/actions/.github/workflows/`; the registering workflow paths
+use that same prefix unless specified otherwise.
+
+| Entry caller (immutable source) | Literal wrapper ref | Resolved wrapper commit | Actual registering workflow/job | Event sources in the caller |
+|---|---|---|---|---|
+| tracker [dispatch.yml](https://github.com/cgwalters-forge/tracker/blob/d679a3d26c5fc169f47fabf867eaddd2eb2e85ba/.github/workflows/dispatch.yml#L183-L193), job `run` | `actions/cgwalters-agentic-job.yml@main` | `02d0342d682cf1c265668d7823009ae1936c4061` | `cgwalters-agentic-job.yml`, job `agent` (`run / agent`) | `workflow_dispatch`; includes dispatch kind `review`, not just implementation |
+| tracker [session.yml](https://github.com/cgwalters-forge/tracker/blob/d679a3d26c5fc169f47fabf867eaddd2eb2e85ba/.github/workflows/session.yml), job `run` | `actions/cgwalters-agentic-job.yml@main` | `02d0342d682cf1c265668d7823009ae1936c4061` | `cgwalters-agentic-job.yml`, job `agent` (`run / agent`) | `workflow_dispatch` |
+| tracker [supervisor.yml](https://github.com/cgwalters-forge/tracker/blob/d679a3d26c5fc169f47fabf867eaddd2eb2e85ba/.github/workflows/supervisor.yml), job `agent` | `actions/cgwalters-agentic-job.yml@main` | `02d0342d682cf1c265668d7823009ae1936c4061` | `cgwalters-agentic-job.yml`, job `agent` (`agent / agent`) | `schedule`, `workflow_dispatch`, `issue_comment` (created); health/due/config gates decide whether an agent runs |
+| tracker [review.yml](https://github.com/cgwalters-forge/tracker/blob/d679a3d26c5fc169f47fabf867eaddd2eb2e85ba/.github/workflows/review.yml), job `review` | `actions/cgwalters-review.yml@02d0342d682cf1c265668d7823009ae1936c4061` | `02d0342d682cf1c265668d7823009ae1936c4061` | `cgwalters-review.yml`, job `agent` (`review / agent`) | `pull_request_target` (opened, synchronize, reopened, ready_for_review); `issue_comment` (created, PR `/review` gate); no dispatch trigger |
+
+For all four tracker entries the caller is `cgwalters-forge/tracker`, repository
+ID **1389152030**, owner `cgwalters-forge`, owner ID **333055778** ([public repository metadata](https://api.github.com/repos/cgwalters-forge/tracker),
+observed 5 Nov). These are the calling repository's IDs, not actions' IDs and not
+the task's target repository. Event names above are possible source events, not
+proof that each passed admission or consumed inference. Tracker's
+[dispatch trigger and kinds](https://github.com/cgwalters-forge/tracker/blob/d679a3d26c5fc169f47fabf867eaddd2eb2e85ba/.github/workflows/dispatch.yml#L26-L54)
+and the other linked callers supply those event definitions.
+
+Both actions wrappers were read at the resolved commit:
+[general wrapper](https://github.com/cgwalters-forge/actions/blob/02d0342d682cf1c265668d7823009ae1936c4061/.github/workflows/cgwalters-agentic-job.yml)
+and [review wrapper](https://github.com/cgwalters-forge/actions/blob/02d0342d682cf1c265668d7823009ae1936c4061/.github/workflows/cgwalters-review.yml#L103-L195).
+Their `agent` jobs hold `id-token: write` and invoke the local
+`./.agentic-job-source/run` action after checkout of policy's source. Both nest
+`policy.yml`, `check.yml` and `apply.yml` from agentic-job at
+**`3f9f6425119b97bb3620a38fe0adc8e79be7dc8e`** (v0.6.11); those pins select
+implementation, not the registering job's reusable-workflow identity. The
+[pinned run action](https://github.com/cgwalters-forge/agentic-job/blob/3f9f6425119b97bb3620a38fe0adc8e79be7dc8e/run/action.yml)
+can accept an earlier run token or register itself; these wrapper jobs do not
+pass an earlier token. Broker matching must therefore consider the **actions
+wrapper**, not simply allow agentic-job's `agent.yml` at the nested pin.
+The wrapper's [owner gate](https://github.com/cgwalters-forge/actions/blob/02d0342d682cf1c265668d7823009ae1936c4061/admit/owners.json)
+is separate from broker admission and does not establish deployed policy.
+
+Agentic-job's own review path is different. At the observed main commit,
+[review.yml](https://github.com/cgwalters-forge/agentic-job/blob/225c16a8ee911350a2477c5d1de7b0f60a12a562/.github/workflows/review.yml#L332-L418)
+registers in **job `register` of `review.yml`**, with `id-token: write` and
+`agentic-job register`, then passes the token as a secret to the locally called
+`./.github/workflows/agent.yml`. That agent job has no identity-token grant.
+Thus its registration identity is agentic-job's `review.yml`, not `agent.yml`
+and not either actions wrapper. This is a local workflow, so there is **no
+external literal wrapper ref** to record. Its own repository caller is
+`cgwalters-forge/agentic-job`, repository ID **1390855724**, owner ID
+**333055778** ([public repository metadata](https://api.github.com/repos/cgwalters-forge/agentic-job),
+observed 5 Nov). Its [event declarations](https://github.com/cgwalters-forge/agentic-job/blob/225c16a8ee911350a2477c5d1de7b0f60a12a562/.github/workflows/review.yml#L35-L58)
+include the same PR/comment event types plus `workflow_dispatch` and
+`workflow_call`; reusable callers retain their own repository IDs/events, not
+agentic-job's. The [network action](https://github.com/cgwalters-forge/agentic-job/blob/225c16a8ee911350a2477c5d1de7b0f60a12a562/.github/agentic-job/network/action.yml)
+joins separately for registration and the agent. This source snapshot does not
+establish the ref/SHA claims of a particular runtime invocation.
+
+Additional callers, repositories, detection jobs and other registration paths
+are **unknown/not inventoried**, not absent. In particular the general wrapper
+calls agentic-job's check workflow, whose optional detector is a separate
+potential inference caller; whether it is enabled/reachable is not established
+here. This is not a complete fleet audit or an allowlist ready to deploy.
+
+#### Matching, attribution and existing evidence
+
+At broker `b57ff815cfd68196ead02adf4db047f41a704088`, the
+[called-workflow matcher](https://github.com/cgwalters-bot/praxis-credential-broker/blob/b57ff815cfd68196ead02adf4db047f41a704088/crates/praxis-gateway/src/oidc.rs#L168-L242)
+separates `job_workflow_ref` (workflow path and ref) from `job_workflow_sha`
+(resolved commit). A policy `ref: refs/heads/main` follows moving code; a `sha`
+condition fixes the commit. A SHA-only entry accepts a full `refs/...` or SHA
+ref spelling but still checks the SHA claim; specifying both requires both.
+Tracker's literal `@main` is therefore not a commit pin even though this
+observation resolved it. The pinned review caller has a different ref spelling
+from the three main callers, even when their resolved commits coincide.
+Called-workflow caller restrictions use repository/owner IDs from the calling
+repository; events are unrestricted unless explicitly restricted.
+
+The [admission alternatives and consumer selection](https://github.com/cgwalters-bot/praxis-credential-broker/blob/b57ff815cfd68196ead02adf4db047f41a704088/crates/praxis-gateway/src/oidc.rs#L250-L300)
+try `workflows`, `called_workflows`, then `any_workflow`. `workflows` checks an
+exact job workflow ref and by default requires the entry workflow to match it
+(or checks configured `entry_workflows`). `any_workflow` can admit every workflow
+and ref from selected owner/repository IDs, or any repository. These are OR
+paths: adding a narrow entry does not override broader admission. The
+[example policy](https://github.com/cgwalters-bot/praxis-credential-broker/blob/b57ff815cfd68196ead02adf4db047f41a704088/run-token-policy.yaml)
+also describes `unproven` registration without OIDC, where network access is the
+gate. None of these source capabilities proves which route is deployed.
+
+The admitting entry selects the `consumer`, so overlapping broad/narrow entries
+can change budget attribution as well as admission. The broker
+[retains admission and identity claims](https://github.com/cgwalters-bot/praxis-credential-broker/blob/b57ff815cfd68196ead02adf4db047f41a704088/crates/praxis-gateway/src/oidc.rs#L353-L381).
+Relevant existing tests (read, not executed in this documentation change) are
+[`an_entry_must_say_what_it_admits`](https://github.com/cgwalters-bot/praxis-credential-broker/blob/b57ff815cfd68196ead02adf4db047f41a704088/crates/praxis-gateway/src/oidc.rs#L598-L700),
+[`each_form_of_entry_admits_what_it_names_and_nothing_else`](https://github.com/cgwalters-bot/praxis-credential-broker/blob/b57ff815cfd68196ead02adf4db047f41a704088/crates/praxis-gateway/src/oidc.rs#L701-L887)
+(ref/SHA/caller/event rejection, broad alternatives and overlap precedence), and
+[`an_identity_carries_the_claims_it_was_admitted_on`](https://github.com/cgwalters-bot/praxis-credential-broker/blob/b57ff815cfd68196ead02adf4db047f41a704088/crates/praxis-gateway/src/oidc.rs#L889-L929)
+(identity and consumer attribution).
+
+The [4 Nov status comment](https://github.com/cgwalters-forge/tracker/issues/452#issuecomment-6628814870)
+links already-readable [dispatch run 41816225404](https://github.com/cgwalters-forge/tracker/actions/runs/41816225404).
+Its [run metadata](https://api.github.com/repos/cgwalters-forge/tracker/actions/runs/41816225404)
+reports `workflow_dispatch`, success, tracker head
+`03110a8f269021a83ccfd5f7dfeadd338cb4f93d`, and the general wrapper `@main`
+resolved then to `02a5daadde0f8ee12fa85407e985195ca0ce1457`, with nested
+agentic-job calls at `57119eeffa17ea41b383cfdaf8370b8abeba8868`. The
+[agent job](https://github.com/cgwalters-forge/tracker/actions/runs/41816225404/job/126528018202)
+also reports success. This is historical run/job metadata, not inspected OIDC
+claims, broker allow/deny evidence, or proof of current deployed restrictions.
+It also demonstrates why today's main resolution cannot be substituted for a
+historical run's. No logs containing capabilities were needed.
+
+A later, separately authorized rollout would first finish the caller inventory
+and decide reviewed immutable wrapper pins and the registering workflow
+identities (including agentic-job's separate review registration). It would
+coordinate caller pin updates with broker and tailnet admission, caller IDs and
+event sets; remove any overlapping broad/unproven paths that defeat the intended
+restriction; preserve consumer/budget attribution; and arrange an idle host
+policy activation with rollback. Only then would allowed legitimate callers and
+denied unlisted workflows, changed commits and disallowed callers be verified
+against that deployment. Those are future rollout requirements, not requests
+for runs or host changes now. The recorded deferral is unchanged.
+
 **3. Point homegit's README here, then archive it.** Nothing in agenthome
 or the wrapper still blocks archiving. Archiving makes it read-only
 and stops `controller-report`. Close homegit's open pull
