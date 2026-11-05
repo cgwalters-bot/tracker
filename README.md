@@ -590,6 +590,17 @@ with the job token and `actions: write`. `weekly-eval.yml`, on Tuesdays,
 does only that: it starts a `research` run that re-evaluates our tools against gh-aw
 and the like and comments on #519.
 
+The separate [monthly review refresh](.github/workflows/monthly-review-refresh.yml)
+runs on the first of the month at 08:00 UTC, or manually, with the same fixed
+`implement` task. It is **off by default**: repository variable `REVIEW_REFRESH`
+must be `enabled`, and both entries require the default branch. Leave it unset
+until reviewed artifact pins, complete retained snapshots, frozen component
+protocols and unused isolated evaluation samples exist. It only dispatches;
+the task checks prerequisites again and returns unfinished/no-update when they
+are missing. Updates to code, architecture and prose go through one draft PR;
+activation through reviewed release-train pins remains separate. See the
+[corpus prerequisites](docs/review-corpus.md#monthly-checklist-refresh).
+
 `weekly-blog.yml`, on Sundays, runs agent-board's
 [`digest`](https://github.com/cgwalters-forge/agent-board/blob/main/docs/digest.md)
 with `.github/weekly-digest.json` for this deployment's templates and budgets.
