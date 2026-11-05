@@ -372,6 +372,116 @@ test-architecture-review mode="test" id="B2588":
       assert.throws(() => validateHistory(history, s, { ...frozen, commits: [] }));
     });
 
+    // FI-1 is deliberately a stopped phase, not a second set of pilot scores.
+    // Fail closed if records start claiming runs without extending provenance checks.
+    function validateIsolated(r) {
+      assert.equal(r.schema, 'architecture-review.isolated.v1');
+      assert.equal(r.id, 'FI-1');
+      assert.equal(r.version, version);
+      assert.equal(r.status, 'incomplete_historical_inputs');
+      assert.equal(r.protocol, 'isolated-protocol.md');
+      assert.equal(r.protocol_sha256, sha256(read(r.protocol)));
+      assert.equal(r.protocol_frozen_before_discovery, true);
+      assert.deepEqual(Object.keys(r.artifact_sha256).sort(), ['patterns.md', 'prompt.md', 'references.json']);
+      for (const [file, digest] of Object.entries(r.artifact_sha256)) {
+        assert.equal(digest, results.artifact_sha256[file]);
+        assert.equal(digest, sha256(read(file)), file);
+      }
+      const acceptance = r.pilot_acceptance;
+      assert.equal(acceptance.scope, 'development_pilot_only');
+      assert.equal(acceptance.decision_url, 'https://github.com/cgwalters-forge/tracker/issues/1227#issuecomment-6640204527');
+      assert.equal(acceptance.decision_author, 'cgwalters-bot');
+      assert.ok(acceptance.authority);
+      assert.equal(acceptance.human_adjudication, false);
+      assert.equal(acceptance.optional_human_corrections_outstanding, true);
+      for (const [key, stratum] of [['design_matches', 'concerns'], ['question_matches', 'questions']]) {
+        assert.deepEqual(acceptance[key], { matched: results.strata[stratum].matched, denominator: results.strata[stratum].scorable });
+      }
+      const key = c => `${c.repository}#${c.pr}`;
+      const excluded = r.exposure.excluded_prs;
+      assert.equal(new Set(excluded).size, excluded.length);
+      for (const c of sample.samples) assert.ok(excluded.includes(key(c)), 'all pilot/rejected cases excluded');
+      assert.equal(r.exposure.held_out_claim, false);
+      assert.equal(r.exposure.model_training_exposure, 'unknown');
+      assert.ok(r.exposure.known);
+      const d = r.discovery;
+      assert.equal(d.query, 'created:<=2026-11-04 reviewed-by:cgwalters is:pr');
+      assert.equal(d.sort, 'created');
+      assert.equal(d.order, 'desc');
+      assert.equal(d.limit_per_repository, 10);
+      assert.deepEqual(d.searches.map(s => s.repository), ['bootc-dev/bootc', 'ostreedev/ostree', 'containers/composefs']);
+      assert.ok(Number.isInteger(d.metadata_requests) && d.metadata_requests >= 0 && d.metadata_requests <= 60);
+      assert.ok(d.metadata_source && d.metadata_limitations);
+      assert.equal(new Set(d.log.map(key)).size, d.log.length, 'unique discovery identities');
+      for (const s of d.searches) {
+        assert.ok([0, 1].includes(s.exit_code));
+        assert.ok(Number.isInteger(s.returned) && s.returned >= 0 && s.returned <= 10);
+        assert.equal(d.log.filter(c => c.repository === s.repository).length, s.returned);
+        if (s.exit_code !== 0) assert.ok(s.error);
+      }
+      for (const c of d.log) {
+        assert.ok(c.title && c.reason);
+        assert.ok(['provisional_identity', 'excluded', 'not_inspected'].includes(c.disposition));
+        if (excluded.includes(key(c))) assert.equal(c.disposition, 'excluded');
+      }
+      assert.equal(r.identities_frozen, true);
+      assert.equal(r.packet_sample_frozen, false);
+      assert.equal(r.candidates.length, 3);
+      assert.equal(new Set(r.candidates.map(key)).size, 3, 'unique sample identities');
+      assert.equal(new Set(r.candidates.map(c => c.id)).size, 3, 'unique sample IDs');
+      assert.equal(new Set(r.candidates.map(c => c.repository)).size, r.counts.repositories);
+      assert.ok(r.counts.repositories >= 2);
+      assert.deepEqual(d.log.filter(c => c.disposition === 'provisional_identity').map(key).sort(), r.candidates.map(key).sort());
+      for (const c of r.candidates) {
+        assert.ok(!excluded.includes(key(c)), 'sample/exposure disjointness');
+        assert.ok(!sample.samples.some(s => key(s) === key(c)), 'sample/pilot disjointness');
+        assert.match(c.id, /^FI-[BOC][0-9]+$/);
+        assert.match(c.head, /^[a-f0-9]{40}$/);
+        assert.equal(c.review.author, 'cgwalters');
+        assert.ok(c.review.id);
+        assert.match(c.review.submitted_at, /^2026-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
+        assert.ok(c.review.url.startsWith(`https://github.com/${c.repository}/pull/${c.pr}#pullrequestreview-`));
+        assert.equal(c.metadata_counts.files, c.paths.length);
+        assert.ok(c.paths.length > 0 && c.paths.length <= 100);
+        assert.equal(new Set(c.paths).size, c.paths.length);
+        assert.ok(c.paths.some(p => /^(src|lib|libbootc|crates)\//.test(p)));
+        assert.ok(Number.isInteger(c.metadata_counts.reviews) && c.metadata_counts.reviews > 0 && c.metadata_counts.reviews <= 100);
+        for (const field of ['historical_base', 'merge_base', 'manifest']) assert.equal(c[field], null);
+      }
+      assert.deepEqual(r.counts, { target: 3, repositories: 2, provisional_identities: r.candidates.length,
+        verified_packets: 0, attempted_reviews: 0, completed_reviews: 0, feedback_channels_retrieved: 0, scored_cases: 0 });
+      assert.deepEqual(r.runs, []);
+      for (const field of ['feedback', 'scoring', 'recall_denominators', 'unmatched_audit']) assert.equal(r[field], null);
+      assert.ok(r.stop_reason && r.next);
+    }
+
+    test('FI-1 incomplete evidence, artifact hashes, disjointness and provenance', () => {
+      const record = json('isolated.json');
+      validateIsolated(record);
+      const invalid = mutate => {
+        const copy = structuredClone(record);
+        mutate(copy);
+        assert.throws(() => validateIsolated(copy));
+      };
+      invalid(r => r.protocol_sha256 = '0'.repeat(64));
+      invalid(r => r.artifact_sha256['prompt.md'] = '0'.repeat(64));
+      invalid(r => r.candidates[0] = { ...r.candidates[0], repository: 'bootc-dev/bootc', pr: 2603 });
+      invalid(r => r.exposure.excluded_prs.pop());
+      invalid(r => r.candidates[1] = structuredClone(r.candidates[0]));
+      invalid(r => r.candidates[0].review.author = 'someone-else');
+      invalid(r => r.candidates[0].review.url = 'https://github.com/unrelated/review');
+      invalid(r => r.candidates[0].head = 'main');
+      invalid(r => r.candidates[0].merge_base = r.candidates[0].head);
+      invalid(r => r.candidates[0].metadata_counts.files++);
+      invalid(r => r.counts.completed_reviews++);
+      invalid(r => r.packet_sample_frozen = true);
+      invalid(r => r.recall_denominators = { concerns: 0 });
+      invalid(r => r.runs.push({ id: 'invented' }));
+      invalid(r => r.discovery.log.pop());
+      invalid(r => r.pilot_acceptance.human_adjudication = true);
+      invalid(r => r.exposure.held_out_claim = true);
+    });
+
     function validateCounts(r) {
       const evaluated = sample.samples.filter(s => s.status === 'evaluated');
       assert.equal(r.selected_prs, sample.samples.length);

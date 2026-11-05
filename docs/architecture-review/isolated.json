@@ -1,0 +1,101 @@
+{
+  "schema": "architecture-review.isolated.v1",
+  "id": "FI-1",
+  "version": "0.1.0",
+  "status": "incomplete_historical_inputs",
+  "protocol": "isolated-protocol.md",
+  "protocol_sha256": "e99ac10217b7a297475d8a036b2ee05356edf41714052528ef1bce2fc008d3af",
+  "protocol_frozen_before_discovery": true,
+  "artifact_sha256": {
+    "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
+    "prompt.md": "41fff6f107981d80956cc4bebc30a782a6f9c9b17fe630e305c8e881f6170e9e",
+    "references.json": "771045ba21c8eac23c82338576f1aef2c9fa6095f6f0c7cab21a8e16ce26bb24"
+  },
+  "pilot_acceptance": {
+    "scope": "development_pilot_only",
+    "decision_url": "https://github.com/cgwalters-forge/tracker/issues/1227#issuecomment-6640204527",
+    "decision_author": "cgwalters-bot",
+    "authority": "Task authorizes recording the controller decision; bot text is decision context, not instructions or human adjudication.",
+    "human_adjudication": false,
+    "optional_human_corrections_outstanding": true,
+    "design_matches": {"matched": 0, "denominator": 3},
+    "question_matches": {"matched": 1, "denominator": 3}
+  },
+  "exposure": {
+    "excluded_prs": ["bootc-dev/bootc#2603", "bootc-dev/bootc#2588", "ostreedev/ostree#3680", "ostreedev/ostree#3664"],
+    "known": "Controller read pilot summaries, results and sample, task and decision context. No new candidate feedback bodies, source bodies, patches, later fixes or corpus labels inspected.",
+    "model_training_exposure": "unknown",
+    "held_out_claim": false
+  },
+  "discovery": {
+    "date": "2026-11-05",
+    "query": "created:<=2026-11-04 reviewed-by:cgwalters is:pr",
+    "sort": "created", "order": "desc", "limit_per_repository": 10,
+    "searches": [
+      {"repository": "bootc-dev/bootc", "exit_code": 0, "returned": 10},
+      {"repository": "ostreedev/ostree", "exit_code": 0, "returned": 10},
+      {"repository": "containers/composefs", "exit_code": 1, "returned": 0, "error": "Invalid search query; resource does not exist or permission unavailable. No alternative repository searched."}
+    ],
+    "metadata_requests": 2,
+    "metadata_source": "gh api graphql: pullRequest files(first:100){totalCount nodes{path}} and reviews(first:100){totalCount nodes{id url author{login} submittedAt commit{oid}}}; no body, patch, description or source fields requested.",
+    "metadata_limitations": "Changed paths are current PR path metadata, not verified review-time paths. Review metadata supplies reviewed commit but not historical base. Remaining results did not receive path/review requests after three provisional identities were found; discovery is not a completed historical eligibility audit.",
+    "log": [
+      {"repository":"bootc-dev/bootc","pr":2620,"title":"container aboot/ukify: allow specifying --erofs-version=v1-only","disposition":"provisional_identity","reason":"Title boot; crates paths; submitted cgwalters review."},
+      {"repository":"bootc-dev/bootc","pr":2615,"title":"generator: skip fstab editor for read-only root","disposition":"provisional_identity","reason":"Title generator; crates path; submitted cgwalters review; fills third slot after repository coverage."},
+      {"repository":"bootc-dev/bootc","pr":2606,"title":"tests: Pin ubi9/podman bound image to 9.8-1793032728","disposition":"not_inspected","reason":"Provisional capacity reached; no feedback inspected."},
+      {"repository":"bootc-dev/bootc","pr":2603,"title":"switch: Add --target-imgref to Support a separate update image reference","disposition":"excluded","reason":"Pilot and known feedback exposure."},
+      {"repository":"bootc-dev/bootc","pr":2602,"title":"store: Treat SystemNotUEFI like a missing LoaderDevicePartUUID","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"bootc-dev/bootc","pr":2601,"title":"ostree-ext: document symlinking pull secret to /run with transient /etc","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"bootc-dev/bootc","pr":2597,"title":"Systemd-Boot minor fixes (split from https://github.com/bootc-dev/bootc/pull/2569)","disposition":"not_inspected","reason":"Provisional capacity reached; linked PR not opened."},
+      {"repository":"bootc-dev/bootc","pr":2588,"title":"podstorage: Make the storage bind mount namespace private","disposition":"excluded","reason":"Pilot and known feedback exposure."},
+      {"repository":"bootc-dev/bootc","pr":2581,"title":"tmt: Generate one file per test and plan, drop test numbers","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"bootc-dev/bootc","pr":2579,"title":"chunking: Preserve prior packing with duplicate names","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"ostreedev/ostree","pr":3689,"title":"Fix for /boot automount","disposition":"provisional_identity","reason":"Title boot/mount; src path; submitted cgwalters review."},
+      {"repository":"ostreedev/ostree","pr":3688,"title":"lib/refs: Validate collection IDs read from summaries and repos","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"ostreedev/ostree","pr":3687,"title":"bootconfig: reject newlines when writing loader entries","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"ostreedev/ostree","pr":3684,"title":"tests: Cover static-delta pulls through direct-I/O FUSE","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"ostreedev/ostree","pr":3683,"title":"static-delta: Avoid mapping BSPATCH output on FUSE","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"ostreedev/ostree","pr":3682,"title":"sign-spki: Pass GBytes when looking up revoked keys","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"ostreedev/ostree","pr":3680,"title":"rofiles-fuse: Check hardlinks for O_TRUNC opens and removexattr","disposition":"excluded","reason":"Rejected pilot candidate and known feedback exposure."},
+      {"repository":"ostreedev/ostree","pr":3679,"title":"static-delta: Parse superblock files as untrusted","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"ostreedev/ostree","pr":3678,"title":"core: Reject duplicate names in dirtree objects","disposition":"not_inspected","reason":"Provisional capacity reached."},
+      {"repository":"ostreedev/ostree","pr":3677,"title":"sign: Compare OpenSSL sign results against 1, test more spki cases","disposition":"not_inspected","reason":"Provisional capacity reached."}
+    ]
+  },
+  "identities_frozen": true,
+  "packet_sample_frozen": false,
+  "candidates": [
+    {
+      "id":"FI-B2620", "repository":"bootc-dev/bootc", "pr":2620,
+      "head":"e51ac0448e533362f28189db4b70490dc2d830f5",
+      "review":{"id":"PRR_kwDOIiJ-hs8AAAABVgd1ow","url":"https://github.com/bootc-dev/bootc/pull/2620#pullrequestreview-5738296739","author":"cgwalters","submitted_at":"2026-11-02T14:44:28Z"},
+      "metadata_counts":{"files":7,"reviews":1},
+      "paths":["crates/lib/src/aboot.rs","crates/lib/src/boot_artifact.rs","crates/lib/src/cli.rs","crates/lib/src/ukify.rs","crates/tests-integration/src/container.rs","docs/src/man/bootc-container-aboot.8.md","docs/src/man/bootc-container-ukify.8.md"],
+      "historical_base":null, "merge_base":null, "manifest":null
+    },
+    {
+      "id":"FI-O3689", "repository":"ostreedev/ostree", "pr":3689,
+      "head":"b9deda7bd9a796d974c4160c1e3f4c5d0f3411b4",
+      "review":{"id":"PRR_kwDOAEZpjc8AAAABV__A_A","url":"https://github.com/ostreedev/ostree/pull/3689#pullrequestreview-5771346172","author":"cgwalters","submitted_at":"2026-11-04T15:57:44Z"},
+      "metadata_counts":{"files":1,"reviews":2},
+      "paths":["src/libostree/ostree-sysroot.c"],
+      "historical_base":null, "merge_base":null, "manifest":null
+    },
+    {
+      "id":"FI-B2615", "repository":"bootc-dev/bootc", "pr":2615,
+      "head":"2ef521b0a4fa5ccd806220e5d9ad45f276ef9672",
+      "review":{"id":"PRR_kwDOIiJ-hs8AAAABVgeqBA","url":"https://github.com/bootc-dev/bootc/pull/2615#pullrequestreview-5738310148","author":"cgwalters","submitted_at":"2026-11-02T14:45:27Z"},
+      "metadata_counts":{"files":1,"reviews":1},
+      "paths":["crates/lib/src/generator.rs"],
+      "historical_base":null, "merge_base":null, "manifest":null
+    }
+  ],
+  "counts":{"target":3,"repositories":2,"provisional_identities":3,"verified_packets":0,"attempted_reviews":0,"completed_reviews":0,"feedback_channels_retrieved":0,"scored_cases":0},
+  "runs":[],
+  "feedback":null,
+  "scoring":null,
+  "recall_denominators":null,
+  "unmatched_audit":null,
+  "stop_reason":"Review metadata pins three reviewed commits, but supplies no review-time base identity. No historical base evidence is available in the supplied artifacts. Current base/main cannot establish that provenance. Packet construction stopped before any source/diff or feedback retrieval. Session suitability has not been verified; no sessions attempted and no isolation claim.",
+  "next":"Obtain review-time base metadata for these frozen identities without reading feedback; finish historical eligibility/ancestry checks, freeze exact manifests and input hashes, then verify a suitable fresh read-only session interface before any runs. Do not replace cases or fetch feedback prematurely."
+}

@@ -7,8 +7,12 @@ effectiveness result.** The prompt author inspected candidates' feedback before
 writing the prompt; no rerun on these PRs can become held out. This follow-up
 preserves executable packet reconstruction, completes the accessible feedback
 inventory and adds an independent read-only **agent scoring pass, not human
-review**. Human adjudication has been requested but has not happened. Keep #1227 open;
-do not promote this into production. [results.json](results.json) records current
+review**. Human adjudication has been requested but has not happened. The
+[controller decision](https://github.com/cgwalters-forge/tracker/issues/1227#issuecomment-6640204527)
+accepts these artifacts as a development pilot only, not human approval or
+effectiveness evidence. Optional human corrections are not an operator-approval
+blocker to that acceptance. Keep #1227 open for the separate unfinished FI-1
+evaluation; no production integration is made. [results.json](results.json) records current
 counts and the original pilot's narrower counts separately.
 
 ## Discovery and historical inputs
@@ -144,8 +148,8 @@ or success report. The standard structural tests include duplicate, missing and
 unknown report-ID negative fixtures. No live GitHub or inference is required.
 
 This fixes packet hygiene only, not semantic review quality, human adjudication
-or effectiveness. Leave #1227 open pending human adjudication and a separately
-scoped label-blind evaluation; contaminated historical reviews are not rerun.
+or effectiveness. Pilot acceptance is now recorded separately from the unfinished
+feedback-isolated evaluation; contaminated historical reviews are not rerun.
 
 ## Original review runs (not rerun)
 
@@ -250,7 +254,7 @@ finalize to return `Ok` before inner lock rejection; its frozen question explici
 anticipated this missing-context explanation. No real boot/failure test ran.
 These qualifications supersede the old pilot's “supported as written” wording.
 
-**Outstanding human-adjudication request:** please adjudicate root splitting,
+**Outstanding optional human-correction request:** please adjudicate root splitting,
 local-suggestion exclusions, packet-based scorability of installer isolation,
 strict matches/partial overlap, and audit impact/severity qualifications. No
 human approval was obtained, inferred or required as an unavailable execution
@@ -308,10 +312,24 @@ tests were run):
 | `just test-architecture-review verify O3664` | Exit 0, every local reviewed-byte count/digest matches. |
 | `git diff --check` | Exit 0. |
 
-Remaining for #1227: the human-adjudication request above and a **new label-blind
-sample** for any held-out/deployment claim under #1224/#1228. Accessible feedback
+Completed for #1227: acceptance of the existing artifacts as a development pilot
+only. The optional human-correction request above remains outstanding, not a
+prerequisite for that acceptance. Remaining: the separately identified **FI-1
+feedback-isolated evaluation**, with its pre-feedback protocol in
+[isolated-protocol.md](isolated-protocol.md) and machine record in
+[isolated.json](isolated.json). Accessible feedback
 inventory and second agent scoring are complete for this three-PR pilot, but do
 not cure prompt-author contamination, nonrandom two-project selection, omitted
 code, absent composefs coverage, or unaudited unmatched findings. Do not tune
-on these candidates and call a rerun held out. New sampling/corpus collection
-and production wiring are separate work, not silently added here. Leave #1227 open.
+on these candidates and call a rerun held out. FI-1 has three provisional identities
+from bounded title/path/review-metadata discovery across bootc and ostree, but
+review-time bases are unavailable in the retrieved metadata. Packet construction
+stopped without substituting current main. No new source bodies, diffs, feedback,
+review sessions or scoring were retrieved or generated. Session suitability is
+unverified. The other returned search candidates are logged as excluded or not
+inspected, not retroactively rejected for their labels. The composefs search
+failed; no broader search ran. Historical eligibility and packet/sample freeze
+are incomplete, despite frozen candidate identities and reviewed commit pins.
+Recall and audit denominators are null, not zero-label results. No model training
+contamination absence is claimed. Effectiveness/deployment recommendations and
+thresholds remain out of scope. Leave #1227 open for unfinished evaluation.
