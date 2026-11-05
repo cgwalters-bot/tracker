@@ -6,6 +6,11 @@
   "protocol": "isolated-protocol.md",
   "protocol_sha256": "e99ac10217b7a297475d8a036b2ee05356edf41714052528ef1bce2fc008d3af",
   "protocol_frozen_before_discovery": true,
+  "protocol_amendments": [
+    {"date":"2026-11-05", "after_discovery":true, "before_feedback_retrieval":true,
+     "rule":"Pre-feedback validity covers every feedback channel retrieved for scoring: a cgwalters inline comment, review body or PR comment timestamped before the pinned review's submitted_at invalidates that case's pre-feedback claim and is reported, never silently repinned. Inline comments attached to the pinned review itself (pull_request_review_id equal to its ID) are excluded, because their pending-draft timestamps precede submission.",
+     "reason":"The frozen protocol text names only inline feedback; an earlier PR comment exposes design feedback just as much. Recorded here rather than by editing the hashed protocol, before any feedback retrieval."}
+  ],
   "artifact_sha256": {
     "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
     "prompt.md": "41fff6f107981d80956cc4bebc30a782a6f9c9b17fe630e305c8e881f6170e9e",
@@ -77,7 +82,7 @@
     "independent_freeze_evidence": false,
     "ordered_metadata_selection_verified": true,
     "historical_eligibility_verified": false,
-    "limitations": "The three identities match the ordered title/current-path/review proxy in the archived discovery log. Review lists are complete at retrieval and confirm the earliest submitted cgwalters reviews. This does not establish historical path lists, earlier inline-feedback timing, or independently timestamp the protocol/sample freeze before discovery. Search results and titles are prior-run records, not a newly repeated search. No new candidate bodies or later-fix content was read. Further preparation remains stopped."
+    "limitations": "The three identities match the ordered title/current-path/review proxy in the archived discovery log. Review lists are complete at retrieval and confirm the earliest submitted cgwalters reviews. This does not establish historical path lists, earlier feedback timing on any channel, or independently timestamp the protocol/sample freeze before discovery. Search results and titles are prior-run records, not a newly repeated search. No new candidate bodies or later-fix content was read. Further preparation remains stopped."
   },
   "candidates": [
     {

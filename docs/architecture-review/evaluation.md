@@ -371,3 +371,11 @@ protocol follow-up open. The frozen protocol explicitly checks earlier inline
 feedback, but a future scoring pass must also address earlier PR-comment feedback
 before asserting pre-feedback validity. The protocol was not rewritten or
 rehashed after discovery; no evaluation has proceeded under that incomplete rule.
+
+That follow-up is now closed by an amendment in `isolated.json`, recorded after
+discovery but before any feedback retrieval, packet or reviewer run: an earlier
+cgwalters inline comment, review body or PR comment invalidates a case's
+pre-feedback claim; inline comments of the pinned review itself are excluded,
+since their draft timestamps precede submission. Checks pin the rule's hash. The
+protocol text is unchanged. Like the freeze, the amendment's chronology is
+asserted, not independently timestamped.

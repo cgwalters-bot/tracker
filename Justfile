@@ -382,6 +382,15 @@ test-architecture-review mode="test" id="B2588":
       assert.equal(r.protocol, 'isolated-protocol.md');
       assert.equal(r.protocol_sha256, sha256(read(r.protocol)));
       assert.equal(r.protocol_frozen_before_discovery, true);
+      // The amendment is pinned here like the protocol hash, so its text cannot drift after feedback retrieval.
+      assert.deepEqual(r.protocol_amendments.map(a => sha256(a.rule)),
+        ['c46ddf94bfe73a3c0d093960e6a57928024275d5aacd94e1bf4076b7c45e5d7e'], 'all-channel pre-feedback rule');
+      for (const amendment of r.protocol_amendments) {
+        assert.equal(amendment.after_discovery, true);
+        assert.equal(amendment.before_feedback_retrieval, true);
+        assert.match(amendment.date, /^2026-\d\d-\d\d$/);
+        assert.ok(amendment.reason);
+      }
       assert.deepEqual(Object.keys(r.artifact_sha256).sort(), ['patterns.md', 'prompt.md', 'references.json']);
       for (const [file, digest] of Object.entries(r.artifact_sha256)) {
         assert.equal(digest, results.artifact_sha256[file]);
@@ -522,6 +531,9 @@ test-architecture-review mode="test" id="B2588":
       };
       invalid(r => r.protocol_sha256 = '0'.repeat(64));
       invalid(r => r.artifact_sha256['prompt.md'] = '0'.repeat(64));
+      invalid(r => r.protocol_amendments = []);
+      invalid(r => r.protocol_amendments[0].before_feedback_retrieval = false);
+      invalid(r => r.protocol_amendments[0].rule = r.protocol_amendments[0].rule.replace(' or PR comment', ''));
       invalid(r => r.candidates[0] = { ...r.candidates[0], repository: 'bootc-dev/bootc', pr: 2603 });
       invalid(r => r.exposure.excluded_prs.pop());
       invalid(r => r.candidates[1] = structuredClone(r.candidates[0]));
