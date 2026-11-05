@@ -19,8 +19,10 @@ disposition/adjudication stays in #1227; a separate #1224 child owns new
 feedback-isolated evaluation, and #1228 owns integration. Keep #1227 open.
 The [held-out protocol](held-out-protocol.md) freezes the next evaluation's
 selection and scoring rules; [its ledger](held-out.json) records an unfinished
-attempt with no new candidates or scores because inference configuration is
-unavailable. It does not supersede the pilot or establish a held-out result.
+attempt. Five PRs and their reviewed revisions are frozen from feedback metadata
+alone ([selection log](held-out-selection.json), controller only); no packets,
+reviews or scores exist yet because inference is unavailable. It does not
+supersede the pilot or establish a held-out result.
 This does not change any production prompt, workflow, permission, merge rule,
 schedule or inference service.
 
