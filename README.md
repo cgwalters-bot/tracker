@@ -134,43 +134,51 @@ review; `/review` still works.
 
 ### Paced-review cutover
 
-**Prepared, not activated (4 November 2026).** The threat is duplicate inference
-starts for one PR head: an automatic event review plus a pass-dispatched review
-would spend outside the pass's pace/WIP accounting. Use the existing coordinated
-record-only/dispatch mechanism, not a second scheduler or a caller-side policy.
-This checkout leaves `pr.reviewPools` absent in `.github/pass.json` and keeps
-legacy automatic events and `/review`. No variables, credentials, merge policy
-or live reviews were changed. Merging source does not deploy the settings below.
+**Prepared, not activated (5 November 2026, #1198/#1171).** This updates the
+merged #1103 preparation, not its old separate-review-wrapper route. The threat
+is duplicate, unpaced inference for one PR head while event reviews remain
+authoritative. `dispatch.yml` therefore rejects reviews unless the trusted
+repository variable `REVIEW_DISPATCH` is exactly `enabled` (unset is off), before
+calling any wrapper or inference. No dispatch input bypasses that gate.
+`pr.reviewPools` and `pr.reviewDispatchRepositories` remain absent in
+`.github/pass.json`. Existing `review.yml`, its SHA pin, events, base bounds/task
+and write-authorized `/review` admission remain unchanged and authoritative.
+No settings, credentials, admission, rulesets or live reviews were changed.
 
-The producer is already pinned: `AGENT_BOARD_REV` is
-`77869b56bcfa02c2d03c79af365b2ad51c96de06`, containing agent-board#494
-(`88d51dbbef245dca643b9017a18190ca0b9c741b`). Its
-[review contract](https://github.com/cgwalters-forge/agent-board/blob/77869b56bcfa02c2d03c79af365b2ad51c96de06/docs/pass.md#legacy-review-workflow-route)
-dispatches string inputs `pr`, `head`, `pool` on the target default branch and
-recognizes `review OWNER/REPO#N HEAD (POOL)` as the run identity. Its separate
-opt-in `pr.reviewDispatchRepositories` route (`dispatch.yml` reviews) is not
-part of this cutover and stays unset.
+The pinned producer's
+[ordinary dispatch contract](https://github.com/cgwalters-forge/agent-board/blob/6c7ecdabdad572d4f69713c55e6ab9f2c2b10e02/docs/pass.md#ordinary-dispatched-reviews-opt-in)
+selects exact followed base repositories with `pr.reviewDispatchRepositories`.
+It dispatches `kind=review`, `repo=OWNER/REPO`, positive `item`, exact `head`,
+nonempty `pool` and a task hint to the base repository's default-branch
+`dispatch.yml`. The run identity is exactly
+`review OWNER/REPO#ITEM HEAD (POOL)`. The caller requires a lowercase 40-hex head
+only for reviews, rejects effort/config overrides for reviews, and routes
+review/non-review jobs mutually exclusively. Non-review profile, ordinary
+`pools.json`/`AGENT`/`AGENT_MODEL` fallback and moving-main wrapper call stay as
+before; reviews never enter those jobs.
 
-The consumer implementation is merged in agentic-job#2681
-(`9c7027b5caf86f43907ab06ad3c78f5d093a6650`), inspected at
-`bba0bebc135eeda770990097ce8504a15e09b877`. It validates a positive PR number,
-full head SHA and trusted `REVIEW_POOLS` mapping; policy binds the open,
-non-draft PR at exactly that head before inference. `REVIEW_RECORD_ONLY` is a
-JSON array of immutable author IDs: admitted fork PR events for those authors
-record pending without inference (or carry a proven approval); other authors,
-same-repository branches and `/review` retain event reviews.
+The separate literal ordinary-wrapper call pins
+[actions#198 at f05e2372d3bd5540406d444e26c70ba8c845b07d](https://github.com/cgwalters-forge/actions/blob/f05e2372d3bd5540406d444e26c70ba8c845b07d/README.md#ordinary-dispatched-reviews-dormant).
+It receives only kind/repo/item/head/pool and a fixed task hint, no apply PAT or
+provider key. The wrapper owns trusted `REVIEW_POOLS` resolution (explicit
+agent/model and optional base-owned config, no ordinary fallback), fixed
+base-owned bounds/task, default-branch/public/base-repository admission,
+expected-head policy, and checked submission with the same base-repository job
+token. It caps reviews at 150 requests, 500 AIC and 75 policy minutes. Review
+code is fetched as data inside the credential-free sandbox, not executed in a
+privileged head checkout. Missing/malformed/unknown pools fail at that owning
+layer, not in a second tracker pool resolver.
 
-**Wrapper dependency is not satisfied.** The completed actions#67 integration
-(`5906e6745c4e3e1c68b698dacf409a452c727d08`) composes the old consumer, not this
-contract. Tracker pins actions `1b4539dd00edff3f89cb130e72e535e8d9c6a67a`, whose
-consumer calls name agentic-job v0.6.9 by commit
-(`57119eeffa17ea41b383cfdaf8370b8abeba8868`), not by tag. It still does not declare
-workflow-call inputs. Its header says that event-only composition has not adopted
-paced dispatches; it has no record-only routing. Do not forward guessed
-inputs, copy the consumer into tracker, or treat its merge as wrapper deployment.
-The caller's dispatch/exact-head/record-only contract tests must accompany the
-eventual compatible wrapper pin; today's regression tests guard only legacy
-routing and disabled activation.
+`just test-review-caller` is offline caller plumbing coverage: disabled routing,
+exclusive jobs, malformed/missing head, expected-head forwarding, exact title,
+and unchanged non-review/legacy contracts. It does **not** prove stale-head
+rejection or checked submission. Immutable wrapper boundary tests are
+[cgwalters-agentic-job.test.mjs](https://github.com/cgwalters-forge/actions/blob/f05e2372d3bd5540406d444e26c70ba8c845b07d/.github/workflows/cgwalters-agentic-job.test.mjs)
+(including missing/unknown pool, head/admission and pre-submit checks) and
+[review_wrapper.rs](https://github.com/cgwalters-forge/actions/blob/f05e2372d3bd5540406d444e26c70ba8c845b07d/lint/tests/review_wrapper.rs)
+(credential, immutable dependency and checked-publication boundaries).
+`just test-review-wrapper PATH` runs the Node boundary suite from a read-only
+checkout at that exact SHA; it performs no live inference or review.
 
 #### Followed caller inventory
 
@@ -199,58 +207,67 @@ exemptions because their PRs are drafts or merging is disabled.
 
 #### Coordinated activation and rollback (operator work, not run here)
 
-First merge a compatible actions wrapper that preserves public-repository,
-author/bot and write-authorized `/review` admission. Review its immutable
-consumer pin and tailnet/broker admission of its `job_workflow_ref`. Then update
-each managed caller, with required string dispatch inputs `pr`, `head`, `pool`,
-the producer's exact run-name above, and forwarding only those declared wrapper
-inputs. Policy/head validation, pool lookup, record-only decisions, head
-supersession and status submission stay in the tools. Add regression coverage
-for dispatch routing, stale/invalid heads, missing/unknown pools, selected-pool
-identity, record-only fork events, unaffected `/review` and default-off mode.
+This is not rollout approval. Broker/tailnet admission of the pinned ordinary
+wrapper's `job_workflow_ref`, token permissions, trusted `REVIEW_POOLS` settings
+and agent configuration remain unverified. Re-inventory all followed base
+repositories at their deployed default-branch SHAs; the dated read-only table
+above is historical inventory, never global-coverage proof. No external callers
+were edited. Verify dispatch permission (`actions: write`) in each selected base
+repository and exact producer/consumer pool identity before proposing settings.
 
-Before activation, re-inventory **all** `follow` callers (thirteen today) at their deployed
-default-branch SHAs. Enable only after all callers support the contract. Verify the bot
-token can dispatch `review.yml` (`actions: write`) in each, and that each pool
-maps to the same agent/model the producer paces. Operator-controlled repository
-variables in **each followed repository** must supply:
+Coverage must include **all authors** admitted by the authoritative event route,
+including bots, associated humans and in-repository branches, plus currently
+write-authorized exact `/review` commands for otherwise unadmitted authors.
+The ordinary wrapper's author policy is not proof of event-route equivalence;
+its bot ID/login requirements, associated-human rules and bounded command
+history checks need explicit coverage. Do not silently drop authors or weaken
+admission to make a pilot work. The unchanged legacy wrapper has no coordinated
+record-only contract for this ordinary route: replacing/suppressing events and
+commands without loss or double starts is still future approved work, not
+something enabled by this caller gate.
 
-* `REVIEW_POOLS` = `{"claude":{"agent":"claude","model":"claude-opus-5-5"},"openai":{"agent":"opencode","model":"praxis/gpt-6.1-sol"}}`
-  (the current tracker pool choices, not a workflow input). Check each caller's
-  runner/configuration and configuration-repository settings for both agents.
-* `REVIEW_RECORD_ONLY` = `[17814078]` for the configured `cgwalters-bot` author
-  (ID read from GitHub); leave unset/`[]` before the cutover. Verify the author
-  remains admitted by existing policy/bounds; record-only grants no admission.
+The producer also explicitly leaves general `dispatch.yml` **merge/fix
+provenance unresolved**: a review-shaped title is not kind/caller attestation.
+Existing acceptance still requires the immutable Actions bot ID, current head,
+public bot-fork scope, cited run and dedicated `pr.reviewWorkflow`; ordinary
+intake does not widen merge authority. Do not change that workflow setting or
+merge policy to pretend the preparation resolves this blocker.
 
-Once compatible callers are deployed, pause applying passes and drain existing
-event reviews. Coordinate those record-only settings with tracker
-`.github/pass.json` `pr.reviewPools = ["claude", "openai"]`, then resume passes.
-Do not enable pools first (double reviews) or leave record-only on without
-resuming the pass (heads wait indefinitely). Preserve claims/reservations and
-the existing caps (`wip: 8`, eight dispatches and twenty writes per pass; the
-producer also limits review starts to three per pass). Preview before applying;
-neither preview nor merging source is a live exact-head proof.
+For a future approved cutover, first stop paced starts and pause applying
+passes. Drain/cancel existing event and ordinary review runs and inspect
+ambiguous claims/reservations without erasing them. Deploy and verify the
+coordinated authoritative event/command suppression or pending-record route
+before activating ordinary starts; never enable both inference paths for a
+head. Only then coordinate `REVIEW_DISPATCH=enabled` in approved callers with
+reviewed `pr.reviewDispatchRepositories` and `pr.reviewPools` settings. Keep
+existing WIP/pace/write/start bounds. Before resuming paced starts, also verify
+the existing publication opt-in `AGENT_REAL_REVIEWS=true` in each caller: the
+inference gate does not enable submission, and without that opt-in the wrapper
+can spend inference and finish without publishing a verdict or apply fallback.
+Preview before resuming applying passes. Merging source or previewing is not a
+live proof.
 
-Later, on one eligible bot fork PR, record its exact head SHA, pending event
-status with no agent inference, and the single dispatched run whose title names
-that PR/head/pool. Verify the submitted verdict/status is on that head, and a
-later push cannot approve the replacement head with the old verdict. Observe
-full-WIP and held-pool passes starting no review, then a free-slot/in-pace pass
-starting at most one. Observe another pass and an event reopen/synchronize
-without a duplicate start for the same head; inspect reservations if GitHub's
-dispatch answer was lost, never delete them to force a retry. Retain run URLs,
-SHAs and pass summaries as evidence. No such live verification ran in this PR.
+Retain live bot ID, exact head, run URL/title and run-marker evidence for the
+single submitted verdict on that head. Verify checked publication and that a
+push cannot approve its replacement head, authorized-command and all-author
+coverage, full-WIP/held-pool refusal, no duplicate start across later passes and
+reopen/synchronize events. Exercise outage catch-up: pending current heads must
+be recovered in bounded paced starts after recovery, without lost commands or
+blind redispatch of an ambiguous reservation. A completed run with no verified
+verdict or an exhausted failed-job retry requires human inspection. None of
+these live checks ran in this preparation.
 
-Rollback: pause applying passes, remove `pr.reviewPools`, cancel/drain outstanding
-paced reviews and inspect ambiguous claims, then unset `REVIEW_RECORD_ONLY` in
-every affected repository before restoring event-only operation and resuming.
-Do not revert callers to an incompatible wrapper while paced starts remain
-enabled. Existing exact-head approvals and reservation records are not reset.
-Unsetting record-only does not replay events for heads already left pending.
-Inventory those heads after draining paced runs, and have a write-authorized
-operator request `/review` on each still-open, still-unreviewed current head.
-Check for an existing active review before requesting one, then verify its
-verdict/status names the current head; do not push or reopen merely to retrigger.
+Rollback after a future approved cutover: stop paced starts first (pause passes
+and remove the review scheduling opt-ins), drain/cancel outstanding runs, and
+inspect ambiguous reservations without erasing claims. Disable ordinary caller
+activation only after reconciling queued starts. Restore the authoritative
+event and authorized-command route in every affected repository before
+resuming normal operation; do not swap wrapper pins under active paced runs.
+Inventory pending, still-open current heads left by suppression or an outage.
+Check for active runs and existing exact-head verdicts before a write-authorized
+operator requests `/review` for each remaining head, then verify head/run-marker
+binding. Restoring events does not replay missed events: never push/reopen just
+to retrigger or clear reservations to force duplicate starts.
 
 ### Draft-review buckets
 

@@ -1073,7 +1073,9 @@ fn workflows_follow_our_own_repositories_at_main_review_excepted_and_pin_the_res
             seen += 1;
             // Except review.yml: its verdict is the only gate on .github/ here,
             // so the wrapper it calls moves only by a reviewed change to the pin.
-            let ok = match uses.starts_with(&owner) && file != "review.yml" {
+            let ordinary_review = file == "dispatch.yml"
+                && uses == "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@f05e2372d3bd5540406d444e26c70ba8c845b07d";
+            let ok = match uses.starts_with(&owner) && file != "review.yml" && !ordinary_review {
                 true => is_ref(uses, |rev| rev == "main"),
                 false => is_ref(uses, is_commit),
             };

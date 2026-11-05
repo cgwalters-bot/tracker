@@ -20,10 +20,10 @@
 # `profile` job puts it before the task, so a dispatch carries only what is
 # particular to its item. The wrapper adds its own line on top, which says
 # what the kind may hand back.
-# The wrapper is followed at its main (#544): our own repositories are not
-# pinned by commit, third-party actions are. It sets the agentic-job ref.
+# Non-review calls follow main (#544). Review is a separate immutable call:
+# its wrapper owns REVIEW_POOLS, base policy/config and checked submission.
 name: dispatch
-run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.pool && format(' ({0})', inputs.pool) || '' }}${{ inputs.config == 'acp-experiment' && ' [acp-experiment]' || '' }}
+run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.kind == 'review' && format(' {0} ({1})', inputs.head, inputs.pool) || (inputs.pool && format(' ({0})', inputs.pool) || '') }}${{ inputs.kind != 'review' && inputs.config == 'acp-experiment' && ' [acp-experiment]' || '' }}
 
 on:
   workflow_dispatch:
@@ -45,8 +45,12 @@ on:
         type: choice
         options: [implement, triage, research, review, fix]
         required: true
+      head:
+        description: "Review only: required exact lowercase 40-hex expected PR head"
+        type: string
+        default: ''
       pool:
-        description: "Inference pool: claude, fable, openai, astra or mistral (.github/agentic-job/pools.json); empty uses the variables AGENT and AGENT_MODEL"
+        description: "Non-review: pools.json or empty for AGENT/AGENT_MODEL. Review: required key in trusted REVIEW_POOLS, resolved only by the pinned wrapper"
         type: string
         default: ''
       # Prevent arbitrary model selection and silent downgrade: the only
@@ -67,10 +71,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Threat: a manual/producer review dispatch could start duplicate, unpaced
+  # inference while legacy events remain authoritative. Only a trusted repo
+  # variable can activate this route; dispatch inputs cannot override it.
+  review-gate:
+    if: ${{ inputs.kind == 'review' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - name: Validate dormant review route
+        env:
+          ACTIVATION: ${{ vars.REVIEW_DISPATCH }}
+          HEAD: ${{ inputs.head }}
+          EFFORT: ${{ inputs.effort }}
+          CONFIG: ${{ inputs.config }}
+        run: |
+          node -e '
+          if (process.env.ACTIVATION !== "enabled") throw Error("ordinary reviews are disabled");
+          if (!/^[0-9a-f]{40}$/.test(process.env.HEAD) || process.env.HEAD.length !== 40) throw Error("review requires exact expected head");
+          if (process.env.EFFORT || process.env.CONFIG !== "hosted") throw Error("review configuration belongs to REVIEW_POOLS");
+          '
+
+  review:
+    needs: review-gate
+    if: ${{ inputs.kind == 'review' }}
+    # Immutable wrapper from actions#198, not a release tag.
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@f05e2372d3bd5540406d444e26c70ba8c845b07d
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read
+      id-token: write
+    with:
+      kind: review
+      repo: ${{ inputs.repo }}
+      item: ${{ inputs.item }}
+      head: ${{ inputs.head }}
+      pool: ${{ inputs.pool }}
+      task: Review the expected head using base-owned policy.
+    # No secrets: publication uses this base repository's job token.
+
   # The task the agent gets: this kind's profile, then what was dispatched.
   # Read from the commit the run is on, which the wrapper requires to be
   # the default branch's, so a profile changes only by a merge here.
   profile:
+    if: ${{ inputs.kind != 'review' }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -222,6 +269,7 @@ jobs:
 
   run:
     needs: profile
+    if: ${{ inputs.kind != 'review' }}
     uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.

@@ -923,17 +923,69 @@ test-architecture-review mode="test" id="B2588":
       }));
     });
 
-# Guard the disabled cutover until a compatible wrapper is pinned. Replace
-# these guards with dispatch/exact-head/record-only contract coverage then.
+# Offline caller contracts; wrapper policy/submission is tested upstream.
 test-review-caller:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
     const fs = require('node:fs');
     const { runInNewContext } = require('node:vm');
-    const { execFileSync } = require('node:child_process');
+    const { execFileSync, spawnSync } = require('node:child_process');
     const workflow = fs.readFileSync('.github/workflows/review.yml', 'utf8');
+    const dispatch = fs.readFileSync('.github/workflows/dispatch.yml', 'utf8');
     const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
     assert.ok(!Object.hasOwn(pass.pr, 'reviewPools'), 'reviewPools is global across follow');
+    assert.ok(!Object.hasOwn(pass.pr, 'reviewDispatchRepositories'), 'ordinary scheduling stays off');
+    const expression = value => '$' + '{' + `{ ${value} }}`;
+    const job = name => new RegExp(`^  ${name}:\\n([^]*?)(?=^  [a-z][a-z-]*:|$(?![^]))`, 'm').exec(dispatch)?.[1];
+    for (const name of ['review-gate', 'review']) assert.ok(job(name).includes(`if: ${expression("inputs.kind == 'review'")}`));
+    for (const name of ['profile', 'run']) assert.ok(job(name).includes(`if: ${expression("inputs.kind != 'review'")}`));
+    assert.match(job('review'), /^    needs: review-gate$/m);
+    assert.match(job('run'), /^    needs: profile$/m);
+    const review = job('review');
+    assert.match(review, /^    uses: cgwalters-forge\/actions\/\.github\/workflows\/cgwalters-agentic-job.yml@f05e2372d3bd5540406d444e26c70ba8c845b07d$/m);
+    const withBlock = review.split('    with:\n')[1].split('    #')[0];
+    assert.deepEqual(withBlock.trim().split('\n').map(line => line.trim().split(':')[0]), ['kind', 'repo', 'item', 'head', 'pool', 'task']);
+    for (const key of ['repo', 'item', 'head', 'pool']) assert.ok(withBlock.includes(`${key}: ${expression(`inputs.${key}`)}`));
+    assert.doesNotMatch(review.replace(/^ *#.*$/gm, ''), /secrets:|inherit|SAFE_OUTPUTS_PAT|INFERENCE_API_KEY|AGENT_MODEL|pools\.json|needs\.profile/);
+    assert.match(job('run'), /cgwalters-agentic-job.yml@main/);
+    assert.match(job('run'), /SAFE_OUTPUTS_PAT: \$\{\{ secrets.CGWALTERS_BOT_PAT \}\}/);
+    assert.match(dispatch, /      head:\n[^]*?        type: string\n        default: ''/);
+    const gateJob = job('review-gate');
+    assert.match(gateJob, /timeout-minutes: 1/);
+    assert.ok(gateJob.includes(`ACTIVATION: ${expression('vars.REVIEW_DISPATCH')}`));
+    for (const key of ['head', 'effort', 'config']) assert.ok(gateJob.includes(`${key.toUpperCase()}: ${expression(`inputs.${key}`)}`));
+    const gateScript = /run: \|\n([^]*)/.exec(gateJob)[1].replace(/^          /gm, '');
+    const head = 'a'.repeat(40);
+    const checkGate = extra => spawnSync('bash', ['-euo', 'pipefail', '-c', gateScript], { encoding: 'utf8',
+      env: { PATH: process.env.PATH, ACTIVATION: 'enabled', HEAD: head, CONFIG: 'hosted', EFFORT: '', ...extra } });
+    for (const activation of ['', 'true', 'disabled', 'Enabled']) {
+      const got = checkGate({ ACTIVATION: activation, HEAD: '' });
+      assert.equal(got.status, 1);
+      assert.match(got.stderr, /ordinary reviews are disabled/, 'disabled rejected before other work');
+    }
+    for (const bad of ['', 'a'.repeat(39), 'a'.repeat(41), 'A'.repeat(40), 'g'.repeat(40), `${head}\n`, ` ${head}`]) {
+      assert.equal(checkGate({ HEAD: bad }).status, 1, bad);
+    }
+    assert.equal(checkGate({}).status, 0);
+    assert.equal(checkGate({ EFFORT: 'heavy' }).status, 1);
+    assert.equal(checkGate({ CONFIG: 'acp-experiment' }).status, 1);
+    // Evaluate actual Actions expressions: exact producer title and exclusive routes.
+    const evaluate = (source, inputs) => runInNewContext(source, { inputs, format: (s, ...args) => s.replace(/\{(\d+)\}/g, (_, n) => args[n]) });
+    const title = inputs => /^run-name: (.*)$/m.exec(dispatch)[1].replace(/\$\{\{ (.*?) \}\}/g, (_, source) => evaluate(source, inputs));
+    const inputs = { kind: 'review', repo: 'cgwalters-forge/tracker', item: '42', head, pool: 'openai', config: 'hosted' };
+    assert.equal(title(inputs), `review cgwalters-forge/tracker#42 ${head} (openai)`);
+    assert.equal(title({ ...inputs, config: 'acp-experiment' }), title(inputs), 'review title never gains config suffix');
+    for (const kind of ['implement', 'fix', 'triage', 'research', 'review']) {
+      const settings = { ...inputs, kind };
+      for (const name of ['review-gate', 'review', 'profile', 'run']) {
+        const condition = /if: \$\{\{ (.*?) \}\}/.exec(job(name))[1];
+        assert.equal(evaluate(condition, settings), (name === 'review' || name === 'review-gate') === (kind === 'review'));
+      }
+      if (kind !== 'review') {
+        assert.equal(title(settings), `${kind} cgwalters-forge/tracker#42 (openai)`);
+        assert.equal(title({ ...settings, pool: '', config: 'acp-experiment' }), `${kind} cgwalters-forge/tracker#42 [acp-experiment]`);
+      }
+    }
     // agent-board#680's draft buckets: the only shape the coordinated change
     // may take (README, "Draft-review buckets"), and off until it lands.
     // Rollback is removing the draft opt-in, which must read as off.
@@ -1008,7 +1060,16 @@ test-review-caller:
       assert.deepEqual(bound.repos, ['cgwalters-forge/tracker'], files[i]);
       assert.deepEqual(bound.bases, ['main'], files[i]);
     }
-    console.log('ok legacy review routing and paced/draft-review default-off guards (compatible wrapper pending)');
+    console.log('ok dormant ordinary review gate, exclusive routes, expected-head forwarding, exact identity and unchanged legacy admission');
+
+# Manual offline owning-layer tests from a read-only checkout of the review pin.
+test-review-wrapper actions:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const { execFileSync } = require('node:child_process');
+    const cwd = require('node:path').resolve(process.argv[2]);
+    assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim(), 'f05e2372d3bd5540406d444e26c70ba8c845b07d');
+    execFileSync('node', ['--test', '.github/workflows/cgwalters-agentic-job.test.mjs'], { cwd, stdio: 'inherit' });
 
 # poll must pass both of the fix bounds files dispatch selects per target.
 test-poll-bounds:
