@@ -18,7 +18,9 @@
     "cgwalters-forge/rpm-ostree",
     "cgwalters-forge/atomic-linux-sandbox",
     "bootc-dev/bootc",
-    "composefs/composefs-rs"
+    "composefs/composefs-rs",
+    "cgwalters-forge/misctool",
+    "cgwalters-bot/praxis-credential-broker"
   ],
   "workRepositories": [
     "cgwalters-forge/tracker",
@@ -71,7 +73,7 @@
         "cgwalters-bot/praxis-credential-broker"
       ]}},
   "budget": {"weeklyUsd": 2000},
-  "pr": {"staleDays": 0, "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree"], 
+  "pr": {"staleDays": 0, "unstall": true, "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-bot/praxis-credential-broker"],
     "reviewWorkflow": "review.yml",
     "checkReruns": true,
     "ownerBranches": true,
