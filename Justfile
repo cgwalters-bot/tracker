@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh agent-board-pin
+test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh agent-board-pin
 
 # Offline trigger execution and prompt-contract checks, not model evaluations.
 test-review-refresh:
@@ -1585,6 +1585,47 @@ build-supervisor-agent-board:
     rev=$(sed -n 's/^  AGENT_BOARD_REV: \([0-9a-f]\{40\}\)$/\1/p' .github/workflows/supervisor.yml)
     [[ $rev =~ ^[0-9a-f]{40}$ ]] || { echo 'expected one supervisor pin' >&2; exit 1; }
     {{ just_executable() }} build-agent-board "$rev"
+
+# The agent-board.json of maintain-shadow.yml's poll: pass.json's operator,
+# bot and dispatch settings and the `pr` keys poll reads, following only
+# FOLLOW. The pass-only `pr` keys have no poll equivalent and are left out.
+maintain-shadow-config pass follow:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    jq -e --arg follow "$2" '{operator, bot, dispatchRepo, dispatchWorkflow, follow: [$follow]}
+      + (.pr | {reviewWorkflow, fixPools, mergeAuthors, rebaseRounds, mergeQueue})
+      | with_entries(select(.value != null))' "$1"
+
+# maintain-shadow.yml previews with the job token only, and its poll gets
+# pass.json's settings. With AGENT_BOARD, the pinned CLI must take its flags.
+test-maintain-shadow:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const { execFileSync } = require('node:child_process');
+    const fs = require('node:fs');
+    const workflow = fs.readFileSync('.github/workflows/maintain-shadow.yml', 'utf8');
+    assert.doesNotMatch(workflow, /secrets\.|: write|--apply/);
+    assert.match(workflow, /^ {6}group: maintain-shadow\n {6}cancel-in-progress: false$/m);
+    const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
+    const config = JSON.parse(execFileSync('{{ just_executable() }}',
+      ['maintain-shadow-config', '.github/pass.json', 'cgwalters-forge/agentic-job'], { encoding: 'utf8' }));
+    assert.deepEqual(config, {
+      operator: pass.operator, bot: pass.bot, dispatchRepo: pass.dispatchRepo,
+      dispatchWorkflow: pass.dispatchWorkflow, follow: ['cgwalters-forge/agentic-job'],
+      reviewWorkflow: pass.pr.reviewWorkflow, fixPools: pass.pr.fixPools, mergeAuthors: pass.pr.mergeAuthors,
+      rebaseRounds: pass.pr.rebaseRounds, mergeQueue: pass.pr.mergeQueue,
+    });
+    console.log('ok maintain-shadow previews read-only with pass.json\'s poll settings');
+    if (process.env.AGENT_BOARD) {
+      const help = execFileSync(process.env.AGENT_BOARD, ['poll', '--help']).toString();
+      const command = /"\$AGENT_BOARD" poll [\s\S]*?\| tee/.exec(workflow)[0];
+      for (const flag of new Set(command.match(/--[\w-]+/g))) {
+        assert.match(help, new RegExp(`${flag}(?![\\w-])`), `${flag} in agent-board poll --help`);
+      }
+      console.log('ok the pinned agent-board poll takes every flag maintain-shadow passes');
+    } else {
+      console.log('skipped: set AGENT_BOARD to check the flags against the pinned CLI');
+    }
 
 # No moving refs or source fallback: substituted assets must not run with the
 # bot's write token. The attested manifest binds both digests to reviewed CI.

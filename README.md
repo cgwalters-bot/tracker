@@ -117,6 +117,14 @@ on it in a `workRepositories` repository, under a live epic or opened by
 the operator or the bot, is taken in Priority order. Dispatch by hand
 (docs/bring-up.md, "Dispatching a run") for anything else.
 
+`.github/workflows/maintain-shadow.yml` (tracker#1356) runs `agent-board
+poll --dry-run` on agentic-job every half hour, with the job's read-only
+token and the settings `just maintain-shadow-config` takes from
+`pass.json`. Its job summary previews what poll alone would do there, for
+comparison with what the pass did; it takes no step. The pass-only `pr`
+keys, such as `operatorPaths` and `noMerge`, are not applied, so the poll
+can preview a merge that the pass holds.
+
 A pull request labelled `needs-human` is not touched again until the label
 is removed. A fix run can request one `add_comment` explaining why it
 cannot safely change the pull request, without a push (opt-in in
