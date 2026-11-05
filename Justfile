@@ -1125,6 +1125,8 @@ build-agent-board rev=env("AGENT_BOARD_REV", ""):
     echo "Installed agent-board $rev ($target)"
 
 # Offline transport fixtures exercise the real installer; no network or token.
+# The real-* cases also run gh's own attestation verifier on a published
+# release, so gh must be on PATH.
 test-agent-board-install:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
@@ -1136,8 +1138,9 @@ test-agent-board-install:
     const rev = 'a'.repeat(40);
     const target = 'x86_64-unknown-linux-musl';
     const stub = `#!/usr/bin/env node
-    const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
+    const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), { spawnSync } = require('node:child_process');
     const args = process.argv.slice(2), mode = process.env.CASE;
+    const identity = 'https://github.com/cgwalters-forge/agent-board/.github/workflows/ci.yml@refs/heads/main';
     if (process.env.BUMP) {
       if (args[0] === 'api' && args.some(a => a.endsWith('/commits/main'))) { console.log('${rev}'); process.exit(0); }
       if (args[0] === 'api' && args.some(a => a.endsWith('/check-runs'))) { console.log(JSON.stringify({name: 'ci', status: 'completed', conclusion: 'success'})); process.exit(0); }
@@ -1147,11 +1150,30 @@ test-agent-board-install:
     }
     if (args[0] === 'attestation') {
       if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) process.exit(9);
-      for (const s of ['--source-digest', '${rev}', '--deny-self-hosted-runners', 'https://github.com/cgwalters-forge/agent-board/.github/workflows/ci.yml@refs/heads/main']) if (!args.includes(s)) process.exit(8);
-      process.exit(mode === 'attestation' ? 1 : 0);
+      for (const s of ['--source-digest', process.env.REV, '--deny-self-hosted-runners', identity]) if (!args.includes(s)) process.exit(8);
+      if (!mode.startsWith('real-')) process.exit(mode === 'attestation' ? 1 : 0);
+      // The real verifier on the real bundle, offline: a dead proxy and the
+      // committed trusted root. The signer case asks for another identity.
+      const real = args.map(a => mode === 'real-signer' && a === identity ? identity.replace('/ci.yml@', '/release.yml@') : a);
+      const dead = 'http://127.0.0.1:9';
+      const r = spawnSync(process.env.REAL_GH, [...real, '--custom-trusted-root', path.join(process.env.FIXTURES, 'trusted_root.json')], {stdio: 'inherit', env: {...process.env, HTTPS_PROXY: dead, HTTP_PROXY: dead, NO_PROXY: ''}});
+      fs.writeFileSync(process.env.VERIFIED, String(r.status));
+      process.exit(r.status ?? 1);
     }
     if (['missing-release', 'download'].includes(mode)) process.exit(1);
     const d = args[args.indexOf('--dir') + 1];
+    if (mode.startsWith('real-')) {
+      // The published release.json and its bundle; the binaries are
+      // stand-ins, so even an accepted attestation ends at the checksums.
+      // real-subject changes one byte and keeps the JSON valid, so only the
+      // attested subject digest can catch it.
+      const release = fs.readFileSync(path.join(process.env.FIXTURES, 'release.json'), 'utf8');
+      fs.writeFileSync(path.join(d, 'release.json'), mode === 'real-subject' ? release.replace('"schema"', '"schema" ') : release);
+      fs.copyFileSync(path.join(process.env.FIXTURES, 'provenance.json'), path.join(d, 'provenance.jsonl'));
+      fs.writeFileSync(path.join(d, 'SHA256SUMS'), JSON.parse(release).sha256sums);
+      for (const n of ['agent-board', 'gh-agent-board']) fs.writeFileSync(path.join(d, n + '-${target}'), 'stand-in');
+      process.exit(0);
+    }
     let sums = '';
     for (const n of ['agent-board', 'gh-agent-board']) {
       const name = n + '-${target}', data = '#!/bin/sh\\nexit 0\\n';
@@ -1164,23 +1186,46 @@ test-agent-board-install:
     if (mode === 'integrity') fs.appendFileSync(path.join(d, 'agent-board-${target}'), 'tampered');
     if (mode === 'missing-asset') fs.unlinkSync(path.join(d, 'agent-board-${target}'));
     `;
+    // The published release.json, its bundle and Sigstore's trusted root
+    // (`gh attestation trusted-root`), from agent-board's build-<commit>
+    // release, for the real verifier.
+    const fixtures = path.resolve('.github/agent-board-install');
+    const published = JSON.parse(fs.readFileSync(path.join(fixtures, 'release.json'), 'utf8')).commit;
+    const realGh = spawnSync('sh', ['-c', 'command -v gh'], {encoding: 'utf8'}).stdout.trim();
+    assert.ok(realGh, 'gh on PATH, for the real attestation verifier');
+    // Nonempty, so the verifier sees no token only if the installer clears them.
+    const tokens = {GH_TOKEN: 'sentinel-not-a-token', GITHUB_TOKEN: 'sentinel-not-a-token'};
+    const install = (mode, r, temp) => spawnSync('{{ just_executable() }}', ['build-agent-board', r], {encoding: 'utf8', env: {...process.env, ...tokens, PATH: `${dir}:${process.env.PATH}`, RUNNER_TEMP: temp, GITHUB_OUTPUT: path.join(temp, 'output'), CASE: mode, REV: r, FIXTURES: fixtures, REAL_GH: realGh, VERIFIED: path.join(temp, 'verified'), GH_CONFIG_DIR: temp}});
     try {
       fs.writeFileSync(path.join(dir, 'gh'), stub, {mode: 0o755});
       fs.writeFileSync(path.join(dir, 'uname'), '#!/bin/sh\nif [ "$CASE" = platform ]; then printf Darwin; else /usr/bin/uname "$@"; fi\n', {mode: 0o755});
       for (const mode of ['ok', 'missing-release', 'missing-asset', 'platform', 'download', 'attestation', 'commit', 'sums', 'integrity', 'revision']) {
         const temp = fs.mkdtempSync(path.join(dir, 'run-'));
         const output = path.join(temp, 'output');
-        const result = spawnSync('{{ just_executable() }}', ['build-agent-board', mode === 'revision' ? '' : rev], {encoding: 'utf8', env: {...process.env, PATH: `${dir}:${process.env.PATH}`, RUNNER_TEMP: temp, GITHUB_OUTPUT: output, GH_TOKEN: '', GITHUB_TOKEN: '', CASE: mode}});
+        const result = install(mode, mode === 'revision' ? '' : rev, temp);
         assert.equal(result.status === 0, mode === 'ok', `${mode}: ${result.stdout}\n${result.stderr}`);
         assert.equal(fs.existsSync(path.join(temp, 'agent-board/bin/agent-board')), mode === 'ok', mode);
         if (mode === 'ok') assert.equal(fs.readFileSync(output, 'utf8'), `rev=${rev}\n`);
         else assert.equal(fs.existsSync(output), false, mode);
         console.log(`ok agent-board installer: ${mode}`);
       }
+      // Only the right commit verifies, and then the stand-in binaries fail
+      // their checksums; the wrong commit, a changed subject or another
+      // signer is rejected by the verifier itself.
+      for (const mode of ['real-ok', 'real-revision', 'real-subject', 'real-signer']) {
+        const temp = fs.mkdtempSync(path.join(dir, 'run-'));
+        const result = install(mode, mode === 'real-revision' ? rev : published, temp);
+        const log = `${mode}: ${result.stdout}\n${result.stderr}`;
+        assert.notEqual(result.status, 0, log);
+        assert.equal(fs.readFileSync(path.join(temp, 'verified'), 'utf8') === '0', mode === 'real-ok', log);
+        if (mode === 'real-ok') assert.match(result.stdout, /agent-board-x86_64-unknown-linux-musl: FAILED/, log);
+        assert.equal(fs.existsSync(path.join(temp, 'agent-board/bin/agent-board')), false, mode);
+        console.log(`ok agent-board installer: ${mode}`);
+      }
       for (const mode of ['ok', 'missing-release', 'draft', 'missing-asset', 'attestation', 'integrity']) {
         const marker = path.join(dir, 'selected');
         fs.rmSync(marker, {force: true});
-        const result = spawnSync('{{ just_executable() }}', ['bump-agent-board'], {encoding: 'utf8', env: {...process.env, PATH: `${dir}:${process.env.PATH}`, CASE: mode, BUMP: '1', MARKER: marker, GITHUB_REPOSITORY: 'cgwalters-forge/tracker'}});
+        const result = spawnSync('{{ just_executable() }}', ['bump-agent-board'], {encoding: 'utf8', env: {...process.env, ...tokens, PATH: `${dir}:${process.env.PATH}`, CASE: mode, REV: rev, BUMP: '1', MARKER: marker, GITHUB_REPOSITORY: 'cgwalters-forge/tracker'}});
         assert.equal(result.status === 0, ['ok', 'missing-release', 'draft'].includes(mode), `${mode}: ${result.stdout}\n${result.stderr}`);
         assert.equal(fs.existsSync(marker), mode === 'ok', `bump must verify before selecting: ${mode}`);
         console.log(`ok agent-board bump: ${mode}`);
