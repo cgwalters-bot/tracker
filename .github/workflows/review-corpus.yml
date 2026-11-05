@@ -94,12 +94,19 @@ jobs:
             --out review-corpus.jsonl --state review-corpus-state.json
       - name: Pack
         timeout-minutes: 15
+        env:
+          COLLECTED: ${{ steps.collect.outcome }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           mkdir dist
+          jq -n --arg outcome "$COLLECTED" --arg version "$MISCTOOL_VERSION" --arg login "$LOGIN" \
+            --arg since "$SINCE" --arg run "$RUN" \
+            '{complete: ($outcome == "success"), collector_version: $version, login: $login,
+              window: {since: $since, until: null}, run_url: $run}' > dist/status.json
           cgwalters-forge-misctool review-corpus stats review-corpus.jsonl > dist/stats.json
           zstd -q -19 -T0 review-corpus.jsonl -o dist/review-corpus.jsonl.zst
           cp review-corpus-state.json dist/
-          (cd dist && sha256sum review-corpus.jsonl.zst review-corpus-state.json > SHA256SUMS)
+          (cd dist && sha256sum review-corpus.jsonl.zst review-corpus-state.json status.json > SHA256SUMS)
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: review-corpus
@@ -137,13 +144,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STAMP: ${{ needs.collect.outputs.stamp }}
         # A draft can still take assets; publishing makes it immutable, so it
-        # is published only once all three are uploaded. A run cut short
+        # is published only once all four are uploaded. A run cut short
         # leaves a draft that the next run ignores.
         run: |
           tag=$RELEASE_PREFIX$STAMP
           gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --latest=false \
             --target "$GITHUB_SHA" --title "Review corpus $STAMP" --notes-file notes.md \
-            dist/review-corpus.jsonl.zst dist/review-corpus-state.json dist/SHA256SUMS
+            dist/review-corpus.jsonl.zst dist/review-corpus-state.json dist/status.json dist/SHA256SUMS
           gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
       - name: Report an early stop
         if: ${{ needs.collect.outputs.collected != 'success' }}
