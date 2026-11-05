@@ -52,8 +52,32 @@
       "create_issue": 15,
       "close": 10,
       "remove_needs_human": 12,
+      "release_listed": 16,
       "replace_state": 48,
       "status_update": 1
-    }
+    },
+    "releaseList": [
+      {"item": "cgwalters-forge/tracker#1253", "holdEvent": 35285233967, "reason": "Choose the next-release bootstrap and leave the closed v0.6.9 train untouched; [caller remainder](https://github.com/cgwalters-forge/tracker/issues/1253) explicitly forbids replay and requires hosted acceptance."},
+      {"item": "cgwalters-forge/tracker#1239", "holdEvent": 35079975456, "reason": "Plan a reviewed ostree midstream-target/admission change separately from protected workflow edits, preserving refusals meanwhile; [routing prerequisite](https://github.com/cgwalters-forge/tracker/issues/1239#issuecomment-6621170719) is not permission to bypass bounds."},
+      {"item": "cgwalters-forge/tracker#1242", "holdEvent": 35084638149, "reason": "Preserve 32-bit coverage and diagnose the Debian DNS failure through a properly admitted ostree target; [evidence](https://github.com/cgwalters-forge/tracker/issues/1242#issuecomment-6620354500) calls for engineering and reviewed workflow routing, not new credentials."},
+      {"item": "cgwalters-forge/tracker#1243", "holdEvent": 35085197214, "reason": "Investigate the staging-directory ENOENT on an authorized ostree target before asserting a race fix; [latest evidence](https://github.com/cgwalters-forge/tracker/issues/1243#issuecomment-6620536962) leaves cause unproved."},
+      {"item": "cgwalters-forge/tracker#1245", "holdEvent": 35085784539, "reason": "Stage the bounded Justfile retry change after normal target admission, keeping protected workflows untouched; [EOF scope](https://github.com/cgwalters-forge/tracker/issues/1245#issuecomment-6620661912) is an ordinary implementation choice."},
+      {"item": "cgwalters-forge/tracker#1246", "holdEvent": 35086325185, "reason": "Choose diagnostics and a bounded existing-capacity VM validation plan before a speculative ESTALE fix; [two occurrences](https://github.com/cgwalters-forge/tracker/issues/1246#issuecomment-6620807789) do not establish a candidate correction."},
+      {"item": "cgwalters-forge/tracker#258", "holdEvent": 35204949556, "reason": "Choose a current-release gh-aw upgrade staged on the admitted fork, compiling and testing before any upstream delivery; [version/routing alternatives](https://github.com/cgwalters-forge/tracker/issues/258#issuecomment-6524155672) are not themselves operator decisions."},
+      {"item": "cgwalters-forge/tracker#524", "holdEvent": 34877562558, "reason": "Retain triage-only Mistral and verify the #880 pin dependency before scheduling, following the [bounded recommendation](https://github.com/cgwalters-forge/tracker/issues/524#issuecomment-6405573425), without widening spending scope."},
+      {"item": "cgwalters-forge/agent-board#660", "holdEvent": 35273794214, "reason": "Start with no-ready-work diagnostics and bounded changed-epic replanning, reusing #653 effort without activating pools or increasing caps."},
+      {"item": "cgwalters-forge/tracker#208", "holdEvent": 35194689221, "reason": "Complete missing fmt/clippy and review existing bootc#76, not a duplicate fix; [latest status](https://github.com/cgwalters-forge/tracker/issues/208#issuecomment-6587212016) leaves validation outstanding."},
+      {"item": "cgwalters-forge/tracker#252", "holdEvent": 35196551375, "reason": "Specify markers beside the entries whose semantics they describe, with explicit owner/persistence/conflict rules, before admitted-fork implementation."},
+      {"item": "cgwalters-forge/tracker#266", "holdEvent": 35272181875, "reason": "Route the one-word documentation typo to an actual allowed bootc target item, retaining separate upstream approval; [reproduction](https://github.com/cgwalters-forge/tracker/issues/266#issuecomment-6332650236) leaves no design or budget question."},
+      {"item": "cgwalters-forge/tracker#33", "holdEvent": 35192174267, "reason": "Re-review the reworked rhel-bootc-examples drafts against the earlier requested changes and refresh pins/conflicts before requesting upstream delivery."},
+      {"item": "cgwalters-forge/tracker#357", "holdEvent": 35195897520, "reason": "Review/rebase the already-written composefs-rs#27 contextual-error change and seek head-specific upstream approval only when ready; [existing draft](https://github.com/cgwalters-forge/tracker/issues/357#issuecomment-6524157720) is not a missing implementation."},
+      {"item": "cgwalters-forge/tracker#37", "holdEvent": 35192176969, "reason": "Restore the requested compile-checked series in #63 and test progress blocking/output compatibility before promotion review."},
+      {"item": "cgwalters-forge/tracker#56", "holdEvent": 34734358175, "reason": "Follow the already-approved upstream rpm-ostree#5642 through permitted CI retry/normal merge gates, escalating only actual credential denial."},
+      {"item": "cgwalters-forge/agentic-job#1618", "holdEvent": 34199892000, "reason": "Design/test host-wide core-dump closure covering the Worker, but retain every credential-bearing runner-mode refusal pending a separate cgwalters answer even after passing probes."},
+      {"item": "cgwalters-forge/tracker#403", "holdEvent": 35088060207, "reason": "The homegit-controller provisioning instructions are superseded by hosted callers and current App/token work in #571/#766; [retirement evidence](https://github.com/cgwalters-forge/tracker/issues/403#issuecomment-6621229036) does not authorize the old broad installation list.", "close": "not_planned"},
+      {"item": "cgwalters-forge/actions#187", "holdEvent": 35169584718, "reason": "Finish checksum-verified release delivery/cutover and HTTP tests on the existing Rust-helper draft; [checkpoint](https://github.com/cgwalters-forge/actions/pull/187) describes unfinished implementation, not new tailnet admission."},
+      {"item": "cgwalters-forge/agentic-job#2642", "holdEvent": 35181918976, "reason": "Finish the partial binary/image split, hosted tests and honest title/checkpoint before releasing; [partial-work stop](https://github.com/cgwalters-forge/agentic-job/pull/2642#issuecomment-6557353357) is not a human design decision."},
+      {"item": "cgwalters-forge/atomic-linux-sandbox#17", "holdEvent": 35075174191, "reason": "Correct stale protected-workflow pin annotations through an authorized path, then run the transient VM acceptance and retain review follow-ups."}
+    ]
   }
 }

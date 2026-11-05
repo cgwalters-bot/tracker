@@ -76,7 +76,7 @@
       ]}},
   "budget": {"weeklyUsd": 2000},
   "pr": {"staleDays": 0, "unstall": true, "ownSpaceOnly": true,
-    "operatorPaths": [".github/agentic-job/dispatch.toml", ".github/agentic-job/midstream.toml", ".github/agentic-job/midstream-fix.toml", ".github/agentic-job/fix.toml", ".github/agentic-job/comment.toml", ".github/pass.json", ".github/poll/agent-board.json"],
+    "operatorPaths": [".github/agentic-job/dispatch.toml", ".github/agentic-job/midstream.toml", ".github/agentic-job/midstream-fix.toml", ".github/agentic-job/fix.toml", ".github/agentic-job/comment.toml", ".github/pass.json", ".github/poll/agent-board.json", ".github/supervisor/config.json"],
 "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-bot/praxis-credential-broker"],
     "reviewWorkflow": "review.yml",
     "checkReruns": true,
