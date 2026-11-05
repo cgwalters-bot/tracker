@@ -12,9 +12,10 @@ Human adjudication and a new label-blind sample are still needed. Keep #1227 ope
 The [held-out protocol](held-out-protocol.md) freezes the next evaluation's
 selection and scoring rules; [its ledger](held-out.json) records an unfinished
 attempt. Five PRs and their reviewed revisions are frozen from feedback metadata
-alone ([selection log](held-out-selection.json), controller only); no packets,
-reviews or scores exist yet because inference is unavailable. It does not
-supersede the pilot or establish a held-out result.
+alone ([selection log](held-out-selection.json), controller only), and their
+packets are reconstructed ([manifests](held-out/), controller only); no reviews
+or scores exist yet because inference is unavailable. It does not supersede the
+pilot or establish a held-out result.
 This does not change any production prompt, workflow, permission, merge rule,
 schedule or inference service.
 
@@ -105,10 +106,17 @@ concurrent-reader transaction; do not share this manual packet workspace while
 rebuilding. A separate `runs/ID.rebuild.json` is written only after publication,
 old manifests and outputs are never overwritten.
 
+`just test-architecture-review held-out-packet ID` does the same for a frozen
+held-out candidate, from held-out-selection.json alone: it checks history, files
+and diff hash against the selection, adds `identity.md` (repository, title and
+description as of first feedback, or nothing when that cannot be established),
+omits binary sources, and publishes `/tmp/opencode/architecture-review-held-out-ID/`.
+The first run archives `held-out/ID.manifest.json`; later runs must reproduce it.
+
 `just test-architecture-review verify ID` checks **exact directory integrity** as
 well as every local reviewed-byte count and hash, without network. The allowed
-entries are exactly the manifest's regular files (`diff.patch` and named flat
-files under `head/`), plus the root and `head/` directory only when needed. Extra
+entries are exactly the manifest's regular files (`diff.patch`, a held-out
+packet's `identity.md` and named flat files under `head/`), plus the root and `head/` directory only when needed. Extra
 files, directories, missing entries and symlinks (including the root) fail. This
 is stronger than checking hashes of listed files while ignoring other entries.
 It does not independently recompute selection/omissions, establish historical

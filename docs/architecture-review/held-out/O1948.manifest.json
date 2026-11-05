@@ -1,0 +1,56 @@
+{
+  "schema": "architecture-review.packet.v1",
+  "id": "O1948",
+  "visibility": "Controller only: the reviewer receives the packet files, never this manifest.",
+  "repository": "ostreedev/ostree",
+  "base": "72c7619bffef10172c2e06606cfd630197a2c16d",
+  "head": "6126fd302f97b4e20e9a8775ff60be242a1d5aee",
+  "ancestry": {
+    "compare_status": "ahead",
+    "merge_base": "72c7619bffef10172c2e06606cfd630197a2c16d",
+    "total_commits": 3
+  },
+  "commits": [
+    {
+      "sha": "0522813dfbb9e43080778797c13b53aaa5cab323",
+      "committed": "2019-10-18T16:58:41Z"
+    },
+    {
+      "sha": "e63a377d133186bf395e2750a7e5b9a8459698af",
+      "committed": "2019-10-18T16:58:41Z"
+    },
+    {
+      "sha": "6126fd302f97b4e20e9a8775ff60be242a1d5aee",
+      "committed": "2019-10-18T17:03:52Z"
+    }
+  ],
+  "first_feedback_at": "2019-10-21T21:53:25Z",
+  "title_description": "identity.md: title as of first feedback from rename events; description never edited after it",
+  "project_guidance": "not supplied",
+  "limits": {
+    "max_files": 30,
+    "max_bytes": 100000
+  },
+  "total_bytes": 33073,
+  "files": [
+    {
+      "name": "diff.patch",
+      "revision": "72c7619bffef10172c2e06606cfd630197a2c16d...6126fd302f97b4e20e9a8775ff60be242a1d5aee",
+      "bytes": 7255,
+      "sha256": "06b858b42a92b07bda40807a57e21d2b8d87fe67c860e4c644d2c9c7b19430c6"
+    },
+    {
+      "name": "identity.md",
+      "bytes": 1012,
+      "sha256": "be0248b734b52325ae312d376a126ca61274c4d9f013b95f1f066666f894e3c5"
+    },
+    {
+      "name": "head/src__ostree__ostree-trivial-httpd.c",
+      "path": "src/ostree/ostree-trivial-httpd.c",
+      "revision": "6126fd302f97b4e20e9a8775ff60be242a1d5aee",
+      "bytes": 24806,
+      "sha256": "2b45e58900516d149411dafb84a1dceca73e2b70e0596b4177b9cea89ca61448"
+    }
+  ],
+  "omitted": []
+}

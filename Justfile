@@ -49,19 +49,29 @@ test-architecture-review mode="test" id="B2588":
       }).join('\n');
     }
 
-    function select(diff, sources, limits) {
-      const files = [{ name: 'diff.patch', data: Buffer.from(annotate(text(diff)), 'utf8') }];
-      let total = files[0].data.length;
-      assert.ok(limits.max_files >= 1 && total <= limits.max_bytes, 'complete annotated diff must fit');
+    // Context (historical identity) follows the diff, counts toward the limits
+    // and is never omitted: a packet that cannot hold it is not built.
+    function select(diff, sources, limits, context = []) {
+      const files = [{ name: 'diff.patch', data: Buffer.from(annotate(text(diff)), 'utf8') }, ...context];
+      let total = files.reduce((sum, f) => sum + f.data.length, 0);
+      assert.ok(limits.max_files >= files.length && total <= limits.max_bytes, 'complete annotated diff and context must fit');
       const omitted = [];
-      const names = new Set(['diff.patch']);
+      const names = new Set(files.map(f => f.name));
       // UTF-8 byte ordering is independent of the host locale.
       sources.sort((a, b) => a.data.length - b.data.length || Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
       for (const source of sources) {
-        text(source.data); // No lossy decoding, BOM stripping or newline normalization.
         const name = 'head/' + source.path.replaceAll('/', '__');
         assert.ok(!names.has(name), `filename collision: ${source.path}`);
         names.add(name);
+        // No lossy decoding, BOM stripping or newline normalization: binary
+        // sources are omitted whole, as the diff only says they changed.
+        try {
+          text(source.data);
+        } catch {
+          omitted.push({ path: source.path, revision: source.revision, bytes: source.data.length,
+            reason: 'not UTF-8 text; diff.patch records the binary change' });
+          continue;
+        }
         if (files.length >= limits.max_files || total + source.data.length > limits.max_bytes) {
           omitted.push({ path: source.path, revision: source.revision, bytes: source.data.length,
             reason: 'packet byte/file limit; changed hunks remain in diff.patch' });
@@ -108,14 +118,14 @@ test-architecture-review mode="test" id="B2588":
       const names = manifest.files.map(f => f.name);
       assert.equal(new Set(names).size, names.length, 'duplicate packet filename');
       assert.ok(names.includes('diff.patch'), 'missing diff.patch');
-      for (const name of names) assert.match(name, /^(?:diff\.patch|head\/[^/]+)$/);
+      for (const name of names) assert.match(name, /^(?:diff\.patch|identity\.md|head\/[^/]+)$/);
       for (const name of names) assert.ok(!['head/.', 'head/..'].includes(name), 'unsafe packet filename');
       const directories = names.some(n => n.startsWith('head/')) ? ['', 'head'] : [''];
       for (const dir of directories) {
         const path = dir ? `${directory}/${dir}` : directory;
         assert.ok(lstatSync(path).isDirectory(), `not a real directory: ${path}`);
         const expected = dir ? names.filter(n => n.startsWith('head/')).map(n => n.slice(5)) :
-          ['diff.patch', ...(directories.includes('head') ? ['head'] : [])];
+          [...names.filter(n => !n.includes('/')), ...(directories.includes('head') ? ['head'] : [])];
         assert.deepEqual([...readdirSync(path)].sort(), expected.sort(), `unexpected packet entries: ${path}`);
       }
       return names.map(name => {
@@ -125,11 +135,61 @@ test-architecture-review mode="test" id="B2588":
       });
     }
 
+    function fetchSources(repository, files, revision) {
+      return files.filter(f => f.status !== 'removed').map(f => {
+        const path = f.filename.split('/').map(encodeURIComponent).join('/');
+        const content = apiJSON(`repos/${repository}/contents/${path}?ref=${revision}`);
+        assert.equal(content.type, 'file');
+        assert.equal(content.encoding, 'base64');
+        const data = Buffer.from(content.content, 'base64');
+        assert.equal(data.length, content.size, 'missing or truncated contents');
+        return { path: f.filename, revision, data };
+      });
+    }
+
+    function publish(directory, packet, manifest) {
+      const staging = mkdtempSync(`${directory}.staging-`);
+      try {
+        if (packet.files.some(f => f.name.startsWith('head/'))) mkdirSync(`${staging}/head`);
+        for (const file of packet.files) writeFileSync(`${staging}/${file.name}`, file.data);
+        const files = readPacket(staging, manifest);
+        assert.ok(comparePacket({ ...packet, files }, manifest).all_match, 'staged packet MISMATCH');
+        // Replace the entire old tree: no stale source or scoring material survives.
+        // Publication is after comparison; a failed retrieval never publishes new bytes.
+        rmSync(directory, { recursive: true, force: true });
+        renameSync(staging, directory);
+      } finally {
+        rmSync(staging, { recursive: true, force: true });
+      }
+    }
+
+    const heldOutLimits = { max_files: 30, max_bytes: 100000 };
+    const packetDirectory = (id, heldOut) => `/tmp/opencode/architecture-review-${heldOut ? 'held-out-' : ''}${id}`;
+
+    const identityQuery = `query($owner: String!, $name: String!, $number: Int!) {
+      repository(owner: $owner, name: $name) { pullRequest(number: $number) { title body lastEditedAt
+        timelineItems(itemTypes: [RENAMED_TITLE_EVENT], first: 100) { pageInfo { hasNextPage }
+          nodes { ... on RenamedTitleEvent { createdAt previousTitle } } } } } }`;
+
+    // Neutral identity as of first feedback: repository, title and the
+    // author's description verbatim, without the PR number or URL. Title
+    // renames are timeline events; a description
+    // edited after feedback has no trusted snapshot here, so it is unavailable.
+    function historicalIdentity(repository, pr, at) {
+      const renames = pr.timelineItems.nodes;
+      if (pr.timelineItems.pageInfo.hasNextPage || (pr.lastEditedAt && pr.lastEditedAt >= at) ||
+        renames.some(r => r.createdAt === at)) return null;
+      const later = renames.filter(r => r.createdAt > at).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const title = later.length ? later[0].previousTitle : pr.title;
+      return Buffer.from(`Repository: ${repository}\nTitle: ${title}\n\n${pr.body ?? ''}`, 'utf8');
+    }
+
     if (process.argv[2] === 'verify') {
       const id = process.argv[3];
-      assert.ok(sample.samples.some(s => s.id === id && s.status === 'evaluated'), 'unknown evaluated sample');
-      const manifest = json(`runs/${id}.manifest.json`);
-      const files = readPacket(`/tmp/opencode/architecture-review-${id}`, manifest);
+      const heldOut = json('held-out-selection.json').selected.some(s => s.id === id);
+      assert.ok(heldOut || sample.samples.some(s => s.id === id && s.status === 'evaluated'), 'unknown evaluated sample');
+      const manifest = json(heldOut ? `held-out/${id}.manifest.json` : `runs/${id}.manifest.json`);
+      const files = readPacket(packetDirectory(id, heldOut), manifest);
       const report = comparePacket({ files, omitted: manifest.omitted,
         total_bytes: files.reduce((sum, f) => sum + f.data.length, 0) }, manifest);
       // Exact directory integrity and bytes, not independently reconstructed selection/omissions.
@@ -148,38 +208,64 @@ test-architecture-review mode="test" id="B2588":
       const comparison = apiJSON(endpoint);
       validateHistory(comparison, s, manifest);
       const diff = api(endpoint, 'application/vnd.github.diff');
-      const sources = comparison.files.filter(f => f.status !== 'removed').map(f => {
-        const path = f.filename.split('/').map(encodeURIComponent).join('/');
-        const content = apiJSON(`repos/${s.repository}/contents/${path}?ref=${s.head}`);
-        assert.equal(content.type, 'file');
-        assert.equal(content.encoding, 'base64');
-        const data = Buffer.from(content.content, 'base64');
-        assert.equal(data.length, content.size, 'missing or truncated contents');
-        return { path: f.filename, revision: s.head, data };
-      });
-      const packet = select(diff, sources, manifest.limits);
-      const directory = `/tmp/opencode/architecture-review-${id}`;
+      const packet = select(diff, fetchSources(s.repository, comparison.files, s.head), manifest.limits);
       const report = { schema: 'architecture-review.rebuild.v1', id, builder: 'Justfile test-architecture-review rebuild',
         historical_identity: 'Only matching bytes are reconstructed evidence; no new historical review ran.',
         manifest_sha256: sha256(read(`runs/${id}.manifest.json`)),
         ancestry: { status: comparison.status, merge_base: comparison.merge_base_commit.sha, commits_match: true, pre_feedback: true },
         ...comparePacket(packet, manifest) };
       assert.ok(report.all_match, `reconstructed packet MISMATCH: ${JSON.stringify(report)}`);
-      const staging = mkdtempSync(`${directory}.staging-`);
-      try {
-        if (packet.files.some(f => f.name.startsWith('head/'))) mkdirSync(`${staging}/head`);
-        for (const file of packet.files) writeFileSync(`${staging}/${file.name}`, file.data);
-        const files = readPacket(staging, manifest);
-        assert.ok(comparePacket({ ...packet, files }, manifest).all_match, 'staged packet MISMATCH');
-        // Replace the entire old tree: no stale source or scoring material survives.
-        // Publication is after comparison; a failed retrieval never publishes new bytes.
-        rmSync(directory, { recursive: true, force: true });
-        renameSync(staging, directory);
-      } finally {
-        rmSync(staging, { recursive: true, force: true });
-      }
+      publish(`/tmp/opencode/architecture-review-${id}`, packet, manifest);
       save(`runs/${id}.rebuild.json`, report);
       console.log(`${id}: exact packet matches; details in runs/${id}.rebuild.json`);
+      process.exit(0);
+    }
+
+    // Builds a frozen held-out candidate's packet from the selection alone (no
+    // feedback is fetched) and archives its controller-only manifest; a later
+    // run must reproduce that manifest exactly.
+    if (process.argv[2] === 'held-out-packet') {
+      const id = process.argv[3];
+      const s = json('held-out-selection.json').selected.find(s => s.id === id);
+      assert.ok(s, 'unknown held-out candidate');
+      const endpoint = `repos/${s.repository}/compare/${s.base}...${s.reviewed_revision}`;
+      const comparison = apiJSON(endpoint);
+      validateHistory(comparison, { candidate_base: s.base, feedback_at: s.first_feedback_at },
+        { first_feedback_at: s.first_feedback_at, commits: s.commits });
+      assert.deepEqual(comparison.files.map(({ filename, status, additions, deletions }) => ({ filename, status, additions, deletions })),
+        s.files, 'changed files differ from the frozen selection');
+      const diff = api(endpoint, 'application/vnd.github.diff');
+      assert.equal(sha256(diff), s.diff_sha256, 'diff differs from the frozen selection');
+      const [owner, name] = s.repository.split('/');
+      const response = JSON.parse(text(execFileSync('gh', ['api', 'graphql', '-f', `query=${identityQuery}`,
+        '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${s.pr}`], { timeout: 20000, maxBuffer: 8 * 1024 * 1024 })));
+      assert.ok(!response.errors, `identity query: ${JSON.stringify(response.errors)}`);
+      const identity = historicalIdentity(s.repository, response.data.repository.pullRequest, s.first_feedback_at);
+      const packet = select(diff, fetchSources(s.repository, comparison.files, s.reviewed_revision), heldOutLimits,
+        identity ? [{ name: 'identity.md', data: identity }] : []);
+      const manifest = { schema: 'architecture-review.packet.v1', id,
+        visibility: 'Controller only: the reviewer receives the packet files, never this manifest.',
+        repository: s.repository, base: s.base, head: s.reviewed_revision,
+        ancestry: { compare_status: comparison.status, merge_base: comparison.merge_base_commit.sha, total_commits: comparison.total_commits },
+        commits: s.commits, first_feedback_at: s.first_feedback_at,
+        title_description: identity ? 'identity.md: title as of first feedback from rename events; description never edited after it' :
+          'unavailable: renamed at first feedback, truncated rename history or description edited after it; current text omitted',
+        project_guidance: 'not supplied', limits: heldOutLimits, total_bytes: packet.total_bytes,
+        files: packet.files.map(f => ({ name: f.name,
+          ...(f.name === 'diff.patch' ? { revision: `${s.base}...${s.reviewed_revision}` } :
+            f.path ? { path: f.path, revision: s.reviewed_revision } : {}),
+          bytes: f.data.length, sha256: sha256(f.data) })),
+        omitted: packet.omitted };
+      const file = `held-out/${id}.manifest.json`;
+      let frozen = null;
+      try { frozen = json(file); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (frozen) assert.deepEqual(manifest, frozen, `${id}: reconstruction differs from the archived manifest`);
+      publish(packetDirectory(id, true), packet, manifest);
+      if (!frozen) {
+        mkdirSync('docs/architecture-review/held-out', { recursive: true });
+        save(file, manifest);
+      }
+      console.log(`${id}: packet in ${packetDirectory(id, true)} matches ${file}`);
       process.exit(0);
     }
 
@@ -216,7 +302,7 @@ test-architecture-review mode="test" id="B2588":
       process.exit(0);
     }
 
-    assert.ok(['test', 'fixtures', 'e2e'].includes(process.argv[2]), 'expected test, fixtures, e2e, rebuild, verify or feedback');
+    assert.ok(['test', 'fixtures', 'e2e'].includes(process.argv[2]), 'expected test, fixtures, e2e, rebuild, held-out-packet, verify or feedback');
     if (process.argv[2] === 'e2e') test('offline canned-API rebuild/verify dispatch', () => {
       const fs = require('node:fs');
       const vm = require('node:vm');
@@ -352,6 +438,25 @@ test-architecture-review mode="test" id="B2588":
       assert.throws(() => select(Buffer.from('abc'), [], { max_files: 30, max_bytes: 2 }));
       assert.throws(() => select(Buffer.from(''), [{ path: 'a/b', data: Buffer.from('') }, { path: 'a__b', data: Buffer.from('') }], { max_files: 30, max_bytes: 10 }));
       assert.throws(() => text(Buffer.from([255])));
+      const binary = select(Buffer.from(''), [{ path: 'b', data: Buffer.from([255]) }, ...sources], { max_files: 30, max_bytes: 100 });
+      assert.deepEqual(binary.files.map(f => f.name), ['diff.patch', 'head/a', 'head/z', 'head/large']);
+      assert.deepEqual(binary.omitted.map(o => [o.path, o.reason]), [['b', 'not UTF-8 text; diff.patch records the binary change']]);
+      const context = [{ name: 'identity.md', data: Buffer.from('id') }];
+      assert.deepEqual(select(Buffer.from(''), sources, { max_files: 2, max_bytes: 3 }, context).files.map(f => f.name), ['diff.patch', 'identity.md']);
+      assert.throws(() => select(Buffer.from(''), sources, { max_files: 1, max_bytes: 100 }, context));
+      assert.throws(() => select(Buffer.from(''), sources, { max_files: 30, max_bytes: 1 }, context));
+      const renamed = { title: 'new', body: 'text\r\n', lastEditedAt: null,
+        timelineItems: { pageInfo: { hasNextPage: false }, nodes: [{ createdAt: '2026-01-03T00:00:00Z', previousTitle: 'old' },
+          { createdAt: '2026-01-01T00:00:00Z', previousTitle: 'older' }, { createdAt: '2026-01-04T00:00:00Z', previousTitle: 'mid' }] } };
+      const at = '2026-01-02T00:00:00Z';
+      assert.equal(text(historicalIdentity('o/r', renamed, at)), 'Repository: o/r\nTitle: old\n\ntext\r\n');
+      assert.equal(text(historicalIdentity('o/r', { ...renamed, body: null, lastEditedAt: '2026-01-01T00:00:00Z' }, '2026-01-05T00:00:00Z')),
+        'Repository: o/r\nTitle: new\n\n');
+      for (const change of [{ lastEditedAt: at }, { lastEditedAt: '2026-01-03T00:00:00Z' },
+        { timelineItems: { ...renamed.timelineItems, pageInfo: { hasNextPage: true } } },
+        { timelineItems: { ...renamed.timelineItems, nodes: [{ createdAt: at, previousTitle: 'x' }] } }]) {
+        assert.equal(historicalIdentity('o/r', { ...renamed, ...change }, at), null);
+      }
       const manifest = { files: packet.files.map(f => ({ name: f.name, bytes: f.data.length, sha256: sha256(f.data) })), total_bytes: 2, omitted: packet.omitted };
       assert.equal(comparePacket(packet, manifest).all_match, true);
       assert.equal(comparePacket({ ...packet, files: packet.files.map(f => ({ ...f, data: Buffer.from('bad') })) }, manifest).all_match, false);
@@ -408,6 +513,31 @@ test-architecture-review mode="test" id="B2588":
       }
     }
 
+    // Archived manifests of the held-out packets: frozen history, the shared
+    // limits, the complete diff first and the counted identity file beside it.
+    function validateHeldOutPackets(h, sel) {
+      assert.deepEqual(h.packets.map(p => p.id), h.candidates.map(c => c.id), 'a packet for each candidate, in order');
+      for (const p of h.packets) {
+        assert.equal(p.manifest, `held-out/${p.id}.manifest.json`);
+        assert.equal(sha256(read(p.manifest)), p.manifest_sha256, p.id);
+        const m = json(p.manifest);
+        const s = sel.selected.find(s => s.id === p.id);
+        assert.equal(m.id, p.id);
+        assert.equal(m.repository, s.repository, p.id);
+        assert.equal(m.base, s.base, p.id);
+        assert.equal(m.head, s.reviewed_revision, p.id);
+        assert.equal(m.first_feedback_at, s.first_feedback_at, p.id);
+        assert.deepEqual(m.commits, s.commits, p.id);
+        assert.deepEqual(m.ancestry, { compare_status: 'ahead', merge_base: s.base, total_commits: s.commits.length }, p.id);
+        assert.deepEqual(m.limits, heldOutLimits, p.id);
+        assert.equal(m.files[0].name, 'diff.patch', p.id);
+        assert.equal(m.files.some(f => f.name === 'identity.md'), m.title_description.startsWith('identity.md'), p.id);
+        assert.ok(m.files.length <= m.limits.max_files, p.id);
+        assert.equal(m.total_bytes, m.files.reduce((sum, f) => sum + f.bytes, 0), p.id);
+        assert.ok(m.total_bytes <= m.limits.max_bytes, p.id);
+      }
+    }
+
     // This ledger is a checkpoint before any review, not a schema for completed
     // runs. A future execution must add evidence validation before accepting scores.
     function validateHeldOutCheckpoint(h, sel) {
@@ -430,9 +560,10 @@ test-architecture-review mode="test" id="B2588":
       assert.equal(h.candidate_feedback_accessed, 'metadata-only');
       assert.equal(h.selection_sha256, sha256(read('held-out-selection.json')));
       validateHeldOutSelection(h, sel);
+      validateHeldOutPackets(h, sel);
       for (const key of ['runs', 'scoring_runs']) assert.deepEqual(h[key], []);
       assert.deepEqual(h.denominators, { ...h.denominators, selected_prs: h.candidates.length,
-        eligible_prs: h.candidates.length, packet_complete_prs: 0, attempted_prs: 0, completed_prs: 0,
+        eligible_prs: h.candidates.length, packet_complete_prs: h.packets.length, attempted_prs: 0, completed_prs: 0,
         contaminated_prs: 0, scored_prs: 0 });
       assert.equal(h.scores, null, 'no scores without isolated reviews and separate scoring evidence');
       assert.match(h.human_adjudication, /Not obtained/);
@@ -457,6 +588,9 @@ test-architecture-review mode="test" id="B2588":
         { candidates: [{ id: 'B2603', repository: 'bootc-dev/bootc', pr: 2603 }, ...h.candidates.slice(1)] },
         { candidates: h.candidates.slice(1) },
         { runs: [{ id: 'invented' }] }, { scoring_runs: [{ id: 'invented' }] },
+        { packets: h.packets.slice(1) }, { packets: [...h.packets].reverse() },
+        { packets: h.packets.map((p, i) => i ? p : { ...p, manifest_sha256: '0'.repeat(64) }) },
+        { packets: h.packets.map((p, i) => i ? p : { ...p, manifest: 'runs/B2588.manifest.json' }) },
         { blockers: [] },
         ...Object.keys(h.denominators).map(key => ({ denominators: { ...h.denominators, [key]: h.denominators[key] + 1 } })),
       ];

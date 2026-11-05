@@ -1,0 +1,55 @@
+{
+  "schema": "architecture-review.packet.v1",
+  "id": "B105",
+  "visibility": "Controller only: the reviewer receives the packet files, never this manifest.",
+  "repository": "bootc-dev/bootc",
+  "base": "730c07e4c36ff2ff2dfb6181e8c237f46b7b12c0",
+  "head": "74c29d6ffdbf56c7cb136e5b7df9e212b8353a7a",
+  "ancestry": {
+    "compare_status": "ahead",
+    "merge_base": "730c07e4c36ff2ff2dfb6181e8c237f46b7b12c0",
+    "total_commits": 1
+  },
+  "commits": [
+    {
+      "sha": "74c29d6ffdbf56c7cb136e5b7df9e212b8353a7a",
+      "committed": "2023-07-04T13:41:18Z"
+    }
+  ],
+  "first_feedback_at": "2023-07-04T13:52:01Z",
+  "title_description": "identity.md: title as of first feedback from rename events; description never edited after it",
+  "project_guidance": "not supplied",
+  "limits": {
+    "max_files": 30,
+    "max_bytes": 100000
+  },
+  "total_bytes": 18381,
+  "files": [
+    {
+      "name": "diff.patch",
+      "revision": "730c07e4c36ff2ff2dfb6181e8c237f46b7b12c0...74c29d6ffdbf56c7cb136e5b7df9e212b8353a7a",
+      "bytes": 3494,
+      "sha256": "deb3ffe2ec740ae166bcf04c5014d6e66115f0eeace9595da6bf04800bd1ab03"
+    },
+    {
+      "name": "identity.md",
+      "bytes": 241,
+      "sha256": "cf5d50b54ab4a0cf6e5418288e56cbf90ff1a06bf9d726b8c4dc2f6e78187858"
+    },
+    {
+      "name": "head/CONTRIBUTING.md",
+      "path": "CONTRIBUTING.md",
+      "revision": "74c29d6ffdbf56c7cb136e5b7df9e212b8353a7a",
+      "bytes": 309,
+      "sha256": "9cd06a69260385afcd1e5b1a1722bc956826a92a4455bc258d98db01326445ef"
+    },
+    {
+      "name": "head/lib__src__cli.rs",
+      "path": "lib/src/cli.rs",
+      "revision": "74c29d6ffdbf56c7cb136e5b7df9e212b8353a7a",
+      "bytes": 14337,
+      "sha256": "d205d3177fa230fa53843c57cbac4819237266ef9b903e6b7891fac9ee8a9db7"
+    }
+  ],
+  "omitted": []
+}
