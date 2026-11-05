@@ -252,6 +252,44 @@ operator request `/review` on each still-open, still-unreviewed current head.
 Check for an existing active review before requesting one, then verify its
 verdict/status names the current head; do not push or reopen merely to retrigger.
 
+### Draft-review buckets
+
+**Blocked, not proposed (5 November 2026, #1324).** agent-board's
+[draft buckets](https://github.com/cgwalters-forge/agent-board/blob/d742eb8052aec70d8d4ecf1da98bec9b645ae40f/docs/pass.md#midstream-draft-buckets-opt-in-producer-slice-of-648)
+label the bot's drafts on the four midstream forks `review:quick` or
+`review:deep`. The threat they guard against is a forged, stale or merely
+small draft passing as reviewed. The producer is ready: `AGENT_BOARD_REV`
+`d742eb8052aec70d8d4ecf1da98bec9b645ae40f` contains agent-board#680 (`9841aab`)
+and the architecture-finding veto after it. The only newer agent-board commit,
+`957cb93`, does not touch drafts, so the pin stays. The rest of the chain is
+missing, so `.github/pass.json` sets none of `pr.draftReviewRepositories`,
+`pr.reviewDispatchRepositories` or `pr.reviewPools`. `just test-review-caller`
+keeps all three unset and checks the shape the coordinated change must take:
+
+* Callers: bootc `3ff5943` and composefs-rs `c8f8eb7` (branch `forge`), and bcvk
+  `b2d1cc9` and rpm-ostree `911dd73` (`main`), have no `dispatch.yml`,
+  `review.yml`, `workflow/review.toml` or `workflow/review-command.toml`, so
+  they have no `agent-board-review-result-v1` writer job. bootc's and bcvk's gh-aw
+  `review.md` reviews do not write one either. The open prerequisites are
+  bootc#99, composefs-rs#69, bcvk#24 and rpm-ostree#13.
+* Wrapper: actions `9589edab2953e53fb244ec058011efe5e714c6ec` (actions#198 closed
+  actions#174) binds a review to its expected head and pool. It still refuses
+  draft pull requests and has no result-writer job, so ordinary dispatched
+  reviews can't produce draft evidence. actions#201 only documents the
+  prerequisite.
+* Consumer: review `b04aa1d` does not read the needs-you `review_buckets`
+  extension, so it would show every draft as unknown.
+
+Once all three exist, propose `pr.draftReviewRepositories` and
+`pr.reviewDispatchRepositories` for exactly those four repositories, plus
+`pr.reviewPools = ["openai", "claude"]`. Keep them in `follow` and `pr.noMerge`,
+keep the existing caps and the private holds destination, and coordinate this
+with the paced-review cutover above, since `pr.reviewPools` applies to every
+followed repository. Preview before applying. To roll back, remove
+`pr.draftReviewRepositories`. A `review:quick` label, whether added by hand or
+left over from before the rollback, never grants authority to mark ready,
+merge, fix or approve. Approval stays bound to the head the app displays.
+
 ### Broker outages
 
 Set the repository variable `BROKER_OUTAGE=apply` to enable the
