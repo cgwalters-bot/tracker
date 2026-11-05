@@ -25,7 +25,7 @@ jobs:
           curl -sS -w '\nHTTP %{http_code}\n' -X POST https://api.tailscale.com/api/v2/oauth/token-exchange \
             --data-urlencode "client_id=$CLIENT_ID" --data-urlencode "jwt=$token" \
             | jq -R 'fromjson? // . | if type == "object" and has("access_token") then {exchange: "ok", scope, expires_in, token_type} else . end'
-      - uses: tailscale/github-action@99a8333667fff04fdd6cffb46dfd409f8329a7bf # v4.3.0
+      - uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
         with:
           oauth-client-id: ${{ vars.TS_OAUTH_CLIENT_ID }}
           audience: ${{ vars.TS_AUDIENCE }}
