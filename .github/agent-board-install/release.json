@@ -1,0 +1,8 @@
+{
+  "schema": "agent-board.release.v1",
+  "repository": "cgwalters-forge/agent-board",
+  "commit": "819bb77db70b451874317aff4ea4b61ab174557e",
+  "tag": "build-819bb77db70b451874317aff4ea4b61ab174557e",
+  "target": "x86_64-unknown-linux-musl",
+  "sha256sums": "5560cba5f57c5d558be33865bd6447cdf724c7fecebe7b564f5ced2f64b7114a  agent-board-x86_64-unknown-linux-musl\n16c14d723beb9b8617042aaa6024f6d9ed17b4fa78c9bd8a036acd3b1f8717f1  gh-agent-board-x86_64-unknown-linux-musl\n"
+}

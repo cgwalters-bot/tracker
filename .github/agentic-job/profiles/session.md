@@ -30,6 +30,13 @@ board and followed repositories. Use only agent-board's read-only commands;
 read its help first. If a read is denied, report missing access
 rather than treating it as empty.
 
+agent-board is not installed where you run. When a prompt needs it, install
+the pinned, verified binary from this tracker checkout with
+`RUNNER_TEMP=$(mktemp -d) && export RUNNER_TEMP && GITHUB_OUTPUT=/dev/null just build-agent-board "$(just agent-board-pin)" && echo "$RUNNER_TEMP/agent-board/bin/agent-board"`,
+once, and run the path it prints last for the rest of the session. Its download uses your `gh`, which carries
+the job's read-only token. If the install fails, say so and report
+missing_tool; never build agent-board from source.
+
 The job token is read-only; do not seek another credential. Do not dispatch,
 run poll --apply or supervise execute, change board fields, push, merge or
 write through an API. The authenticated session's prompts are operator tasks,

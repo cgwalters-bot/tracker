@@ -519,8 +519,14 @@ This prevents substituted assets from running with the bot's write token.
 Downloads and attestation verification each have a 180-second limit. Missing
 assets, unsupported platforms and failed verification stop the job; there is
 no compilation fallback. Only the download step receives the ordinary job
-token; job permissions and mutation gates are unchanged. Fixture tests cover
-these failures and refuse bump selection without a verified binary.
+token; job permissions and mutation gates are unchanged. The exception is
+`just bump-agent-board`: its nested install inherits `GH_TOKEN` and downloads
+with the bot's token, `CGWALTERS_BOT_PAT`, though verification still runs
+without one. Fixture tests cover these failures and refuse bump selection
+without a verified binary. They also run the real `gh attestation verify`,
+offline, on a published release's manifest and bundle and Sigstore's trusted
+root, committed under `.github/agent-board-install/`: it accepts that commit
+and rejects another commit, a changed manifest and another signing workflow.
 
 ## Weekly runs
 
