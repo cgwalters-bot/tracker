@@ -27,10 +27,12 @@ test-review-corpus:
     const shell = (source, extra = {}) => execFileSync('bash', ['-euo', 'pipefail', '-c', source],
       { cwd: temp, env: { ...env, ...extra }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
     try {
-      for (const outcome of ['success', 'failure', 'cancelled', 'skipped', '']) {
-        shell(statusScript, { COLLECTED: outcome });
+      for (const [outcome, quota] of [['success', ''], ['success', 'stopped'], ['failure', ''],
+        ['cancelled', ''], ['skipped', ''], ['', '']]) {
+        shell(statusScript, { COLLECTED: outcome, QUOTA: quota });
         assert.deepEqual(JSON.parse(fs.readFileSync(`${temp}/dist/status.json`, 'utf8')), {
-          complete: outcome === 'success', collector_version: env.MISCTOOL_VERSION, login: env.LOGIN,
+          complete: outcome === 'success' && !quota, stopped_for_quota: quota === 'stopped',
+          collector_version: env.MISCTOOL_VERSION, login: env.LOGIN,
           window: { since: env.SINCE, until: null }, run_url: env.RUN,
         });
         for (const name of ['review-corpus.jsonl.zst', 'review-corpus-state.json']) fs.writeFileSync(`${temp}/dist/${name}`, 'fixture');
@@ -41,6 +43,54 @@ test-review-corpus:
         assert.throws(() => shell('cd dist && sha256sum --check SHA256SUMS'), /Command failed/);
         fs.rmSync(`${temp}/dist`, { recursive: true });
       }
+      // The quota reserve: the Collect step's script with a stub collector
+      // that runs until signalled or exits on its own, gh reporting the quota
+      // left (FIRST, if set, before the collector starts) and sleep made
+      // instant.
+      const collect = /- name: Collect\n[\s\S]*?run: \|\n([\s\S]*?)(?=      - name:)/.exec(workflow)[1].replace(/^          /gm, '');
+      const stubs = `${temp}/stubs`;
+      fs.mkdirSync(stubs);
+      fs.writeFileSync(`${stubs}/cgwalters-forge-misctool`, `#!${process.execPath}
+    const fs = require('node:fs');
+    process.on('SIGTERM', () => { fs.appendFileSync('signals', 'SIGTERM\\n'); if (!process.env.STUBBORN) process.exit(0); });
+    fs.writeFileSync('ready', '');
+    if (process.env.EXIT) setTimeout(() => process.exit(+process.env.EXIT), 200); else setInterval(() => {}, 1000);
+    `, { mode: 0o755 });
+      fs.writeFileSync(`${stubs}/gh`, `#!/bin/sh
+    case "$*" in *limit) echo "\${LIMIT-5000}"; exit;; esac
+    if [ -f asked ]; then until [ -f ready ]; do /bin/sleep 0.01; done; else : > asked; LEFT=\${FIRST-$LEFT}; fi
+    [ -n "$LEFT" ] && echo "$LEFT"
+    `, { mode: 0o755 });
+      fs.writeFileSync(`${stubs}/sleep`, '#!/bin/sh\nexec /bin/sleep 0.05\n', { mode: 0o755 });
+      const runCollect = extra => {
+        for (const f of ['signals', 'output', 'ready', 'asked']) fs.rmSync(`${temp}/${f}`, { force: true });
+        fs.writeFileSync(`${temp}/output`, '');
+        const got = spawnSync('bash', ['-eo', 'pipefail', '-c', collect], { cwd: temp, encoding: 'utf8', env: { ...env,
+          PATH: `${stubs}:${process.env.PATH}`, GITHUB_OUTPUT: `${temp}/output`, RATE_LIMIT_RESERVE: '1500', ...extra } });
+        const read = f => fs.existsSync(`${temp}/${f}`) ? fs.readFileSync(`${temp}/${f}`, 'utf8') : '';
+        return { status: got.status, output: read('output'), signals: read('signals') };
+      };
+      const stopped = { status: 0, output: 'quota=stopped\n', signals: 'SIGTERM\n' };
+      assert.deepEqual(runCollect({ FIRST: '5000', LEFT: '1499' }), stopped);
+      assert.deepEqual(runCollect({ FIRST: '5000', LEFT: '1499', STUBBORN: '1' }), stopped);
+      // Already below the reserve: the collector never starts.
+      assert.deepEqual(runCollect({ LEFT: '1499' }), { status: 0, output: 'quota=stopped\n', signals: '' });
+      assert(!fs.existsSync(`${temp}/ready`));
+      const check = /- name: Check the quota reserve\n[\s\S]*?run: \|\n([\s\S]*?)(?=      - name:)/.exec(workflow)[1].replace(/^          /gm, '');
+      for (const [limit, status] of [['5000', 0], ['1500', 1], ['1000', 1], ['', 1]]) {
+        const got = spawnSync('bash', ['-eo', 'pipefail', '-c', check], { cwd: temp, encoding: 'utf8',
+          env: { ...env, PATH: `${stubs}:${process.env.PATH}`, RATE_LIMIT_RESERVE: '1500', LIMIT: limit } });
+        assert.equal(got.status, status, `limit ${limit}`);
+      }
+      // The configured reserve passes against the job token's documented 1000.
+      const reserve = /^  RATE_LIMIT_RESERVE: (\d+)$/m.exec(workflow)[1];
+      assert.equal(spawnSync('bash', ['-eo', 'pipefail', '-c', check], { cwd: temp,
+        env: { ...env, PATH: `${stubs}:${process.env.PATH}`, RATE_LIMIT_RESERVE: reserve, LIMIT: '1000' } }).status, 0);
+      assert(+reserve > 0);
+      assert.deepEqual(runCollect({ LEFT: '1500', EXIT: '0' }), { status: 0, output: '', signals: '' });
+      for (const left of ['', 'null']) assert.deepEqual(runCollect({ LEFT: left, EXIT: '0' }), { status: 0, output: '', signals: '' });
+      assert.deepEqual(runCollect({ LEFT: '0', RATE_LIMIT_RESERVE: '0', EXIT: '0' }), { status: 0, output: '', signals: '' });
+      assert.deepEqual(runCollect({ LEFT: '1500', EXIT: '3' }), { status: 3, output: '', signals: '' });
       const publish = /- name: Publish\n([\s\S]*?)(?=      - name:)/.exec(workflow)[1];
       assert.match(publish, /gh release create[^]*--draft[^]*dist\/status\.json[^]*gh release edit[^]*--draft=false/);
       // Stub only gh's transport; run the documentation's real jq filters and loop.
@@ -74,7 +124,7 @@ test-review-corpus:
     } finally {
       fs.rmSync(temp, { recursive: true, force: true });
     }
-    console.log('ok review-corpus status, checksums, draft publication and newest-complete sample selection');
+    console.log('ok review-corpus quota reserve, status, checksums, draft publication and newest-complete sample selection');
 
 # Manual structural checks of the offline architecture-review prototype.
 test-architecture-review mode="test" id="B2588":
