@@ -26,10 +26,13 @@ Each new release has four assets (older releases lack `status.json`):
   not proof that the author acted on it. Comment bodies are untrusted text.
 - `review-corpus-state.json`: the collector's resume state. Only the
   workflow uses it.
-- `status.json`: `complete` (a JSON boolean), `collector_version`, `login`,
-  `window` and `run_url`. `complete` is true only when the collect step
-  succeeds; rate limits, timeouts and errors make it false. The window has
-  `since` (inclusive UTC date) and `until: null` (no fixed upper bound).
+- `status.json`: `complete` (a JSON boolean), `stopped_for_quota`,
+  `collector_version`, `login`, `window` and `run_url`. `complete` is true
+  only when the collector finishes; the quota reserve, rate limits, timeouts
+  and errors make it false, and `stopped_for_quota` is true when the reserve
+  stopped it. Releases from before the reserve lack `stopped_for_quota`.
+  The window has `since` (inclusive UTC date) and `until: null` (no fixed
+  upper bound).
   Complete means the collector finished, not that GitHub has no gaps.
 - `SHA256SUMS`: the checksums of the other three.
 
@@ -55,14 +58,19 @@ from where the state left off and publishes the result as a new release:
 created as a draft, given its four assets, then published. The first run,
 finding none, starts from nothing.
 
-The collector uses the job token. Its rate limit, about 1,000 requests an
-hour, is shared by every workflow in this repository. A run uses up that
-budget and waits for it to reset, for up to five hours. While it runs, the
-pass, the supervisor and other workflows that use the job token can fail on
-the rate limit for as long as it runs. The first backfill takes
-several runs. A run that stops early, whether on the rate limit, the time
-limit or an error, still publishes what it has. It records that it stopped
-early in the notes and `status.json`, and the run fails. Dispatch it again
+The collector uses the job token, whose core API quota is shared by every
+workflow in this repository. So that the pass, dispatch, review and the
+supervisor keep working, the workflow checks the quota left before starting
+the collector and once a minute after, and does not start it, or stops it,
+once fewer than `RATE_LIMIT_RESERVE` (500 of the token's 1,000 an hour)
+requests remain. It stops it with SIGTERM, then SIGKILL after 30 seconds,
+as the step's time limit ends it with signals. Such a run publishes what it
+has, records the quota stop in the notes and `status.json`, and succeeds;
+the next run resumes. A reserve not below the token's hourly limit fails
+the run before collecting or publishing; set it to 0 to turn the reserve
+off. The first backfill takes several runs. A run that stops early for another reason, a rate limit the reserve missed,
+the time limit or an error, also publishes what it has. It records that it
+stopped early in the notes and `status.json`, and the run fails. Dispatch it again
 (or wait for the schedule) to resume. The collector runs with a job token that cannot write.
 The publishing job's token can write the repository's contents, but the job
 runs only `gh release` commands on its own new release.
