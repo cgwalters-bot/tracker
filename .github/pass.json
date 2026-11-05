@@ -73,7 +73,7 @@
         "cgwalters-bot/praxis-credential-broker"
       ]}},
   "budget": {"weeklyUsd": 2000},
-  "pr": {"staleDays": 0, "unstall": true, "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-bot/praxis-credential-broker"],
+  "pr": {"staleDays": 0, "unstall": true, "ownSpaceOnly": true, "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-bot/praxis-credential-broker"],
     "reviewWorkflow": "review.yml",
     "checkReruns": true,
     "ownerBranches": true,
