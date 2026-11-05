@@ -1563,12 +1563,16 @@ test-config:
 # The shipped supervisor settings through the binary supervisor.yml pins
 # (AGENT_BOARD, from build-supervisor-agent-board): a cap the executor
 # refuses would otherwise fail every pass after the merge. Empty checks and
-# no --daily return before any API request.
+# no --daily return before any API request. The executor takes its `follow`
+# from agent-board.json and refuses a whole batch over one item outside it.
 test-supervisor-config:
     #!/usr/bin/env bash
     set -euo pipefail
     jq -e '.capacityMarginPercent == 10 and
       .agent.passConfig == ".github/pass.json"' .github/supervisor/config.json > /dev/null
+    jq -nr --slurpfile board .github/poll/agent-board.json --slurpfile sup .github/supervisor/config.json \
+      '$sup[0].agent.releaseList // [] | map(.item | sub("#[0-9]+$"; "")) - $board[0].follow
+      | if . == [] then empty else "releaseList outside follow: \(unique | join(", "))\n" | halt_error end'
     if [[ -z ${AGENT_BOARD:-} ]]; then echo 'skipped: set AGENT_BOARD to the built binary'; exit 0; fi
     health=$(mktemp)
     echo '[]' > "$health"
