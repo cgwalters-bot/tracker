@@ -38,7 +38,8 @@ cgwalters' instructions.
 
 The [prose review checklist](docs/review-checklist/prose.md) gives contextual,
 advisory rewrite suggestions and meaning-preservation checks. It does not enable
-an automated prose reviewer.
+an automated prose reviewer. It includes a versioned [manual prompt](docs/review-checklist/prose-prompt.md)
+and [positive/negative fixtures](docs/review-checklist/prose-fixtures.md).
 
 The [offline architecture-review prototype](docs/architecture-review/README.md)
 contains a versioned pattern library and manual review procedure. It has only a
