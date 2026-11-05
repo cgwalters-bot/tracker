@@ -55,7 +55,6 @@
       "cgwalters-forge/composefs-rs",
       "cgwalters-forge/bootc",
       "cgwalters-forge/bcvk",
-      "cgwalters-forge/selinux-policy",
       "cgwalters-forge/rpm-ostree",
       "cgwalters-forge/atomic-linux-sandbox"
     ]
