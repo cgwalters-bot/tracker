@@ -47,8 +47,8 @@ three-PR development pilot and no held-out result. It is not wired into the
 production review step.
 
 [docs/review-corpus.md](docs/review-corpus.md) describes the corpus of
-cgwalters' public review feedback, which is published as the `review-corpus`
-release and refreshed weekly. It explains how to pin and download a version.
+cgwalters' public review feedback, which is published weekly as a new dated
+`review-corpus-*` release. It explains how to find, pin and download a version.
 
 Agent-drafted reviews of others' pull requests wait as issues labelled
 `review-draft` (`is:open label:review-draft` is the queue). To send the
