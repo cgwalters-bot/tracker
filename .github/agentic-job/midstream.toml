@@ -13,8 +13,10 @@
 # for midstream-fix.toml and fix.toml. No [unprotected_files]: no run edits
 # `.github/` or AGENTS.md in a midstream.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"]
-bases = ["main"]
+repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/selinux-policy"]
+# selinux-policy tracks upstream's rawhide default branch. Bases are shared
+# by these exact targets; this admits neither wildcard bases nor upstream.
+bases = ["main", "rawhide"]
 max_outputs = 3
 max_patch_bytes = 1048576
 max_patch_files = 50

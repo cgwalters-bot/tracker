@@ -18,8 +18,9 @@
 # Maintain).
 hosts = ["github.com"]
 # config-test/ keeps every name of dispatch.toml and midstream.toml here.
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/atomic-linux-sandbox", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io", "bootc-dev/*"]
-bases = ["main"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/selinux-policy", "cgwalters-forge/atomic-linux-sandbox", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io", "bootc-dev/*"]
+# Shared finite base set; rawhide supports comment-only work on selinux-policy.
+bases = ["main", "rawhide"]
 max_outputs = 3
 max_patch_bytes = 1048576
 max_patch_files = 50
