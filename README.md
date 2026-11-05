@@ -43,7 +43,7 @@ and [positive/negative fixtures](docs/review-checklist/prose-fixtures.md).
 
 The [offline architecture-review prototype](docs/architecture-review/README.md)
 contains a versioned pattern library and manual review procedure. It has only a
-three-PR development pilot, no held-out result, and is not wired into the
+three-PR development pilot and no held-out result. It is not wired into the
 production review step.
 
 [docs/review-corpus.md](docs/review-corpus.md) describes the corpus of
@@ -72,7 +72,7 @@ This configuration waits for the shared actions wrapper to upgrade from
 agentic-job v0.2.0 to a release containing
 [#602](https://github.com/cgwalters-forge/agentic-job/pull/602); v0.2.0
 cannot parse the opt-in. After that upgrade, uncomment the four-line table.
-No wrapper input is needed: it already passes
+The wrapper does not need a new input: it already passes
 the caller's runner configuration. The installer runs before network
 lockdown as the sandbox user, with upstream's 120-second Git phases and
 600-second install limit; its code and dependencies are trusted setup,
@@ -140,7 +140,7 @@ would spend outside the pass's pace/WIP accounting. Use the existing coordinated
 record-only/dispatch mechanism, not a second scheduler or a caller-side policy.
 This checkout leaves `pr.reviewPools` absent in `.github/pass.json` and keeps
 legacy automatic events and `/review`. No variables, credentials, merge policy
-or live reviews were changed. Source merge does not deploy the settings below.
+or live reviews were changed. Merging source does not deploy the settings below.
 
 The producer is already pinned: `AGENT_BOARD_REV` is
 `77869b56bcfa02c2d03c79af365b2ad51c96de06`, containing agent-board#494
@@ -164,9 +164,9 @@ same-repository branches and `/review` retain event reviews.
 (`5906e6745c4e3e1c68b698dacf409a452c727d08`) composes the old consumer, not this
 contract. Tracker pins actions `1b4539dd00edff3f89cb130e72e535e8d9c6a67a`, whose
 consumer calls name agentic-job v0.6.9 by commit
-(`57119eeffa17ea41b383cfdaf8370b8abeba8868`), not by tag. It still declares no
-workflow-call inputs, and its header says paced dispatches are not adopted by
-that event-only composition; it has no record-only routing. Do not forward guessed
+(`57119eeffa17ea41b383cfdaf8370b8abeba8868`), not by tag. It still does not declare
+workflow-call inputs. Its header says that event-only composition has not adopted
+paced dispatches; it has no record-only routing. Do not forward guessed
 inputs, copy the consumer into tracker, or treat its merge as wrapper deployment.
 The caller's dispatch/exact-head/record-only contract tests must accompany the
 eventual compatible wrapper pin; today's regression tests guard only legacy
@@ -210,7 +210,7 @@ for dispatch routing, stale/invalid heads, missing/unknown pools, selected-pool
 identity, record-only fork events, unaffected `/review` and default-off mode.
 
 Before activation, re-inventory **all** `follow` callers (thirteen today) at their deployed
-default-branch SHAs. Do not enable while any lacks the contract. Verify the bot
+default-branch SHAs. Enable only after all callers support the contract. Verify the bot
 token can dispatch `review.yml` (`actions: write`) in each, and that each pool
 maps to the same agent/model the producer paces. Operator-controlled repository
 variables in **each followed repository** must supply:
@@ -321,7 +321,7 @@ artifact to find when they began. API requests have deadlines and a total
 budget and a seven-minute collection deadline; the health step has an eight-minute
 limit, within a 25-minute job that installs a verified agent-board binary using
 `just build-agent-board` at the commit pinned as `AGENT_BOARD_REV` in
-`supervisor.yml`, which the `execute` job installs too. As in `poll.yml`, it
+`supervisor.yml`. The `execute` job installs the same binary. As in `poll.yml`, it
 never follows agent-board's branch: the executor receives the bot's token, so
 a change to agent-board reaches it only when that pin moves here, after review. The newest health artifact among
 the last five completed runs is restored with a two-minute bound and passed as `--previous`;
@@ -419,8 +419,8 @@ other caps above zero a later run can act on it within those caps. A batch
 that would exceed a daily cap is rejected in full. Missing state is reported,
 never guessed.
 
-The `execute` job holds `CGWALTERS_BOT_PAT` in the `agent-apply`
-environment and runs no agent code. It executes only on a run's first
+The `execute` job has `CGWALTERS_BOT_PAT` in the `agent-apply`
+environment and does not run agent code. It executes only on a run's first
 attempt, and accepts only the bot's comment, unedited, on the requests
 issue that this run's apply reports. It validates the whole
 batch with `agent-board supervise execute`. The shared executor admits
@@ -480,7 +480,7 @@ each repository's review and queue; the train only waits for them.
 It is off unless the repository variable `RELEASE_TRAIN` is `dry-run`,
 which prints each pass's step, or `apply`, which executes it with
 `CGWALTERS_BOT_PAT`: that token needs to open issues here, push to the bot's
-forks (named in the configuration: a fork need not share its parent's name)
+forks (named in the configuration: a fork does not have to share its parent's name)
 with the workflows permission, as the pins are in workflow files, open PRs
 upstream and run agentic-job's `release.yml`. Each release
 has one tracking issue here, opened by the bot and labelled
