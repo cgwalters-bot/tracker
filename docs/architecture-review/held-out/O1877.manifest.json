@@ -1,0 +1,206 @@
+{
+  "schema": "architecture-review.packet.v1",
+  "id": "O1877",
+  "visibility": "Controller only: the reviewer receives the packet files, never this manifest.",
+  "repository": "ostreedev/ostree",
+  "base": "859dd00bfab6eda13f381f3bebffc6adc4075e32",
+  "head": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+  "ancestry": {
+    "compare_status": "ahead",
+    "merge_base": "859dd00bfab6eda13f381f3bebffc6adc4075e32",
+    "total_commits": 11
+  },
+  "commits": [
+    {
+      "sha": "6cd2dfb57878662174f5abb52fc4cf1f8b976af1",
+      "committed": "2020-01-21T20:44:09Z"
+    },
+    {
+      "sha": "ec3fff6b65ca9313119705ff01284724f0a7478c",
+      "committed": "2020-01-21T20:44:09Z"
+    },
+    {
+      "sha": "8cc2391cde82aa175e814a5280ec990d7117016e",
+      "committed": "2020-01-21T20:44:09Z"
+    },
+    {
+      "sha": "a757ace160d3f6a9851108764718d3c268177f8d",
+      "committed": "2020-01-21T20:57:41Z"
+    },
+    {
+      "sha": "c50f2beb6a8822fa0c2e14fb0f526a3bcdbcad6e",
+      "committed": "2020-01-21T20:57:41Z"
+    },
+    {
+      "sha": "ac01ac5c633c0c6f09b467017859e5a132416743",
+      "committed": "2020-01-21T20:57:41Z"
+    },
+    {
+      "sha": "3baedd8616defeec6c7e0a895bcd6bbd5d073a06",
+      "committed": "2020-01-21T20:57:41Z"
+    },
+    {
+      "sha": "d59b02585d5abebcfa5885125ac93065d9336b26",
+      "committed": "2020-01-21T20:57:41Z"
+    },
+    {
+      "sha": "d408024bbc8d8ae4c70da1bdcb7805ae85459d89",
+      "committed": "2020-01-21T20:57:41Z"
+    },
+    {
+      "sha": "6359b5d7d1e756679c84e89247d0ef5c9e2f4a42",
+      "committed": "2020-01-21T20:57:41Z"
+    },
+    {
+      "sha": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "committed": "2020-01-21T23:21:32Z"
+    }
+  ],
+  "first_feedback_at": "2020-01-23T14:58:41Z",
+  "title_description": "identity.md: title as of first feedback from rename events; description never edited after it",
+  "project_guidance": "not supplied",
+  "limits": {
+    "max_files": 30,
+    "max_bytes": 100000
+  },
+  "total_bytes": 98140,
+  "files": [
+    {
+      "name": "diff.patch",
+      "revision": "859dd00bfab6eda13f381f3bebffc6adc4075e32...5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 37713,
+      "sha256": "d4a167e686f36fbc4de04d2c61ff5bf256a8e6345ce24948c27c5710a04f2c33"
+    },
+    {
+      "name": "identity.md",
+      "bytes": 1460,
+      "sha256": "4e56a84efde776c467514933c36ec623c8c1d31f10f61a0968620dd5184baa1b"
+    },
+    {
+      "name": "head/tests__gpg-verify-data__README.md",
+      "path": "tests/gpg-verify-data/README.md",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 339,
+      "sha256": "5261ea17bcfa87a8246b9e698c04fec19a688e758a5599fe58aed7f891b533bc"
+    },
+    {
+      "name": "head/tests__gpghome__revocations__key1.rev",
+      "path": "tests/gpghome/revocations/key1.rev",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 556,
+      "sha256": "04de0931a755c03372b52a323d2929a1c2cdaf25e147059e4b8abc8901d81749"
+    },
+    {
+      "name": "head/tests__gpghome__revocations__key2.rev",
+      "path": "tests/gpghome/revocations/key2.rev",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 556,
+      "sha256": "0a0c1939ea2bff01a0e47d1080073d3bd5611e5312cf1917f94e63726f43be88"
+    },
+    {
+      "name": "head/tests__gpghome__revocations__key3.rev",
+      "path": "tests/gpghome/revocations/key3.rev",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 556,
+      "sha256": "3a8f618f44dee311248840194a64f83c49963d8785daa59b068052aa27b07c71"
+    },
+    {
+      "name": "head/ci__flatpak.sh",
+      "path": "ci/flatpak.sh",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 1449,
+      "sha256": "925ca0d8ca246de75582661c8fc725d4b18e8d29b6e31120a6876d44041ec496"
+    },
+    {
+      "name": "head/ci__flatpak-1.4.1-ostree-gpg-errors.patch",
+      "path": "ci/flatpak-1.4.1-ostree-gpg-errors.patch",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 3334,
+      "sha256": "d3e7497af71de1632c6a73b98725ae59a0bce371068a719f1e404ec4d3c2bd27"
+    },
+    {
+      "name": "head/src__libostree__ostree-gpg-verify-result.h",
+      "path": "src/libostree/ostree-gpg-verify-result.h",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 7666,
+      "sha256": "16d45b0496b308fcf1dda1ae655daf0bc49dcb5252e927b1381fd3de49697866"
+    },
+    {
+      "name": "head/tests__test-pull-summary-sigs.sh",
+      "path": "tests/test-pull-summary-sigs.sh",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 12432,
+      "sha256": "1a10da321fbb798073c45ad615de5256233e07cd76ed9d7d3600af84254a28f8"
+    },
+    {
+      "name": "head/Makefile-tests.am",
+      "path": "Makefile-tests.am",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 15904,
+      "sha256": "5509fa7c4f62e3a22ee33769db43a95de2845c3bdd79528cf1a9fe7052de4397"
+    },
+    {
+      "name": "head/tests__test-remote-gpg-import.sh",
+      "path": "tests/test-remote-gpg-import.sh",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 16175,
+      "sha256": "8daeb371f077ca7da13b2e4dcb133bddf9fb5f24ad92953110db72124248f761"
+    }
+  ],
+  "omitted": [
+    {
+      "path": "tests/gpg-verify-data/lgpl2.sig0",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 287,
+      "reason": "not UTF-8 text; diff.patch records the binary change"
+    },
+    {
+      "path": "tests/gpg-verify-data/lgpl2.sig1",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 287,
+      "reason": "not UTF-8 text; diff.patch records the binary change"
+    },
+    {
+      "path": "tests/gpg-verify-data/lgpl2.sig2",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 287,
+      "reason": "not UTF-8 text; diff.patch records the binary change"
+    },
+    {
+      "path": "tests/gpg-verify-data/lgpl2.sig3",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 287,
+      "reason": "not UTF-8 text; diff.patch records the binary change"
+    },
+    {
+      "path": "tests/gpg-verify-data/lgpl2.sig4",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 293,
+      "reason": "not UTF-8 text; diff.patch records the binary change"
+    },
+    {
+      "path": "tests/gpg-verify-data/trustdb.gpg",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 1200,
+      "reason": "not UTF-8 text; diff.patch records the binary change"
+    },
+    {
+      "path": "tests/test-gpg-verify-result.c",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 20770,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "tests/libtest.sh",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 23262,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "src/libostree/ostree-gpg-verify-result.c",
+      "revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "bytes": 28945,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    }
+  ]
+}
