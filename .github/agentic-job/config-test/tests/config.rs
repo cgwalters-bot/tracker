@@ -554,11 +554,18 @@ fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
 }
 
 #[test]
-fn gh_agentic_workflows_is_a_protected_midstream_target_that_is_never_merged_into() {
+fn gh_agentic_workflows_has_the_only_midstream_workflow_exception_and_is_never_merged_into() {
     let repo = "cgwalters-forge/gh-agentic-workflows";
     for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
         assert!(repos(name).iter().any(|r| r == repo), "{name}");
-        assert!(!has_line_starting(&read(name), "[unprotected_files]"), "{name}");
+    }
+    assert!(!has_line_starting(&read("comment.toml"), "[unprotected_files]"));
+    for name in ["midstream.toml", "midstream-fix.toml"] {
+        let table = toml_file(name);
+        let exception = table["unprotected_files"].as_table().expect("workflow exception");
+        assert_eq!(exception.len(), 2, "{name}: no protected filename exceptions");
+        assert_eq!(strings(&exception["repos"], name), [repo]);
+        assert_eq!(strings(&exception["dot_folders"], name), [".github"]);
     }
     for name in ["dispatch.toml", "fix.toml"] {
         for list in lists(name) {
@@ -569,6 +576,98 @@ fn gh_agentic_workflows_is_a_protected_midstream_target_that_is_never_merged_int
     for list in [&pass["follow"], &pass["workRepositories"], &pass["pr"]["noMerge"]] {
         assert!(list.as_array().expect("pass repository list").contains(&json!(repo)));
     }
+}
+
+#[test]
+fn review_gate_discovers_and_deduplicates_all_implement_and_fix_exceptions() {
+    let justfile = read("../../Justfile");
+    let recipe = justfile.split_once("\nreview-gate-repos:\n").expect("discovery recipe").1
+        .lines().next().expect("discovery command").trim().trim_start_matches('@');
+    let files = ["dispatch.toml", "fix.toml", "midstream.toml", "midstream-fix.toml"];
+    let mut expected = BTreeSet::new();
+    for file in files {
+        let table = toml_file(file);
+        expected.extend(strings(&table["unprotected_files"]["repos"], file));
+    }
+    let actual = Command::new("just").arg("review-gate-repos").current_dir(here().join("../..")).output().expect("repository discovery");
+    assert!(actual.status.success(), "{}", String::from_utf8_lossy(&actual.stderr));
+    assert_eq!(String::from_utf8(actual.stdout).unwrap().split_whitespace().collect::<Vec<_>>(), expected.iter().map(String::as_str).collect::<Vec<_>>());
+    // Unique sentinels detect a missing source even when today's lists overlap.
+    let mut fixture_recipe = recipe.to_owned();
+    for (i, file) in files.iter().enumerate() {
+        let fixture = temp_path(file);
+        std::fs::write(&fixture, format!("[unprotected_files]\nrepos = [\"owner/repo-{i}\", \"owner/shared\"]\n")).unwrap();
+        let source = format!(".github/agentic-job/{file}");
+        assert!(fixture_recipe.contains(&source), "missing {source}");
+        fixture_recipe = fixture_recipe.replace(&source, &format!("'{}'", fixture.display()));
+    }
+    let actual = Command::new("bash").args(["-euo", "pipefail", "-c", &fixture_recipe]).output().expect("fixture discovery");
+    assert!(actual.status.success(), "{}", String::from_utf8_lossy(&actual.stderr));
+    assert_eq!(String::from_utf8(actual.stdout).unwrap().trim(), "owner/repo-0 owner/repo-1 owner/repo-2 owner/repo-3 owner/shared");
+    let live = justfile.split_once("\ncheck-review-gate:\n").expect("live gate recipe").1.split("\n\n").next().unwrap();
+    assert!(live.contains("repos=$({{ just_executable() }} review-gate-repos)"));
+    assert!(read("../workflows/ruleset-check.yml").contains("run: just check-review-gate"));
+}
+
+#[test]
+fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
+    if !agentic_job_installed() {
+        return;
+    }
+    let head = "0".repeat(40);
+    for repo in repos("midstream.toml") {
+        for (file, kind) in [("midstream.toml", "create_pull_request"), ("midstream-fix.toml", "push_to_pull_request_branch")] {
+            let clone_url = format!("https://github.com/{repo}");
+            let file_path = path_of(file);
+            let mut args = vec!["policy", "--allow", &file_path, "--repo", &repo, "--clone-url", &clone_url,
+                "--kind", "branch", "--outputs", kind, "--max-outputs", "3", "--base"];
+            if kind == "create_pull_request" {
+                args.push("main");
+            } else {
+                args.extend(["dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", &repo]);
+            }
+            let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).expect("policy JSON");
+            let bound = &policy["safe_outputs"][kind];
+            let expected = if repo == "cgwalters-forge/gh-agentic-workflows" { json!([".github"]) } else { Value::Null };
+            assert_eq!(bound["unprotected_dot_folders"], expected, "{repo} {file}: no other fork may edit protected dot folders");
+            assert_eq!(bound["protect_top_level_dot_folders"], true, "{repo} {file}");
+            assert_eq!(bound["protected_files_policy"], "blocked", "{repo} {file}");
+            let protected = bound["protected_files"].as_array().expect("protected filenames");
+            for path in ["AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
+                assert!(protected.contains(&json!(path)), "{repo} {file}: {path} must remain blocked");
+            }
+            if kind == "create_pull_request" {
+                assert_eq!(bound["draft"], true, "{repo} {file}");
+            }
+            assert_ne!(bound["ready_when_complete"], true, "{repo} {file}");
+            check_midstream_paths(&policy, &repo, kind, &head);
+        }
+    }
+}
+
+/// Exercise the existing collector and independent patch checker, not a local
+/// approximation of protected-path matching. Only an ordinary source file and
+/// the admitted fork's workflow may pass.
+fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str) {
+    let dir = temp_path("path-check");
+    let out = dir.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    let policy_path = dir.join("policy.json");
+    let collected = dir.join("collected.json");
+    std::fs::write(&policy_path, policy.to_string()).unwrap();
+    let item = json!({"type": kind, "title": "Test workflow admission", "body": "Test.",
+        "message": "Test workflow admission", "branch": "dispatch/x"});
+    std::fs::write(out.join("outputs.jsonl"), item.to_string()).unwrap();
+    std::fs::write(out.join("base.json"), json!({"repo": repo, "ref": policy["base"], "commit": head}).to_string()).unwrap();
+    agentic_job_ok(&["collect", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
+    for path in ["src/test.txt", ".github/workflows/test.yml", ".other/test.txt", "AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
+        let patch = format!("From {} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: {head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test workflow admission\n\n---\ndiff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+test\n", "1".repeat(40));
+        std::fs::write(out.join("aw-dispatch-x.patch"), patch).unwrap();
+        let result = agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
+        let accepted = path == "src/test.txt" || (repo == "cgwalters-forge/gh-agentic-workflows" && path == ".github/workflows/test.yml");
+        assert_eq!(result.status.success(), accepted, "{repo} {kind} {path}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 // Without `ready_when_complete` apply opens every pull request as a draft,
@@ -612,7 +711,7 @@ fn only_triage_research_and_fix_may_target_bootc_dev() {
 
 // Midstream forks (the `bot-midstream` topic) take dispatch.toml's and
 // fix.toml's bounds without `ready_when_complete`, so their pull requests
-// stay drafts (#336), and without unprotected files; dispatch.yml picks them
+// stay drafts (#336); dispatch.yml picks them
 // by kind and by the midstream lists.
 #[test]
 fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_picks_them() {
@@ -633,7 +732,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"]);
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
-        assert!(!text.contains("ready_when_complete") && !has_line_starting(&text, "[unprotected_files]"), "{midstream}");
+        assert!(!text.contains("ready_when_complete"), "{midstream}");
         assert_eq!(
             (head(midstream), entries(midstream), repos(midstream)),
             (head(base), entries(base), repos("midstream.toml")),

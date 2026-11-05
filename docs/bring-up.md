@@ -148,29 +148,34 @@ To prevent staged changes from advancing an upstream-tracking fork main,
 `cgwalters-forge/gh-agentic-workflows` uses the existing midstream implement
 and fix bounds: PRs stay draft, and the pass follows them for fix rounds
 but `pr.noMerge` prohibits merging into the fork. It is not an ordinary
-ready-when-complete target. This admission retains all protected-file
-restrictions, including `.github/`; it does not yet authorize the upgrade's
-workflow edits.
+ready-when-complete target. After #1312's target admission, the separately
+reviewed workflow-edit admission permits only this exact repository's
+`.github/` in `midstream.toml` and `midstream-fix.toml`. Protected root
+filenames and all other midstream forks' protected paths remain blocked.
+This tracker PR must receive the existing required review before its
+exception takes effect.
 
 The remaining handoff follows the
-[current-release-on-fork direction](https://github.com/cgwalters-forge/tracker/issues/258#issuecomment-6640207439):
-open a fork issue in `cgwalters-forge/gh-agentic-workflows` linked to #258,
-then obtain a separately reviewed workflow-edit exception. Before admitting
-that exception, verify the existing review gate on the fork's main requires
-an approving review and dismisses stale approvals on push, and include it
-in the review-gate checks; do not weaken those requirements or broadly
-exempt midstream protected files to unblock the work.
+[current-release-on-fork direction](https://github.com/cgwalters-forge/tracker/issues/258#issuecomment-6640207439).
+The fork's effective `main` rules were rechecked on 2026-11-05: organization
+ruleset 25084478 requires one approving review and dismisses stale approvals
+on push. `check-review-gate` now discovers and deduplicates exceptions from
+both ordinary and midstream implement/fix bounds, so `ruleset-check.yml`
+monitors this gate too. Missing or unreadable rules block admission; they do
+not justify weaker requirements or broader protected-file exemptions.
 
-Only after that admission, stage a fork-only draft PR upgrading gh-aw to
-the current stable release (v1.0.1 was observed at triage; recheck before
+After that reviewed admission, open a fork issue in
+`cgwalters-forge/gh-agentic-workflows` linked to #258, then stage a fork-only
+draft PR upgrading gh-aw to the current stable release (v1.0.1 was observed
+at triage; recheck before
 pinning). Compile `drafter`, `review`, `fix`, `queue-triage` and `ci-triage`
 with the pinned CLI and run the fork repository's tests, recording the pin,
 commands and results in the PR. Compilation alone does not prove live
-`bootc-bot[bot]` PR checkout: live review/checkout verification remains a
-separate step with run evidence. This tracker prerequisite changes no
+`bootc-bot[bot]` PR checkout: fresh live bot review/checkout verification remains
+a separate step with run evidence. This tracker prerequisite changes no
 repository settings, opens no upstream PR, retriggers no upstream run and
-does not close #258. Protected-workflow admission and live verification
-remain outstanding before any later upstream delivery.
+does not close #258. The fork issue, upgrade, compilation, repository tests
+and fresh checkout evidence remain later work before any upstream delivery.
 
 ## Board writes, questions and status updates
 
@@ -258,8 +263,9 @@ ruleset's id with `gh api repos/OWNER/REPO/rulesets` and run
 (`-X POST repos/OWNER/REPO/rulesets` where it no longer exists).
 The snapshots are not checked against the live rulesets. What is checked,
 daily by `ruleset-check.yml`, is the property the `[unprotected_files]`
-bounds in dispatch.toml rest on: on each listed repository's default
-branch some ruleset, the org's 25084478 today, requires an approving
+bounds in ordinary and midstream implement/fix files rest on: on each
+exempted repository's default branch some ruleset, the org's 25084478 today,
+requires an approving
 review and dismisses stale approvals on push. A repository without it
 fails the run and gets a comment on one open "Ruleset drift" issue here;
 `just check-review-gate` runs the same check locally.

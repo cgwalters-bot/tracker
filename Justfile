@@ -891,7 +891,7 @@ bump-agent-board:
 
 # Whether the effective rules of a branch, GitHub's
 # `repos/OWNER/REPO/rules/branches/BRANCH` response on stdin, hold what the
-# `[unprotected_files]` bounds in dispatch.toml rest on: one pull_request
+# `[unprotected_files]` bounds rest on: one pull_request
 # rule requiring an approval and dismissing stale approvals on push. Any one
 # rule is enough, as rulesets add up (review's own requires none; the org's
 # does), but both must be on the same rule. Anything but an array fails.
@@ -917,7 +917,7 @@ test-review-gate:
 check-review-gate:
     #!/usr/bin/env bash
     set -euo pipefail
-    repos=$(python3 -c 'import sys, tomllib; print(*tomllib.load(open(sys.argv[1], "rb"))["unprotected_files"]["repos"])' .github/agentic-job/dispatch.toml)
+    repos=$({{ just_executable() }} review-gate-repos)
     failed=()
     for repo in $repos; do
       rules=
@@ -933,6 +933,11 @@ check-review-gate:
     done
     echo "failed=${failed[*]}" >> "${GITHUB_OUTPUT:-/dev/null}"
     [[ ${#failed[@]} -eq 0 ]]
+
+# Union of ordinary and midstream implement/fix exceptions; never targets
+# without an exception. Keep discovery shared by the live and fixture checks.
+review-gate-repos:
+    @python3 -c 'import sys, tomllib; print(*sorted({r for p in sys.argv[1:] for r in tomllib.load(open(p, "rb")).get("unprotected_files", {}).get("repos", [])}))' .github/agentic-job/dispatch.toml .github/agentic-job/fix.toml .github/agentic-job/midstream.toml .github/agentic-job/midstream-fix.toml
 
 # A repository's drift from the manifest (.github/forge-sync/repos.json,
 # #544), one line each, from its fetched files on stdin:

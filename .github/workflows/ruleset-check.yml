@@ -1,6 +1,6 @@
 # Once a day, check the one ruleset property the `[unprotected_files]` bounds
-# in .github/agentic-job/dispatch.toml rest on: on the default branch of each
-# repository listed there, a pull_request rule requires an approving review
+# in ordinary and midstream implement/fix bounds rest on: on the default branch of each
+# exempted repository, a pull_request rule requires an approving review
 # and dismisses stale approvals on push (#538). Without it a run's
 # `.github/` edit there merges with no review, and nothing else would notice
 # a ruleset edited back to 0 approvals. The effective rules of a public
@@ -41,7 +41,7 @@ jobs:
   # Opens or comments on one issue here, so drift is seen by more than a red
   # run. Its own job, so the token that can write issues never runs the
   # check's API reads. It also runs when the check failed before listing
-  # any repository, the read of dispatch.toml for one.
+  # any repository, the read of the bounds files for one.
   report:
     needs: check
     if: ${{ failure() && needs.check.result == 'failure' }}
@@ -60,7 +60,7 @@ jobs:
           # rather than opening another.
           TITLE: 'Ruleset drift: a repository in unprotected_files lost its review gate'
         run: |
-          body="Failing: ${FAILED:-none listed; the check itself failed}. Each needs a pull_request rule on its default branch with required_approving_review_count >= 1 and dismiss_stale_reviews_on_push; until then remove it from unprotected_files.repos in .github/agentic-job/dispatch.toml. Details: $RUN"
+          body="Failing: ${FAILED:-none listed; the check itself failed}. Each needs a pull_request rule on its default branch with required_approving_review_count >= 1 and dismiss_stale_reviews_on_push; until then remove it from unprotected_files.repos in every ordinary and midstream implement/fix bounds file under .github/agentic-job/. Details: $RUN"
           issue=$(gh issue list --state open --search "in:title \"$TITLE\"" --json number,title --jq "first(.[] | select(.title == env.TITLE) | .number)")
           if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"
           else gh issue create --title "$TITLE" --body "$body"; fi

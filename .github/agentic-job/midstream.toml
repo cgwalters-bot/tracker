@@ -10,8 +10,8 @@
 # that gets the topic must be added here before it is dispatched to.
 # The profile job of dispatch.yml picks this file for a target listed here,
 # so a repository belongs here or in dispatch.toml, never both; the same
-# for midstream-fix.toml and fix.toml. No [unprotected_files]: no run edits
-# `.github/` or AGENTS.md in a midstream.
+# for midstream-fix.toml and fix.toml. Protected files stay blocked except
+# for the repository-scoped workflow admission below.
 hosts = ["github.com"]
 repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"]
 bases = ["main"]
@@ -25,3 +25,11 @@ add_comment = { max = 1 }
 noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
+
+# Prevent unreviewed workflow edits from landing: this fork's effective main
+# rules require an approval and dismiss stale approvals on push (25084478,
+# rechecked 2026-11-05). check-review-gate monitors it. This admission itself
+# must receive tracker's required review before taking effect (#258).
+[unprotected_files]
+repos = ["cgwalters-forge/gh-agentic-workflows"]
+dot_folders = [".github"]
