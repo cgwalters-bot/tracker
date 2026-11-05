@@ -1,0 +1,84 @@
+# A shadow of the pass for agentic-job (tracker#1356, step 1): `agent-board
+# poll --dry-run` on agentic-job alone, with pass.json's operator, bot,
+# review workflow and the `pr` policy agent-board.json can express. It takes
+# no step and writes only its job summary, to be compared with what the pass
+# (poll.yml) actually did there.
+name: maintain-shadow
+
+on:
+  schedule:
+    - cron: '13,43 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+# The same agent-board commit as poll.yml; agent-board-pin.yml moves both.
+env:
+  AGENT_BOARD_REV: f838f25165e24a4e9f35beb41f75832f0082f3df
+  FOLLOW: cgwalters-forge/agentic-job
+
+jobs:
+  preview:
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    # The state file is read and saved once a run, so runs never overlap.
+    concurrency:
+      group: maintain-shadow
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    # `actions: read` for the fix runs in dispatchRepo, this repository,
+    # that the poll's markers name.
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - name: Install verified agent-board
+        env:
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
+      # The poll's conditional GETs and cursors. Any job in main's cache scope,
+      # pull_request_target and issue_comment runs included, could write a
+      # maintain-shadow- entry and falsify the preview; a dry run with a
+      # read-only token can afford that, an applying poll could not.
+      - name: Restore the poll state
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/poll-state.json
+          key: maintain-shadow-${{ github.run_id }}
+          restore-keys: maintain-shadow-
+      - name: Configuration
+        run: just maintain-shadow-config .github/pass.json "$FOLLOW" > "$RUNNER_TEMP/agent-board.json"
+      - name: Preview
+        id: preview
+        timeout-minutes: 15
+        env:
+          # Read-only: a dry run needs no write, so it is never given the bot's.
+          GH_TOKEN: ${{ github.token }}
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+        shell: bash
+        run: |
+          "$AGENT_BOARD" poll --dry-run --config "$RUNNER_TEMP/agent-board.json" \
+            --state "$RUNNER_TEMP/poll-state.json" --follow "$FOLLOW" \
+            --fix-bounds .github/agentic-job/fix.toml \
+            --fix-bounds .github/agentic-job/midstream-fix.toml 2>&1 | tee "$RUNNER_TEMP/poll.log"
+      - name: Save the poll state
+        if: ${{ !cancelled() && steps.preview.outcome != 'skipped' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/poll-state.json
+          key: maintain-shadow-${{ github.run_id }}
+      - name: Summary
+        if: ${{ !cancelled() }}
+        run: |
+          {
+            echo "### Shadow poll of $FOLLOW (dry run)"
+            echo '<pre>'
+            sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' "$RUNNER_TEMP/poll.log" 2>/dev/null || echo 'No poll ran'
+            echo '</pre>'
+          } >> "$GITHUB_STEP_SUMMARY"
