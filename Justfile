@@ -5,7 +5,204 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-caller test-review-gate test-forge-sync test-review-corpus agent-board-pin
+test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-caller test-review-gate test-forge-sync test-review-corpus agent-board-pin
+
+# Offline resolver and real workflow step, with a temporary heavy configuration.
+test-dispatch-pool:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { spawnSync } = require('node:child_process');
+    const workflow = fs.readFileSync('.github/workflows/dispatch.yml', 'utf8');
+    const script = /- name: Resolve the pool[^]*?        run: \|\n((?:          .*\n)+)/.exec(workflow)[1].replace(/^          /gm, '');
+    // Exercise the same function as the real step, without running its CLI body.
+    const source = script.split('\ntry {')[0].split('\n').slice(1).join('\n');
+    const resolve = new Function(`${source}; return resolve;`)();
+    // Representative deployment configuration, never installed in production.
+    const pools = JSON.parse(fs.readFileSync('.github/agentic-job/pools.json', 'utf8'));
+    const original = structuredClone(pools);
+    pools.openai.heavy = { model: 'praxis/gpt-6-astra' };
+    const snapshot = structuredClone(pools);
+    const normal = resolve(pools, { pool: 'openai' });
+    assert.deepEqual(normal, { skilled: 'true', agent: 'opencode', model: pools.openai.model, budget: '500' });
+    assert.deepEqual(resolve(pools, {}), { skilled: 'true', agent: '', model: '', budget: '' });
+    assert.deepEqual(resolve(pools, { agent: 'vibe', model: 'anything' }),
+      { skilled: 'false', agent: '', model: '', budget: '' });
+    const heavy = { ...normal, model: pools.openai.heavy.model };
+    assert.deepEqual(resolve(pools, { pool: 'openai', effort: 'heavy' }), heavy);
+    assert.deepEqual(resolve(pools, { effort: 'heavy', agent: 'opencode', model: pools.openai.model }),
+      { ...resolve(pools, {}), model: heavy.model });
+    const inheritedClaude = structuredClone(pools);
+    inheritedClaude.claude.heavy = { model: 'claude-heavy-fixture' };
+    assert.deepEqual(resolve(inheritedClaude, { pool: 'claude', effort: 'heavy' }),
+      { ...resolve(pools, { pool: 'claude' }), model: 'claude-heavy-fixture' }, 'explicit pool keeps its 3000 AIC budget');
+    assert.deepEqual(resolve(inheritedClaude, { effort: 'heavy', agent: 'claude', model: pools.claude.model }),
+      { ...resolve(pools, { agent: 'claude' }), model: 'claude-heavy-fixture' }, 'inherited budget remains the wrapper default, not 3000');
+    assert.deepEqual(resolve(pools, { pool: 'openai', effort: 'heavy', agent: 'claude', model: 'ignored' }), heavy);
+    assert.deepEqual(pools, snapshot, 'pool identity, tier, allowance and configuration are not mutated');
+    for (const effort of ['Heavy', ' heavy', 'heavy\n', 'low', 'default', 'praxis/gpt-6-astra']) {
+      assert.throws(() => resolve(pools, { pool: 'openai', effort }), /effort must/);
+    }
+    for (const effort of ['', 'heavy']) assert.throws(() => resolve(pools, { pool: 'unknown', effort }), /unknown pool/);
+    for (const settings of [{}, { model: 'unknown' }, { model: pools.openai.model, agent: 'claude' }]) {
+      assert.throws(() => resolve(pools, { ...settings, effort: 'heavy' }), /explicit pool or a unique/);
+    }
+    assert.throws(() => resolve({ ...pools, duplicate: pools.openai },
+      { effort: 'heavy', model: pools.openai.model }), /unique/);
+    for (const variant of [undefined, null, [], 'model', {}, { model: '' }, { model: null },
+      { model: 42 }, { model: 'bad model' }, { model: 'x\n' }, { model: 'x\r' },
+      { model: 'x\nbudget=9999' }, { model: 'x'.repeat(201) }]) {
+      const broken = structuredClone(pools);
+      broken.openai.heavy = variant;
+      for (const settings of [{ pool: 'openai' }, { agent: 'opencode', model: pools.openai.model }]) {
+        assert.throws(() => resolve(broken, { ...settings, effort: 'heavy' }), /heavy.model/);
+      }
+      assert.deepEqual(resolve(broken, { pool: 'openai' }), normal, 'omission never reads heavy');
+    }
+    assert.throws(() => resolve(original, { pool: 'openai', effort: 'heavy' }), /heavy.model/);
+    assert.throws(() => resolve(pools, { pool: 'openai', effort: 'heavy', kind: 'review' }), /not supported for reviews/);
+    assert.match(workflow, /      effort:\n[^]*?        type: string\n        default: ''/);
+    const expression = value => '$' + '{' + `{ ${value} }}`;
+    for (const line of [`EFFORT: ${expression('inputs.effort')}`, `POOL: ${expression('inputs.pool')}`,
+      `AGENT_MODEL: ${expression('vars.AGENT_MODEL')}`, `AGENT: ${expression("vars.AGENT || 'opencode'")}`,
+      `model: ${expression('needs.profile.outputs.model')}`, `budget: ${expression("needs.profile.outputs.budget || '500'")}`,
+      'cancel-in-progress: false']) assert.ok(workflow.includes(line), line);
+    assert.match(workflow, /run-name: .*inputs.pool.*\n/);
+    assert.doesNotMatch(workflow.split('\non:')[0], /inputs.effort/, 'run identity stays pool-based');
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-pool-'));
+    try {
+      fs.mkdirSync(path.join(temp, '.github/agentic-job'), { recursive: true });
+      fs.writeFileSync(path.join(temp, '.github/agentic-job/pools.json'), JSON.stringify(pools));
+      const output = path.join(temp, 'output');
+      for (const [pool, effort, model, succeeds] of [
+        ['openai', '', '', true], ['', '', '', true], ['openai', 'heavy', '', true],
+        ['', 'heavy', pools.openai.model, true], ['openai', 'invalid', '', false],
+        ['unknown', 'heavy', '', false], ['claude', 'heavy', '', false], ['', 'heavy', '', false],
+      ]) {
+        fs.writeFileSync(output, '');
+        const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script], { cwd: temp, encoding: 'utf8',
+          env: { PATH: process.env.PATH, POOL: pool, EFFORT: effort, AGENT: 'opencode', AGENT_MODEL: model,
+            KIND: 'implement', GITHUB_OUTPUT: output } });
+        assert.equal(result.status, succeeds ? 0 : 1, result.stderr);
+        const text = fs.readFileSync(output, 'utf8');
+        assert.equal(text, succeeds ? Object.entries(resolve(pools, { pool, effort, model })).map(([k, v]) => `${k}=${v}\n`).join('') : '',
+          'failure writes no usable outputs before inference');
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+    console.log('ok dispatch omission, explicit/inherited heavy, fail-closed resolution and workflow plumbing');
+
+# Manual: board is a read-only checkout at the workflows' exact AGENT_BOARD_REV.
+# Builds outside this tree; no tokens, broker or forge requests in the probes.
+test-heavy-consumers board:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { execFileSync } = require('node:child_process');
+    const board = path.resolve(process.argv[2]);
+    const revision = execFileSync('git', ['-C', board, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    assert.equal(revision, execFileSync('{{ just_executable() }}', ['agent-board-pin'], { encoding: 'utf8' }).trim());
+    const cargo = ['--locked', '--manifest-path', `${board}/Cargo.toml`, '-p', 'board-forge'];
+    execFileSync('cargo', ['build', ...cargo, '--target-dir', `${board}/target`], { stdio: 'inherit' });
+    const libs = fs.readdirSync(`${board}/target/debug/deps`).filter(name => /^libserde_json-.*\.rlib$/.test(name));
+    const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'heavy-consumers-'));
+    try {
+      const source = `${temp}/probe.rs`;
+      fs.writeFileSync(source, `
+    // Manual offline compatibility probe against the exact pinned board-forge.
+    // Uses its public parsers, not replicas of their validation/accounting.
+    use board_forge::poll::pace::tiers;
+    use board_forge::supervise::{Settings, agent::Policy, profile::session};
+    use serde_json::{Value, json};
+
+    fn read(path: &str) -> Value {
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    fn main() {
+        let normal = read(".github/agentic-job/pools.json");
+        let mut heavy = normal.clone();
+        heavy["openai"]["heavy"] = json!({"model": "praxis/gpt-6-astra"});
+        let settings = Settings::from_json(
+            &read(".github/poll/agent-board.json"),
+            &read(".github/supervisor/config.json"),
+            None,
+        )
+        .unwrap();
+        let before = Policy::new(&settings, &normal).unwrap().unwrap();
+        let after = Policy::new(&settings, &heavy).unwrap().unwrap();
+        assert_eq!(before.pools, after.pools);
+        assert_eq!(before.tiers, after.tiers);
+        assert_eq!(
+            tiers(Some(&normal), &[("fixPools", "tier-1")]).unwrap(),
+            tiers(Some(&heavy), &[("fixPools", "tier-1")]).unwrap()
+        );
+        let config =
+            json!({"enabled": true, "repository": "example/tracker", "issue": 1, "idleMinutes": 10});
+        let state = board_forge::supervise::IssueRef {
+            repository: "example/tracker".into(),
+            issue: 2,
+        };
+        let outputs = |pools| {
+            session(
+                &config,
+                pools,
+                "rules",
+                Some(&state),
+                &state,
+                "profile",
+                "openai",
+                "",
+                "offline fixture",
+            )
+            .unwrap()
+        };
+        assert_eq!(outputs(&normal), outputs(&heavy));
+        let outputs = outputs(&heavy);
+        assert!(outputs.contains(&("model", normal["openai"]["model"].as_str().unwrap().into())));
+        println!(
+            "ok pinned board tier, supervisor trigger/executor policy and session parsers accept heavy without selecting it"
+        );
+    }
+    `);
+      execFileSync('rustc', ['--edition=2024', source, '-L', `dependency=${board}/target/debug/deps`,
+        '--extern', `board_forge=${board}/target/debug/libboard_forge.rlib`,
+        '--extern', `serde_json=${board}/target/debug/deps/${libs[0]}`, '-o', `${temp}/probe`], { stdio: 'inherit' });
+      execFileSync(`${temp}/probe`, [], { stdio: 'inherit' });
+      for (const test of ['actual_summary_model_sets_price_not_requested_effort',
+        'heavy_plan_cannot_bypass_the_weekly_budget', 'accepted_triage_plans_start_once']) {
+        execFileSync('cargo', ['test', ...cargo, test], { stdio: 'inherit' });
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+
+# Manual: node >=22.18, read-only review source checkout; no dependencies needed.
+test-heavy-review review:
+    #!/usr/bin/env node
+    // Read-only probe of the review UI's actual pools parser, not a copy.
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { pathToFileURL } = require('node:url');
+    const { execFileSync } = require('node:child_process');
+    async function main() {
+      const source = process.argv[2];
+      const revision = execFileSync('git', ['-C', source, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+      const { parseBudget } = await import(pathToFileURL(path.resolve(source, 'src/github/usage.ts')));
+      const pools = JSON.parse(fs.readFileSync('.github/agentic-job/pools.json', 'utf8'));
+      const now = Date.parse('2026-11-05T00:00:00Z');
+      const before = parseBudget(JSON.stringify(pools), now);
+      assert.equal(before.limitUsd, 300);
+      pools.openai.heavy = { model: 'praxis/gpt-6-astra' };
+      assert.deepEqual(parseBudget(JSON.stringify(pools), now), before);
+      console.log(`ok review UI parseBudget at ${revision} accepts heavy; deployed UI revision remains unverified`);
+    }
+    main().catch(error => { console.error(error); process.exitCode = 1; });
 
 # Offline status generation and the documented newest-complete selector.
 test-review-corpus:

@@ -3,7 +3,7 @@
 # is our wrapper's, cgwalters-forge/actions' cgwalters-agentic-job.yml: it
 # carries the agentic-job pin, the tailnet join, the inference proxy, the
 # runner and the model. This file keeps what is this repository's: the
-# trigger and its five inputs, the run name, the concurrency, the
+# trigger and its inputs, the run name, the concurrency, the
 # environment that gates apply and which secret is the apply token; the
 # bounds are in .github/agentic-job (dispatch.toml, comment.toml for
 # `triage` and `research`, fix.toml for `fix`, midstream.toml and
@@ -11,6 +11,8 @@
 # the runner configuration in hosted.toml there, the wrapper's default paths.
 # The `pool` input picks the agent and model from the closed set in pools.json
 # there; empty leaves them to the repository variables AGENT and AGENT_MODEL.
+# Optional effort=heavy changes only that pool's model; an inherited pool
+# must match AGENT/AGENT_MODEL uniquely. No guessed deployment-model default.
 # The `config` input picks the runner configuration from a closed set too:
 # `hosted` leaves the wrapper's default, `acp-experiment` is the child-agent
 # experiment's acp-experiment.toml there.
@@ -45,6 +47,12 @@ on:
         required: true
       pool:
         description: "Inference pool: claude, fable, openai, astra or mistral (.github/agentic-job/pools.json); empty uses the variables AGENT and AGENT_MODEL"
+        type: string
+        default: ''
+      # Prevent arbitrary model selection and silent downgrade: the only
+      # opt-in is heavy, resolved within the same deployment-owned pool.
+      effort:
+        description: "Optional model variant: empty preserves defaults; heavy requires the effective pool's heavy.model (not for reviews)"
         type: string
         default: ''
       config:
@@ -88,30 +96,62 @@ jobs:
       # the wrapper falls back to the variables and its default budget, and
       # whether that agent gets agentic-job's skills. A
       # name outside pools.json stops the run here rather than reaching the
-      # wrapper.
+      # wrapper. Heavy requires an explicit or uniquely inherited pool and
+      # its valid heavy.model; inherited agent/budget fallbacks stay unchanged.
       - name: Resolve the pool
         id: pool
         env:
           POOL: ${{ inputs.pool }}
+          EFFORT: ${{ inputs.effort }}
           KIND: ${{ inputs.kind }}
           # The wrapper's fallback without a pool, its default included.
           AGENT: ${{ vars.AGENT || 'opencode' }}
+          AGENT_MODEL: ${{ vars.AGENT_MODEL }}
         run: |
-          pools=.github/agentic-job/pools.json
-          if [[ -n "$POOL" ]] && ! jq -e --arg pool "$POOL" 'has($pool)' "$pools" > /dev/null; then
-            echo "::error::unknown pool '${POOL}'; expected one of: $(jq -r 'keys | join(", ")' "$pools")"
-            exit 1
-          fi
-          # The wrapper installs agentic-job's skills for claude and opencode
-          # only (`skills` below); vibe gets none, so the next step gives it
-          # the full profile instead. fake reads no task.
-          agent=${POOL:+$(jq -r --arg pool "$POOL" '.[$pool].agent' "$pools")}
-          agent=${agent:-$AGENT}
-          skilled=false
-          [[ "$agent" =~ ^(claude|opencode|fake)$ ]] && skilled=true
-          echo "skilled=${skilled}" >> "$GITHUB_OUTPUT"
-          [[ -z "$POOL" ]] && { printf "agent=\nmodel=\nbudget=\n" >> "$GITHUB_OUTPUT"; exit 0; }
-          jq -r --arg pool "$POOL" '.[$pool] | "agent=\(.agent)\nmodel=\(.model)\nbudget=\(.budget)"' "$pools" >> "$GITHUB_OUTPUT"
+          node <<'NODE' >> "$GITHUB_OUTPUT"
+          // Deployment-owned resolution: effort replaces only the pool's model.
+          function resolve(pools, { pool = '', effort = '', agent = 'opencode', model = '', kind = '' }) {
+            const explicit = Boolean(pool);
+            if (!['', 'heavy'].includes(effort)) throw Error('effort must be empty or heavy');
+            // Reviews have a separately pinned, base-owned model contract (#1198).
+            if (effort && kind === 'review') throw Error('heavy effort is not supported for reviews');
+            if (pool && !Object.hasOwn(pools, pool)) throw Error(`unknown pool '${pool}'`);
+            if (effort && !pool) {
+              // Never guess from the agent alone or a moving deployment default.
+              const matches = Object.keys(pools).filter(name => pools[name].agent === agent && pools[name].model === model);
+              if (!model || matches.length !== 1) throw Error('heavy requires an explicit pool or a unique AGENT/AGENT_MODEL pool');
+              [pool] = matches;
+            }
+            const selected = pool ? pools[pool] : null;
+            const actualAgent = selected ? selected.agent : agent;
+            let actualModel = selected ? selected.model : '';
+            if (effort) {
+              const heavy = selected.heavy;
+              if (!heavy || Array.isArray(heavy) || typeof heavy !== 'object' ||
+                  typeof heavy.model !== 'string' || heavy.model.trim() !== heavy.model ||
+                  !/^[A-Za-z0-9][A-Za-z0-9_./:+-]{0,199}$/.test(heavy.model)) {
+                throw Error(`pool ${pool} has no configured valid heavy.model`);
+              }
+              actualModel = heavy.model;
+            }
+            return {
+              skilled: String(['claude', 'opencode', 'fake'].includes(actualAgent)),
+              // Inherited calls keep the wrapper's original agent/budget fallback.
+              agent: explicit ? selected.agent : '',
+              model: actualModel,
+              budget: explicit ? selected.budget : '',
+            };
+          }
+          try {
+            const pools = JSON.parse(require('node:fs').readFileSync('.github/agentic-job/pools.json', 'utf8'));
+            const outputs = resolve(pools, { pool: process.env.POOL, effort: process.env.EFFORT,
+              agent: process.env.AGENT, model: process.env.AGENT_MODEL, kind: process.env.KIND });
+            process.stdout.write(Object.entries(outputs).map(([key, value]) => `${key}=${value}\n`).join(''));
+          } catch (error) {
+            console.error(error.message);
+            process.exitCode = 1;
+          }
+          NODE
       # The runner configuration's path, from the closed set alone: a path
       # a dispatcher typed could name any file of this repository as the
       # run's configuration, the bounds files included. Empty for hosted, so
