@@ -5,7 +5,76 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-caller test-review-gate test-forge-sync agent-board-pin
+test: test-agent-board-install test-config test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-caller test-review-gate test-forge-sync test-review-corpus agent-board-pin
+
+# Offline status generation and the documented newest-complete selector.
+test-review-corpus:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const { execFileSync, spawnSync } = require('node:child_process');
+    const workflow = fs.readFileSync('.github/workflows/review-corpus.yml', 'utf8');
+    const docs = fs.readFileSync('docs/review-corpus.md', 'utf8');
+    const pack = /- name: Pack\n([\s\S]*?)(?=      - uses:)/.exec(workflow)[1];
+    assert.match(pack, /COLLECTED: \$\{\{ steps\.collect\.outcome \}\}/);
+    const script = /run: \|\n([\s\S]*)/.exec(pack)[1].replace(/^          /gm, '');
+    const statusScript = script.split('cgwalters-forge-misctool review-corpus stats')[0];
+    const checksumScript = script.trim().split('\n').at(-1);
+    const selector = /```sh\n(tags=[\s\S]*?)```/.exec(docs)[1];
+    const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'review-corpus-'));
+    const env = { ...process.env, MISCTOOL_VERSION: 'v0.1.0', LOGIN: 'cgwalters', SINCE: '2020-11-01',
+      RUN: 'https://github.com/example/tracker/actions/runs/42' };
+    const shell = (source, extra = {}) => execFileSync('bash', ['-euo', 'pipefail', '-c', source],
+      { cwd: temp, env: { ...env, ...extra }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    try {
+      for (const outcome of ['success', 'failure', 'cancelled', 'skipped', '']) {
+        shell(statusScript, { COLLECTED: outcome });
+        assert.deepEqual(JSON.parse(fs.readFileSync(`${temp}/dist/status.json`, 'utf8')), {
+          complete: outcome === 'success', collector_version: env.MISCTOOL_VERSION, login: env.LOGIN,
+          window: { since: env.SINCE, until: null }, run_url: env.RUN,
+        });
+        for (const name of ['review-corpus.jsonl.zst', 'review-corpus-state.json']) fs.writeFileSync(`${temp}/dist/${name}`, 'fixture');
+        shell(checksumScript);
+        shell('cd dist && sha256sum --check SHA256SUMS');
+        assert.match(fs.readFileSync(`${temp}/dist/SHA256SUMS`, 'utf8'), /  status\.json\n/);
+        fs.appendFileSync(`${temp}/dist/status.json`, 'corruption');
+        assert.throws(() => shell('cd dist && sha256sum --check SHA256SUMS'), /Command failed/);
+        fs.rmSync(`${temp}/dist`, { recursive: true });
+      }
+      const publish = /- name: Publish\n([\s\S]*?)(?=      - name:)/.exec(workflow)[1];
+      assert.match(publish, /gh release create[^]*--draft[^]*dist\/status\.json[^]*gh release edit[^]*--draft=false/);
+      // Stub only gh's transport; run the documentation's real jq filters and loop.
+      fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}
+    const { execFileSync } = require('node:child_process');
+    const args = process.argv.slice(2);
+    const rows = JSON.parse(process.env.RELEASES);
+    if (process.env.FAIL === args[1]) process.exit(1);
+    const row = rows.find(r => r.tagName === args[2]);
+    const value = args[1] === 'list' ? rows.filter(r => !r.draft) : row;
+    if (args[1] === 'download') process.stdout.write(JSON.stringify(row.status));
+    else process.stdout.write(execFileSync('jq', ['-r', args[args.indexOf('--jq') + 1]], { input: JSON.stringify(value) }));
+    `, { mode: 0o755 });
+      const tag = n => `review-corpus-20261105-00000${n}`;
+      const release = (n, status, draft = false) => ({ tagName: tag(n), draft, status,
+        assets: status === undefined ? [] : [{ name: 'status.json' }] });
+      const rows = [release(2, { complete: true }), release(5, { complete: false }),
+        release(1), release(6, { complete: true }, true), release(4, { complete: 'true' }),
+        release(3, {}), { tagName: 'review-corpus', assets: [] }];
+      const selectionEnv = { PATH: `${temp}:${process.env.PATH}`, RELEASES: JSON.stringify(rows) };
+      assert.equal(shell(selector, selectionEnv), `${tag(2)}\n`);
+      assert.equal(shell(selector, { ...selectionEnv, RELEASES: JSON.stringify(rows.filter(r => r.tagName !== tag(2))) }), '');
+      assert.equal(shell(selector, { ...selectionEnv, RELEASES: '[]' }), '');
+      for (const failure of ['list', 'view', 'download']) {
+        const got = spawnSync('bash', ['-euo', 'pipefail', '-c', selector], {
+          cwd: temp, env: { ...env, ...selectionEnv, FAIL: failure }, encoding: 'utf8',
+        });
+        assert.equal(got.status, 1, failure);
+        assert.equal(got.stdout, '', failure);
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+    console.log('ok review-corpus status, checksums, draft publication and newest-complete sample selection');
 
 # Manual structural checks of the offline architecture-review prototype.
 test-architecture-review mode="test" id="B2588":

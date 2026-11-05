@@ -17,7 +17,7 @@ scheme; ignore it.
 
 ## What it holds
 
-Each release has three assets:
+Each new release has four assets (older releases lack `status.json`):
 
 - `review-corpus.jsonl.zst`: the corpus, zstd-compressed JSON Lines. Its
   schema is misctool's
@@ -26,7 +26,12 @@ Each release has three assets:
   not proof that the author acted on it. Comment bodies are untrusted text.
 - `review-corpus-state.json`: the collector's resume state. Only the
   workflow uses it.
-- `SHA256SUMS`: the checksums of the other two.
+- `status.json`: `complete` (a JSON boolean), `collector_version`, `login`,
+  `window` and `run_url`. `complete` is true only when the collect step
+  succeeds; rate limits, timeouts and errors make it false. The window has
+  `since` (inclusive UTC date) and `until: null` (no fixed upper bound).
+  Complete means the collector finished, not that GitHub has no gaps.
+- `SHA256SUMS`: the checksums of the other three.
 
 The window is all feedback created on or after 2020-11-01 (UTC) on public
 pull requests that cgwalters did not author. The collector finds pull
@@ -47,7 +52,7 @@ once the repository variable `REVIEW_CORPUS` is `enabled`. It installs the
 pinned misctool release and verifies its build attestation. It downloads the
 corpus and state of the newest published `review-corpus-*` release, collects
 from where the state left off and publishes the result as a new release:
-created as a draft, given its three assets, then published. The first run,
+created as a draft, given its four assets, then published. The first run,
 finding none, starts from nothing.
 
 The collector uses the job token. Its rate limit, about 1,000 requests an
@@ -57,8 +62,8 @@ pass, the supervisor and other workflows that use the job token can fail on
 the rate limit for as long as it runs. The first backfill takes
 several runs. A run that stops early, whether on the rate limit, the time
 limit or an error, still publishes what it has. It records that it stopped
-early in the notes, and the run fails. Dispatch it again (or wait for the
-schedule) to resume. The collector runs with a job token that cannot write.
+early in the notes and `status.json`, and the run fails. Dispatch it again
+(or wait for the schedule) to resume. The collector runs with a job token that cannot write.
 The publishing job's token can write the repository's contents, but the job
 runs only `gh release` commands on its own new release.
 
@@ -84,7 +89,30 @@ sha256sum --check --ignore-missing SHA256SUMS
 zstd -d review-corpus.jsonl.zst
 ```
 
-That check only catches a corrupt download. To pin a version, record its
+The newest release can be a partial backfill. To avoid mining an unfinished
+backfill, select the newest **complete** snapshot instead. This checks at
+most 1,000 published releases, newest tag first, skipping old releases with
+no marker. API and download errors stop the command rather than silently
+selecting an older snapshot. No match prints nothing; do not download with
+an empty tag. Resume still uses the newest release, even if incomplete.
+
+```sh
+tags=$(gh release list --repo cgwalters-forge/tracker --exclude-drafts --limit 1000 --json tagName \
+  --jq '[.[].tagName | select(test("^review-corpus-[0-9]{8}-[0-9]{6}$"))] | sort | reverse | .[]') || exit 1
+for tag in $tags; do
+  marked=$(gh release view "$tag" --repo cgwalters-forge/tracker --json assets --jq 'any(.assets[]; .name == "status.json")') || exit 1
+  [ "$marked" = true ] || continue
+  status=$(gh release download "$tag" --repo cgwalters-forge/tracker --pattern status.json --output -) || exit 1
+  complete=$(printf '%s' "$status" | jq -r '.complete == true') || exit 1
+  if [ "$complete" = true ]; then printf '%s\n' "$tag"; break; fi
+done
+```
+
+Use the printed tag in the download command above. Download `status.json`
+too to retain its provenance and verify it with `SHA256SUMS`. The marker
+does not change the existing newest-release interface or historical assets.
+
+The checksum check only catches a corrupt download. To pin a version, record its
 tag and the corpus checksum from `SHA256SUMS` or the release notes, then
 download that tag and check against the recorded value:
 
