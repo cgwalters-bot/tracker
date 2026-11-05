@@ -205,6 +205,44 @@ exit=124 duration_s=60.00
 
 </details>
 
+## Continuation: host user-namespace restriction
+
+A second hosted attempt the same day (fresh clone, same main SHA, ancestry check
+0) got further on setup. The setup was all user-local and needed no sudo:
+`virsh` from extracted Ubuntu `libvirt-clients` debs, session-mode libvirtd and
+QEMU in a rootless container sharing `/dev/kvm`, bcvk 0.19.0, and
+`tmt[provision-virtual]==1.80.0` in a venv with `PKG_CONFIG_PATH` pointing at the
+extracted `libvirt-dev`. `tmt --version` reported 1.80.0 and the host `virsh`
+reported KVM domain capabilities with EFI firmware. Two blockers remained.
+Both likely have the same cause, though nothing was run with it lifted: the host sets
+`kernel.apparmor_restrict_unprivileged_userns=1` (and
+`apparmor_restrict_unprivileged_unconfined=1`). A user namespace nested inside
+rootless podman, such as one created by bwrap, gets no usable capabilities:
+
+- The default-feature build compiled all crates and RPMs (exit 1 after
+  1040.55 s), then failed in the image's `rpm-ostree compose rootfs` step with
+  `groupadd: cannot open /etc/gshadow: Permission denied` and
+  `Could not find group 'utempter' in group file`, despite `--cap-add=all`.
+- `bcvk ephemeral run`, which `bcvk libvirt run` uses to create its base
+  disk, needs QEMU and virtiofsd from the host `/usr` (a hardcoded bind).
+  With those supplied from a Fedora 43 `/usr`, virtiofsd 1.14.0 still failed
+  under bwrap with `can't apply the child capabilities`. The same command
+  works in the container without bwrap.
+
+Changing the sysctl needs root, and this run did not try to get around the
+AppArmor policy. Instead, a Fedora 43 Cloud Base VM (`43-1.6`, checksum
+verified) was booted with QEMU and nested KVM (AMD, `kvm_amd nested=1`; 4
+vCPUs, 13 GiB, 120 GiB disk). Inside it, bcvk 0.19.0, tmt 1.80.0, just
+1.59.0, cargo 1.99.1, podman 5.6.2 and libvirt 11.6.0 were installed, with
+the egress proxy and CA passed through. `just test-tmt readonly` (ostree
+variant, the plan holding the SELinux test) was started there at
+2026-11-05T02:30Z. It is narrower than the requested `test-tmt integration`
+entrypoint, and no composefs run has started. It was still compiling when
+this round ended. The VM was left running for the next round to collect, so
+there is **still no observed guest SELinux result**. The first attempt's
+statements above about missing libvirt/tmt and an untested KVM boot apply
+only to that attempt.
+
 ## Remaining evidence
 
 Stopped after one pinned-tmt installation attempt, one explicit build and one
