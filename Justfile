@@ -618,6 +618,46 @@ test-review-caller:
     const workflow = fs.readFileSync('.github/workflows/review.yml', 'utf8');
     const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
     assert.ok(!Object.hasOwn(pass.pr, 'reviewPools'), 'reviewPools is global across follow');
+    // agent-board#680's draft buckets: the only shape the coordinated change
+    // may take (README, "Draft-review buckets"), and off until it lands.
+    // Rollback is removing the draft opt-in, which must read as off.
+    const DRAFT_REVIEW = ['cgwalters-forge/bootc', 'cgwalters-forge/composefs-rs',
+      'cgwalters-forge/bcvk', 'cgwalters-forge/rpm-ostree'];
+    const draftReviews = config => {
+      const pr = config.pr;
+      if (!(pr.draftReviewRepositories ?? []).length) return false;
+      assert.deepEqual(pr.draftReviewRepositories, DRAFT_REVIEW, 'exactly the four midstream callers');
+      for (const [key, list] of [['follow', config.follow], ['pr.noMerge', pr.noMerge],
+        ['pr.reviewDispatchRepositories', pr.reviewDispatchRepositories ?? []]]) {
+        for (const repo of DRAFT_REVIEW) assert.ok(list.includes(repo), `${repo} must be in ${key}`);
+      }
+      assert.deepEqual(pr.reviewPools, ['openai', 'claude'], 'draft reviews need pr.reviewPools');
+      assert.equal(pr.reviewWorkflow, 'review.yml');
+      return true;
+    };
+    assert.equal(draftReviews(pass), false,
+      'draft reviews wait for the callers\' result writer, a draft-accepting wrapper and the review app');
+    for (const repo of DRAFT_REVIEW) {
+      assert.ok(!(pass.pr.reviewDispatchRepositories ?? []).includes(repo), `${repo}: dispatch it only with the draft opt-in`);
+    }
+    const enabled = structuredClone(pass);
+    Object.assign(enabled.pr, { draftReviewRepositories: [...DRAFT_REVIEW],
+      reviewDispatchRepositories: [...DRAFT_REVIEW], reviewPools: ['openai', 'claude'] });
+    assert.equal(draftReviews(enabled), true);
+    for (const [what, edit] of [
+      ['one repository short', pr => pr.draftReviewRepositories.pop()],
+      ['an extra repository', pr => pr.draftReviewRepositories.push('cgwalters-forge/tracker')],
+      ['merging allowed', pr => pr.noMerge.splice(pr.noMerge.indexOf('cgwalters-forge/bcvk'), 1)],
+      ['no ordinary dispatch', pr => delete pr.reviewDispatchRepositories],
+      ['no pools', pr => delete pr.reviewPools],
+    ]) {
+      const broken = structuredClone(enabled);
+      edit(broken.pr);
+      assert.throws(() => draftReviews(broken), undefined, what);
+    }
+    const rolledBack = structuredClone(enabled);
+    delete rolledBack.pr.draftReviewRepositories;
+    assert.equal(draftReviews(rolledBack), false, 'rollback removes the draft opt-in');
     assert.doesNotMatch(workflow, /^  workflow_dispatch:/m);
     assert.doesNotMatch(workflow, /\$\{\{[^\n]*(?:inputs\.|vars\.REVIEW_(?:RECORD_ONLY|POOLS))/);
     assert.doesNotMatch(workflow, /^    with:/m, 'do not guess inputs for the old wrapper');
@@ -652,7 +692,7 @@ test-review-caller:
       assert.deepEqual(bound.repos, ['cgwalters-forge/tracker'], files[i]);
       assert.deepEqual(bound.bases, ['main'], files[i]);
     }
-    console.log('ok legacy review routing and paced-review default-off guards (compatible wrapper pending)');
+    console.log('ok legacy review routing and paced/draft-review default-off guards (compatible wrapper pending)');
 
 # poll must pass both of the fix bounds files dispatch selects per target.
 test-poll-bounds:
