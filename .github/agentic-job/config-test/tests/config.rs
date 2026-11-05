@@ -554,6 +554,36 @@ fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
 }
 
 #[test]
+fn selinux_policy_is_an_exact_rawhide_midstream_target_that_is_never_merged_into() {
+    let repo = "cgwalters-forge/selinux-policy";
+    for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
+        assert!(repos(name).iter().any(|r| r == repo), "{name}");
+        assert_eq!(strings(&toml_file(name)["bases"], "bases"), ["main", "rawhide"], "{name}");
+        assert!(!has_line_starting(&read(name), "[unprotected_files]"), "{name}");
+    }
+    for name in ["dispatch.toml", "fix.toml"] {
+        for list in lists(name) {
+            assert!(!list.iter().any(|r| r == repo), "{name}");
+        }
+        assert_eq!(strings(&toml_file(name)["bases"], "bases"), ["main"], "{name}");
+    }
+    // The upstream and lookalike repositories must not match any admission glob.
+    // Exact midstream lists and comment's sole bootc-dev/* glob are pinned below.
+    for name in ["dispatch.toml", "fix.toml", "midstream.toml", "midstream-fix.toml", "comment.toml"] {
+        assert!(!repos(name).iter().any(|r| r.contains("selinux") && r != repo), "{name}");
+    }
+    let board = json_file("../poll/agent-board.json");
+    assert!(board["schedule"]["repositories"].as_array().unwrap().contains(&json!(repo)));
+    assert!(!board["follow"].as_array().unwrap().contains(&json!(repo)));
+    let pass = json_file("../pass.json");
+    for list in [&pass["follow"], &pass["workRepositories"], &pass["pr"]["noMerge"], &pass["holds"]["proposals"]["repositories"]] {
+        let list = list.as_array().expect("pass repository list");
+        assert!(list.contains(&json!(repo)));
+        assert!(!list.contains(&json!("fedora-selinux/selinux-policy")));
+    }
+}
+
+#[test]
 fn gh_agentic_workflows_is_a_protected_midstream_target_that_is_never_merged_into() {
     let repo = "cgwalters-forge/gh-agentic-workflows";
     for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
@@ -617,7 +647,7 @@ fn only_triage_research_and_fix_may_target_bootc_dev() {
 #[test]
 fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_picks_them() {
     let uncommented = |text: &str| drop_lines(text, |l| l.starts_with('#'));
-    let head = |name: &str| drop_lines(before_table(&read(name)), |l| l.starts_with('#') || l.starts_with("repos = "));
+    let head = |name: &str| drop_lines(before_table(&read(name)), |l| l.starts_with('#') || l.starts_with("repos = ") || l.starts_with("bases = "));
     let entries = |name: &str| -> String {
         drop_lines(&outputs(name), |l| l.starts_with('#') || l == "\n")
             .split_inclusive('\n')
@@ -630,7 +660,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
             })
             .collect()
     };
-    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"]);
+    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/selinux-policy"]);
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
         assert!(!text.contains("ready_when_complete") && !has_line_starting(&text, "[unprotected_files]"), "{midstream}");
@@ -658,8 +688,8 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     let step = step_script("Resolve the bounds");
     // bootc-dev/bootc is upstream, no midstream; neither is a name that only contains one.
     for (repos, allow, fix) in [
-        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"][..], "midstream.toml", "midstream-fix.toml"),
-        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge", "bootc-dev/gh-agentic-workflows", "cgwalters-forge/gh-agentic-workflows-x"][..], "dispatch.toml", "fix.toml"),
+        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/selinux-policy"][..], "midstream.toml", "midstream-fix.toml"),
+        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge", "bootc-dev/gh-agentic-workflows", "cgwalters-forge/gh-agentic-workflows-x", "fedora-selinux/selinux-policy", "cgwalters-forge/selinux-policy-x"][..], "dispatch.toml", "fix.toml"),
     ] {
         for repo in repos {
             for kind in KINDS {
@@ -748,12 +778,13 @@ fn agentic_job_policy_keeps_ready_when_complete_from_both_bounds_and_the_midstre
         output["ready_when_complete"] == json!(true)
     };
     let head = "0".repeat(40);
-    for (repo, allow, fix, expected) in [
-        ("cgwalters-forge/tracker", "dispatch.toml", "fix.toml", true),
-        ("cgwalters-forge/composefs-rs", "midstream.toml", "midstream-fix.toml", false),
-        ("cgwalters-forge/gh-agentic-workflows", "midstream.toml", "midstream-fix.toml", false),
+    for (repo, allow, fix, base, expected) in [
+        ("cgwalters-forge/tracker", "dispatch.toml", "fix.toml", "main", true),
+        ("cgwalters-forge/composefs-rs", "midstream.toml", "midstream-fix.toml", "main", false),
+        ("cgwalters-forge/gh-agentic-workflows", "midstream.toml", "midstream-fix.toml", "main", false),
+        ("cgwalters-forge/selinux-policy", "midstream.toml", "midstream-fix.toml", "rawhide", false),
     ] {
-        assert_eq!(ready(repo, allow, "create_pull_request", &["--base", "main"]), expected, "{allow}");
+        assert_eq!(ready(repo, allow, "create_pull_request", &["--base", base]), expected, "{allow}");
         let args = ["--base", "dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", repo];
         assert_eq!(ready(repo, fix, "push_to_pull_request_branch", &args), expected, "{fix}");
     }

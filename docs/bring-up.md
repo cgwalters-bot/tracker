@@ -172,6 +172,32 @@ repository settings, opens no upstream PR, retriggers no upstream run and
 does not close #258. Protected-workflow admission and live verification
 remain outstanding before any later upstream delivery.
 
+### SELinux policy continuation (#104)
+
+To prevent staged policy work from advancing an upstream-tracking fork,
+`cgwalters-forge/selinux-policy` uses the existing draft-only midstream bounds
+and the pass's `pr.noMerge`, following the
+[staging route](https://github.com/cgwalters-forge/tracker/issues/104#issuecomment-6640213668).
+The finite shared implement/fix/comment base lists include upstream's `rawhide`
+default branch, not wildcard bases; `fedora-selinux/selinux-policy` is not
+admitted. Protected-file refusals remain unchanged.
+
+Before any policy dispatch, verify fork provisioning/visibility, its tracking
+base and the bot's push capability. This PR neither provisions a fork nor proves
+those prerequisites. Once provisioning and admission are effective, create or
+use an issue on the fork linked to #104 and plan a draft policy PR adding the
+missing `fs_rename_dos_files` interface and its `init_t` call.
+
+That next slice must capture a real enforcing CentOS Stream 10 or Fedora 44
+UEFI/systemd-boot AVC with boot counting enabled, compile and query baseline
+and patched policy, then verify that bless-boot successfully renames the counted
+entry with no new relevant AVCs. Retain logs and package versions. VM/devspace
+availability and any additional directory permissions remain verification
+prerequisites, not evidence of reproduction or permission to broaden policy
+speculatively. Boot counting stays opt-in via `/etc/kernel/tries`; upstream
+delivery and RHEL filing are separate unfinished work. This admission changes
+no SELinux policy or remote settings and dispatches no jobs.
+
 ## Board writes, questions and status updates
 
 Use agent-board and the bot's `GH_TOKEN` for manual writes. Each write only prints
