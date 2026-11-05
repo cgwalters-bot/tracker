@@ -333,3 +333,41 @@ are incomplete, despite frozen candidate identities and reviewed commit pins.
 Recall and audit denominators are null, not zero-label results. No model training
 contamination absence is claimed. Effectiveness/deployment recommendations and
 thresholds remain out of scope. Leave #1227 open for unfinished evaluation.
+
+### FI-1 provenance follow-up, 2026-11-05
+
+Two bounded `gh api graphql` requests retrieved metadata only for the three frozen
+identities (bootc#2620/#2615 in one request, ostree#3689 in the other); both exited
+0. The field selection, pagination flags, complete review metadata and filtered
+ref events are archived in `isolated.json`. No descriptions, feedback bodies,
+commit messages, source, patches or current base/head fields were requested.
+The lists confirm the earliest submitted cgwalters reviews already pinned. The
+only returned ref events were two pre-review head force pushes for bootc#2615.
+There was no historical base identity. Absence of base-ref change/force-push
+events does not establish a base tip: ordinary base pushes are not those events.
+Commit parents identify ancestry, not the review-time base branch tip.
+
+The recorded discovery order and title/current-path proxy select bootc#2620,
+ostree#3689, then bootc#2615, as frozen. Historical changed paths and earlier inline
+feedback timing remain unverified. The protocol-before-discovery assertion is
+preserved as a prior-run assertion only: the checkout supplies no independently
+timestamped protocol/sample freeze record. Tests verify record consistency, not
+that chronology. No cases were replaced and no feedback was opened to fill gaps.
+
+The historical-input gate therefore remains closed, rather than treating a
+successful API request as a reconstructed packet. Continuing requires an evidence
+provider's independently timestamped review-time bases and freeze records for
+these same identities, followed by historical path/ancestry checks and suitable
+fresh sessions. No new packet, reviewer run, output archive or scoring exists.
+This completes the bounded metadata follow-up, not FI-1 or #1227; it neither
+reopens pilot acceptance nor supplies human adjudication or effectiveness evidence.
+
+Continuation verification: `just test-architecture-review` and its `fixtures`
+mode each passed 10/10 tests; `e2e` passed 11/11. `git diff --check` exited 0.
+These are offline consistency checks, not historical packet reconstruction.
+
+Review: two adversarial passes; the last left no blocker and one important
+protocol follow-up open. The frozen protocol explicitly checks earlier inline
+feedback, but a future scoring pass must also address earlier PR-comment feedback
+before asserting pre-feedback validity. The protocol was not rewritten or
+rehashed after discovery; no evaluation has proceeded under that incomplete rule.

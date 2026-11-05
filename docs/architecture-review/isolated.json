@@ -64,6 +64,21 @@
   },
   "identities_frozen": true,
   "packet_sample_frozen": false,
+  "provenance_audit": {
+    "date": "2026-11-05",
+    "metadata_requests": 2,
+    "requests": [
+      {"repository":"bootc-dev/bootc","prs":[2620,2615],"exit_code":0},
+      {"repository":"ostreedev/ostree","prs":[3689],"exit_code":0}
+    ],
+    "retrieval": "gh api graphql; each request limited to 20 seconds. pullRequest: url, createdAt, files(first:100){totalCount pageInfo{hasNextPage} nodes{path}}, reviews(first:100){totalCount pageInfo{hasNextPage} nodes{id url author{login} submittedAt commit{oid committedDate parents(first:10){nodes{oid}}}}}, timelineItems(first:100,itemTypes:[BASE_REF_CHANGED_EVENT,BASE_REF_FORCE_PUSHED_EVENT,HEAD_REF_FORCE_PUSHED_EVENT]){totalCount pageInfo{hasNextPage} nodes{__typename ... on BaseRefChangedEvent{createdAt previousRefName currentRefName} ... on BaseRefForcePushedEvent{createdAt beforeCommit{oid} afterCommit{oid}} ... on HeadRefForcePushedEvent{createdAt beforeCommit{oid} afterCommit{oid}}}}. No body, patch, message, description, source, current base or current head fields requested.",
+    "timeline_limitations": "GitHub returned totalCount for the full timeline, not just the requested event types. The filtered nodes and hasNextPage are recorded separately. No returned event identifies a review-time base. Absence of a base-change or base-force-push event does not establish the base branch tip at review time; ordinary base pushes are not these events. Reviewed-commit parents are not substituted for historical bases.",
+    "freeze_chronology": "prior_run_assertion_only",
+    "independent_freeze_evidence": false,
+    "ordered_metadata_selection_verified": true,
+    "historical_eligibility_verified": false,
+    "limitations": "The three identities match the ordered title/current-path/review proxy in the archived discovery log. Review lists are complete at retrieval and confirm the earliest submitted cgwalters reviews. This does not establish historical path lists, earlier inline-feedback timing, or independently timestamp the protocol/sample freeze before discovery. Search results and titles are prior-run records, not a newly repeated search. No new candidate bodies or later-fix content was read. Further preparation remains stopped."
+  },
   "candidates": [
     {
       "id":"FI-B2620", "repository":"bootc-dev/bootc", "pr":2620,
@@ -71,6 +86,12 @@
       "review":{"id":"PRR_kwDOIiJ-hs8AAAABVgd1ow","url":"https://github.com/bootc-dev/bootc/pull/2620#pullrequestreview-5738296739","author":"cgwalters","submitted_at":"2026-11-02T14:44:28Z"},
       "metadata_counts":{"files":7,"reviews":1},
       "paths":["crates/lib/src/aboot.rs","crates/lib/src/boot_artifact.rs","crates/lib/src/cli.rs","crates/lib/src/ukify.rs","crates/tests-integration/src/container.rs","docs/src/man/bootc-container-aboot.8.md","docs/src/man/bootc-container-ukify.8.md"],
+      "metadata_audit": {
+        "created_at":"2026-11-02T14:23:17Z",
+        "files_has_next_page":false, "reviews_has_next_page":false,
+        "reviews":[{"id":"PRR_kwDOIiJ-hs8AAAABVgd1ow","url":"https://github.com/bootc-dev/bootc/pull/2620#pullrequestreview-5738296739","author":"cgwalters","submitted_at":"2026-11-02T14:44:28Z","commit":"e51ac0448e533362f28189db4b70490dc2d830f5","committed_at":"2026-11-02T14:21:58Z","parents":["5f5f9d9b2ec22795e84e02a81f038bf196082bab"]}],
+        "timeline_total_count":7, "timeline_has_next_page":false, "ref_events":[]
+      },
       "historical_base":null, "merge_base":null, "manifest":null
     },
     {
@@ -79,6 +100,15 @@
       "review":{"id":"PRR_kwDOAEZpjc8AAAABV__A_A","url":"https://github.com/ostreedev/ostree/pull/3689#pullrequestreview-5771346172","author":"cgwalters","submitted_at":"2026-11-04T15:57:44Z"},
       "metadata_counts":{"files":1,"reviews":2},
       "paths":["src/libostree/ostree-sysroot.c"],
+      "metadata_audit": {
+        "created_at":"2026-11-04T13:55:27Z",
+        "files_has_next_page":false, "reviews_has_next_page":false,
+        "reviews":[
+          {"id":"PRR_kwDOAEZpjc8AAAABV-SPig","url":"https://github.com/ostreedev/ostree/pull/3689#pullrequestreview-5769564042","author":"copilot-pull-request-reviewer","submitted_at":"2026-11-04T13:59:14Z","commit":"b9deda7bd9a796d974c4160c1e3f4c5d0f3411b4","committed_at":"2026-11-04T13:52:57Z","parents":["a4cb6781b92da59107a6e6c44bee77898054cc25"]},
+          {"id":"PRR_kwDOAEZpjc8AAAABV__A_A","url":"https://github.com/ostreedev/ostree/pull/3689#pullrequestreview-5771346172","author":"cgwalters","submitted_at":"2026-11-04T15:57:44Z","commit":"b9deda7bd9a796d974c4160c1e3f4c5d0f3411b4","committed_at":"2026-11-04T13:52:57Z","parents":["a4cb6781b92da59107a6e6c44bee77898054cc25"]}
+        ],
+        "timeline_total_count":7, "timeline_has_next_page":false, "ref_events":[]
+      },
       "historical_base":null, "merge_base":null, "manifest":null
     },
     {
@@ -87,6 +117,16 @@
       "review":{"id":"PRR_kwDOIiJ-hs8AAAABVgeqBA","url":"https://github.com/bootc-dev/bootc/pull/2615#pullrequestreview-5738310148","author":"cgwalters","submitted_at":"2026-11-02T14:45:27Z"},
       "metadata_counts":{"files":1,"reviews":1},
       "paths":["crates/lib/src/generator.rs"],
+      "metadata_audit": {
+        "created_at":"2026-11-01T11:28:04Z",
+        "files_has_next_page":false, "reviews_has_next_page":false,
+        "reviews":[{"id":"PRR_kwDOIiJ-hs8AAAABVgeqBA","url":"https://github.com/bootc-dev/bootc/pull/2615#pullrequestreview-5738310148","author":"cgwalters","submitted_at":"2026-11-02T14:45:27Z","commit":"2ef521b0a4fa5ccd806220e5d9ad45f276ef9672","committed_at":"2026-11-01T11:54:26Z","parents":["709dfe5c1fe613d5b622f1871849bf3504b55513"]}],
+        "timeline_total_count":8, "timeline_has_next_page":false,
+        "ref_events":[
+          {"type":"HeadRefForcePushedEvent","created_at":"2026-11-01T11:51:59Z","before":"a231902978ac1ad66353791a693df1b45c756fd1","after":"6e3b779bdbab0bbc8d9cc40c32f36092a59f6841"},
+          {"type":"HeadRefForcePushedEvent","created_at":"2026-11-01T11:54:37Z","before":"6e3b779bdbab0bbc8d9cc40c32f36092a59f6841","after":"2ef521b0a4fa5ccd806220e5d9ad45f276ef9672"}
+        ]
+      },
       "historical_base":null, "merge_base":null, "manifest":null
     }
   ],
@@ -96,6 +136,6 @@
   "scoring":null,
   "recall_denominators":null,
   "unmatched_audit":null,
-  "stop_reason":"Review metadata pins three reviewed commits, but supplies no review-time base identity. No historical base evidence is available in the supplied artifacts. Current base/main cannot establish that provenance. Packet construction stopped before any source/diff or feedback retrieval. Session suitability has not been verified; no sessions attempted and no isolation claim.",
-  "next":"Obtain review-time base metadata for these frozen identities without reading feedback; finish historical eligibility/ancestry checks, freeze exact manifests and input hashes, then verify a suitable fresh read-only session interface before any runs. Do not replace cases or fetch feedback prematurely."
+  "stop_reason":"Follow-up metadata-only queries confirm the earliest submitted cgwalters review pins but return no review-time base evidence. Filtered ref events cannot reconstruct ordinary base-branch pushes; reviewed-commit parents are not historical base identities. The protocol's historical-input gate remains closed. Protocol/sample freeze chronology is still a prior-run assertion, not independently evidenced. No packets, source/diffs, feedback bodies or evaluation sessions were retrieved or run; session suitability remains unverified.",
+  "next":"An evidence provider must supply independently timestamped review-time base records for the same three identities and pre-discovery protocol/sample freeze provenance without exposing feedback. Then finish historical path/ancestry checks and exact manifests and verify suitable fresh read-only sessions. Without that evidence FI-1 remains incomplete; do not substitute current bases, parents, cases or claim isolation."
 }

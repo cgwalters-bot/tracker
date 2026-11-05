@@ -120,19 +120,33 @@ Nothing runs automatically or adds a production caller setting.
 
 ## Separate feedback-isolated evaluation FI-1
 
-[isolated-protocol.md](isolated-protocol.md) was written and hash-frozen before
-new candidate discovery or feedback inspection. [isolated.json](isolated.json)
+[isolated-protocol.md](isolated-protocol.md) records the prior run's assertion
+that it was written and hash-frozen before new candidate discovery or feedback
+inspection; that chronology is not independently verified. [isolated.json](isolated.json)
 records exposure exclusions, bounded metadata-only search and rejection/defer
 log, three frozen provisional identities across bootc and ostree, review commit
 pins and evidence gaps. It is **incomplete**, not another scored result.
-Metadata supplies reviewed commits but no review-time base identities; no current
-base was substituted. Thus no historical packets, review sessions or feedback
-retrieval ran. Session suitability remains unverified, not a claimed isolation
-success. Search of containers/composefs failed; no repository was substituted.
+Two follow-up GraphQL requests confirm complete submitted-review lists and the
+earliest cgwalters pins for all three identities, without retrieving bodies.
+The filtered ref-event metadata supplies no review-time base identities; ordinary
+base-branch pushes are not recorded by those events. Neither reviewed-commit
+parents nor current bases were substituted. Thus no historical packets, review
+sessions or feedback retrieval ran. Session suitability remains unverified, not
+a claimed isolation success. Search of containers/composefs failed; no repository
+was substituted.
+
+The archived order and title/current-path proxy select these same identities;
+this is not verified historical eligibility. The earlier assertion that protocol
+and sample were frozen before discovery lacks independently timestamped evidence.
+FI-1 remains stopped pending an evidence provider's historical base and freeze
+records for these exact cases. Repeating discovery, using today's base or adding
+a timestamp now cannot repair that provenance. Do not fetch feedback or start
+reviewers while the historical-input gate is closed.
 
 The default verification recipe also checks these separate records and negative
-fixtures: protocol/artifact hashes, pilot/exposure disjointness, review provenance,
-candidate uniqueness, metadata bounds and stage counts. These checks certify
+fixtures: protocol/artifact hashes, pilot/exposure disjointness, earliest submitted
+review pins, ordered metadata-proxy selection, candidate uniqueness, pagination
+completeness, metadata bounds and stage counts. These checks certify
 record structure, not historical eligibility, semantic architecture quality or
 blinding. Complete historical inputs and session provenance before proceeding;
 do not replace frozen identities after zero-label or disappointing results.

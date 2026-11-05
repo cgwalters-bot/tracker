@@ -426,6 +426,17 @@ test-architecture-review mode="test" id="B2588":
       }
       assert.equal(r.identities_frozen, true);
       assert.equal(r.packet_sample_frozen, false);
+      const audit = r.provenance_audit;
+      assert.equal(audit.freeze_chronology, 'prior_run_assertion_only');
+      assert.equal(audit.independent_freeze_evidence, false);
+      assert.equal(audit.ordered_metadata_selection_verified, true);
+      assert.equal(audit.historical_eligibility_verified, false);
+      assert.ok(audit.retrieval && audit.timeline_limitations && audit.limitations);
+      assert.equal(audit.metadata_requests, audit.requests.length);
+      assert.ok(d.metadata_requests + audit.metadata_requests <= 60);
+      assert.ok(audit.requests.every(request => request.exit_code === 0));
+      assert.deepEqual(audit.requests.flatMap(request => request.prs.map(pr => key({ repository: request.repository, pr }))).sort(),
+        r.candidates.map(key).sort(), 'follow-up requests cover exactly the frozen identities');
       assert.equal(r.candidates.length, 3);
       assert.equal(new Set(r.candidates.map(key)).size, 3, 'unique sample identities');
       assert.equal(new Set(r.candidates.map(c => c.id)).size, 3, 'unique sample IDs');
@@ -446,8 +457,54 @@ test-architecture-review mode="test" id="B2588":
         assert.equal(new Set(c.paths).size, c.paths.length);
         assert.ok(c.paths.some(p => /^(src|lib|libbootc|crates)\//.test(p)));
         assert.ok(Number.isInteger(c.metadata_counts.reviews) && c.metadata_counts.reviews > 0 && c.metadata_counts.reviews <= 100);
+        const metadata = c.metadata_audit;
+        for (const field of ['files_has_next_page', 'reviews_has_next_page', 'timeline_has_next_page']) assert.equal(metadata[field], false);
+        assert.equal(metadata.reviews.length, c.metadata_counts.reviews);
+        assert.equal(new Set(metadata.reviews.map(review => review.id)).size, metadata.reviews.length);
+        assert.ok(Number.isFinite(Date.parse(metadata.created_at)));
+        for (const review of metadata.reviews) {
+          assert.ok(review.id && review.author);
+          assert.ok(review.url.startsWith(`https://github.com/${c.repository}/pull/${c.pr}#pullrequestreview-`));
+          assert.match(review.commit, /^[a-f0-9]{40}$/);
+          assert.ok(Date.parse(review.committed_at) <= Date.parse(review.submitted_at));
+          assert.ok(review.parents.length > 0 && review.parents.length < 10);
+          for (const parent of review.parents) assert.match(parent, /^[a-f0-9]{40}$/);
+        }
+        const earliest = metadata.reviews.filter(review => review.author === 'cgwalters' && review.submitted_at)
+          .sort((a, b) => Date.parse(a.submitted_at) - Date.parse(b.submitted_at))[0];
+        assert.ok(earliest, 'submitted operator review required');
+        assert.deepEqual(c.review, { id: earliest.id, url: earliest.url, author: earliest.author, submitted_at: earliest.submitted_at });
+        assert.equal(c.head, earliest.commit);
+        assert.ok(Date.parse(metadata.created_at) <= Date.parse(earliest.submitted_at));
+        assert.ok(Number.isInteger(metadata.timeline_total_count) && metadata.timeline_total_count >= metadata.ref_events.length);
+        for (const event of metadata.ref_events) {
+          assert.equal(event.type, 'HeadRefForcePushedEvent', 'audit observed no base-ref evidence');
+          assert.ok(Number.isFinite(Date.parse(event.created_at)));
+          assert.match(event.before, /^[a-f0-9]{40}$/);
+          assert.match(event.after, /^[a-f0-9]{40}$/);
+        }
         for (const field of ['historical_base', 'merge_base', 'manifest']) assert.equal(c[field], null);
       }
+      // Recompute only the metadata proxy; current path lists cannot prove historical eligibility.
+      const eligible = entry => {
+        if (excluded.includes(key(entry))) return false;
+        const candidate = r.candidates.find(c => key(c) === key(entry));
+        assert.ok(candidate, 'ordered selection requires metadata for each preceding non-excluded identity');
+        return /mount|boot|deploy|transaction|state|repo|composefs|image|fsverity|signature|namespace|generator|rollback|ref/i.test(entry.title)
+          && candidate.paths.some(p => /^(src|lib|libbootc|crates)\//.test(p));
+      };
+      const ordered = [];
+      for (const search of d.searches) {
+        const first = d.log.filter(entry => entry.repository === search.repository).find(eligible);
+        if (first) ordered.push(key(first));
+      }
+      for (const search of d.searches) {
+        for (const entry of d.log.filter(entry => entry.repository === search.repository)) {
+          if (ordered.length === 3) break;
+          if (!ordered.includes(key(entry)) && eligible(entry)) ordered.push(key(entry));
+        }
+      }
+      assert.deepEqual(r.candidates.map(key), ordered, 'repository coverage first, then repository/result order');
       assert.deepEqual(r.counts, { target: 3, repositories: 2, provisional_identities: r.candidates.length,
         verified_packets: 0, attempted_reviews: 0, completed_reviews: 0, feedback_channels_retrieved: 0, scored_cases: 0 });
       assert.deepEqual(r.runs, []);
@@ -480,6 +537,18 @@ test-architecture-review mode="test" id="B2588":
       invalid(r => r.discovery.log.pop());
       invalid(r => r.pilot_acceptance.human_adjudication = true);
       invalid(r => r.exposure.held_out_claim = true);
+      invalid(r => r.provenance_audit.independent_freeze_evidence = true);
+      invalid(r => r.provenance_audit.historical_eligibility_verified = true);
+      invalid(r => r.provenance_audit.requests.pop());
+      invalid(r => r.candidates[0].metadata_audit.reviews_has_next_page = true);
+      invalid(r => r.candidates[0].metadata_audit.reviews = []);
+      invalid(r => r.candidates[1].metadata_audit.reviews[0].author = 'cgwalters');
+      invalid(r => r.candidates[0].metadata_audit.reviews[0].commit = r.candidates[1].head);
+      invalid(r => r.candidates[0].metadata_audit.reviews[0].committed_at = '2027-01-01T00:00:00Z');
+      invalid(r => r.candidates[2].metadata_audit.ref_events[0].type = 'BaseRefForcePushedEvent');
+      invalid(r => r.discovery.log[0].title = 'Local cleanup');
+      invalid(r => r.discovery.log.unshift(r.discovery.log.splice(2, 1)[0]));
+      invalid(r => [r.candidates[1], r.candidates[2]] = [r.candidates[2], r.candidates[1]]);
     });
 
     function validateCounts(r) {
