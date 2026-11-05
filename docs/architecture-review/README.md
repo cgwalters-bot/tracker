@@ -9,6 +9,10 @@ A three-PR development pilot ran, but it is not held out because the prompt
 author had seen its labels. A follow-up reconstructs its packets, inventories
 all accessible feedback and adds independent agent scoring, not human review.
 Human adjudication and a new label-blind sample are still needed. Keep #1227 open.
+The [held-out protocol](held-out-protocol.md) freezes the next evaluation's
+selection and scoring rules; [its ledger](held-out.json) records an unfinished
+attempt with no new candidates or scores because inference configuration is
+unavailable. It does not supersede the pilot or establish a held-out result.
 This does not change any production prompt, workflow, permission, merge rule,
 schedule or inference service.
 

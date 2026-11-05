@@ -372,6 +372,53 @@ test-architecture-review mode="test" id="B2588":
       assert.throws(() => validateHistory(history, s, { ...frozen, commits: [] }));
     });
 
+    // This ledger is an unexecuted checkpoint, not a schema for completed runs.
+    // A future execution must add evidence validation before accepting scores.
+    function validateHeldOutCheckpoint(h) {
+      assert.equal(h.schema, 'architecture-review.held-out.v1');
+      assert.equal(h.status, 'unfinished');
+      assert.equal(h.held_out_claim, false);
+      assert.match(h.frozen_from_revision, /^[a-f0-9]{40}$/);
+      assert.equal(h.minimum_eligible_prs, 5);
+      assert.equal(h.discovery_cap, 60);
+      assert.deepEqual(Object.keys(h.artifact_sha256).sort(), ['patterns.md', 'prompt.md', 'references.json']);
+      for (const [file, digest] of Object.entries(h.artifact_sha256)) assert.equal(sha256(read(file)), digest, file);
+      assert.equal(h.protocol_sha256, sha256(read('held-out-protocol.md')));
+      assert.deepEqual([...h.pilot_exclusions].sort(), sample.samples.map(s => `${s.repository}#${s.pr}`).sort());
+      assert.equal(h.derivation_inventory.status, 'pending');
+      assert.deepEqual(h.derivation_inventory.candidates, []);
+      assert.ok(h.derivation_inventory.reason.length > 0);
+      assert.deepEqual(h.prerequisites, { inference: 'unavailable', isolation: 'unverified', candidate_eligibility: 'unverified' });
+      assert.ok(h.blockers.length > 0 && h.blockers.every(b => typeof b === 'string' && b.length > 0));
+      assert.equal(h.candidate_feedback_accessed, false);
+      for (const key of ['candidates', 'runs', 'scoring_runs']) assert.deepEqual(h[key], []);
+      assert.deepEqual(h.denominators, { discovered_prs: 0, examined_prs: 0, selected_prs: 0,
+        eligible_prs: 0, packet_complete_prs: 0, attempted_prs: 0, completed_prs: 0,
+        contaminated_prs: 0, scored_prs: 0 });
+      assert.equal(h.scores, null, 'no scores without isolated reviews and separate scoring evidence');
+      assert.match(h.human_adjudication, /Not obtained/);
+    }
+
+    test('held-out freeze, exclusion inventory and unexecuted denominators', () => {
+      const h = json('held-out.json');
+      validateHeldOutCheckpoint(h);
+      const invalid = [
+        { status: 'completed' }, { held_out_claim: true }, { scores: {} },
+        { candidate_feedback_accessed: true }, { minimum_eligible_prs: 4 },
+        { discovery_cap: 61 }, { pilot_exclusions: h.pilot_exclusions.slice(0, -1) },
+        { pilot_exclusions: [...h.pilot_exclusions, h.pilot_exclusions[0]] },
+        { artifact_sha256: { ...h.artifact_sha256, 'prompt.md': '0'.repeat(64) } },
+        { protocol_sha256: '0'.repeat(64) },
+        { derivation_inventory: { ...h.derivation_inventory, status: 'complete' } },
+        { prerequisites: { ...h.prerequisites, isolation: 'verified' } },
+        { candidates: [{ repository: 'bootc-dev/bootc', pr: 2603 }] },
+        { runs: [{ id: 'invented' }] }, { scoring_runs: [{ id: 'invented' }] },
+        { blockers: [] },
+        ...Object.keys(h.denominators).map(key => ({ denominators: { ...h.denominators, [key]: 1 } })),
+      ];
+      for (const change of invalid) assert.throws(() => validateHeldOutCheckpoint({ ...h, ...change }));
+    });
+
     function validateCounts(r) {
       const evaluated = sample.samples.filter(s => s.status === 'evaluated');
       assert.equal(r.selected_prs, sample.samples.length);

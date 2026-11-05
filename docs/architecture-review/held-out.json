@@ -1,0 +1,53 @@
+{
+  "schema": "architecture-review.held-out.v1",
+  "issue": 1300,
+  "status": "unfinished",
+  "held_out_claim": false,
+  "frozen_from_revision": "2665dbb77eda413f593238d432fb6323cf6bd62d",
+  "artifact_sha256": {
+    "prompt.md": "41fff6f107981d80956cc4bebc30a782a6f9c9b17fe630e305c8e881f6170e9e",
+    "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
+    "references.json": "771045ba21c8eac23c82338576f1aef2c9fa6095f6f0c7cab21a8e16ce26bb24"
+  },
+  "protocol_sha256": "755ce991368d15b1e5c7f8dae67e7724e96c12c6b36e14a4b7291aa440ec95a7",
+  "minimum_eligible_prs": 5,
+  "discovery_cap": 60,
+  "pilot_exclusions": [
+    "bootc-dev/bootc#2603",
+    "bootc-dev/bootc#2588",
+    "ostreedev/ostree#3680",
+    "ostreedev/ostree#3664"
+  ],
+  "derivation_inventory": {
+    "status": "pending",
+    "candidates": [],
+    "reason": "Existing README states reference-only derivation; complete prior exposure inventory has not been independently established."
+  },
+  "prerequisites": {
+    "inference": "unavailable",
+    "isolation": "unverified",
+    "candidate_eligibility": "unverified"
+  },
+  "blockers": [
+    "No environment-provided inference address/model configuration is available.",
+    "Fresh reviewer/scorer isolation has not been verified.",
+    "Derivation/exposure inventory and at least five eligible candidates remain unverified."
+  ],
+  "candidate_feedback_accessed": false,
+  "candidates": [],
+  "runs": [],
+  "scoring_runs": [],
+  "denominators": {
+    "discovered_prs": 0,
+    "examined_prs": 0,
+    "selected_prs": 0,
+    "eligible_prs": 0,
+    "packet_complete_prs": 0,
+    "attempted_prs": 0,
+    "completed_prs": 0,
+    "contaminated_prs": 0,
+    "scored_prs": 0
+  },
+  "scores": null,
+  "human_adjudication": "Not obtained; preserve the pilot's outstanding human-adjudication request."
+}
