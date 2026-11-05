@@ -372,9 +372,45 @@ test-architecture-review mode="test" id="B2588":
       assert.throws(() => validateHistory(history, s, { ...frozen, commits: [] }));
     });
 
-    // This ledger is an unexecuted checkpoint, not a schema for completed runs.
-    // A future execution must add evidence validation before accepting scores.
-    function validateHeldOutCheckpoint(h) {
+    // The frozen selection: an ordered prefix of discovery, five accepted PRs
+    // outside every exclusion, and history that precedes first feedback.
+    function validateHeldOutSelection(h, sel) {
+      assert.equal(sel.schema, 'architecture-review.held-out-selection.v1');
+      const order = sel.discovery.flatMap(d => d.results.map(r => `${d.repository}#${r.pr}`));
+      assert.equal(order.length, h.denominators.discovered_prs);
+      assert.ok(order.length <= h.discovery_cap);
+      assert.ok(sel.discovery.every(d => d.status === 'failed' || (d.incomplete_results === false && d.results.length === d.per_page)));
+      const examined = sel.examined.map(e => `${e.repository}#${e.pr}`);
+      // A failed search may only follow every examined PR: selection never skips a repository.
+      const failed = sel.discovery.findIndex(d => d.status !== 'ok');
+      assert.ok(failed === -1 || sel.discovery.slice(failed).every(d => !examined.some(e => e.startsWith(`${d.repository}#`))),
+        'examined past a failed search');
+      assert.deepEqual(examined, order.slice(0, examined.length), 'examined out of discovery order');
+      assert.equal(examined.length, h.denominators.examined_prs);
+      const accepted = sel.examined.filter(e => e.decision === 'accepted');
+      assert.ok(sel.examined.every(e => ['accepted', 'rejected'].includes(e.decision) && (e.reason || e.contract)));
+      assert.equal(accepted.length, h.minimum_eligible_prs);
+      assert.equal(sel.examined.at(-1).decision, 'accepted', 'examination continued past the fifth eligible PR');
+      const excluded = [...h.pilot_exclusions, ...h.derivation_inventory.exclusions];
+      assert.ok(accepted.every(e => !excluded.includes(`${e.repository}#${e.pr}`)), 'excluded PR accepted');
+      assert.deepEqual(h.candidates, sel.selected.map(s => ({ id: s.id, repository: s.repository, pr: s.pr })));
+      assert.deepEqual(accepted.map(e => `${e.repository}#${e.pr}`), sel.selected.map(s => `${s.repository}#${s.pr}`));
+      for (const s of sel.selected) {
+        const e = accepted.find(e => e.repository === s.repository && e.pr === s.pr);
+        assert.ok(e.contract && e.changed_symbols.length > 0 && s.base_method, s.id);
+        assert.deepEqual(e.channels.map(c => c.channel), ['inline', 'review', 'pr'], `${s.id}: channels`);
+        assert.ok(e.channels.every(c => c.complete), `${s.id}: truncated channel`);
+        assert.equal(s.first_feedback_at, e.first_feedback.at);
+        assert.equal(s.reviewed_revision, e.first_feedback.commit_id);
+        assert.match(s.reviewed_revision, /^[a-f0-9]{40}$/);
+        assert.ok(s.commits.length > 0 && s.commits.at(-1).sha === s.reviewed_revision, `${s.id}: head`);
+        assert.ok(s.commits.every(c => c.committed <= s.first_feedback_at) && s.base_committed <= s.first_feedback_at, `${s.id}: post-feedback history`);
+      }
+    }
+
+    // This ledger is a checkpoint before any review, not a schema for completed
+    // runs. A future execution must add evidence validation before accepting scores.
+    function validateHeldOutCheckpoint(h, sel) {
       assert.equal(h.schema, 'architecture-review.held-out.v1');
       assert.equal(h.status, 'unfinished');
       assert.equal(h.held_out_claim, false);
@@ -385,38 +421,60 @@ test-architecture-review mode="test" id="B2588":
       for (const [file, digest] of Object.entries(h.artifact_sha256)) assert.equal(sha256(read(file)), digest, file);
       assert.equal(h.protocol_sha256, sha256(read('held-out-protocol.md')));
       assert.deepEqual([...h.pilot_exclusions].sort(), sample.samples.map(s => `${s.repository}#${s.pr}`).sort());
-      assert.equal(h.derivation_inventory.status, 'pending');
-      assert.deepEqual(h.derivation_inventory.candidates, []);
-      assert.ok(h.derivation_inventory.reason.length > 0);
-      assert.deepEqual(h.prerequisites, { inference: 'unavailable', isolation: 'unverified', candidate_eligibility: 'unverified' });
+      assert.equal(h.derivation_inventory.status, 'complete');
+      assert.ok(h.derivation_inventory.sources.length > 0);
+      assert.equal(new Set(h.derivation_inventory.exclusions).size, h.derivation_inventory.exclusions.length);
+      assert.ok(h.pilot_exclusions.every(p => h.derivation_inventory.exclusions.includes(p)));
+      assert.deepEqual(h.prerequisites, { inference: 'unavailable', isolation: 'unverified', candidate_eligibility: 'verified' });
       assert.ok(h.blockers.length > 0 && h.blockers.every(b => typeof b === 'string' && b.length > 0));
-      assert.equal(h.candidate_feedback_accessed, false);
-      for (const key of ['candidates', 'runs', 'scoring_runs']) assert.deepEqual(h[key], []);
-      assert.deepEqual(h.denominators, { discovered_prs: 0, examined_prs: 0, selected_prs: 0,
-        eligible_prs: 0, packet_complete_prs: 0, attempted_prs: 0, completed_prs: 0,
+      assert.equal(h.candidate_feedback_accessed, 'metadata-only');
+      assert.equal(h.selection_sha256, sha256(read('held-out-selection.json')));
+      validateHeldOutSelection(h, sel);
+      for (const key of ['runs', 'scoring_runs']) assert.deepEqual(h[key], []);
+      assert.deepEqual(h.denominators, { ...h.denominators, selected_prs: h.candidates.length,
+        eligible_prs: h.candidates.length, packet_complete_prs: 0, attempted_prs: 0, completed_prs: 0,
         contaminated_prs: 0, scored_prs: 0 });
       assert.equal(h.scores, null, 'no scores without isolated reviews and separate scoring evidence');
       assert.match(h.human_adjudication, /Not obtained/);
     }
 
-    test('held-out freeze, exclusion inventory and unexecuted denominators', () => {
+    test('held-out freeze, exclusion inventory, frozen selection and unexecuted denominators', () => {
       const h = json('held-out.json');
-      validateHeldOutCheckpoint(h);
+      const sel = json('held-out-selection.json');
+      validateHeldOutCheckpoint(h, sel);
+      const [first] = sel.selected;
+      const accepted = sel.examined.findIndex(e => e.decision === 'accepted');
       const invalid = [
         { status: 'completed' }, { held_out_claim: true }, { scores: {} },
         { candidate_feedback_accessed: true }, { minimum_eligible_prs: 4 },
-        { discovery_cap: 61 }, { pilot_exclusions: h.pilot_exclusions.slice(0, -1) },
+        { discovery_cap: 39 }, { pilot_exclusions: h.pilot_exclusions.slice(0, -1) },
         { pilot_exclusions: [...h.pilot_exclusions, h.pilot_exclusions[0]] },
         { artifact_sha256: { ...h.artifact_sha256, 'prompt.md': '0'.repeat(64) } },
-        { protocol_sha256: '0'.repeat(64) },
-        { derivation_inventory: { ...h.derivation_inventory, status: 'complete' } },
+        { protocol_sha256: '0'.repeat(64) }, { selection_sha256: '0'.repeat(64) },
+        { derivation_inventory: { ...h.derivation_inventory, status: 'pending' } },
+        { derivation_inventory: { ...h.derivation_inventory, exclusions: [...h.derivation_inventory.exclusions, 'bootc-dev/bootc#105'] } },
         { prerequisites: { ...h.prerequisites, isolation: 'verified' } },
-        { candidates: [{ repository: 'bootc-dev/bootc', pr: 2603 }] },
+        { candidates: [{ id: 'B2603', repository: 'bootc-dev/bootc', pr: 2603 }, ...h.candidates.slice(1)] },
+        { candidates: h.candidates.slice(1) },
         { runs: [{ id: 'invented' }] }, { scoring_runs: [{ id: 'invented' }] },
         { blockers: [] },
-        ...Object.keys(h.denominators).map(key => ({ denominators: { ...h.denominators, [key]: 1 } })),
+        ...Object.keys(h.denominators).map(key => ({ denominators: { ...h.denominators, [key]: h.denominators[key] + 1 } })),
       ];
-      for (const change of invalid) assert.throws(() => validateHeldOutCheckpoint({ ...h, ...change }));
+      for (const change of invalid) assert.throws(() => validateHeldOutCheckpoint({ ...h, ...change }, sel));
+      const invalidSelection = [
+        { examined: [...sel.examined].reverse() },
+        { examined: sel.examined.map((e, i) => i === accepted ? { ...e, decision: 'rejected', reason: 'x' } : e) },
+        { examined: [...sel.examined, { ...sel.examined[0], decision: 'rejected', reason: 'x' }] },
+        { selected: [{ ...first, first_feedback_at: '2000-01-01T00:00:00Z' }, ...sel.selected.slice(1)] },
+        { selected: [{ ...first, reviewed_revision: '0'.repeat(40) }, ...sel.selected.slice(1)] },
+        { selected: [{ ...first, commits: [] }, ...sel.selected.slice(1)] },
+        { discovery: sel.discovery.map(d => ({ ...d, incomplete_results: true })) },
+        { discovery: [...sel.discovery, sel.discovery[0]] },
+        { discovery: [{ ...sel.discovery[0], status: 'failed' }, ...sel.discovery.slice(1)] },
+        { examined: sel.examined.map((e, i) => i === accepted ? { ...e, channels: e.channels.slice(1) } : e) },
+        { selected: [{ ...first, base_method: undefined }, ...sel.selected.slice(1)] },
+      ];
+      for (const change of invalidSelection) assert.throws(() => validateHeldOutSelection(h, { ...sel, ...change }));
     });
 
     function validateCounts(r) {

@@ -19,29 +19,60 @@
     "ostreedev/ostree#3664"
   ],
   "derivation_inventory": {
-    "status": "pending",
-    "candidates": [],
-    "reason": "Existing README states reference-only derivation; complete prior exposure inventory has not been independently established."
+    "status": "complete",
+    "sources": [
+      "Library history (7191997, d8e475a, d403e92, ad71726): derived from the pinned references in references.json and the pilot sample only.",
+      "Every upstream PR or issue named in tracker files, commit messages and issues #1224, #1227, #1300 and #1303.",
+      "The review-corpus release: absent (tag not found) and added after the library's last change, so not a derivation source.",
+      "Model training exposure cannot be inventoried; the protocol already treats it as unmeasured."
+    ],
+    "exclusions": [
+      "bootc-dev/bootc#2603",
+      "bootc-dev/bootc#2588",
+      "ostreedev/ostree#3680",
+      "ostreedev/ostree#3664",
+      "bootc-dev/bootc#2402",
+      "bootc-dev/bootc#2455",
+      "composefs/composefs#389",
+      "composefs/composefs#416",
+      "composefs/composefs#437",
+      "composefs/composefs#450"
+    ]
   },
   "prerequisites": {
     "inference": "unavailable",
     "isolation": "unverified",
-    "candidate_eligibility": "unverified"
+    "candidate_eligibility": "verified"
   },
   "blockers": [
-    "No environment-provided inference address/model configuration is available.",
+    "The environment's inference endpoint rejected every direct request with HTTP 429 over several minutes of backoff; the controller's own already-informed session is not a permitted fallback.",
     "Fresh reviewer/scorer isolation has not been verified.",
-    "Derivation/exposure inventory and at least five eligible candidates remain unverified."
+    "Historical packets (including title, description and guidance as of first feedback) are not reconstructed yet."
   ],
-  "candidate_feedback_accessed": false,
-  "candidates": [],
+  "deviations": [
+    "Eleven PRs authored by cgwalters were rejected as having no reviewer feedback from him (#1300 asks for PRs he reviewed). The frozen protocol does not state this rule and it was applied after the discovery titles were seen; a human must accept it or require a new sample under a revised protocol.",
+    "Eligibility used current titles from search; historical titles and descriptions are reconstructed only with the packets."
+  ],
+  "open_concerns": [
+    "Creation-ascending discovery selects 2019-2023 PRs, where model training exposure is most likely.",
+    "B167's only cgwalters record is a review submitted four seconds before merge and may yield no scorable root; the protocol keeps it in the denominator."
+  ],
+  "candidate_feedback_accessed": "metadata-only",
+  "selection_sha256": "eac993148e527de5de4135ed2cf4027e32cc0d7ebc307658548ae216adebf67b",
+  "candidates": [
+    { "id": "B105", "repository": "bootc-dev/bootc", "pr": 105 },
+    { "id": "B167", "repository": "bootc-dev/bootc", "pr": 167 },
+    { "id": "O1877", "repository": "ostreedev/ostree", "pr": 1877 },
+    { "id": "O1948", "repository": "ostreedev/ostree", "pr": 1948 },
+    { "id": "O1954", "repository": "ostreedev/ostree", "pr": 1954 }
+  ],
   "runs": [],
   "scoring_runs": [],
   "denominators": {
-    "discovered_prs": 0,
-    "examined_prs": 0,
-    "selected_prs": 0,
-    "eligible_prs": 0,
+    "discovered_prs": 40,
+    "examined_prs": 29,
+    "selected_prs": 5,
+    "eligible_prs": 5,
     "packet_complete_prs": 0,
     "attempted_prs": 0,
     "completed_prs": 0,

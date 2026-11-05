@@ -11,8 +11,10 @@ all accessible feedback and adds independent agent scoring, not human review.
 Human adjudication and a new label-blind sample are still needed. Keep #1227 open.
 The [held-out protocol](held-out-protocol.md) freezes the next evaluation's
 selection and scoring rules; [its ledger](held-out.json) records an unfinished
-attempt with no new candidates or scores because inference configuration is
-unavailable. It does not supersede the pilot or establish a held-out result.
+attempt. Five PRs and their reviewed revisions are frozen from feedback metadata
+alone ([selection log](held-out-selection.json), controller only); no packets,
+reviews or scores exist yet because inference is unavailable. It does not
+supersede the pilot or establish a held-out result.
 This does not change any production prompt, workflow, permission, merge rule,
 schedule or inference service.
 
