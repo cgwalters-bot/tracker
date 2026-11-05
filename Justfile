@@ -5,7 +5,78 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-caller test-review-gate test-forge-sync test-review-corpus agent-board-pin
+test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh agent-board-pin
+
+# Offline trigger execution and prompt-contract checks, not model evaluations.
+test-review-refresh:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { spawnSync } = require('node:child_process');
+    const workflow = fs.readFileSync('.github/workflows/monthly-review-refresh.yml', 'utf8');
+    assert.match(workflow, /cron: '0 8 1 \* \*'/);
+    assert.match(workflow, /  workflow_dispatch:\n\npermissions: \{\}/, 'manual entry has no task override');
+    assert.equal((workflow.match(/TASK: >-/g) || []).length, 1, 'both entries share one trusted task');
+    assert.match(workflow, /timeout-minutes: 5\n    permissions:\n      actions: write\n    steps:/);
+    assert.doesNotMatch(workflow, /secrets\.|contents: write|issues: write|pull-requests: write|uses:/);
+    assert.match(workflow, /cancel-in-progress: false/);
+    const guard = /    if: \$\{\{ (.*) \}\}/.exec(workflow)[1];
+    const admitted = new Function('vars', 'github', 'format', `return ${guard}`);
+    const format = (template, branch) => template.replace('{0}', branch);
+    for (const event_name of ['schedule', 'workflow_dispatch']) {
+      for (const activation of [undefined, '', 'disabled', 'true', 'enabled']) {
+        for (const ref of ['refs/heads/main', 'refs/heads/unreviewed', 'refs/tags/main']) {
+          assert.equal(admitted({ REVIEW_REFRESH: activation }, { event_name, ref,
+            event: { repository: { default_branch: 'main' } } }, format),
+            activation === 'enabled' && ref === 'refs/heads/main');
+        }
+      }
+    }
+    const task = /          TASK: >-\n((?:            .*\n)+)/.exec(workflow)[1]
+      .trim().replace(/\n            /g, ' ');
+    // These assert instructions sent to the implement runner, not enforcement
+    // by an LLM. Missing prerequisites must never turn into a fallback score.
+    for (const [scenario, required] of [
+      ['partial corpus', /If corpus\/status assets are missing, partial, stopped early or fail verification, stop unfinished\/no-update/],
+      ['unavailable checklist/protocol', /If a checklist, reviewed pin or protocol is unavailable, stop unfinished\/no-update/],
+      ['unused samples', /If no unused samples exist, isolation cannot be established, or the protocol is unavailable, stop unfinished\/no-update/],
+      ['no-update', /If too little evidence or no supported change remains, return no-update[^]*no version bump, fabricated scores or guessed rules/],
+      ['audit gaps', /Missing runs, audits or insufficient scorable evidence mean unfinished\/no-update/],
+      ['publication prerequisite', /If the home differs or draft-only publication is unavailable, stop unfinished\/no-update/],
+    ]) assert.match(task, required, scenario);
+    const policy = fs.readFileSync('.github/agentic-job/dispatch.toml', 'utf8');
+    assert.match(policy, /ready_when_complete = true/);
+    assert.match(task, /current dispatch.toml ready_when_complete route does not/,
+      'current route must report no-update, not claim it can force a draft');
+    for (const phrase of ['code checklist', 'architecture pattern library', 'prose checklist',
+      'complete to be boolean true', 'SHA256SUMS', '2026-06-01', 'Never move or reuse frozen holdouts',
+      'never feedback, labels, later fixes', 'no tuning/reruns', 'generated cleanup and bot suggestions distinct',
+      'caught/missed/unmatched/scorable', 'noise-audit audited/total', 'false-positive and meaning-change',
+      'model/provider/version', 'one draft PR', 'one commit', 'Reviewed release-train pin rollout is a separate change']) {
+      assert.ok(task.includes(phrase), phrase);
+    }
+    const script = /        run: \|\n([^]*)/.exec(workflow)[1].replace(/^          /gm, '');
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'review-refresh-'));
+    try {
+      // Stub only the transport; capture actual shell argument boundaries.
+      fs.writeFileSync(path.join(temp, 'gh'), `#!${process.execPath}\nrequire('node:fs').writeFileSync(process.env.CAPTURE, JSON.stringify(process.argv.slice(2)));\nprocess.exit(Number(process.env.FAIL || 0));\n`, { mode: 0o755 });
+      const capture = path.join(temp, 'args.json');
+      const env = { PATH: `${temp}:${process.env.PATH}`, CAPTURE: capture, GH_TOKEN: '',
+        GITHUB_REPOSITORY: 'cgwalters-forge/tracker', DEFAULT_BRANCH: 'main',
+        ITEM_REPO: 'cgwalters-forge/tracker', ITEM: '1343', TASK: task };
+      for (const failure of [0, 1]) {
+        const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script], { env: { ...env, FAIL: String(failure) }, encoding: 'utf8' });
+        assert.equal(result.status, failure, result.stderr);
+        assert.deepEqual(JSON.parse(fs.readFileSync(capture)), ['workflow', 'run', 'dispatch.yml',
+          '--repo', env.GITHUB_REPOSITORY, '--ref', 'main', '-f', 'kind=implement',
+          '-f', 'repo=cgwalters-forge/tracker', '-f', 'item=1343', '-f', `task=${task}`]);
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+    console.log('ok refresh admission, trusted task prerequisites/no-update contract and offline dispatch');
 
 # Offline resolver and real workflow step, with a temporary heavy configuration.
 test-dispatch-pool:

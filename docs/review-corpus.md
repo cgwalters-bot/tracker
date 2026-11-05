@@ -130,3 +130,51 @@ echo "SHA256  review-corpus.jsonl.zst" | sha256sum --check
 
 Published releases are immutable, so a pinned tag keeps serving the same
 file.
+
+## Monthly checklist refresh
+
+[monthly-review-refresh.yml](../.github/workflows/monthly-review-refresh.yml)
+dispatches the same trusted task manually and on the first day of each month
+at 08:00 UTC. It does not collect a corpus, run evaluations in the trigger job,
+or deploy reviewers. To prevent premature mining of partial evidence, both
+entries are off unless repository variable `REVIEW_REFRESH` is `enabled`, and
+only run from the default branch. This change leaves the variable unset.
+
+Before enabling, review immutable commit/content-hash pins for all three
+artifacts at their versioned home, their development/holdout split, and each
+component's frozen evaluation protocol. Also require retained complete
+checksum-pinned baseline/candidate snapshots and unused feedback-isolated
+samples. The code checklist is not yet present here; prose 0.1.0 has thin
+operator evidence and illustrative fixtures, not an evaluation. Architecture
+0.1.0 is a development pilot, not a held-out result. These are not ready-to-use
+refresh prerequisites or approvals.
+
+The current `dispatch.toml` also forces complete PRs ready for review; a task's
+requested draft flag cannot override it. The refresh therefore must return
+unfinished/no-update until a reviewed caller/policy change guarantees draft-only
+publication at the admitted versioned home. It must not fake an incomplete
+checkpoint to obtain a draft. This dispatcher adds no alternate writer or
+policy-selection option.
+
+The dispatched task must check these prerequisites each time, before mining;
+an enabled switch is not evidence. Missing or partial snapshots, unavailable
+artifacts/protocols, exhausted isolated samples, failed audits or insufficient
+evidence produce an honest unfinished/no-update report, without guessed rules,
+scores or an empty version bump. Its finite release discovery stops at 1,000
+published releases; a missing match is a gap, not permission for a backfill.
+The workflow's five-minute bound is for dispatch only; the existing implement
+runner and checked-output policy bound the subsequent run.
+
+Keep frozen holdouts, prior outputs and use ledgers intact; never move the
+cutoff or reuse test material to improve scores. Reviewer packets must exclude
+feedback, labels, later fixes and scoring records. Bot proposals, generated
+cleanup and author-associated assisted edits are not verified operator wording
+preferences. Archive component-specific caught/missed/unmatched/scorable and
+noise-audit denominators, model/run provenance and prose false-positive and
+meaning-change audits. Supported updates and version bumps belong in one draft
+PR at the versioned home. Reviewed release-train pin rollout is separate;
+the refresh must never activate pins automatically.
+
+`just test-review-refresh` tests admission, dispatch arguments and the task's
+prerequisite/no-update instructions offline. These are prompt-contract tests,
+not proof that a model obeyed them or that an evaluation completed.
