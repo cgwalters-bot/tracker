@@ -1606,6 +1606,56 @@ test-maintain-shadow:
     const workflow = fs.readFileSync('.github/workflows/maintain-shadow.yml', 'utf8');
     assert.doesNotMatch(workflow, /secrets\.|: write|--apply/);
     assert.match(workflow, /^ {6}group: maintain-shadow\n {6}cancel-in-progress: false$/m);
+    assert.match(workflow, /^permissions: \{\}$/m);
+    assert.match(workflow, /^ {4}permissions:\n {6}contents: read\n {6}actions: read\n {4}steps:/m);
+    const poll = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
+    const next = poll.split('\n  next:\n')[1].split('\n  next-fallback:')[0];
+    assert.match(next, /^ {4}permissions:\n {6}actions: write\n {4}steps:/m);
+    const step = /      - name: Start the shadow poll if stale\n([^]*?)(?=      - name:)/.exec(next)[1];
+    const gate = /        if: \$\{\{ (.*) \}\}/.exec(step)[1];
+    for (const value of [undefined, '', 'disabled', 'true', 'Enabled', 'enabled']) {
+      const admitted = new Function('vars', `return ${gate}`)({ MAINTAIN_SHADOW: value });
+      assert.equal(admitted, value === 'enabled');
+    }
+    assert.match(step, /GH_TOKEN: \$\{\{ github.token \}\}/);
+    assert.match(step, /DEFAULT_BRANCH: \$\{\{ github.event.repository.default_branch \}\}/);
+    assert.match(step, /timeout-minutes: 2/);
+    assert.doesNotMatch(step, /secrets\./);
+    const script = /        run: \|\n([^]*)/.exec(step)[1].replace(/^          /gm, '');
+    assert.ok(script.trimEnd().split('\n').length <= 10);
+    const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'shadow-next-'));
+    try {
+      fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}
+    const fs = require('node:fs');
+    const args = process.argv.slice(2);
+    fs.appendFileSync(process.env.CAPTURE, JSON.stringify(args) + '\\n');
+    if (args[0] === 'run') { process.stdout.write(process.env.LATEST); process.exit(Number(process.env.LIST_EXIT)); }
+    process.exit(Number(process.env.DISPATCH_EXIT));
+    `, { mode: 0o755 });
+      fs.writeFileSync(`${temp}/date`, '#!/bin/sh\nif [ "$1" = +%s ]; then printf "2000000000\\n"; else exec /usr/bin/date "$@"; fi\n', { mode: 0o755 });
+      for (const [age, listExit, dispatchExit, dispatches] of [
+        [null, 0, 0, true], [1800, 0, 0, true], [1801, 0, 0, true],
+        [1799, 0, 0, false], [0, 0, 0, false], [-60, 0, 0, false],
+        [null, 1, 0, false], [1800, 0, 1, true],
+      ]) {
+        fs.writeFileSync(`${temp}/calls`, '');
+        const got = require('node:child_process').spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
+          encoding: 'utf8', env: { PATH: `${temp}:${process.env.PATH}`, GH_TOKEN: '', DEFAULT_BRANCH: 'custom-default',
+            CAPTURE: `${temp}/calls`, LATEST: age === null ? '' : new Date((2000000000 - age) * 1000).toISOString(),
+            LIST_EXIT: String(listExit), DISPATCH_EXIT: String(dispatchExit) },
+        });
+        assert.equal(got.status, 0, got.stderr);
+        const calls = fs.readFileSync(`${temp}/calls`, 'utf8').trimEnd().split('\n').map(JSON.parse);
+        assert.deepEqual(calls, [
+          ['run', 'list', '--workflow', 'maintain-shadow.yml', '--branch', 'custom-default', '--limit', '1', '--json', 'createdAt', '--jq', '.[0].createdAt // empty'],
+          ...(dispatches ? [['workflow', 'run', 'maintain-shadow.yml', '--ref', 'custom-default']] : []),
+        ]);
+        assert.equal(got.stdout.includes('::warning::'), Boolean(listExit || dispatchExit));
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+    console.log('ok poll next wakes the shadow only when enabled and stale; failures warn without breaking the chain');
     const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
     const config = JSON.parse(execFileSync('{{ just_executable() }}',
       ['maintain-shadow-config', '.github/pass.json', 'cgwalters-forge/agentic-job'], { encoding: 'utf8' }));

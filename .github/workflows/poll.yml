@@ -152,7 +152,11 @@ jobs:
     # pass. While RELEASE_TRAIN is `dry-run` or `apply`, `next` also starts
     # release-train.yml when its newest run is an hour old or absent, since
     # GitHub drops its hourly schedule too; the train's own gate and
-    # concurrency still decide what that run does.
+    # concurrency still decide what that run does. Supervisor wakes use a
+    # thirty-minute threshold. With MAINTAIN_SHADOW `enabled`, `next` also
+    # starts maintain-shadow.yml when its newest default-branch run is at
+    # least thirty minutes old or absent; failures only warn. Its cron is
+    # the fallback, and its preview keeps its own read-only job token.
     concurrency:
       group: pass-next
       cancel-in-progress: true
@@ -161,7 +165,7 @@ jobs:
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name == 'schedule' || inputs.apply) }}
     runs-on: ubuntu-26.04
-    # The verified download, ten-minute wait and bounded retries for both workflows.
+    # The verified download, ten-minute wait and bounded keep-alive requests.
     timeout-minutes: 30
     permissions:
       actions: write
@@ -177,6 +181,21 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         timeout-minutes: 10
         run: just build-agent-board "$AGENT_BOARD_REV"
+      - name: Start the shadow poll if stale
+        if: ${{ vars.MAINTAIN_SHADOW == 'enabled' }}
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: bash
+        run: |
+          if latest=$(timeout 30s gh run list --workflow maintain-shadow.yml --branch "$DEFAULT_BRANCH" --limit 1 --json createdAt --jq '.[0].createdAt // empty'); then
+            if [[ -z $latest ]] || (( $(date +%s) - $(date -d "$latest" +%s) >= 1800 )); then
+              timeout 30s gh workflow run maintain-shadow.yml --ref "$DEFAULT_BRANCH" || echo '::warning::Could not start maintain-shadow.yml'
+            fi
+          else
+            echo '::warning::Could not check maintain-shadow.yml age'
+          fi
       - name: Start the next pass ten minutes after this one started
         env:
           GH_TOKEN: ${{ github.token }}
