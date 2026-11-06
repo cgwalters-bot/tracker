@@ -591,6 +591,23 @@ offline, on a published release's manifest and bundle and Sigstore's trusted
 root, committed under `.github/agent-board-install/`: it accepts that commit
 and rejects another commit, a changed manifest and another signing workflow.
 
+From `2bad88d` the pin fits an over-long needs-you list without dropping
+actionable approvals first (agent-board#722, review#251). Before, the
+`pr.operatorPaths` approval, unranked and newest, lost its card first and
+review showed it as a "Detail not published" placeholder. `just
+test-needs-you-fit`, part of `just test`, keeps the publication's settings
+as they are. Given read-only agent-board and review checkouts, it also
+checks that the pin's 174-decision fixture keeps each approval's card and
+`review-at-head` descriptor, and that review reads one row per decision,
+each approval actionable. Review still counts each group member as a
+decision in its summary line (202 for the fixture's 174). To roll back,
+first set `AGENT_BOARD_PIN` to anything but `enabled` so the hourly bump
+does not propose main again. Then move every pin back to
+`d278162e9ead1244db1ffcfafab74016e3c9e4ea`, which also drops `6fc1679`'s
+digest asks kept across a failed maintain read. That brings back both
+limits: the dropped approval card, and a review wait without a card
+restarting its age every pass, which rewrites the holds comment each time.
+
 ## Weekly runs
 
 Two scheduled workflows start a run of `dispatch.yml` as the pass does,
