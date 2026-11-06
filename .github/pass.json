@@ -57,7 +57,7 @@
   "triagePools": ["openai", "claude"],
   "pools": {"claude": {"target": 0.95, "burst": 5}, "openai": {"target": 0.95, "burst": 50}},
   "usage": {"repository": "cgwalters-forge/bot-ops", "issue": 1, "probe": true},
-  "holds": {"repository": "cgwalters-forge/bot-ops", "issue": 1, "needsYou": true,
+  "holds": {"repository": "cgwalters-forge/bot-ops", "issue": 1, "needsYou": true, "passView": true,
     "proposals": {"repository": "cgwalters-forge/tracker", "label": "operator-action", "org": "cgwalters-forge",
       "repositories": [
         "cgwalters-forge/tracker",
@@ -80,7 +80,7 @@
       ".github/pass.json#/triage", ".github/pass.json#/notifications", ".github/pass.json#/fixPlans", ".github/pass.json#/assignHolds", ".github/pass.json#/authored",
       ".github/pass.json#/bodyPlans", ".github/pass.json#/idleReplan", ".github/pass.json#/researchPlans", ".github/pass.json#/triageClose", ".github/pass.json#/triageFollowUpDays",
       ".github/pass.json#/replanAfterDays", ".github/pass.json#/revisit", ".github/pass.json#/sweep", ".github/pass.json#/overlap", ".github/pass.json#/midstream/topic",
-      ".github/pass.json#/pr/unstall", ".github/pass.json#/pr/staleDays", ".github/pass.json#/pr/checkReruns", ".github/pass.json#/pr/rebaseRounds", ".github/pass.json#/pr/foldRounds",
+      ".github/pass.json#/pr/unstall", ".github/pass.json#/pr/staleDays", ".github/pass.json#/pr/checkReruns", ".github/pass.json#/pr/rebaseRounds", ".github/pass.json#/pr/foldRounds", ".github/pass.json#/holds/passView",
       ".github/poll/agent-board.json", ".github/supervisor/config.json"],
 "noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-bot/praxis-credential-broker"],
     "reviewWorkflow": "review.yml",
