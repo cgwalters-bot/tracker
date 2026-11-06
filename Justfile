@@ -1660,12 +1660,13 @@ build-supervisor-agent-board:
 
 # The agent-board.json of maintain-shadow.yml's poll: pass.json's operator,
 # bot and dispatch settings and the `pr` keys poll reads, following only
-# FOLLOW. The pass-only `pr` keys have no poll equivalent and are left out.
+# FOLLOW.
 maintain-shadow-config pass follow:
     #!/usr/bin/env bash
     set -euo pipefail
     jq -e --arg follow "$2" '{operator, bot, dispatchRepo, dispatchWorkflow, follow: [$follow]}
-      + (.pr | {reviewWorkflow, fixPools, mergeAuthors, rebaseRounds, mergeQueue})
+      + (.pr | {reviewWorkflow, fixPools, mergeAuthors, rebaseRounds, mergeQueue,
+        unstall, noMerge, operatorPaths, headOwners, ownerBranches, ownSpaceOnly, checkReruns, staleDays})
       | with_entries(select(.value != null))' "$1"
 
 # maintain-shadow.yml previews with the job token only, and its poll gets
@@ -1736,6 +1737,9 @@ test-maintain-shadow:
       dispatchWorkflow: pass.dispatchWorkflow, follow: ['cgwalters-forge/agentic-job'],
       reviewWorkflow: pass.pr.reviewWorkflow, fixPools: pass.pr.fixPools, mergeAuthors: pass.pr.mergeAuthors,
       rebaseRounds: pass.pr.rebaseRounds, mergeQueue: pass.pr.mergeQueue,
+      unstall: pass.pr.unstall, noMerge: pass.pr.noMerge, operatorPaths: pass.pr.operatorPaths,
+      headOwners: pass.pr.headOwners, ownerBranches: pass.pr.ownerBranches,
+      ownSpaceOnly: pass.pr.ownSpaceOnly, checkReruns: pass.pr.checkReruns, staleDays: pass.pr.staleDays,
     });
     console.log('ok maintain-shadow previews read-only with pass.json\'s poll settings');
     if (process.env.AGENT_BOARD) {
