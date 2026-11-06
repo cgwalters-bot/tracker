@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh agent-board-pin
+test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-needs-you-fit agent-board-pin
 
 # Offline trigger execution and prompt-contract checks, not model evaluations.
 test-review-refresh:
@@ -1307,6 +1307,74 @@ test-supervisor-workflow:
     assert.match(workflow, /^ {6}session: \$\{\{ needs\.health\.outputs\.session == 'true' \}\}\n {6}idle-minutes: \$\{\{ needs\.health\.outputs\.idle \}\}$/m);
     assert.match(workflow, /"idle=\\\(\.idleMinutes\)"' \.github\/agentic-job\/session\.json/);
     console.log('ok supervisor concurrency groups and health gate, sessions included');
+
+# The needs-you publication the pin's approval-preserving fit (agent-board#722)
+# serves keeps its settings: the private holds issue with `holds.needsYou`,
+# the operator-path rule, and approval evidence off (tracker#1336). Manual,
+# with read-only checkouts and no token or forge request: BOARD at the pin,
+# whose serialized 174-decision fixture must keep every approval's card at
+# its full head with a descriptor offering `review-at-head` there, and REVIEW
+# (node >=22.18), whose own parser and inbox cards must read it complete,
+# one row a decision, each approval actionable. Review's `parseHolds` would
+# refuse the fixture's synthetic holds, which have no `url` as a pass's do.
+test-needs-you-fit board="" review="":
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { pathToFileURL } = require('node:url');
+    const { execFileSync } = require('node:child_process');
+    const [board, review] = process.argv.slice(2);
+    const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
+    assert.deepEqual([pass.holds.repository, pass.holds.needsYou], ['cgwalters-forge/bot-ops', true]);
+    assert.ok(!pass.holds.approvalEvidence, 'approval evidence stays off (tracker#1336)');
+    assert.ok(pass.pr.operatorPaths.includes('.github/pass.json'), 'the fixture approval is for an operator path');
+    if (!board) {
+      assert.ok(!review, 'REVIEW reads BOARD\'s fixture');
+      console.log('ok needs-you settings; fixture probes skipped: pass BOARD and REVIEW checkouts');
+      process.exit(0);
+    }
+    async function main() {
+      const root = path.resolve(board);
+      const pin = execFileSync('{{ just_executable() }}', ['agent-board-pin'], { encoding: 'utf8' }).trim();
+      assert.equal(execFileSync('git', ['-C', root, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), pin);
+      const raw = JSON.parse(fs.readFileSync(`${root}/fixtures/needs-you-approval-fit-174.json`, 'utf8')).needs_you;
+      assert.deepEqual(raw.counts, { decisions: 174, groups: 2, members: 202 });
+      assert.equal(raw.count, raw.identities.length, 'an identity a member');
+      const detail = i => i.detail_key ?? i.key ?? i.item.toLowerCase();
+      assert.equal(new Set(raw.identities.map(detail)).size, raw.counts.decisions, 'a row a decision');
+      const cards = new Map(raw.items.map(a => [a.key, a]));
+      assert.equal(raw.details_omitted, raw.identities.filter(i => !cards.has(detail(i))).length);
+      const approvals = raw.identities.filter(i => i.kind === 'review-approve').map(detail);
+      assert.equal(approvals.at(-1), 'o/zeta#174');
+      assert.equal(detail(raw.identities.at(-1)), 'o/zeta#174', 'the operator-path approval ranks last');
+      for (const key of approvals) {
+        const head = cards.get(key)?.head;
+        assert.match(head ?? '', /^[0-9a-f]{40}$/, `${key} keeps its card at its full head`);
+        assert.ok(raw.requests.some(r => r.key === key && r.target.head === head
+          && r.actions.some(a => a.kind === 'review-at-head' && a.supported)), `${key} offers review-at-head at ${head}`);
+        assert.ok(raw.request_sources.some(s => s.key === key), `${key} keeps its source record`);
+      }
+      const cargo = ['--locked', '--manifest-path', `${root}/Cargo.toml`, '-p', 'board-forge'];
+      execFileSync('cargo', ['test', ...cargo, 'approvals_'], { stdio: 'inherit' });
+      if (!review) return console.log(`ok needs-you settings and the fixture at ${pin}; review's reading skipped`);
+      const load = file => import(pathToFileURL(path.resolve(review, file)).href);
+      const { parseNeedsYou } = await load('src/github/holds.ts');
+      const { inboxCards, refusal } = await load('src/github/inbox.ts');
+      const list = parseNeedsYou(raw);
+      assert.equal(typeof list, 'object', list);
+      assert.deepEqual([list.complete, list.refused, list.counts], [true, 0, raw.counts]);
+      const rows = inboxCards({ published: { asks: list.items, list } });
+      assert.equal(rows.length, raw.counts.decisions);
+      for (const key of approvals) {
+        const row = rows.find(c => c.key === key);
+        assert.deepEqual([row.kind, row.ask.detailMissing, row.ask.action.head], ['approve', undefined, cards.get(key).head], key);
+        assert.equal(refusal(row.ask, 'review-at-head'), undefined, key);
+      }
+      const revision = execFileSync('git', ['-C', review, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+      console.log(`ok needs-you settings, the fixture at ${pin} and review ${revision}'s reading of it`);
+    }
+    main().catch(error => { console.error(error); process.exitCode = 1; });
 
 # The one agent-board commit every workflow pins as `  AGENT_BOARD_REV:`,
 # printed; fails when the workflows pin different revisions, or none, so a
