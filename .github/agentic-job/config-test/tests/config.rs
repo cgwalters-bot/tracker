@@ -554,27 +554,40 @@ fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
 }
 
 #[test]
-fn gh_agentic_workflows_has_the_only_midstream_workflow_exception_and_is_never_merged_into() {
-    let repo = "cgwalters-forge/gh-agentic-workflows";
-    for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
-        assert!(repos(name).iter().any(|r| r == repo), "{name}");
-    }
+fn reviewed_midstream_workflow_targets_are_never_merged_into() {
     assert!(!has_line_starting(&read("comment.toml"), "[unprotected_files]"));
     for name in ["midstream.toml", "midstream-fix.toml"] {
         let table = toml_file(name);
         let exception = table["unprotected_files"].as_table().expect("workflow exception");
-        assert_eq!(exception.len(), 2, "{name}: no protected filename exceptions");
-        assert_eq!(strings(&exception["repos"], name), [repo]);
+        assert_eq!(exception.len(), 3, "{name}: only the reviewed scope");
+        assert_eq!(strings(&exception["repos"], name), ["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/rhel-bootc-examples"]);
+        assert_eq!(strings(&exception["files"], name), ["README.md"]);
         assert_eq!(strings(&exception["dot_folders"], name), [".github"]);
     }
-    for name in ["dispatch.toml", "fix.toml"] {
-        for list in lists(name) {
-            assert!(!list.iter().any(|r| r == repo), "{name}");
+    let pass = json_file("../pass.json");
+    for repo in ["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/rhel-bootc-examples"] {
+        for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
+            assert!(repos(name).iter().any(|r| r == repo), "{name}");
+        }
+        for name in ["dispatch.toml", "fix.toml"] {
+            for list in lists(name) {
+                assert!(!list.iter().any(|r| r == repo), "{name}");
+            }
+        }
+        for list in [&pass["follow"], &pass["workRepositories"], &pass["pr"]["noMerge"]] {
+            assert!(list.as_array().expect("pass repository list").contains(&json!(repo)));
         }
     }
-    let pass = json_file("../pass.json");
-    for list in [&pass["follow"], &pass["workRepositories"], &pass["pr"]["noMerge"]] {
-        assert!(list.as_array().expect("pass repository list").contains(&json!(repo)));
+    assert_eq!(toml_file("midstream.toml")["unprotected_files"], toml_file("midstream-fix.toml")["unprotected_files"]);
+    // #33 admits neither the upstream nor the other external fork.
+    for repo in ["redhat-cop/rhel-bootc-examples", "cgwalters-bot/rhel-bootc-examples", "cgwalters-forge/rhel-bootc-examples-x", "cgwalters-forge/image-builder", "cgwalters-forge/osbuild", "osbuild/image-builder", "osbuild/osbuild"] {
+        for name in ["dispatch.toml", "fix.toml", "midstream.toml", "midstream-fix.toml", "comment.toml"] {
+            assert!(!repos(name).iter().any(|r| r == repo), "{repo} in {name}");
+        }
+        let pass = json_file("../pass.json");
+        for list in [&pass["follow"], &pass["workRepositories"]] {
+            assert!(!list.as_array().unwrap().contains(&json!(repo)), "{repo}");
+        }
     }
 }
 
@@ -610,7 +623,7 @@ fn review_gate_discovers_and_deduplicates_all_implement_and_fix_exceptions() {
 }
 
 #[test]
-fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
+fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_forks() {
     if !agentic_job_installed() {
         return;
     }
@@ -628,7 +641,7 @@ fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
             }
             let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).expect("policy JSON");
             let bound = &policy["safe_outputs"][kind];
-            let expected = if repo == "cgwalters-forge/gh-agentic-workflows" { json!([".github"]) } else { Value::Null };
+            let expected = if ["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/rhel-bootc-examples"].contains(&repo.as_str()) { json!([".github"]) } else { Value::Null };
             assert_eq!(bound["unprotected_dot_folders"], expected, "{repo} {file}: no other fork may edit protected dot folders");
             assert_eq!(bound["protect_top_level_dot_folders"], true, "{repo} {file}");
             assert_eq!(bound["protected_files_policy"], "blocked", "{repo} {file}");
@@ -647,7 +660,8 @@ fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
 
 /// Exercise the existing collector and independent patch checker, not a local
 /// approximation of protected-path matching. Only an ordinary source file and
-/// the admitted fork's workflow may pass.
+/// README (already unprotected by default) and the admitted forks' workflows
+/// may pass. All unrelated forks retain exactly their previous protections.
 fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str) {
     let dir = temp_path("path-check");
     let out = dir.join("out");
@@ -660,11 +674,11 @@ fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str) {
     std::fs::write(out.join("outputs.jsonl"), item.to_string()).unwrap();
     std::fs::write(out.join("base.json"), json!({"repo": repo, "ref": policy["base"], "commit": head}).to_string()).unwrap();
     agentic_job_ok(&["collect", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
-    for path in ["src/test.txt", ".github/workflows/test.yml", ".other/test.txt", "AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
+    for path in ["src/test.txt", "README.md", ".github/workflows/test.yml", ".github/CODEOWNERS", ".github/agentic-job/merge.toml", ".github/.git/config", ".other/test.txt", "AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod", "SECURITY.md", ".gitignore"] {
         let patch = format!("From {} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: {head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test workflow admission\n\n---\ndiff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+test\n", "1".repeat(40));
         std::fs::write(out.join("aw-dispatch-x.patch"), patch).unwrap();
         let result = agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
-        let accepted = path == "src/test.txt" || (repo == "cgwalters-forge/gh-agentic-workflows" && path == ".github/workflows/test.yml");
+        let accepted = ["src/test.txt", "README.md"].contains(&path) || (["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/rhel-bootc-examples"].contains(&repo) && path == ".github/workflows/test.yml");
         assert_eq!(result.status.success(), accepted, "{repo} {kind} {path}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
     }
     std::fs::remove_dir_all(dir).unwrap();
@@ -777,7 +791,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
             })
             .collect()
     };
-    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"]);
+    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/rhel-bootc-examples"]);
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
         assert!(!text.contains("ready_when_complete"), "{midstream}");
@@ -805,8 +819,8 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     let step = step_script("Resolve the bounds");
     // bootc-dev/bootc is upstream, no midstream; neither is a name that only contains one.
     for (repos, allow, fix) in [
-        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"][..], "midstream.toml", "midstream-fix.toml"),
-        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge", "bootc-dev/gh-agentic-workflows", "cgwalters-forge/gh-agentic-workflows-x"][..], "dispatch.toml", "fix.toml"),
+        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/rhel-bootc-examples"][..], "midstream.toml", "midstream-fix.toml"),
+        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge", "bootc-dev/gh-agentic-workflows", "cgwalters-forge/gh-agentic-workflows-x", "redhat-cop/rhel-bootc-examples", "cgwalters-forge/rhel-bootc-examples-x", "cgwalters-forge/image-builder"][..], "dispatch.toml", "fix.toml"),
     ] {
         for repo in repos {
             for kind in KINDS {
@@ -899,6 +913,7 @@ fn agentic_job_policy_keeps_ready_when_complete_from_both_bounds_and_the_midstre
         ("cgwalters-forge/tracker", "dispatch.toml", "fix.toml", true),
         ("cgwalters-forge/composefs-rs", "midstream.toml", "midstream-fix.toml", false),
         ("cgwalters-forge/gh-agentic-workflows", "midstream.toml", "midstream-fix.toml", false),
+        ("cgwalters-forge/rhel-bootc-examples", "midstream.toml", "midstream-fix.toml", false),
     ] {
         assert_eq!(ready(repo, allow, "create_pull_request", &["--base", "main"]), expected, "{allow}");
         let args = ["--base", "dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", repo];

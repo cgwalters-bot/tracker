@@ -177,6 +177,43 @@ repository settings, opens no upstream PR, retriggers no upstream run and
 does not close #258. The fork issue, upgrade, compilation, repository tests
 and fresh checkout evidence remain later work before any upstream delivery.
 
+### rhel-bootc-examples refresh handoff (#33)
+
+To prevent staged examples from advancing an upstream-tracking `main`,
+`cgwalters-forge/rhel-bootc-examples` is admitted only by `midstream.toml`
+and `midstream-fix.toml`, not ordinary dispatch/fix bounds. Implement and
+fix keep PRs draft; the pass's `workRepositories` and `follow` cover the
+fork for later bounded work and fix rounds, while `pr.noMerge` prevents
+merging there. Comment-only coverage is in `comment.toml`. No topic or
+wildcard admits another target: image-builder/osbuild remains unadmitted.
+
+To prevent unreviewed workflow edits landing, the fork's effective default
+branch rules were checked read-only on 2026-11-06: `main` inherits organization
+ruleset 25084478, requiring one approving review and dismissing stale approvals
+on push. Missing or unreadable rules are a blocker, never a reason to weaken
+the gate. The existing `check-review-gate` discovery includes this fork from
+both midstream bounds. This admission itself needs tracker's required review
+before taking effect. Only `.github/` is newly exempted for this exact fork;
+`README.md`, needed by the example stack, is explicitly listed but already
+unprotected by the harness default. Other forks' exemptions are unchanged;
+other protected files, including CODEOWNERS and the merge policy, stay blocked.
+
+The subsequent bounded example-refresh plan follows the
+[latest release decision](https://github.com/cgwalters-forge/tracker/issues/33#issuecomment-6671830992):
+re-review the reworked rbe drafts against the earlier requested changes,
+refresh the bootc/composefs and image-builder pins against current sources,
+and resolve stack conflicts before requesting any upstream delivery. Record
+the reviewed revisions and remaining requested changes; admission is not
+approval of those drafts. Hand KVM e2e testing to a capable runner: build the
+CentOS Stream 10 example with bootc from git main, exercise sealed and unsealed
+composefs, run `bootc container lint`, produce an image-builder/bib qcow2
+containerdisk, boot it with bcvk and verify upgrade, recording commands and
+run evidence. Missing KVM or build prerequisites leave that evidence outstanding.
+
+This tracker prerequisite changes no repository settings, external fork or
+existing draft PR, and performs no upstream delivery. Re-review, pin/conflict
+refresh and KVM e2e remain later work; #33 stays open.
+
 ## Board writes, questions and status updates
 
 Use agent-board and the bot's `GH_TOKEN` for manual writes. Each write only prints
