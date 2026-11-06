@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-needs-you-fit agent-board-pin
+test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-needs-you-fit agent-board-pin
 
 # Offline trigger execution and prompt-contract checks, not model evaluations.
 test-review-refresh:
@@ -1649,6 +1649,18 @@ test-supervisor-config:
       "$AGENT_BOARD" supervise trigger --config .github/poll/agent-board.json \
       --supervisor-config .github/supervisor/config.json --pools .github/agentic-job/pools.json --health "$health")
     [[ $out == act=false ]]
+
+# pass.json and the fix bounds poll.yml passes, through the pinned binary's
+# offline `pass --check-config` (agent-board#756), which reads no token: a
+# setting the pass refuses would otherwise fail every pass after the merge
+# (#1403). It runs on every pull request, so a pin move that tightens the
+# checks is caught too. The pin is the poll's: agent-board-pin keeps one.
+test-pass-config:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [[ -z ${AGENT_BOARD:-} ]]; then echo 'skipped: set AGENT_BOARD to the built binary'; exit 0; fi
+    "$AGENT_BOARD" pass --check-config --config .github/pass.json \
+      --fix-bounds .github/agentic-job/fix.toml --fix-bounds .github/agentic-job/midstream-fix.toml
 
 # Validate against the actor that will consume the config, not a moving head.
 build-supervisor-agent-board:
