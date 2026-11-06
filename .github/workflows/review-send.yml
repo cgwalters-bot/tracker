@@ -36,7 +36,7 @@ concurrency:
 # the bot's token, so move it only with a review of that revision's
 # `review send`.
 env:
-  AGENT_BOARD_REV: 0cf79463c6adf9b2cda2c20ce4cb9c19b31f9b83
+  AGENT_BOARD_REV: b07e30ea706ef498ff61f8f0aa2ef83905a4ac92
 
 jobs:
   send:
