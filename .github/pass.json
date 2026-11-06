@@ -91,6 +91,6 @@
     "mergeAuthors": ["dependabot[bot]"],
     "headOwners": ["cgwalters-bot", "cgwalters-forge"],
     "rebaseRounds": 2,
-    "mergeQueue": {"tries": 3}
+    "mergeQueue": {"tries": 3, "fixedFlakes": [{"repository": "cgwalters-forge/agentic-job", "number": 3048, "jobs": ["job secure-host / build failed at step Build and test"]}]}
   }
 }
