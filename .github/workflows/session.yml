@@ -20,7 +20,7 @@ permissions: {}
 # The reviewed agent-board commit that composes the session's task, the same
 # as supervisor.yml's, whose profile and settings it reads.
 env:
-  AGENT_BOARD_REV: 8d418a0f41d99211ee32f2157e8eeba7acffd9ae
+  AGENT_BOARD_REV: a5985731969ed4d53586b73fcc7fb12f41b5c673
 concurrency:
   group: operator-session
   cancel-in-progress: false

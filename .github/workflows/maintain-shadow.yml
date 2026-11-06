@@ -15,7 +15,7 @@ on:
 permissions: {}
 # The same agent-board commit as poll.yml; agent-board-pin.yml moves both.
 env:
-  AGENT_BOARD_REV: 8d418a0f41d99211ee32f2157e8eeba7acffd9ae
+  AGENT_BOARD_REV: a5985731969ed4d53586b73fcc7fb12f41b5c673
   FOLLOW: cgwalters-forge/agentic-job
 
 jobs:
