@@ -1328,7 +1328,8 @@ test-needs-you-fit board="" review="":
     const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
     assert.deepEqual([pass.holds.repository, pass.holds.needsYou], ['cgwalters-forge/bot-ops', true]);
     assert.ok(!pass.holds.approvalEvidence, 'approval evidence stays off (tracker#1336)');
-    assert.ok(pass.pr.operatorPaths.includes('.github/pass.json'), 'the fixture approval is for an operator path');
+    // Gated by key, less its feature switches (agent-board#746).
+    assert.ok(pass.pr.operatorPaths.some(p => p.split('#')[0] === '.github/pass.json'), 'the fixture approval is for an operator path');
     if (!board) {
       assert.ok(!review, 'REVIEW reads BOARD\'s fixture');
       console.log('ok needs-you settings; fixture probes skipped: pass BOARD and REVIEW checkouts');
