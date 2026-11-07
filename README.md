@@ -259,6 +259,79 @@ This is discovery and read-gate evidence, not proof that a clean rebase or
 publication will succeed: preview stops at the first hold and these policy
 records are not on the default branch yet.
 
+### Fix dispatch admission evidence (#1293, companion #1292)
+
+The receiving contract is unchanged: tracker selects and forwards `fix.toml`
+(or `midstream-fix.toml` for its listed targets). The actions wrapper calls
+agentic-job's `push resolve` to read the PR's open state, branch and head, then
+`policy` checks that branch against `dispatch/**, bot/**, release-train/**`.
+Policy refusal prevents agent and apply jobs from starting. No caller-provided
+producer identity is authorization. This is not producer deduplication and does
+**not** prevent an external caller from sending another `workflow_dispatch`.
+
+Read-only investigation on 7 November 2026 found these receiving refusals
+(times below are UTC on 4 November):
+
+| Target / excluded head | First run (created) | Repeated run (created) |
+| --- | --- | --- |
+| agentic-job#2107 / `per-forge-bounds-sections` | [41910329480](https://github.com/cgwalters-forge/tracker/actions/runs/41910329480) (20:50:01) | [41919391010](https://github.com/cgwalters-forge/tracker/actions/runs/41919391010) (21:47:45) |
+| tracker#1050 / `pass-follow-midstream` | [41910378386](https://github.com/cgwalters-forge/tracker/actions/runs/41910378386) (20:50:19) | [41919396986](https://github.com/cgwalters-forge/tracker/actions/runs/41919396986) (21:47:47) |
+
+All four run records name event `workflow_dispatch` and credential actor
+`cgwalters-bot`, **not a proven producer**. Policy jobs
+[126857065437](https://github.com/cgwalters-forge/tracker/actions/runs/41910329480/job/126857065437),
+[126887728244](https://github.com/cgwalters-forge/tracker/actions/runs/41919391010/job/126887728244),
+[126857979707](https://github.com/cgwalters-forge/tracker/actions/runs/41910378386/job/126857979707) and
+[126887797064](https://github.com/cgwalters-forge/tracker/actions/runs/41919396986/job/126887797064)
+refused at the caller's bounds check; agent/apply were skipped. The logs name
+`ALLOW: .github/agentic-job/fix.toml` and the excluded `PUSH_BRANCH`, rather
+than missing bounds. The exact policy error is retained in the sanitized
+[fixture](.github/agentic-job/testdata/dispatch-admission.json).
+
+Contemporaneous pass logs do not establish those passes as the producer.
+[41909029850/job/126851336911](https://github.com/cgwalters-forge/tracker/actions/runs/41909029850/job/126851336911)
+reports `tracker#1050 12503008eb45 skip: labelled needs-human` at 20:47:06;
+[41910623749/job/126856909994](https://github.com/cgwalters-forge/tracker/actions/runs/41910623749/job/126856909994)
+reports both targets skipped at 20:57:39, after the first dispatch pair.
+[41918624419/job/126884888666](https://github.com/cgwalters-forge/tracker/actions/runs/41918624419/job/126884888666)
+supplies both fix-bounds files and reports both skipped at 21:47:11, before
+the second pair; its two recorded starts are planning tracker#677 and implement
+tracker#1230, not these fixes. The searched PR issue-comment pages for #2107
+and #1050 contained no dispatch/round receipt in 20:40–22:00 tying these four
+runs to a producing route. No initiating command/session/service can be
+recovered from these observations; a scheduler defect is not established.
+
+Lifecycle is separate evidence: #2107 closed at 22:20:14, naming #2978 as its
+replacement; that proposal is now obsolete, superseded by merged #2641.
+#1050 closed at 22:20:11; its
+[move receipt](https://github.com/cgwalters-forge/tracker/pull/1050#issuecomment-6643599909)
+names #1282, which merged at 22:42:18. Neither lifecycle resolves attribution.
+Do not retry/reopen either old target or revive #2978 to clear these refusals.
+
+`just test-dispatch-admission` executes the receiving bounds step and receipt
+offline. With agentic-job installed it also replays sanitized PR responses
+through the real resolver and policy; `just test-dispatch-policy` requires that
+binary rather than skipping. Open incident variants are reconstructed from
+the policy logs, not claimed as archived raw API responses; closed responses
+are field-projected API recordings. Synthetic `bot/**` controls show an open
+allowed branch can compile a policy but cannot revive a closed target. The
+downstream assertions evaluate the recorded immutable wrapper's literal guards,
+not live Actions execution or a scheduler model. The production non-review
+wrapper still follows main; these recordings do not attest future revisions.
+
+Because attribution remains missing, the receiving workflow now emits one
+`tracker-dispatch-admission/v1` JSON log receipt after profile/wrapper completion,
+even on failure: run/attempt, event, actor/triggering actor, kind, target,
+selected bounds and profile/wrapper results. Each field is capped at 256
+characters and JSON-escaped; no task, event dump, credentials or producer claim
+is included. Empty bounds mean profile did not supply them. Wrapper failure
+alone is not a policy-refusal diagnosis: read its policy log. This is passive
+evidence, not a new admission control or opt-in, and cannot recover an absent
+producer receipt. Follow-up requires the initiating command or workflow's own
+receipt/admission inputs before naming its owning repository and exact route;
+no producer repository/route is proven here and no competing scheduler fix is
+proposed. No live fix probe or authorization/bounds change was made.
+
 ### Paced-review cutover
 
 **Prepared, not activated (#1198/#1171; activation deferred in #1500).**
