@@ -820,8 +820,36 @@ Unset `RETRO` to stop new runs, and cancel an active run separately if needed.
 
 Two scheduled workflows start a run of `dispatch.yml` as the pass does,
 with the job token and `actions: write`. `weekly-eval.yml`, on Tuesdays,
-does only that: it starts a `research` run that re-evaluates our tools against gh-aw
-and the like and comments on #519.
+normally does only that: it starts a `research` run that re-evaluates our tools
+against gh-aw and the like and comments on #519.
+
+The documentation replacement (#972) is prepared, **off by default**. Setting
+tracker's repository variable `WEEKLY_EVAL_DOCS=enabled` replaces that dispatch
+for both scheduled and manual runs with two sequential calls to
+`weekly-comparison.yml`, one per project. This opt-in prevents an unreviewed
+switch from reports to inference spending and PR publication. Unset it to
+restore reports; cancel outstanding runs separately if needed.
+
+Each target may propose one draft PR (at most two files and 64 KiB), or one
+no-change/missing-data/tool result, checked by `weekly-comparison.toml`.
+Comments, issue creation, existing-branch pushes and dispatches are not admitted.
+The brief limits changes to comparison documentation, requires immutable source
+links and avoids duplicate open comparison PRs; those content rules are agent
+instructions, not a documentation-path allowlist enforced by check. Ordinary
+protected-file rules still apply. Each run uses the openai pool's budget, 150
+requests and 45 policy minutes. No-op results remain in run artifacts/summaries,
+not long comments on #519. Only apply receives the bot's write token, in
+`agent-apply`; the agent holds only the job's read-only token.
+
+The first project runs still need to refresh agentic-job's
+`docs/background-ghaw.md` and create agent-board's coordination page, linking
+back rather than repeating the run-side comparison. This tracker patch does
+not edit either project or close #972/#519. Before activation, verify the
+pinned v0.6.11 composition (the same as retro), tailnet/broker reachability and
+fork publication with an operator-started smoke run. No variable was changed
+and no live run was started here. `just test-weekly-comparison` checks the
+offline caller contract; `just test-weekly-comparison-policy` exercises the
+installed policy/collector/check commands without inference or forge writes.
 
 The separate [monthly review refresh](.github/workflows/monthly-review-refresh.yml)
 runs on the first of the month at 08:00 UTC, or manually, with the same fixed
