@@ -96,8 +96,9 @@ jobs:
   review:
     needs: review-gate
     if: ${{ inputs.kind == 'review' }}
-    # Immutable wrapper from actions#198, not a release tag.
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@f05e2372d3bd5540406d444e26c70ba8c845b07d
+    # Immutable wrapper from actions#217 (runner-only, agentic-job 427ce22),
+    # not a release tag.
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da
     permissions:
       contents: read
       issues: write
