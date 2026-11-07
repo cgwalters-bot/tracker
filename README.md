@@ -676,6 +676,73 @@ digest asks kept across a failed maintain read. That brings back both
 limits: the dropped approval card, and a review wait without a card
 restarting its age every pass, which rewrites the holds comment each time.
 
+### Compact approval evidence
+
+**Caller contract, not live acceptance (#1336).** The concrete threat is
+showing green CI or an approved review for a different head than the displayed
+approval. The producer's default-off `holds.approvalEvidence` extension binds
+published facts to that head; `.github/pass.json` already enables it with
+`holds.needsYou=true`, including as a prerequisite for Act now and Today
+(#1424). This documentation leaves the existing private holds repository, issue,
+publication transport, feature switches and pass bounds unchanged.
+
+Producer source `730a40ceece1f665eb71ff95ab2436acb26de933` already
+contained [agent-board#687](https://github.com/cgwalters-forge/agent-board/pull/687)
+(merge `957cb9362a16f4fd13471c7d1c6252a0597eda6d`) and subsequent evidence
+hardening; the current pin (`just agent-board-pin`) is newer and is not changed
+here. That source's
+[contract](https://github.com/cgwalters-forge/agent-board/blob/730a40ceece1f665eb71ff95ab2436acb26de933/docs/pass.md#approval-evidence-optional-v2-extension)
+is `agent-board/approval-evidence/v1`, inside needs-you v2. It uses stage 2's
+existing observations, adds no requests or authority, and describes at most 50
+rows, evicting evidence before detail cards under publication pressure. Counts,
+order and waiting clocks do not change; `observed_at` alone does not advance
+`changed_at` or force publication.
+
+The compatible consumer is review source
+`3fb56cf9c3bedfe663bd236912ebc967ac8c1812`, containing merged
+[review#262](https://github.com/cgwalters-forge/review/pull/262)
+(`b939a92b374905d2acdcb2d1d6515c5b493b34d2`, closing #239), not the earlier
+#243/#254 drafts or merely `review_buckets` support. Its `src/github/holds.ts`
+parses the versioned extension and joins it only to fresh, ungrouped,
+complete-source approvals at the same head. `src/github/inboxview.ts` also
+requires fresh evidence and a matching displayed action, labels it published,
+not live, and treats partial CI as unknown. Absent, carried, wrong-head,
+malformed or evicted evidence remains unknown, never proof of success. The
+viewer-token commit-bound approval preflight remains independent.
+
+`just test-needs-you-fit` checks the enabled caller settings offline.
+`just test-pass-config` validates the full configuration when `AGENT_BOARD`
+names the verified pinned binary, as in CI. For owning-layer evidence tests,
+use a read-only producer checkout at the SHA above or the current pin:
+
+```sh
+cargo test --locked --manifest-path /path/to/agent-board/Cargo.toml -p board-forge approval_evidence
+cargo test --locked --manifest-path /path/to/agent-board/Cargo.toml -p board-forge pass::tests::config_table
+```
+
+These cover default-off behavior, flag validation, serialization, cap/eviction
+and clock behavior. The producer's shared
+`fixtures/approval-evidence-needs-you.json` serializes the extension, not a full
+publication; a consumer compatibility probe must supply a synthetic needs-you
+envelope. None of these checks is a private snapshot or a deployed UI test.
+
+Before accepting deployment, an authorized viewer should identify the deployed
+review revision and read the current private publication without writing: verify
+the extension version, displayed head and observation time, missing/partial
+fallbacks, and unchanged counts and destination. Do not paste the private payload
+into public logs or this repository. This run did not read that publication,
+verify the deployed UI, run a controller/preview, dispatch work or approve a PR.
+The consumer PR also reports a follow-up for retained same-head receipt headings
+after a review changes to withheld; this proposal does not fix it.
+
+Before removing `holds.approvalEvidence` from `.github/pass.json`, disable its
+dependent features (including Act now and Today) and validate the resulting
+configuration with the pinned binary. Retain `needsYou`, the private destination
+and the sufficient producer pin. The next
+ordinary publication omits the extension and the consumer returns to unknown;
+an already-published snapshot is not synchronously erased by a config rollback.
+Do not run a controller merely to force that refresh.
+
 ## Daily retro
 
 `retro.yml` runs at 08:23 UTC daily, or manually, only on the default branch
