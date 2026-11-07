@@ -1,0 +1,34 @@
+{
+  "source": "Sanitized GET pulls/2107 and pulls/1050 responses, 2026-11-07; only resolver fields and lifecycle timestamps retained. Open incident variants are reconstructed from receiving policy logs, not archived raw API responses.",
+  "wrapper": {
+    "repository": "cgwalters-forge/actions",
+    "path": ".github/workflows/cgwalters-agentic-job.yml",
+    "revision": "bac2da6d67101ab6ca520d9d63adc46da77e4513",
+    "agent_if": "needs.policy.outputs.admitted == 'true'",
+    "apply_if": "always() && needs.policy.result == 'success'"
+  },
+  "runs": [
+    {"id":41910329480,"target":"cgwalters-forge/agentic-job","item":2107,"event":"workflow_dispatch","actor":"cgwalters-bot","policy_job":126857065437,"agent":"skipped","apply":"skipped"},
+    {"id":41919391010,"target":"cgwalters-forge/agentic-job","item":2107,"event":"workflow_dispatch","actor":"cgwalters-bot","policy_job":126887728244,"agent":"skipped","apply":"skipped"},
+    {"id":41910378386,"target":"cgwalters-forge/tracker","item":1050,"event":"workflow_dispatch","actor":"cgwalters-bot","policy_job":126857979707,"agent":"skipped","apply":"skipped"},
+    {"id":41919396986,"target":"cgwalters-forge/tracker","item":1050,"event":"workflow_dispatch","actor":"cgwalters-bot","policy_job":126887797064,"agent":"skipped","apply":"skipped"}
+  ],
+  "pulls": [
+    {
+      "number":2107,"state":"closed","closed_at":"2026-11-04T22:20:14Z","merged_at":null,
+      "user":{"login":"cgwalters-bot"},
+      "head":{"ref":"per-forge-bounds-sections","sha":"a41b1ce255f254fed18d9c423654348fc9983aac","repo":{"full_name":"cgwalters-forge/agentic-job"}},
+      "base":{"ref":"main","sha":"85526701f759f645c7022d62d8004fcdedcc02e7","repo":{"full_name":"cgwalters-forge/agentic-job"}}
+    },
+    {
+      "number":1050,"state":"closed","closed_at":"2026-11-04T22:20:11Z","merged_at":null,
+      "user":{"login":"cgwalters-bot"},
+      "head":{"ref":"pass-follow-midstream","sha":"12503008eb45ab3c258d79232db08989dd0e4725","repo":{"full_name":"cgwalters-bot/tracker"}},
+      "base":{"ref":"main","sha":"fd2b212e052d3d91a44a906d47c94cf07cbf19db","repo":{"full_name":"cgwalters-forge/tracker"}}
+    }
+  ],
+  "refusals": {
+    "2107":"pull request branch \"per-forge-bounds-sections\" is not within the bounds (dispatch/**, bot/**, release-train/**)",
+    "1050":"pull request branch \"pass-follow-midstream\" is not within the bounds (dispatch/**, bot/**, release-train/**)"
+  }
+}

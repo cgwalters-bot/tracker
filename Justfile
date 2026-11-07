@@ -5,7 +5,165 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-runner-profiles test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-pass-state test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+test: test-runner-profiles test-agent-board-install test-config test-dispatch-admission test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-pass-state test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+
+# Offline real push resolver/policy replay; CI without agentic-job skips that test.
+# Pass true to require the binary, as the policy refusal check does below.
+test-dispatch-admission require-policy="false":
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const http = require('node:http');
+    const { spawn, spawnSync } = require('node:child_process');
+    const { test } = require('node:test');
+    const vm = require('node:vm');
+    const workflow = fs.readFileSync('.github/workflows/dispatch.yml', 'utf8');
+    const fixture = JSON.parse(fs.readFileSync('.github/agentic-job/testdata/dispatch-admission.json'));
+    const step = name => new RegExp(`- name: ${name}[^]*?        run: \\|\n((?:          .*\n)+)`)
+      .exec(workflow)[1].replace(/^          /gm, '');
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-admission-'));
+    // Never inherit real tokens, role bindings, API endpoints or proxy settings.
+    const env = { PATH: process.env.PATH, HOME: temp, GH_TOKEN: ['offline', 'fixture'].join('-') };
+    const cli = (args, extra = {}) => new Promise((resolve, reject) => {
+      const child = spawn('agentic-job', args, { env: { ...env, ...extra } });
+      let stdout = '', stderr = '';
+      const timer = setTimeout(() => child.kill('SIGKILL'), 10000);
+      child.stdout.on('data', data => { stdout += data; });
+      child.stderr.on('data', data => { stderr += data; });
+      child.on('error', error => { clearTimeout(timer); reject(error); });
+      child.on('close', status => { clearTimeout(timer); resolve({ status, stdout, stderr }); });
+    });
+    process.on('exit', () => fs.rmSync(temp, { recursive: true, force: true }));
+    function bounds(repo, kind = 'fix') {
+      const output = path.join(temp, 'output');
+      fs.writeFileSync(output, '');
+      const result = spawnSync('bash', ['-euo', 'pipefail', '-c', step('Resolve the bounds')], {
+        env: { ...env, KIND: kind, REPO: repo, GITHUB_OUTPUT: output }, encoding: 'utf8', timeout: 10000,
+      });
+      assert.equal(result.status, 0, result.stderr);
+      return Object.fromEntries(fs.readFileSync(output, 'utf8').trim().split('\n').map(line => line.split('=')));
+    }
+    function downstream(refused) {
+      // Literal guards recorded from the incident's immutable wrapper. This
+      // evaluates admission only, never runs an agent, apply or dispatch.
+      const needs = { policy: { result: refused ? 'failure' : 'success', outputs: { admitted: refused ? '' : 'true' } } };
+      return Object.fromEntries(['agent', 'apply'].map(job => [job,
+        vm.runInNewContext(fixture.wrapper[`${job}_if`], { needs, always: () => true })]));
+    }
+    test('receiving bounds selection and forwarding', () => {
+      assert.match(workflow, /fix-allow: \$\{\{ needs.profile.outputs.fix-allow \}\}/);
+      assert.match(workflow, /allow: \$\{\{ needs.profile.outputs.allow \}\}/);
+      assert.match(workflow, /  run:\n    needs: profile\n/);
+      assert.match(workflow, /uses: cgwalters-forge\/actions\/\.github\/workflows\/cgwalters-agentic-job.yml@main/);
+      for (const [repo, kind, allow, fix] of [
+        ['cgwalters-forge/tracker', 'fix', 'dispatch.toml', 'fix.toml'],
+        ['cgwalters-forge/agentic-job', 'fix', 'dispatch.toml', 'fix.toml'],
+        ['cgwalters-forge/bootc', 'fix', 'midstream.toml', 'midstream-fix.toml'],
+        ['cgwalters-forge/tracker', 'research', 'comment.toml', 'fix.toml'],
+      ]) assert.deepEqual(bounds(repo, kind), { allow: `.github/agentic-job/${allow}`, 'fix-allow': `.github/agentic-job/${fix}` });
+    });
+    test('recorded receiving route: real resolver and policy refusal', async t => {
+      const installed = spawnSync('agentic-job', ['--version'], { env, encoding: 'utf8' });
+      if (installed.error?.code === 'ENOENT' && process.argv[2] !== 'true') {
+        t.skip('agentic-job not installed; run just test-dispatch-policy to require it');
+        return;
+      }
+      assert.equal(installed.status, 0, 'agentic-job must be installed for policy replay');
+      console.log(installed.stdout.trim());
+      let pull;
+      const requests = [];
+      const server = http.createServer((req, res) => {
+        requests.push(`${req.method} ${req.url}`);
+        const repo = pull.base.repo.full_name;
+        const routes = {
+          [`/repos/${repo}/pulls/${pull.number}`]: pull,
+          [`/repos/${repo}/git/ref/heads/main`]: { object: { type: 'commit', sha: pull.base.sha } },
+        };
+        res.writeHead(req.method === 'GET' && Object.hasOwn(routes, req.url) ? 200 : 404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(routes[req.url] ?? {}));
+      });
+      await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+      const api = { GITHUB_API_URL: `http://127.0.0.1:${server.address().port}` };
+      async function receive(value) {
+        pull = value;
+        requests.length = 0;
+        const repo = pull.base.repo.full_name;
+        const selected = bounds(repo)['fix-allow'];
+        const resolved = await cli(['push', 'resolve', '--event', 'false', '--review', 'false', '--kind', 'branch',
+          '--item', String(pull.number), '--repo', repo, '--output-repo', repo], api);
+        if (resolved.status !== 0) return { ...resolved, stage: 'resolve', downstream: downstream(true) };
+        const outputs = Object.fromEntries(resolved.stdout.trim().split('\n').map(line => line.split('=')));
+        const policy = await cli(['policy', '--allow', selected, '--repo', repo, '--clone-url', `https://github.com/${repo}`,
+          '--base', outputs.branch, '--kind', 'branch', '--outputs', 'push_to_pull_request_branch,noop,missing_tool,missing_data',
+          '--max-outputs', '3', '--pull-request', String(pull.number), '--head', outputs.head,
+          '--pull-author', outputs.author, '--output-repo', repo], api);
+        return { ...policy, stage: 'policy', downstream: downstream(policy.status !== 0) };
+      }
+      try {
+        for (const recorded of fixture.pulls) {
+          // Open-state variants reconstruct the log's decision; these are not
+          // archived raw historical API responses. Preserve both excluded names.
+          for (let repeat = 0; repeat < 2; repeat++) {
+            const result = await receive({ ...recorded, state: 'open' });
+            assert.equal(result.stage, 'policy');
+            assert.notEqual(result.status, 0);
+            assert.ok(result.stderr.includes(fixture.refusals[recorded.number]), result.stderr);
+            assert.deepEqual(result.downstream, { agent: false, apply: false });
+            assert.equal(requests.length, 2, 'only PR and base-ref reads; no dispatch/write');
+          }
+          const closed = await receive(recorded);
+          assert.equal(closed.stage, 'resolve');
+          assert.notEqual(closed.status, 0);
+          assert.match(closed.stderr, /open pull request/);
+          assert.deepEqual(closed.downstream, { agent: false, apply: false });
+          assert.equal(requests.length, 1, 'closed/superseded stops before base lookup/policy');
+          // Synthetic controls, not an attempt to revive either closed target.
+          const botHead = { ...recorded, head: { ...recorded.head, ref: 'bot/offline-admission-control' } };
+          const stillClosed = await receive(botHead);
+          assert.notEqual(stillClosed.status, 0);
+          assert.equal(stillClosed.stage, 'resolve');
+          const allowed = await receive({ ...botHead, state: 'open' });
+          assert.equal(allowed.status, 0, allowed.stderr);
+          assert.deepEqual(allowed.downstream, { agent: true, apply: true });
+          assert.equal(JSON.parse(allowed.stdout).safe_outputs.push_to_pull_request_branch.target, String(recorded.number));
+        }
+        for (const run of fixture.runs) {
+          assert.equal(run.event, 'workflow_dispatch');
+          assert.equal(run.actor, 'cgwalters-bot');
+          assert.equal(run.agent, 'skipped');
+          assert.equal(run.apply, 'skipped');
+        }
+      } finally {
+        await new Promise(resolve => server.close(resolve));
+      }
+    });
+    test('public receipt is bounded metadata, never task or producer authorization', () => {
+      const job = workflow.split('\n  admission-receipt:\n')[1];
+      assert.match(job, /needs: \[profile, run\]/);
+      assert.match(job, /if: \$\{\{ always\(\) && inputs.kind != 'review' \}\}/);
+      assert.match(job, /timeout-minutes: 1\n    permissions: \{\}/);
+      assert.doesNotMatch(job, /secrets\.|inputs.task|toJSON|uses:/);
+      for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
+        const got = spawnSync('bash', ['-euo', 'pipefail', '-c', step('Record dispatch admission outcome')], {
+          env: { PATH: process.env.PATH, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1', EVENT: 'workflow_dispatch',
+            ACTOR: 'bot\n::error::not a command', REPO: 'cgwalters-forge/tracker', ITEM: '1050', KIND: 'fix',
+            FIX_ALLOW: '.github/agentic-job/fix.toml', WRAPPER_RESULT: result, TASK: 'not public', PRODUCER: 'not authorization' },
+          encoding: 'utf8', timeout: 10000,
+        });
+        assert.equal(got.status, 0, got.stderr);
+        assert.equal(got.stdout.trim().split('\n').length, 1, 'JSON escapes control characters');
+        const receipt = JSON.parse(got.stdout);
+        assert.equal(receipt.wrapper_result, result);
+        assert.equal(receipt.selected_bounds, '.github/agentic-job/fix.toml');
+        assert.doesNotMatch(got.stdout, /not public|not authorization/);
+      }
+    });
+
+# Required policy refusal cases: no skip when the CLI is missing.
+test-dispatch-policy:
+    {{ just_executable() }} test-dispatch-admission true
 
 # Execute the workflow's actual resolver, without credentials or forge traffic.
 test-runner-profiles:
