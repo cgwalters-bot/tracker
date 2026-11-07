@@ -1,0 +1,31 @@
+# Comment-free recorded bounds from tracker at 873d7b18e058271fe7b03daa5f2eeb838ffdb868.
+# https://github.com/cgwalters-forge/tracker/blob/873d7b18e058271fe7b03daa5f2eeb838ffdb868/.github/agentic-job/fix.toml
+# Historical replay only: current fix.toml has later own_author support.
+# Both incident commits have the same Git blob: 4c4f12691adaab1dde8a3267879a8de4c37cdfde.
+hosts = ["github.com"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/misctool", "bootc-dev/*", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io", "cgwalters-forge/atomic-linux-sandbox"]
+bases = ["main"]
+max_outputs = 3
+max_patch_bytes = 1048576
+max_patch_files = 50
+
+[github.outputs]
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5, ready_when_complete = true }
+add_comment = { max = 1 }
+noop = { max = 1 }
+missing_tool = { max = 1 }
+missing_data = { max = 1 }
+
+[unprotected_files]
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool"]
+files = ["AGENTS.md", "README.md", "package.json", "bun.lockb",
+  "bunfig.toml", "deno.json", "deno.jsonc", "deno.lock", "global.json",
+  "NuGet.Config", "Directory.Packages.props", "mix.exs", "mix.lock",
+  "go.mod", "go.sum", "stack.yaml", "stack.yaml.lock", "pom.xml",
+  "build.gradle", "build.gradle.kts", "settings.gradle",
+  "settings.gradle.kts", "gradle.properties", "package-lock.json",
+  "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json", "requirements.txt",
+  "Pipfile", "Pipfile.lock", "pyproject.toml", "setup.py", "setup.cfg",
+  "Gemfile", "Gemfile.lock", "uv.lock", "CODEOWNERS", "DESIGN.md",
+  "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "CLAUDE.md"]
+dot_folders = [".github"]

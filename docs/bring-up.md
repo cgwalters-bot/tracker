@@ -93,6 +93,44 @@ pull request for review and fix; `OWNER/REPO` must be listed in
 `.github/agentic-job/dispatch.toml` (`fix.toml` for a fix), or, for a
 midstream fork, in `midstream.toml` and `midstream-fix.toml` instead.
 
+For [#1292](https://github.com/cgwalters-forge/tracker/issues/1292), the caller and
+policy logs in [41910378386](https://github.com/cgwalters-forge/tracker/actions/runs/41910378386)
+and [41919396986](https://github.com/cgwalters-forge/tracker/actions/runs/41919396986)
+both show `fix-allow` forwarded as `fix.toml`, then `ALLOW=fix.toml` refusing
+`pass-follow-midstream` outside `dispatch/**`, `bot/**`, `release-train/**`,
+before agent/apply work. [#1050](https://github.com/cgwalters-forge/tracker/pull/1050)
+closed unmerged at 2026-11-04 22:20:11Z; its replacement
+[#1282](https://github.com/cgwalters-forge/tracker/pull/1282) merged at 22:42:18Z.
+That resolves the target lifecycle, not dispatch attribution. The nearby
+[20:41 pass](https://github.com/cgwalters-forge/tracker/actions/runs/41909029850)
+and [21:42 pass](https://github.com/cgwalters-forge/tracker/actions/runs/41918624419)
+read both fix bounds and report #1050 skipped as `needs-human`, not dispatched.
+No public initiating receipt was found in these logs or #1050's comments;
+`workflow_dispatch`, the bot actor and task wording do not identify a script.
+The later [supervisor receipt](https://github.com/cgwalters-forge/tracker/issues/656#issuecomment-6644175411)
+is a report, not an initiating receipt; its malformed JSON Lines were refused
+before writes. A current pass regression or producer defect is **not established**.
+Do not retry/reopen #1050 or widen bounds.
+
+The ignored `historical_fix_caller` Rust test extends the offline
+configuration/caller checks using sanitized resolved-response projections from
+both logs (`config-test/tests/excluded-fix.json`). It reads both immutable
+actions revisions from the checkout's object database and requires policy
+checkout `a5f7a3963fd41f3eb09c4406aa5bc8e30ee42be2`, building outside that tree.
+Run it with `ACTIONS_CHECKOUT=/path/to/actions POLICY_CHECKOUT=/path/to/policy
+cargo test --locked --manifest-path .github/agentic-job/config-test/Cargo.toml
+--target-dir /tmp/tracker-config-test historical_fix_caller -- --ignored --nocapture`
+(on one shell line). It also checks the agent admission and apply policy-success
+guards in both recorded wrappers.
+The historical compiler uses recorded comment-free bounds (`incident-fix.toml`),
+not today's later `own_author` option. `just test-config` also checks today's
+bounds against the incident and, when installed, the current policy compiler.
+It exercises the real tracker bounds step, wrapper selection and policy shell
+with its actual compiler: the excluded branch and an identical repeat refuse;
+a synthetic allowed-branch control succeeds. It does not replay REST retrieval,
+identify the producer, test scheduler deduplication, or dispatch any live work.
+No scheduling policy, branch permissions or caller settings change.
+
 Runs push as `cgwalters-bot`, and apply pushes a branch to a repository
 that account owns only if the repository's default branch has
 `.github/agentic-job/accept-owner-branches` naming it
