@@ -41,7 +41,15 @@ allow-sockets = [
     "/run/systemd/resolve.hook/",
 ]
 
-# The egress proxy and the network rules are on by default: no [egress].
+# The egress lockdown is off, by operator decision (#1441): no
+# exfiltration concern, and it is the lead suspect for runs dying at
+# about 63 minutes (#1425) and caused refused writes and missing tools
+# (#1413). Without the proxy agentic-job loads no network rules and no
+# write policy, so the agent has the runner's open network, but for the
+# metadata service (host.deny-runner-metadata). The credential boundary
+# is unchanged.
+[egress]
+proxy = false
 
 [setup]
 # The egress proxy runs in a Python environment of its own, behind
@@ -73,7 +81,7 @@ packages = ["python3-venv", "nftables", "just"]
 # Ubuntu 26.04's Rust 1.93 (agentic-job needs 1.88) and gcc, with the
 # same release's rustfmt and clippy so a run can pass the target's
 # `cargo fmt` and `cargo clippy` checks (agentic-job 2159c17).
-# No egress rule is added: the proxy lets any GET through, and a
+# No egress rule is needed (the proxy, when on, lets any GET through): a
 # `cargo build --locked` only reads, from
 #   index.crates.io   the sparse index
 #   static.crates.io  the crates, checked against Cargo.lock

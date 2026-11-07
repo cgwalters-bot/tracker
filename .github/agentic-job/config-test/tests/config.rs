@@ -471,6 +471,23 @@ fn agentic_job_config_takes_acp_experiment_and_refuses_it_without_the_cap() {
     assert!(!hosted.contains("child-agent"));
 }
 
+// The egress lockdown is off by operator decision (#1441): no proxy, so no
+// network rules and no write policy. acp-experiment.toml is held to this copy.
+#[test]
+fn hosted_turns_the_egress_lockdown_off() {
+    let hosted = toml_file("hosted.toml");
+    assert_eq!(hosted["egress"].to_string(), "{ proxy = false }");
+    if !agentic_job_installed() {
+        return;
+    }
+    let hosted = agentic_job_ok(&[
+        "config", "--from", &path_of("hosted.toml"), "--repo", "o/r",
+        "--string", "agent.name=fake", "--integer", "limits.timeout-minutes=75", "--boolean", "limits.uncapped=true",
+    ]);
+    assert!(has_lines(&hosted, &["[egress]", "proxy = false"]), "{hosted}");
+    assert!(!hosted.contains("write-policy"), "{hosted}");
+}
+
 #[test]
 fn misctool_is_a_dispatch_and_fix_target_with_matching_workflow_edit_bounds() {
     let dispatch_lists = lists("dispatch.toml");
