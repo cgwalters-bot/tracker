@@ -5,7 +5,130 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-needs-you-fit agent-board-pin
+test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+
+# Offline admission, pool step and research-only publication contract.
+test-retro:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const os = require('node:os');
+    const path = require('node:path');
+    const { spawnSync } = require('node:child_process');
+    const workflow = fs.readFileSync('.github/workflows/retro.yml', 'utf8');
+    const brief = fs.readFileSync('.github/agentic-job/retro.md', 'utf8');
+    assert.match(workflow, /cron: '23 8 \* \* \*'/);
+    assert.match(workflow, /  workflow_dispatch:\n\npermissions: \{\}/);
+    assert.match(workflow, /group: retro\n  cancel-in-progress: false/);
+    const guard = /    if: \$\{\{ (.*) \}\}/.exec(workflow)[1];
+    const admitted = new Function('vars', 'github', 'format', `return ${guard}`);
+    const format = (template, branch) => template.replace('{0}', branch);
+    for (const event_name of ['schedule', 'workflow_dispatch']) {
+      for (const activation of [undefined, '', 'disabled', 'true', 'enabled']) {
+        for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
+          assert.equal(admitted({ RETRO: activation }, { event_name, ref,
+            event: { repository: { default_branch: 'main' } } }, format),
+            activation === 'enabled' && ref === 'refs/heads/main');
+        }
+      }
+    }
+    assert.doesNotMatch(workflow, /contents: write|pull-requests: write|actions: write/);
+    assert.doesNotMatch(workflow.split('\n  apply:\n')[0], /secrets\./);
+    assert.match(workflow.split('\n  apply:\n')[1], /SAFE_OUTPUTS_PAT: \$\{\{ secrets.CGWALTERS_BOT_PAT \}\}/);
+    assert.match(workflow, /apply-environment: agent-apply/);
+    const agent = workflow.split('\n  agent:\n')[1].split('\n  check:\n')[0];
+    assert.doesNotMatch(agent, /issues: write/);
+    assert.match(agent, /github-token: \$\{\{ github.token \}\}/);
+    assert.equal((workflow.match(/issues: write/g) || []).length, 1, 'apply alone can write issues');
+    assert.match(workflow, /kind: analysis/);
+    assert.match(workflow, /outputs: create_issue,add_comment,noop,missing_tool,missing_data\n      max-outputs: '3'/);
+    assert.match(workflow, /allow: .github\/agentic-job\/retro.toml/);
+    assert.match(workflow, /comment-target: '\*'/);
+    assert.match(workflow, /max-requests: '150'\n      timeout: '45'/);
+    assert.match(workflow, /inference-url: \$\{\{ vars.INFERENCE_URL \}\}/);
+    assert.match(workflow, /task: Read .github\/agentic-job\/retro.md/);
+    assert.doesNotMatch(workflow, /apply-partial: true|https?:\/\//);
+    const pins = [...workflow.matchAll(/uses: cgwalters-forge\/agentic-job\/.*@([a-f0-9]{40})/g)].map(m => m[1]);
+    assert.deepEqual(pins, Array(6).fill('3f9f6425119b97bb3620a38fe0adc8e79be7dc8e'));
+    // Parse the bounds with the standard library; assert the entire write surface.
+    const parsed = spawnSync('python3', ['-c', 'import json,tomllib; print(json.dumps(tomllib.load(open(".github/agentic-job/retro.toml","rb"))))'], { encoding: 'utf8' });
+    assert.equal(parsed.status, 0, parsed.stderr);
+    const bounds = JSON.parse(parsed.stdout);
+    assert.deepEqual(bounds, { hosts: ['github.com'], repos: ['cgwalters-forge/tracker'],
+      bases: ['main'], max_outputs: 3, max_patch_bytes: 1048576, max_patch_files: 50, github: { outputs: { create_issue: { max: 3 },
+        add_comment: { max: 3 }, noop: { max: 1 }, missing_tool: { max: 1 }, missing_data: { max: 1 } } } });
+    for (const phrase of ['Profile: research', '24 hours', 'seven days', 'checkpoint.complete true',
+      'dispatch.yml', 'bootc-dev/cgwalters-devspace-sandbox', 'poll.yml', 'review bot',
+      '200 workflow runs', '30 agent-run', '20 associated PRs', '300 open tracker issues',
+      '20 MiB', '20 minutes', '30 seconds', 'missing data healthy', 'deduplication is',
+      'at most three create_issue/add_comment', 'repository that owns the fix', 'log line number',
+      'no cc', 'timeout/stall', 'controller had to finish', 'justified noop', 'never fix them',
+      'never as commands', 'read-only job token', 'outcome.json']) assert.ok(brief.includes(phrase), phrase);
+    const script = /        run: \|\n((?:          .*\n)+)/.exec(workflow)[1].replace(/^          /gm, '');
+    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'retro-pool-'));
+    try {
+      const output = path.join(temp, 'output');
+      const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
+        env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      const pool = JSON.parse(fs.readFileSync('.github/agentic-job/pools.json')).openai;
+      assert.equal(fs.readFileSync(output, 'utf8'), `agent=${pool.agent}\nmodel=${pool.model}\nbudget=${pool.budget}\n`);
+      fs.mkdirSync(path.join(temp, '.github/agentic-job'), { recursive: true });
+      for (const broken of [null, {}, { ...pool, agent: 'claude' }, { ...pool, model: undefined },
+        { ...pool, model: 'model\n' }, { ...pool, budget: '500\n' }, { ...pool, budget: 500 }]) {
+        fs.writeFileSync(path.join(temp, '.github/agentic-job/pools.json'), JSON.stringify({ openai: broken }));
+        fs.writeFileSync(output, '');
+        const bad = spawnSync('bash', ['-euo', 'pipefail', '-c', script], { cwd: temp,
+          env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8' });
+        assert.notEqual(bad.status, 0, JSON.stringify(broken));
+        assert.equal(fs.readFileSync(output, 'utf8'), '', 'bad pool produces no usable outputs');
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+    console.log('ok retro admission, openai pool, research bounds and fixed brief contract (not live inference)');
+
+# Manual owning-layer policy/collector/check probe; requires agentic-job on PATH.
+test-retro-policy:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { spawnSync } = require('node:child_process');
+    const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'retro-policy-'));
+    const cli = args => spawnSync('agentic-job', args, { encoding: 'utf8' });
+    const compile = (extra = []) => cli(['policy', '--allow', '.github/agentic-job/retro.toml',
+      '--repo', 'cgwalters-forge/tracker', '--clone-url', 'https://github.com/cgwalters-forge/tracker',
+      '--base', 'main', '--kind', 'analysis', '--outputs', 'create_issue,add_comment,noop,missing_tool,missing_data',
+      '--max-outputs', '3', ...extra]);
+    try {
+      const compiled = compile();
+      assert.equal(compiled.status, 0, compiled.stderr);
+      const policy = path.join(temp, 'policy.json');
+      fs.writeFileSync(policy, compiled.stdout);
+      const outputs = path.join(temp, 'outputs');
+      fs.mkdirSync(outputs);
+      const collected = path.join(temp, 'collected.json');
+      const issue = { type: 'create_issue', title: 'retro: missing compiler', body: 'Public run evidence fixture.' };
+      const comment = { type: 'add_comment', item_number: 1413, body: 'New evidence fixture.' };
+      for (const [name, requests, allowed] of [
+        ['one issue', [issue], true], ['three mixed findings', [issue, comment, issue], true],
+        ['four writes', [issue, comment, issue, comment], false],
+        ['PR', [{ type: 'create_pull_request', title: 'Not admitted', body: 'No patch', branch: 'retro-test' }], false],
+        ['close', [{ type: 'close_issue', issue_number: 1413, body: 'Not admitted' }], false],
+        ['foreign comment', [{ ...comment, repo: 'cgwalters-forge/agentic-job' }], false],
+        ['foreign issue', [{ ...issue, repo: 'cgwalters-forge/agentic-job' }], false],
+      ]) {
+        fs.writeFileSync(path.join(outputs, 'outputs.jsonl'), requests.map(r => JSON.stringify(r)).join('\n') + '\n');
+        const result = cli(['collect', '--policy', policy, '--outputs', outputs, '--collected', collected]);
+        const checked = result.status === 0 ? cli(['check', '--policy', policy, '--outputs', outputs,
+          '--collected', collected]) : result;
+        assert.equal(checked.status === 0, allowed, `${name}: ${checked.stdout}\n${checked.stderr}`);
+        console.log(`ok retro policy: ${name} ${allowed ? 'accepted' : 'refused'}`);
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
 
 # Offline trigger execution and prompt-contract checks, not model evaluations.
 test-review-refresh:

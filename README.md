@@ -609,6 +609,37 @@ digest asks kept across a failed maintain read. That brings back both
 limits: the dropped approval card, and a review wait without a card
 restarting its age every pass, which rewrites the holds comment each time.
 
+## Daily retro
+
+`retro.yml` runs at 08:23 UTC daily, or manually, only on the default branch
+and with repository variable `RETRO=enabled` (unset is off). This opt-in prevents
+an unreviewed daily miner from spending inference and filing duplicate work.
+Set `INFERENCE_URL` to the existing broker address and, for another audience,
+`INFERENCE_AUDIENCE` before enabling; no address is embedded in this caller.
+The workflow selects the `openai` entry of `pools.json` and reads the fixed
+[retro brief](.github/agentic-job/retro.md). It covers the previous 24 hours,
+or seven days for its first completed report, grouping bugs and waste by cause
+with public run/log evidence and the repository that owns the fix.
+
+Unlike the comment-only dispatch wrapper, this research job composes the pinned
+agentic-job policy, sandbox, check and apply jobs directly. The dedicated
+`retro.toml` bounds admit at most three issue creations/comments combined per
+run, only in tracker, with no code changes, PRs, closes or dispatches. Existing
+issues receive evidence comments; new tracker issues enter the pass's normal
+board intake. Deduplication, collection limits and evidence quality are brief
+instructions, not deterministic guarantees. The agent gets only its job's
+read-only token; only apply receives `CGWALTERS_BOT_PAT` in `agent-apply`, so
+new issues have the bot identity that the pass admits for board intake.
+Other repositories' Actions logs/artifacts may be inaccessible with that token,
+including devspace's: reports must state gaps rather than claim full coverage.
+No private-log credential is added. The workflow bounds inference at 150
+requests, the openai pool's budget and 45 policy minutes. Findings and coverage
+also remain in `retro-agent-run` artifacts, including on a noop.
+
+Enable only after checking tailnet/broker admission for this new workflow and
+an operator-started smoke run; none was dispatched in its implementation.
+Unset `RETRO` to stop new runs, and cancel an active run separately if needed.
+
 ## Weekly runs
 
 Two scheduled workflows start a run of `dispatch.yml` as the pass does,

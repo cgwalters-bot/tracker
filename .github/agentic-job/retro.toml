@@ -1,0 +1,15 @@
+# Threat: injected run logs could turn a retrospective into code changes or
+# unbounded board writes. Check admits only three findings, all in tracker.
+hosts = ["github.com"]
+repos = ["cgwalters-forge/tracker"]
+bases = ["main"]
+max_outputs = 3
+max_patch_bytes = 1048576
+max_patch_files = 50
+
+[github.outputs]
+create_issue = { max = 3 }
+add_comment = { max = 3 }
+noop = { max = 1 }
+missing_tool = { max = 1 }
+missing_data = { max = 1 }
