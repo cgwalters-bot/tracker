@@ -1,0 +1,74 @@
+# Partial until actions#219 supplies the no-inference runner-user route.
+name: soak
+run-name: soak ${{ inputs.minutes }}m egress=${{ inputs.egress }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Canonical integer minutes, 1 through 120
+        type: string
+        default: '90'
+        required: true
+      egress:
+        description: Runner egress proxy and write policy
+        type: choice
+        options: [on, off]
+        default: 'off'
+        required: true
+
+permissions: {}
+concurrency:
+  group: soak-${{ inputs.egress }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 2
+    permissions:
+      contents: read
+    outputs:
+      minutes: ${{ steps.inputs.outputs.minutes }}
+      config: ${{ steps.inputs.outputs.config }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate bounded dispatch inputs
+        id: inputs
+        env:
+          MINUTES: ${{ inputs.minutes }}
+          EGRESS: ${{ inputs.egress }}
+        run: node workflow/soak.cjs validate
+      # Threat: an apparently successful diagnostic could use inference or
+      # stop at 75 minutes instead of testing the requested confinement.
+      # No activation variable: remove this explicit blocker only with the
+      # reviewed actions#219 contract and caller plumbing in docs/soak.md.
+      - name: Unresolved deployment prerequisite
+        run: |
+          echo '::error::Partial tracker#1446: actions#219 must add bounded no-inference fake setup, timeout and live log support; see docs/soak.md'
+          exit 1
+
+  soak:
+    needs: validate
+    # Exactly dispatch.yml's ordinary deployment route, not generic agentic-job.
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      actions: read
+      id-token: write
+    with:
+      kind: research
+      repo: cgwalters-forge/tracker
+      item: '1446'
+      task: Scripted soak only; no inference, application changes or comments.
+      agent: fake
+      runner: '"ubuntu-26.04"'
+      config: ${{ needs.validate.outputs.config }}
+      allow: .github/agentic-job/soak.toml
+      # Pending actions#219 input, intentionally not passed to today's wrapper:
+      # soak-minutes: ${{ needs.validate.outputs.minutes }}
+      # No model, inference settings, skills, apply environment or PAT.

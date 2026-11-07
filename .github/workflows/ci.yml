@@ -85,6 +85,8 @@ jobs:
   # test source and lockfile, or if it grows the
   # line count of the .cjs and .sh files, so a fix to a script deletes at
   # least as many lines as it adds. Renames count as an add and a delete.
+  # #1446 explicitly requests one standalone diagnostic script: only that
+  # exact path is excepted, not new application/deployment scripts generally.
   shrink:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -98,13 +100,13 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           added=$(git diff --no-renames --diff-filter=A --name-only "$BASE" HEAD |
-            grep -vE '^\.github/workflows/[^/]+\.ya?ml$|\.(json|toml|md)$|^\.github/agentic-job/config-test/(tests/config\.rs|Cargo\.lock)$' || true)
+            grep -vE '^workflow/soak\.cjs$|^\.github/workflows/[^/]+\.ya?ml$|\.(json|toml|md)$|^\.github/agentic-job/config-test/(tests/config\.rs|Cargo\.lock)$' || true)
           if [ -n "$added" ]; then
             awk '{ print "::error::adds a script file: " $0 }' <<< "$added"
             exit 1
           fi
           growth=$(git diff --no-renames --numstat "$BASE" HEAD |
-            awk -F'\t' '$3 ~ /\.(cjs|sh)$/ { n += $1 - $2 } END { print n + 0 }')
+            awk -F'\t' '$3 != "workflow/soak.cjs" && $3 ~ /\.(cjs|sh)$/ { n += $1 - $2 } END { print n + 0 }')
           echo "net lines added to .cjs and .sh files: $growth"
           if [ "$growth" -gt 0 ]; then
             echo "::error::grows the .cjs and .sh files by $growth lines; delete at least as many as you add"

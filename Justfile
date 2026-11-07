@@ -5,7 +5,104 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+test: test-soak test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+
+# Offline soak admission/session/config checks and a short loop smoke, no inference.
+test-soak-smoke:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const { spawn } = require('node:child_process');
+    const home = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'soak-smoke-'));
+    const start = Date.now();
+    const child = spawn('node', ['workflow/soak.cjs', 'loop', '1'], { env: { ...process.env, HOME: home } });
+    let text = '';
+    let first = null;
+    child.stdout.on('data', bytes => { first ??= Date.now(); text += bytes; process.stdout.write(bytes); });
+    child.stderr.pipe(process.stderr);
+    child.on('exit', code => {
+      try {
+        assert.equal(code, 0);
+        assert.ok(first - start < 30000, 'sample reaches stdout before loop completion');
+        assert.ok(Date.now() - start >= 60000, 'real minute, no accelerated clock');
+        assert.match(text, /http_status=\d{3} transport_failure=\S+/);
+        assert.match(JSON.parse(fs.readFileSync(`${home}/out/outcome.json`)).summary, /1 samples/);
+      } catch (error) { console.error(error); process.exitCode = 1; }
+      finally { fs.rmSync(home, { recursive: true, force: true }); }
+    });
+
+# Offline soak admission/session/config checks and a short loop smoke, no inference.
+test-soak:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { spawnSync } = require('node:child_process');
+    const soak = require(path.resolve('workflow/soak.cjs'));
+    const workflow = fs.readFileSync('.github/workflows/soak.yml', 'utf8');
+    const dispatch = fs.readFileSync('.github/workflows/dispatch.yml', 'utf8');
+    const route = /uses: (cgwalters-forge\/actions\/\.github\/workflows\/cgwalters-agentic-job.yml@main)/;
+    assert.equal(route.exec(workflow)[1], route.exec(dispatch)[1]);
+    assert.match(workflow, /default: '90'/);
+    assert.match(workflow, /group: soak-\$\{\{ inputs.egress \}\}/);
+    assert.match(workflow, /needs: validate/);
+    assert.match(workflow, /Unresolved deployment prerequisite[^]*exit 1/);
+    assert.match(workflow, /agent: fake/);
+    assert.doesNotMatch(workflow, /secrets:|\$\{\{ (?:secrets|vars)\.|^      (?:model|inference-url|inference-register):/m);
+    const hosted = fs.readFileSync('.github/agentic-job/hosted.toml', 'utf8');
+    const parse = text => {
+      const result = spawnSync('python3', ['-c', 'import json,sys,tomllib; print(json.dumps(tomllib.loads(sys.stdin.read())))'], { input: text, encoding: 'utf8' });
+      assert.equal(result.status, 0, result.stderr);
+      return JSON.parse(result.stdout);
+    };
+    for (const egress of ['on', 'off']) {
+      const actual = fs.readFileSync(soak.validate('90', egress).config, 'utf8');
+      assert.equal(actual, soak.config(hosted, egress), 'regenerate variants after baseline changes');
+      const parsed = parse(actual);
+      assert.deepEqual(parsed.egress, { proxy: egress === 'on', 'rust-proxy': true, 'write-policy': egress === 'on' });
+      assert.equal(parsed.setup.script, 'workflow/soak.cjs');
+      delete parsed.setup.script;
+      parsed.egress = { proxy: false };
+      assert.deepEqual(parsed, parse(hosted), 'all other host, session, packages and commit settings stay identical');
+    }
+    assert.deepEqual(parse(fs.readFileSync('.github/agentic-job/soak.toml', 'utf8')).github.outputs, { noop: { max: 1 } });
+    const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'tracker-soak-'));
+    async function main() {
+      for (const value of ['1', '90', '120']) assert.equal(soak.minutes(value), Number(value));
+      for (const value of [undefined, '', '0', '-1', '121', '999999999999999', '1.5', '1e2', '01', ' 90', '90\n', '90;true']) {
+        assert.throws(() => soak.minutes(value), /canonical integer/);
+        const output = path.join(temp, 'output');
+        fs.writeFileSync(output, '');
+        const result = spawnSync('node', ['workflow/soak.cjs', 'validate'], { encoding: 'utf8',
+          env: { ...process.env, MINUTES: value ?? '', EGRESS: 'on', GITHUB_OUTPUT: output } });
+        assert.equal(result.status, 1);
+        assert.equal(fs.readFileSync(output, 'utf8'), '');
+      }
+      for (const value of ['', 'ON', 'off\n', '../../hosted']) assert.throws(() => soak.validate('90', value), /egress/);
+      assert.throws(() => soak.setup(temp, undefined), /canonical integer/);
+      soak.setup(temp, '90');
+      const steps = JSON.parse(fs.readFileSync(path.join(temp, '.config/fake-agent/demo.json')));
+      assert.equal(steps.length, 2);
+      assert.deepEqual(steps[0], { execute: { title: 'Redaction control', command: "printf 'redaction trial: gh%s_%s\\n' p FAKEREDACTIONCANARY0123456789abcdef" } });
+      assert.match(steps[1].execute.command, /soak.cjs" loop 90$/);
+      let clock = 0;
+      const lines = [];
+      const results = [{ status: '503', transport: 0 }, { status: '000', transport: 28 }, { status: '200', transport: 0 }];
+      await soak.loop('3', temp, { now: () => clock, wait: async ms => { clock += ms; },
+        get: deadline => { assert.ok(deadline > 0 && deadline <= 20); return results.shift(); }, emit: line => lines.push(line) });
+      assert.equal(clock, 180000);
+      assert.equal(lines.length, 3, 'HTTP and transport failures never stop later samples');
+      assert.match(lines[0], /^\d{4}-\d\d-\d\dT.*Z elapsed_s=0.000 http_status=503 transport_failure=0$/);
+      assert.match(lines[1], /http_status=000 transport_failure=28$/);
+      assert.match(lines[2], /elapsed_s=120.000 http_status=200 transport_failure=0$/);
+      assert.match(JSON.parse(fs.readFileSync(path.join(temp, 'out/outcome.json'))).summary, /3 samples, 2 HTTP\/transport failures/);
+      assert.equal(JSON.parse(fs.readFileSync(path.join(temp, 'out/safe-outputs.jsonl'))).type, 'noop');
+      // Real process/time smoke, accelerated only via the module's test seam.
+      await soak.loop('1', temp, { minuteMs: 30, get: () => ({ status: '200', transport: 0 }), emit: () => {} });
+      console.log('ok soak input rejection, hosted parity, canary, fake-only blocked route, failure continuation and short smoke');
+    }
+    main().catch(error => { console.error(error); process.exitCode = 1; })
+      .finally(() => fs.rmSync(temp, { recursive: true, force: true }));
 
 # Offline admission, pool step and research-only publication contract.
 test-retro:

@@ -1,0 +1,11 @@
+# No application patches or forge comments: the scripted soak reports only noop.
+hosts = ["github.com"]
+repos = ["cgwalters-forge/tracker"]
+bases = ["main"]
+max_outputs = 1
+# Parser minima; the analysis/noop-only policy admits no application patch.
+max_patch_bytes = 1024
+max_patch_files = 1
+
+[github.outputs]
+noop = { max = 1 }
