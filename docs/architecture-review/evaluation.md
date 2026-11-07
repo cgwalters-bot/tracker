@@ -308,10 +308,354 @@ tests were run):
 | `just test-architecture-review verify O3664` | Exit 0, every local reviewed-byte count/digest matches. |
 | `git diff --check` | Exit 0. |
 
-Remaining for #1227: the human-adjudication request above and a **new label-blind
-sample** for any held-out/deployment claim under #1224/#1228. Accessible feedback
-inventory and second agent scoring are complete for this three-PR pilot, but do
+Current ownership: #1227 owns pilot research disposition, including the
+unadjudicated questions above. A separate #1224 child owns new feedback-isolated
+evaluation; #1228 owns integration. Neither is an additional implementation task
+inside #1227. The separately dated audit below completes coverage of the remaining
+eight unmatched findings, without changing the historical scoring above. It does
 not cure prompt-author contamination, nonrandom two-project selection, omitted
-code, absent composefs coverage, or unaudited unmatched findings. Do not tune
-on these candidates and call a rerun held out. New sampling/corpus collection
-and production wiring are separate work, not silently added here. Leave #1227 open.
+code or absent composefs coverage. Do not tune on these candidates and call a
+rerun held out. Leave #1227 open pending research disposition, not agent consensus.
+
+## Supplemental static audit — 2026-11-07
+
+This is a new audit of **exactly eight** unmatched questions, not a historical
+review rerun, new scoring pass or refreshed feedback inventory. The previous
+three audits (B2603 D1/D2/Q1) remain separately recorded in scoring.json and
+results.json: 2 supported, 1 unsupported, 0 unresolved, **3/11** unmatched
+findings audited. Their qualifications are not rewritten here. “Not audited” in
+those frozen records describes that earlier pass, not current cumulative coverage.
+
+The existing rubric above applies. Classification concerns the **proposed
+mechanism**, not whether asking the question was wrong. Supported means the
+specified static mechanism exists, possibly only conditionally; unsupported means
+the inspected context contradicts the proposed failure within the stated scope;
+unresolved means the bounded evidence cannot decide it. None assigns confirmed
+defect severity. Unmatched is not automatically false, and matched questions are
+not caught defects. All original feedback scores remain **0/3 scorable concerns
+matched, 1/3 questions matched**, with their original contamination limits.
+
+### Scope and provenance
+
+Auditor: primary runner, static source inspection on 2026-11-07 against tracker
+starting commit `5ea1135643adb75d52c2689a316c9e7b4c36c733`. Inputs were the existing
+0.1.0 records, manifests, frozen reviews, scoring rubric and feedback snapshot.
+No original prompt/library, review, manifest, rebuild report, feedback, scoring or
+results file changed. No later fixes, moving heads, new corpus, historical
+reviewer sessions, runtime tests of reviewed code or upstream posts were used.
+No runtime reproduction is claimed. The audit is informed by feedback and prior
+scoring; it cannot be a feedback-isolated evaluation or human adjudication.
+
+Revision aliases below are exact, not branch names:
+
+| Alias | Repository | Revision |
+| --- | --- | --- |
+| A | bootc-dev/bootc (B2603) | `8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53` |
+| B | bootc-dev/bootc (B2588) | `024643ef4830c529ef8b541f0f09891586b52a5b` |
+| C | ostreedev/ostree (O3664) | `8fe1681229dc30210c4137e3c3ef8ee35114f716` |
+| S | systemd/systemd (existing S-unit reference, v257) | `70bae7648f2c18010187c9cf20093155eaa26029` |
+
+Every code citation below is `alias:path:inclusive lines`, resolving to
+`https://github.com/REPOSITORY/blob/REVISION/PATH#LSTART-LEND` using this table.
+S is the already pinned library revision, **not** a claim about every systemd
+release supported by C. Missing version/deployment context stays missing.
+
+Packet evidence means only what the manifest supplied: B2603's complete changed
+hunks plus four HEAD files (15 full files omitted); B2588 and O3664 had complete
+HEAD copies of changed files but no installer/helper or service/systemd context.
+Same-revision full-file reads below are additional audit evidence, never
+retroactively counted as reviewer input. The compare read listed in the command
+ledger distinguishes B2603 changed hunks from surrounding full-file context;
+it is not a newly reconstructed or rehashed original packet.
+
+### B2603 Q2 — supported, narrowly: origin policy label is not target verification
+
+**Packet:** A:crates/lib/src/cli.rs:1705–1708 assigns the policy mode to T;
+1792–1806 separates source and future origin, and 1877–1898 passes S to pull with
+T as import target. A:crates/lib/src/deploy.rs:569–575,755–761 retains an already
+present S commit under T; the newly added helper at
+A:crates/ostree-ext/src/container/store.rs:1905–1919 performs no fetch. These
+hunks support asking whose policy was enforced, not an assertion of exploitation.
+
+**Additional A context:** cli.rs:1751–1761 gives S the same *mode*, not T's
+identity. store.rs:708–709 stores the target separately;
+1112–1159 queries cached S and opens S through the proxy; 1195–1200 selects
+verification from `self.imgref`, while 1592–1608 uses the target for the output
+ref. deploy.rs:1366–1371 stages with `origin_for_switch`, and its 1204–1217 hunk
+records T plus separate source provenance. Nothing inspected re-verifies under
+T's scope merely because that output ref is written.
+
+The concrete mechanism is supported: “T with ContainerPolicy mode” can describe
+a future update policy rather than a verification performed on T now. It is
+**not** evidence that a rejecting S policy is bypassed: the frozen proposed
+reject-S/accept-T test may simply reject at S. Packet CLI documentation
+(cli.rs:251–260) explicitly says T is recorded without fetching; the man page
+(docs/src/man/bootc-switch.8.md:133–143) gives local/technician examples. Intent
+about the policy label's historical meaning is still unadjudicated. This is a
+legitimate trust-contract question, not a proven signature bypass or a false
+defect. Impact depends on consumers treating that mode as past attestation.
+Security severity is unassigned; clarify source-verification versus future-policy
+semantics and test conflicting scope policies before prescribing rejection or
+re-verification. Those remedies were not validated here.
+
+### B2603 Q3 — unresolved compatibility question, not demonstrated breakage
+
+**Packet:** A:crates/lib/src/bootc_composefs/origin.rs:168–177 deliberately clones
+booted into staged, preserving verity while replacing image reference, clearing
+cached update, and setting soft-reboot capability false. Changed update.rs:330–336
+and rollback.rs:228–233 explicitly remove that synthetic stage before operations
+on real boot entries. Same verity is supported; an invariant requiring unequal
+IDs is not supplied by the packet.
+
+**Additional A context:** crates/lib/src/bootc_composefs/gc.rs:485–505 builds a
+list of live verities, not a pairwise-distinctness check; 555–569 keeps each
+deployment's verity as a root. Duplication here does not itself demonstrate
+deletion of a live deployment. soft_reboot.rs:78–98 rejects the current digest
+and checks capability. These two named consumers provide no static path to the
+suggested GC/soft-reboot failure, but are not an exhaustive caller or external
+JSON-client inventory. No versioned external contract or clients were available
+in this bounded audit. The broad compatibility mechanism remains unresolved,
+not a false defect inferred from missing feedback. Impact/severity require a
+specific consumer and expected contract. Documenting an origin-only transaction
+or representing it separately are candidate remedies, not validated necessary
+schema changes; changing the interface could itself break consumers.
+
+### B2603 Q4 — supported immediate mutation; cache/retention consequences bounded
+
+**Packet:** A:crates/lib/src/deploy.rs:569–575,755–761 calls `set_image_reference`
+on AlreadyPresent before returning; the helper's added hunk at
+A:crates/ostree-ext/src/container/store.rs:1905–1919 uses `set_ref_immediate`.
+It is the helper, not deploy.rs itself, that calls that API. The packet's
+cli.rs:1913–1923 stages later and propagates failure with `?`.
+
+**Additional A context:** store.rs:1740–1760 enumerates image refs and queries
+their merge commits; 2264–2279 includes manifests from both image refs and
+deployments when deriving live layers, and 2292–2299 drops unreferenced layer
+refs. Thus T can resolve to S's cached commit after a later staging failure,
+and that manifest can retain layers. Cache update and deployment commit are not
+one transaction. The inspected caller supplies no compensating restoration.
+This supports the conditional mutation mechanism, not an observed crash or an
+indefinite leak: later imports/GC/ref removal and deployment roots affect lifetime.
+Nor does it prove the previous T deployment is lost. Severity is unassigned;
+cache warming before deployment may be intended. A failure-injection test should
+assert both T lookup and deployment preservation before considering deferred
+publication/rollback (which would need concurrency semantics). This legitimate
+cache-transaction question remains **different from** the feedback's source-S
+retention question; partial topic overlap receives no match credit.
+
+### B2588 Q2 — unresolved runtime discrimination; static path substantially clarified
+
+**Packet:** B:tmt/tests/booted/test-install-shared-propagation.nu:23–35 prepares a
+source image, makes `/` shared, runs to-filesystem with source-imgref and checks
+the alias in the same supplied script. B:crates/lib/src/podstorage.rs:135–148
+unshares, makes mounts private and binds. Its comment names to-existing-root as
+an example, not an exclusive caller. There was no demonstrated defect in the
+test, only an explicitly missing-call-graph question.
+
+**Additional B context:** crates/lib/src/install.rs:1712–1714 identifies external
+sources and 1904–1908 skips the usual unshare for them. The OSTree path connects
+2989 → 2315–2316 → 2171–2194 → 2058–2071, which obtains image storage before
+installing. crates/lib/src/store/mod.rs:917–946 reaches `CStorage::create`;
+podstorage.rs:327–345 initializes fresh storage by spawning `podman images`,
+through 190–198 → 95–149. tmt/tests/booted/tap.nu:72–85 places all `$cmd` text
+inside one `systemd-run ... /bin/sh -c` invocation. This resolves the static
+“might never bind” and “separate script namespaces” doubts on the successful
+fresh-storage OSTree path; composefs is explicitly skipped in test lines 5–7.
+
+It does not prove the kernel/VM mount topology, actual BASE failure or HEAD
+success. Those discriminating executions are forbidden here, so the complete
+test-discrimination mechanism remains unresolved, not a false test defect.
+No product-defect severity follows from this question. Retain a BASE/HEAD
+counterfactual test with mountinfo evidence as future validation, not installer
+isolation-placement match credit: that is the distinct missed human concern.
+
+### B2588 Q3 — unresolved legacy-state impact, not a newly established regression
+
+**Packet:** B:crates/lib/src/podstorage.rs:137–148 explains prior propagation and
+prevents new child binds from propagating back. There is no cleanup of an
+already leaked host alias in this hook. “No cleanup here” is supported, but the
+proposed subsequent malfunction is not. The question itself allows reboot
+recovery; it should not be promoted to a defect merely for being unmatched.
+
+**Additional B context:** podstorage.rs:109–110 retains directory handles,
+135–148 binds from the selected storage fd's cwd over the alias in the new
+namespace, and 190–198 passes that alias to podman. That argues against simply
+assuming a stale lower alias redirects the new root. It does not establish that
+stacked old mounts release devices, that all consumers ignore them, or that a
+reboot is an accepted operational remedy. No historical recovery guidance or
+stale-bind fixture was established by these reads. Legacy resource retention
+and impact remain unresolved; no severity is assigned. Document reboot recovery
+or test a pre-existing bind if this recovery contract matters. Blindly unmounting
+a host path is not a validated safe fix and could remove another owner's mount.
+
+### O3664 Q1 — unsupported failure for pinned S; supported-version scope still open
+
+**Packet:** C:src/libostree/ostree-impl-system-generator.c:374–392 requires
+boot.mount and masks boot.automount; it does not supply gpt-auto's dependency
+edge. Asking about that edge was legitimate missing context, not a defect claim.
+
+**Additional context:** S:src/gpt-auto-generator/gpt-auto-generator.c:408–463
+creates the automount with **local-fs.target.wants**, not requires; 493–502 and
+560–569 use that helper for boot/ESP and 942–945 directs output to `dest_late`.
+Under the existing S-unit Wants/Requires rubric, the proposed “mask makes a
+required automount fail local-fs.target” mechanism is unsupported for this pinned
+implementation. C's normal mask is consistent with overriding late output.
+This is not a guarantee of a healthy boot: boot.mount is separately required
+and can fail. There was no inventory of all supported downstream systemd
+versions or other generators. Compatibility beyond S stays unadjudicated, with
+no emergency-mode severity established and no need to weaken dependencies on
+this evidence. A version matrix/boot test would settle the broader question;
+not having one is not permission to declare universal safety.
+
+### O3664 Q2 — supported conditional abort, collision prevalence unresolved
+
+**Packet:** C:src/libostree/ostree-impl-system-generator.c:391–392 returns false
+on any mask symlink error; 567–570 then skips fstab_generator. Lines 397–406,
+503–516 show that routine generates/pulls in var.mount, while 315–329 describes
+an earlier analogous EEXIST failure and excludes fstab-owned /boot. These full
+changed-file ranges were available originally; no extra historical code was
+needed to establish the conditional control flow.
+
+The mechanism is supported **if** symlink creation fails after the earlier
+boot.mount steps succeed. EEXIST at the mask, permission or I/O failures are
+conditions, not reproduced events. The packet does not show a second generator
+that actually writes this name in the normal directory, nor does this audit
+inventory distros. Skipping this routine is not proof `/var` is never mounted
+on every configuration: other ownership/initramfs paths exist (531–532 returns
+early if the mount-var marker is consumed). Impact may be serious in layouts
+depending on generated var.mount, but occurrence and severity remain unassigned.
+The question is a sound conditional failure-isolation question, not proof of a
+common regression. Test conflicting output/error handling before deciding
+whether to tolerate an existing identical mask, report a conflict, or continue
+independent setup. Ignoring every error is not a validated remedy.
+
+### O3664 Q3 — unsupported missing-ordering failure in the inspected units
+
+**Packet:** C:src/libostree/ostree-impl-system-generator.c:349–362 emits
+DefaultDependencies=no and After=local-fs-pre.target/sysroot.mount, but the
+finalizer unit was absent. Missing ordering in that one file was not evidence
+of missing ordering in the system.
+
+**Additional C context:** src/boot/ostree-finalize-staged.service:18–40 has
+RequiresMountsFor=/sysroot /boot /etc, After=local-fs.target,
+DefaultDependencies=no, RemainAfterExit=yes and ExecStop=finalize-staged.
+RequiresMountsFor supplies requirement and ordering edges to the required mounts;
+shutdown reverses startup ordering, so the active finalizer's stop operation is
+ordered before boot.mount's stop. The proposed lack-of-ordering mechanism is
+unsupported in these unit definitions. This resolves a legitimate missing-unit
+question, not a demonstrated false defect. Unit overrides, inactive/failed
+services, forced unmounts and runtime dependency behavior were not inspected.
+No staged-deployment reboot was run; neither finalization success nor complete
+shutdown safety is established. Severity and additional ordering remedies are
+not justified by this static result. A real staged-reboot test remains useful.
+
+### New and cumulative coverage (not new feedback scores)
+
+The following is the new audit record checked separately from the historical tests.
+Per-finding reasoning and evidence limits are the identically named sections
+above. The matched B2588 Q1 remains outside this unmatched audit.
+
+<!-- supplemental-audit-2026-11-07 -->
+```json
+{
+  "id": "supplemental-2026-11-07",
+  "kind": "static mechanism audit; not runtime reproduction or human adjudication",
+  "findings": [
+    {"finding": "B2603 Q2", "mechanism": "supported"},
+    {"finding": "B2603 Q3", "mechanism": "unresolved"},
+    {"finding": "B2603 Q4", "mechanism": "supported"},
+    {"finding": "B2588 Q2", "mechanism": "unresolved"},
+    {"finding": "B2588 Q3", "mechanism": "unresolved"},
+    {"finding": "O3664 Q1", "mechanism": "unsupported"},
+    {"finding": "O3664 Q2", "mechanism": "supported"},
+    {"finding": "O3664 Q3", "mechanism": "unsupported"}
+  ],
+  "new": {"audited": 8, "total": 8, "supported": 3, "unsupported": 2, "unresolved": 3},
+  "prior": {"audited": 3, "total": 11, "supported": 2, "unsupported": 1, "unresolved": 0},
+  "cumulative": {"audited": 11, "total": 11, "supported": 5, "unsupported": 3, "unresolved": 3}
+}
+```
+
+New coverage is **8/8 targeted remaining findings** (8/11 of all unmatched);
+cumulative coverage is **11/11 unmatched**. Over all 12 frozen findings that
+is 11/12 statically audited, not an effectiveness denominator. Three unresolved
+results are audited results, not missing entries. Supported mechanisms are not
+five caught human concerns; original concern/question match counts do not move.
+
+### Audit command ledger
+
+Only read-only `gh api --method GET` calls below retrieved source. Each used a
+20-second tool timeout. Exact command construction (aliases expand using the
+revision table; paths are relative to the named repository):
+
+```text
+gh api --method GET 'repos/REPOSITORY/contents/PATH?ref=REVISION' --jq '.content | @base64d | split("\n") | to_entries[] | select(FILTER) | "\(.key+1): \(.value)"'
+```
+
+The following table preserves each invocation's FILTER; `k` means `.key`,
+`v~"REGEX"` means `(.value | test("REGEX"))`, and `a:b` means
+`(.key >= a and .key < b)` (zero-based half-open). `or` is literal jq `or`.
+This notation is a lossless command abbreviation, not commands executed against
+reviewed code. No retrieved source was executed or vendored.
+
+| Revision/path | FILTER, in invocation order (semicolon separates calls) |
+| --- | --- |
+| A crates/lib/src/deploy.rs | `510:600 or 690:810` |
+| A crates/lib/src/cli.rs | `1650:1740`; `1750:1850 or v~"fn sigpolicy_from_opt|signature.*imgref"` |
+| A crates/ostree-ext/src/container/store.rs | `v~"set_image_reference|set_target|target_imgref|gc_image|pub.*gc|image_ref" or 850:1000`; `1005:1100 or 1575:1645 or 1890:1940 or 2250:2335`; `1110:1225 or 1710:1760` |
+| C src/libostree/ostree-impl-system-generator.c | `290:410 or 500:580` |
+| C src/boot/ostree-finalize-staged.service | No select clause (all numbered lines) |
+| A crates/lib/src/bootc_composefs/origin.rs | `125:180` |
+| A crates/lib/src/bootc_composefs/gc.rs | `v~"get_composefs_status|staged|booted|verity"`; `480:510 or 548:575` |
+| A crates/lib/src/bootc_composefs/soft_reboot.rs | `v~"status|staged|booted|verity"`; `25:98` |
+| B tmt/tests/booted/tap.nu | `v~"run_install|MountFlags|systemd-run|bash" or 290:355`; `65:100` |
+| B crates/lib/src/install.rs | `v~"source_imgref|to_filesystem|to_existing_root|CStorage|new_podman|unshare|pull|imgstore"`; `1885:1915 or 2050:2085 or 2190:2210 or 2710:2745 or 2975:2997`; `2170:2196 or 2215:2238 or 2300:2325 or 1709:1735` |
+| B crates/lib/src/podstorage.rs | `90:175 or v~"pub.*fn|bind_storage_roots|new_podman_cmd_in"`; `185:200 or 305:365` |
+| B tmt/tests/booted/test-install-shared-propagation.nu | No select clause (all numbered lines) |
+| S src/gpt-auto-generator/gpt-auto-generator.c | `v~"local-fs.target|add_automount|generator_add_symlink|arg_dest|dest_late|SPECIAL_LOCAL_FS"`; `408:465 or 480:506 or 550:575 or 940:949` |
+| A docs/src/man/bootc-switch.8.md | `65:145` |
+| B crates/lib/src/storage.rs | `v~"get_ensure_imgstore|CStorage::create"` — **exit 1, HTTP 404**; corrected by tree lookup below, not invented material |
+| B crates/lib/src/store/mod.rs | `v~"get_ensure_imgstore|CStorage::create"` |
+| A crates/lib/src/bootc_composefs/update.rs | `315:340` |
+| A crates/lib/src/bootc_composefs/rollback.rs | `222:244` |
+
+All listed contents calls exited 0 except the explicitly marked 404. Additional
+exact discovery/changed-hunk calls (each exit 0, same 20-second timeout):
+
+```text
+gh api --method GET 'repos/bootc-dev/bootc/git/trees/8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53?recursive=1' --jq '.tree[].path | select(test("store.rs$|import.*rs$|tap.nu$|install.rs$|soft_reboot.rs$|gc.rs$"))'
+gh api --method GET 'repos/bootc-dev/bootc/git/trees/024643ef4830c529ef8b541f0f09891586b52a5b?recursive=1' --jq '.tree[].path | select(test("storage|store/"))'
+gh api --method GET 'repos/bootc-dev/bootc/compare/d0a449a7983d560331def4bc48e17da0b140bd99...8055a2ffbbf77507fe0beb05edf6b28ebd9cdf53' --jq '.files[] | select(.filename | test("cli.rs$|deploy.rs$|origin.rs$|store.rs$")) | .filename, .patch'
+```
+
+### What this resolves and leaves open
+
+This completes a bounded substantive examination of every previously unaudited
+unmatched finding. It narrows two proposed failures with missing context, supports
+three conditional/static mechanisms and records three unresolved results, rather
+than calling all unmatched output noise. It adds no controls, options, production
+caller or automated research loop. A separate one-off offline check validated
+new-record coverage/counts; it cannot certify semantic conclusions.
+
+Root splitting, local-suggestion exclusions, installer-context scorability,
+strict matches/partial-overlap credit, and impact/severity questions remain
+explicitly **unadjudicated**. No human approval, operator acceptance or reviewer
+effectiveness is inferred. #1227 still owns disposition of those pilot research
+requirements; it is not closed by agreement between agents. Ordinary research
+uncertainty here is not a needs-operator execution blocker. New feedback-isolated
+evaluation belongs to the separate #1224 child, and integration to #1228.
+No new evaluation, prompt tuning, runtime reproduction or production wiring ran.
+
+Local verification on 2026-11-13 after removing the supplemental test addition
+to comply with the deployment no-growth policy. These execute current tracker
+checks, not historical code. The supplemental record's exact IDs, mechanism
+counts and new/prior/cumulative denominators were checked separately with a
+one-off Node assertion command, including nine invalid-record fixtures (exit 0).
+That check is not installed in the Justfile or run by the three modes below.
+
+| Command | Outcome | Elapsed seconds |
+| --- | --- | --- |
+| `just test-architecture-review` | Exit 0, 9/9 tests | 0.06 |
+| `just test-architecture-review fixtures` | Exit 0, 9/9 tests | 0.05 |
+| `just test-architecture-review e2e` | Exit 0, 10/10 tests; canned API only | 0.10 |
+| `git diff --check` | Exit 0 | 0.00 |
