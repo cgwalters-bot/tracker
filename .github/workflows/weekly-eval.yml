@@ -1,9 +1,6 @@
-# Once a week, start the research run that weighs our own tools against
-# gh-aw and whatever else does the same job (cgwalters-forge/tracker#519,
-# where each week's comment goes). Nothing runs here but the trigger: the
-# run is dispatch.yml's `research` kind, started the way poll.yml starts its
-# runs, with the job token and `actions: write`, so no
-# secret is read.
+# Weekly comparison: keep the research report on #519 until the opt-in
+# documentation route is activated. That route proposes one draft per project
+# through checked outputs; only its apply job receives the write credential.
 name: weekly-eval
 
 on:
@@ -18,7 +15,7 @@ jobs:
   dispatch:
     # dispatch.yml only runs from the default branch, so the task it is given
     # is this file's as the default branch has it.
-    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ vars.WEEKLY_EVAL_DOCS != 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     # What lets the job token start dispatch.yml here.
@@ -58,3 +55,25 @@ jobs:
         run: |
           gh workflow run dispatch.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
             -f kind=research -f repo="$ITEM_REPO" -f item="$ITEM" -f task="$TASK"
+
+  docs:
+    # Threat: switching a read/report schedule to PR publication could spend
+    # inference and open changes before its scope is reviewed. Unset stays on
+    # the old report route; both entries use this same explicit opt-in.
+    if: ${{ vars.WEEKLY_EVAL_DOCS == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        repo: [cgwalters-forge/agentic-job, cgwalters-forge/agent-board]
+    uses: ./.github/workflows/weekly-comparison.yml
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+      pull-requests: write
+      id-token: write
+    with:
+      repo: ${{ matrix.repo }}
+    secrets:
+      SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}

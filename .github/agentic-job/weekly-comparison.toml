@@ -1,0 +1,14 @@
+# A weekly comparison may propose one small draft PR, not post reports,
+# change credentials/workflows, push an existing PR or dispatch more work.
+hosts = ["github.com"]
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board"]
+bases = ["main"]
+max_outputs = 1
+max_patch_bytes = 65536
+max_patch_files = 2
+
+[github.outputs]
+create_pull_request = { max = 1 }
+noop = { max = 1 }
+missing_tool = { max = 1 }
+missing_data = { max = 1 }

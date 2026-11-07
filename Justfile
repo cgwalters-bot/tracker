@@ -5,7 +5,100 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-runner-profiles test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-pass-state test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+test: test-runner-profiles test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-pass-state test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-weekly-comparison test-needs-you-fit agent-board-pin
+
+# Offline routing and publication contract; no inference or forge writes.
+test-weekly-comparison:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const { spawnSync } = require('node:child_process');
+    const trigger = fs.readFileSync('.github/workflows/weekly-eval.yml', 'utf8');
+    const workflow = fs.readFileSync('.github/workflows/weekly-comparison.yml', 'utf8');
+    const brief = fs.readFileSync('.github/agentic-job/weekly-comparison.md', 'utf8');
+    const guards = [...trigger.matchAll(/    if: \$\{\{ (.*) \}\}/g)].map(m => m[1]);
+    assert.equal(guards.length, 2);
+    const route = guards.map(g => new Function('vars', 'github', 'format', `return ${g}`));
+    const format = (s, branch) => s.replace('{0}', branch);
+    for (const event_name of ['schedule', 'workflow_dispatch']) {
+      for (const value of [undefined, '', 'true', 'disabled', 'enabled']) {
+        for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
+          const github = { event_name, ref, event: { repository: { default_branch: 'main' } } };
+          const admitted = route.map(f => f({ WEEKLY_EVAL_DOCS: value }, github, format));
+          assert.deepEqual(admitted, [ref === 'refs/heads/main' && value !== 'enabled',
+            ref === 'refs/heads/main' && value === 'enabled']);
+        }
+      }
+    }
+    assert.match(trigger, /max-parallel: 1\n      matrix:\n        repo: \[cgwalters-forge\/agentic-job, cgwalters-forge\/agent-board\]/);
+    assert.match(trigger, /uses: \.\/\.github\/workflows\/weekly-comparison.yml/);
+    assert.match(workflow, /group: weekly-comparison-\$\{\{ inputs.repo \}\}\n  cancel-in-progress: false/);
+    assert.match(workflow, /task: \$\{\{ needs.brief.outputs.task \}\}/);
+    assert.match(workflow, /repo: \$\{\{ inputs.repo \}\}\n      output-repo: \$\{\{ inputs.repo \}\}/);
+    assert.match(workflow, /fs.readFileSync\(".github\/agentic-job\/weekly-comparison.md", "utf8"\)/);
+    assert.match(workflow, /agent-skills: true/);
+    assert.match(workflow, /max-requests: '150'\n      timeout: '45'/);
+    assert.match(workflow, /outputs: create_pull_request,noop,missing_tool,missing_data\n      max-outputs: '1'/);
+    assert.match(workflow, /notify: none/);
+    assert.match(workflow, /artifact-prefix: weekly-\$\{\{ inputs.repo ==/);
+    assert.doesNotMatch(workflow.split('\n  apply:\n')[0], /secrets\./);
+    assert.match(workflow.split('\n  apply:\n')[1], /SAFE_OUTPUTS_PAT: \$\{\{ secrets.SAFE_OUTPUTS_PAT \}\}/);
+    assert.match(workflow, /apply-environment: agent-apply/);
+    const pins = [...workflow.matchAll(/uses: cgwalters-forge\/agentic-job\/.*@([a-f0-9]{40})/g)].map(m => m[1]);
+    assert.deepEqual(pins, Array(6).fill('3f9f6425119b97bb3620a38fe0adc8e79be7dc8e'));
+    const parsed = spawnSync('python3', ['-c', 'import json,tomllib; print(json.dumps(tomllib.load(open(".github/agentic-job/weekly-comparison.toml","rb"))))'], { encoding: 'utf8' });
+    assert.equal(parsed.status, 0, parsed.stderr);
+    assert.deepEqual(JSON.parse(parsed.stdout), { hosts: ['github.com'],
+      repos: ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board'], bases: ['main'],
+      max_outputs: 1, max_patch_bytes: 65536, max_patch_files: 2,
+      github: { outputs: { create_pull_request: { max: 1 }, noop: { max: 1 },
+        missing_tool: { max: 1 }, missing_data: { max: 1 } } } });
+    for (const text of ['one draft pull request', 'one commit', 'full commit SHA', 'immutable upstream source',
+      'native queue', 'MCP integrations', 'measurement versus board, pass and review', 'open comparison PR',
+      'return noop', 'No long report comment', 'without closing it', 'Do not change code']) assert.ok(brief.includes(text), text);
+    console.log('ok weekly comparison routing, fixed brief, draft-only bounded effects and credential separation');
+
+# Manual owning-layer probe; requires agentic-job on PATH, not network access.
+test-weekly-comparison-policy:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const { spawnSync } = require('node:child_process');
+    const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'weekly-policy-'));
+    const cli = args => spawnSync('agentic-job', args, { encoding: 'utf8' });
+    const compile = (repo, outputs = 'create_pull_request,noop,missing_tool,missing_data') => cli([
+      'policy', '--allow', '.github/agentic-job/weekly-comparison.toml', '--repo', repo,
+      '--clone-url', `https://github.com/${repo}`, '--base', 'main', '--kind', 'branch',
+      '--outputs', outputs, '--max-outputs', '1']);
+    try {
+      for (const repo of ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board']) {
+        const compiled = compile(repo);
+        assert.equal(compiled.status, 0, compiled.stderr);
+      }
+      for (const repo of ['cgwalters-forge/tracker', 'other/repo']) assert.notEqual(compile(repo).status, 0);
+      for (const output of ['add_comment', 'create_issue', 'push_to_pull_request_branch', 'dispatch_workflow']) {
+        assert.notEqual(compile('cgwalters-forge/agentic-job', output).status, 0, output);
+      }
+      const policy = path.join(temp, 'policy.json');
+      fs.writeFileSync(policy, compile('cgwalters-forge/agentic-job').stdout);
+      const outputs = path.join(temp, 'outputs');
+      fs.mkdirSync(outputs);
+      const collected = path.join(temp, 'collected.json');
+      for (const [requests, allowed] of [
+        [[{ type: 'noop', message: 'No supported documentation delta.' }], true],
+        [[{ type: 'noop', message: 'One' }, { type: 'noop', message: 'Two' }], false],
+        [[{ type: 'add_comment', body: 'Not permitted', item_number: 519 }], false],
+      ]) {
+        fs.writeFileSync(path.join(outputs, 'outputs.jsonl'), requests.map(r => JSON.stringify(r)).join('\n') + '\n');
+        const result = cli(['collect', '--policy', policy, '--outputs', outputs, '--collected', collected]);
+        const checked = result.status === 0 ? cli(['check', '--policy', policy, '--outputs', outputs, '--collected', collected]) : result;
+        assert.equal(checked.status === 0, allowed, checked.stdout + checked.stderr);
+      }
+    } finally {
+      fs.rmSync(temp, { recursive: true, force: true });
+    }
+    console.log('ok comparison policy target/type refusals and collector/check output ceiling');
 
 # Execute the workflow's actual resolver, without credentials or forge traffic.
 test-runner-profiles:
