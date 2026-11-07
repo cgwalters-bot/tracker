@@ -1,0 +1,39 @@
+{
+  "provenance": "Sanitized projection of resolved push responses and policy environment in the two public run logs, not an archived REST payload. Tokens, task text and runner paths omitted. No initiating receipt identified.",
+  "policy_revision": "a5f7a3963fd41f3eb09c4406aa5bc8e30ee42be2",
+  "request": {
+    "REPO": "cgwalters-forge/tracker",
+    "BASE": "main",
+    "KIND": "branch",
+    "OUTPUTS": "push_to_pull_request_branch,noop,missing_tool,missing_data",
+    "MAX_OUTPUTS": "3",
+    "TARGET": "1050",
+    "APPLY_ENVIRONMENT": "agent-apply",
+    "ISSUE": "1050",
+    "PUSH_ITEM": "1050",
+    "PUSH_BRANCH": "pass-follow-midstream",
+    "PUSH_HEAD": "12503008eb45ab3c258d79232db08989dd0e4725",
+    "OUTPUT_REPO": "cgwalters-forge/tracker",
+    "ITEM_REPO": "",
+    "PRIVATE": "",
+    "EVENT": "false",
+    "REVIEW_ITEM": "",
+    "REVIEW": "false",
+    "CONTEXT_REPOS": "[]"
+  },
+  "refusal": "pull request branch \"pass-follow-midstream\" is not within the bounds (dispatch/**, bot/**, release-train/**)",
+  "runs": [
+    {
+      "url": "https://github.com/cgwalters-forge/tracker/actions/runs/41910378386",
+      "wrapper_revision": "95c09b9947f39100117fbc69bf0b6239d2cf22c3",
+      "pool": "openai",
+      "replacement_base": "873d7b18e058271fe7b03daa5f2eeb838ffdb868"
+    },
+    {
+      "url": "https://github.com/cgwalters-forge/tracker/actions/runs/41919396986",
+      "wrapper_revision": "bac2da6d67101ab6ca520d9d63adc46da77e4513",
+      "pool": "claude",
+      "replacement_base": "3aec152095ece522ff879aae5e1bf5c156285c31"
+    }
+  ]
+}

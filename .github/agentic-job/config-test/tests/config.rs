@@ -271,8 +271,11 @@ fn sections(text: &str, line: &str) -> Vec<String> {
 
 /// A run step of dispatch.yml: the lines of its `run: |` block, unindented.
 fn step_script(name: &str) -> String {
-    let dispatch = dispatch();
-    let lines: Vec<&str> = dispatch.split('\n').collect();
+    workflow_step_script(&dispatch(), name)
+}
+
+fn workflow_step_script(workflow: &str, name: &str) -> String {
+    let lines: Vec<&str> = workflow.split('\n').collect();
     let start = format!("      - name: {name}");
     let pad = " ".repeat(10);
     let found = lines.iter().enumerate().filter(|(_, l)| **l == start).find_map(|(i, _)| {
@@ -288,7 +291,7 @@ fn step_script(name: &str) -> String {
             .collect();
         (!body.is_empty()).then(|| body.join("\n") + "\n")
     });
-    found.unwrap_or_else(|| panic!("no run step {name} in dispatch.yml"))
+    found.unwrap_or_else(|| panic!("no run step {name} in workflow"))
 }
 
 /// A fresh path under the build's own temporary directory.
@@ -745,6 +748,138 @@ fn dispatch_and_fix_open_complete_work_ready() {
         &outputs("fix.toml"),
         r#"push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5, own_author = "cgwalters-bot", ready_when_complete = true }"#
     ));
+}
+
+#[test]
+fn recorded_excluded_tracker_fix_still_refuses_identical_requests() {
+    let incident = json_file("config-test/tests/excluded-fix.json");
+    let request = &incident["request"];
+    let selected = run_step(&step_script("Resolve the bounds"), &[
+        ("KIND", "fix"), ("REPO", request["REPO"].as_str().unwrap()),
+    ]).unwrap();
+    assert!(selected.contains("fix-allow=.github/agentic-job/fix.toml\n"));
+    // Keep this comparison in the ordinary configuration suite even without
+    // a CLI: later own-author admission must not silently widen branch bounds.
+    let old = toml_file("config-test/tests/incident-fix.toml");
+    let current = toml_file("fix.toml");
+    assert_eq!(old["github"]["outputs"]["push_to_pull_request_branch"]["branches"],
+        current["github"]["outputs"]["push_to_pull_request_branch"]["branches"]);
+    if !agentic_job_installed() {
+        return;
+    }
+    let compile = |branch: &str| agentic_job(&[
+        "policy", "--allow", &path_of("fix.toml"), "--repo", request["REPO"].as_str().unwrap(),
+        "--clone-url", "https://github.com/cgwalters-forge/tracker", "--kind", "branch",
+        "--outputs", request["OUTPUTS"].as_str().unwrap(), "--max-outputs", "3",
+        "--base", branch, "--pull-request", "1050", "--head", request["PUSH_HEAD"].as_str().unwrap(),
+        "--output-repo", request["OUTPUT_REPO"].as_str().unwrap(),
+    ]);
+    let branch = request["PUSH_BRANCH"].as_str().unwrap();
+    for _ in 0..2 {
+        let refused = compile(branch);
+        assert!(!refused.status.success());
+        assert!(String::from_utf8_lossy(&refused.stderr).contains(incident["refusal"].as_str().unwrap()), "{refused:?}");
+        assert!(refused.stdout.is_empty());
+    }
+    assert!(compile("dispatch/offline-control").status.success());
+}
+
+/// Manual offline replay using read-only, pinned source checkouts. Not a
+/// dispatch or a producer/scheduler test; the normal suite needs no checkout.
+#[test]
+#[ignore = "set ACTIONS_CHECKOUT and POLICY_CHECKOUT to the recorded source checkouts"]
+fn historical_fix_caller() {
+    let actions = std::fs::canonicalize(std::env::var("ACTIONS_CHECKOUT").expect("ACTIONS_CHECKOUT")).unwrap();
+    let policy = std::fs::canonicalize(std::env::var("POLICY_CHECKOUT").expect("POLICY_CHECKOUT")).unwrap();
+    let incident = json_file("config-test/tests/excluded-fix.json");
+    let text = |v: &Value| v.as_str().unwrap().to_owned();
+    let git = |dir: &Path, args: &[&str]| {
+        let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
+        assert!(out.status.success(), "{out:?}");
+        String::from_utf8(out.stdout).unwrap()
+    };
+    assert_eq!(git(&policy, &["rev-parse", "HEAD"]).trim(), text(&incident["policy_revision"]));
+    assert_eq!(git(&policy, &["status", "--porcelain", "--untracked-files=no"]), "", "policy source must be unmodified");
+    let target = temp_path("fix-policy");
+    assert!(Command::new("cargo").args(["build", "--locked", "--manifest-path"])
+        .arg(policy.join("Cargo.toml")).args(["-p", "agentic-job", "--target-dir"]).arg(&target)
+        .status().unwrap().success());
+    let binary = target.join("debug/agentic-job");
+    let version = Command::new(&binary).arg("--version").output().unwrap();
+    assert!(version.status.success());
+    assert_eq!(String::from_utf8(version.stdout).unwrap().trim(), "agentic-job 0.6.10");
+    let temp = temp_path("fix-caller");
+    std::fs::create_dir_all(temp.join("bin")).unwrap();
+    std::os::unix::fs::symlink(&binary, temp.join("bin/agentic-job")).unwrap();
+    std::fs::create_dir_all(temp.join(".github/agentic-job")).unwrap();
+    std::fs::write(temp.join(".github/agentic-job/fix.toml"), read("config-test/tests/incident-fix.toml")).unwrap();
+    let output = temp.join("output");
+    let request = incident["request"].as_object().unwrap();
+    let repo = text(&request["REPO"]);
+    let shell = |script: &str, env: &[(&str, &str)], cwd: &Path| {
+        std::fs::write(&output, "").unwrap();
+        // No inherited credentials or forge/inference configuration. These
+        // recorded, already-resolved inputs require no transport.
+        Command::new("timeout").args(["30s", "bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script])
+            .env_clear().env("PATH", std::env::var_os("PATH").unwrap())
+            .env("GITHUB_OUTPUT", &output).env("JOB_DIR", &temp).env("GITHUB_REPOSITORY", &repo)
+            .envs(env.iter().copied()).current_dir(cwd).output().unwrap()
+    };
+    for line in [
+        "      fix-allow: ${{ steps.bounds.outputs.fix-allow }}",
+        "      fix-allow: ${{ needs.profile.outputs.fix-allow }}",
+    ] {
+        assert!(dispatch().contains(line), "{line}");
+    }
+    let bounds = shell(&step_script("Resolve the bounds"), &[("KIND", "fix"), ("REPO", &repo)], &here().join("../.."));
+    assert!(bounds.status.success(), "{bounds:?}");
+    assert!(bounds.stderr.is_empty(), "{bounds:?}");
+    assert_eq!(std::fs::read_to_string(&output).unwrap(),
+        "allow=.github/agentic-job/dispatch.toml\nfix-allow=.github/agentic-job/fix.toml\n");
+    let policy_workflow = std::fs::read_to_string(policy.join(".github/workflows/policy.yml")).unwrap();
+    let check = workflow_step_script(&policy_workflow, "Check the request against the caller's bounds");
+    for run in incident["runs"].as_array().unwrap() {
+        let wrapper = git(&actions, &["show", &format!("{}:.github/workflows/cgwalters-agentic-job.yml", text(&run["wrapper_revision"]))]);
+        assert!(wrapper.contains(&format!("policy.yml@{}", text(&incident["policy_revision"]))));
+        assert!(has_lines(&wrapper, &[
+            "  agent:", "    needs: [target, policy]",
+            "    if: ${{ needs.policy.outputs.admitted == 'true' }}",
+        ]));
+        assert!(has_lines(&wrapper, &[
+            "  apply:", "    needs: [policy, agent, check, session]",
+            "    if: ${{ always() && needs.policy.result == 'success' }}",
+        ]));
+        // Evaluate the recorded wrapper expression, not a second selector.
+        let expression = wrapper.split_once("\n      allow: ${{ ").unwrap().1.split_once(" }}").unwrap().0;
+        let select = format!("const inputs = {{kind: 'fix', allow: '.github/agentic-job/dispatch.toml', 'fix-allow': '.github/agentic-job/fix.toml'}}; process.stdout.write({});",
+            expression.replace("inputs.fix-allow", "inputs['fix-allow']"));
+        let selected = Command::new("node").args(["-e", &select]).output().unwrap();
+        assert!(selected.status.success(), "{selected:?}");
+        let allow = String::from_utf8(selected.stdout).unwrap();
+        assert_eq!(allow, ".github/agentic-job/fix.toml");
+        let replay = |branch: &str| {
+            let mut env: Vec<_> = request.iter().map(|(k, v)| (k.as_str(), v.as_str().unwrap())).collect();
+            env.retain(|(k, _)| *k != "PUSH_BRANCH");
+            env.extend([("ALLOW", allow.as_str()), ("REPLACEMENT_BASE", run["replacement_base"].as_str().unwrap()), ("PUSH_BRANCH", branch)]);
+            shell(&check, &env, &temp)
+        };
+        let refused = replay(request["PUSH_BRANCH"].as_str().unwrap());
+        assert_eq!(refused.status.code(), Some(1), "{refused:?}");
+        assert!(String::from_utf8_lossy(&refused.stderr).contains(incident["refusal"].as_str().unwrap()), "{refused:?}");
+        assert_eq!(std::fs::read_to_string(temp.join("policy.json")).unwrap(), "", "no policy reaches agent/check/apply");
+        assert_eq!(std::fs::read_to_string(&output).unwrap(), "", "no usable policy outputs");
+        let repeated = replay(request["PUSH_BRANCH"].as_str().unwrap());
+        assert_eq!(repeated.status.code(), refused.status.code());
+        assert_eq!(repeated.stderr, refused.stderr);
+        let admitted = replay("dispatch/offline-control");
+        assert!(admitted.status.success(), "{admitted:?}");
+        let compiled: Value = serde_json::from_str(&std::fs::read_to_string(temp.join("policy.json")).unwrap()).unwrap();
+        assert_eq!(compiled["base"], "dispatch/offline-control");
+        assert_eq!(compiled["safe_outputs"]["push_to_pull_request_branch"]["replacement_base"], run["replacement_base"]);
+        eprintln!("ok offline receiving caller {}: refusal, repeat and allowed control", run["url"]);
+    }
+    std::fs::remove_dir_all(temp).unwrap();
+    std::fs::remove_dir_all(target).unwrap();
 }
 
 // agentic-job#3164: both fix bounds admit a fix of the bot's own pull request
