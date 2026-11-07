@@ -8,7 +8,12 @@ manual prompt prototype, **not an enabled reviewer or an effectiveness result**.
 A three-PR development pilot ran, but it is not held out because the prompt
 author had seen its labels. A follow-up reconstructs its packets, inventories
 all accessible feedback and adds independent agent scoring, not human review.
-Human adjudication and a new label-blind sample are still needed. Keep #1227 open.
+The [supplemental static audit](evaluation.md#supplemental-static-audit--2026-11-07)
+separately covers the remaining eight unmatched findings: new 8/8 targeted,
+cumulative 11/11 unmatched audited, including three unresolved results. Original
+scores and the prior three audits remain historical evidence. Pilot research
+disposition/adjudication stays in #1227; a separate #1224 child owns new
+feedback-isolated evaluation, and #1228 owns integration. Keep #1227 open.
 This does not change any production prompt, workflow, permission, merge rule,
 schedule or inference service.
 
@@ -85,6 +90,9 @@ It doesn't need live GitHub access or inference. Cases include stale HEAD files,
 feedback files/directories, symlinks, repeated rebuild, mismatched/missing bytes,
 and failed retrieval, reconstruction comparison and staged-byte comparison.
 Report-ID fixtures reject duplicate, missing and unknown evaluated-run IDs.
+The supplemental audit is a static evidence record, not covered by the historical
+count checks above. Its finding IDs and new/prior/cumulative denominators were
+checked separately; historical scoring is not rewritten to match the new audit.
 
 For explicit, bounded network reconstruction, run
 `just test-architecture-review rebuild ID` with B2588, B2603 or O3664. The concrete
@@ -107,8 +115,8 @@ files, directories, missing entries and symlinks (including the root) fail. This
 is stronger than checking hashes of listed files while ignoring other entries.
 It does not independently recompute selection/omissions, establish historical
 blinding or remove prior prompt-author contamination. This fixes packet hygiene
-only; #1227 remains open pending human adjudication and a separately scoped
-label-blind evaluation.
+only; #1227 remains open pending pilot research disposition/adjudication.
+Feedback-isolated evaluation is separate work under #1224, not another #1227 task.
 The [evaluation](evaluation.md#recovered-executable-packet-recipe) specifies exact
 annotation, byte encoding, file selection, omissions and historical checks, and
 records successful comparisons of every archived digest, including diff.patch.
