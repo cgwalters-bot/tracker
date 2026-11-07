@@ -678,8 +678,56 @@ fn dispatch_and_fix_open_complete_work_ready() {
     assert!(has_line(&outputs("dispatch.toml"), "create_pull_request = { max = 1, ready_when_complete = true }"));
     assert!(has_line(
         &outputs("fix.toml"),
-        r#"push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5, ready_when_complete = true }"#
+        r#"push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5, own_author = "cgwalters-bot", ready_when_complete = true }"#
     ));
+}
+
+// agentic-job#3164: both fix bounds admit a fix of the bot's own pull request
+// in a repository they do not list, and only the bot's, the account apply
+// pushes as. Read as TOML, so a misspelt key or another login fails here.
+#[test]
+fn fix_bounds_admit_the_bots_own_pull_requests_anywhere() {
+    let bot = json_file("../poll/agent-board.json")["bot"].as_str().expect("agent-board.json's bot").to_owned();
+    assert_eq!(bot, "cgwalters-bot");
+    for file in ["fix.toml", "midstream-fix.toml"] {
+        let bounds: toml::Table = toml::from_str(&read(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        let push = &bounds["github"]["outputs"]["push_to_pull_request_branch"];
+        assert_eq!(push["own_author"].as_str(), Some(bot.as_str()), "{file}");
+    }
+}
+
+// The policy job's own reading of `own_author`: an unlisted repository's
+// pull request is admitted for a push only when the bot opened it.
+#[test]
+fn agentic_job_policy_admits_an_unlisted_repository_only_for_the_bots_pull_request() {
+    if !agentic_job_installed() {
+        return;
+    }
+    let head = "0".repeat(40);
+    let repo = "ostreedev/ostree";
+    for file in ["fix.toml", "midstream-fix.toml"] {
+        assert!(!repos(file).iter().any(|r| r == repo), "{file} lists {repo}");
+        let policy = |author: &str| {
+            let clone_url = format!("https://github.com/{repo}");
+            let path = path_of(file);
+            let mut args = vec![
+                "policy", "--allow", &path, "--repo", repo, "--clone-url", &clone_url,
+                "--kind", "branch", "--outputs", "push_to_pull_request_branch,noop", "--max-outputs", "3",
+                "--base", "bot/boot-finalize-2402", "--pull-request", "3690", "--head", &head, "--output-repo", repo,
+            ];
+            if !author.is_empty() {
+                args.extend(["--pull-author", author]);
+            }
+            agentic_job(&args)
+        };
+        let admitted = policy("cgwalters-bot");
+        assert!(admitted.status.success(), "{file}: {}", String::from_utf8_lossy(&admitted.stderr));
+        let policy_json: Value = serde_json::from_slice(&admitted.stdout).expect("policy JSON");
+        assert_eq!(policy_json["safe_outputs"]["push_to_pull_request_branch"]["author"], "cgwalters-bot", "{file}");
+        for author in ["someone", "cgwalters", ""] {
+            assert!(!policy(author).status.success(), "{file}: {author:?}");
+        }
+    }
 }
 
 // D17 (docs/operator-notes.md, 2026-10-17): bootc-dev is open to

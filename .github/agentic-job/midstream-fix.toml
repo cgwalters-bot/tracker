@@ -13,8 +13,8 @@ max_patch_files = 50
 [github.outputs]
 # The branches and replacement as fix.toml's, whose comment says what each
 # glob is for and how apply bounds the head repository: `bot/**` holds the
-# staged pull requests within these forks (#710).
-push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5 }
+# staged pull requests within these forks (#710). `own_author` as fix.toml's.
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5, own_author = "cgwalters-bot" }
 add_comment = { max = 1 }
 noop = { max = 1 }
 missing_tool = { max = 1 }

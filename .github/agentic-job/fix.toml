@@ -57,7 +57,15 @@ max_patch_files = 50
 # requests (.github/release-train), which the poll now follows like any
 # bot pull request (agent-board#142): a new release can need its pin bump
 # fixed, as actions#73 did for v0.6.2.
-push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5, ready_when_complete = true }
+#
+# `own_author` (agentic-job#3164) admits a fix of a pull request the bot
+# opened in a repository `repos` does not list, such as an upstream one
+# (ostreedev/ostree#3690): policy and apply each read the author from
+# GitHub and refuse unless it is cgwalters-bot, the account apply pushes as
+# (CGWALTERS_BOT_PAT). Such a run may ask only for the push and
+# noop/missing_*, and the branch globs and every apply check above still
+# hold, the head repository's acceptance included.
+push_to_pull_request_branch = { max = 1, branches = ["dispatch/**", "bot/**", "release-train/**"], replacement_max_commits = 5, own_author = "cgwalters-bot", ready_when_complete = true }
 # A blocked fix must explain itself without inventing a patch. Check pins
 # this comment to the run's pull request; no labels or other writes are added.
 add_comment = { max = 1 }

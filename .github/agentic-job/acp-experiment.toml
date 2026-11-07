@@ -32,7 +32,7 @@ stop-services = [
 allow-sockets = [
     # systemd-resolved, which the whole runner resolves names with, the
     # egress proxy included. It resolves for any user, so on this image
-    # the sandbox user can still send names out through it
+    # the agent can still send names out through it
     # (docs/sandbox-check.md).
     "/run/systemd/resolve/",
     # systemd-networkd, which the runner's network depends on: it
@@ -47,8 +47,8 @@ allow-sockets = [
 # The egress proxy runs in a Python environment of its own, behind
 # nftables rules. Otherwise only what the ubuntu-26.04 image lacks: it has
 # podman and uidmap, which an agent builds containers with, git, curl, tar
-# and unzip, and Node with npm in /usr/local/bin, first on the sandbox
-# user's PATH and where `npm install -g` puts the agent. Ubuntu's npm would
+# and unzip, and Node with npm in /usr/local/bin, first on the agent's
+# PATH and where `npm install -g` puts the agent. Ubuntu's npm would
 # add some 350 node-* packages, a minute of setup and a mirror to flake on
 # (#660). Another image may need them back.
 packages = ["python3-venv", "nftables", "just"]
@@ -78,7 +78,7 @@ packages = ["python3-venv", "nftables", "just"]
 #   index.crates.io   the sparse index
 #   static.crates.io  the crates, checked against Cargo.lock
 #   github.com        git dependencies (git fetch is already allowed)
-# Their build scripts and proc macros run as the sandbox user.
+# Their build scripts and proc macros run as the agent, the runner's user.
 "cgwalters-forge/agentic-job" = ["cargo", "rustfmt", "rust-clippy"]
 "cgwalters-forge/agent-board" = ["cargo", "rustfmt", "rust-clippy"]
 "cgwalters-forge/tracker" = ["cargo", "rustfmt", "rust-clippy"]
