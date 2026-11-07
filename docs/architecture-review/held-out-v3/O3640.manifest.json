@@ -1,0 +1,81 @@
+{
+  "schema": "architecture-review.packet.v1",
+  "id": "O3640",
+  "visibility": "Controller only: the reviewer receives the packet files, never this manifest.",
+  "repository": "ostreedev/ostree",
+  "base": "dfe9f7a1813109d71f26db80f50453720bddf1a6",
+  "head": "c12e1d32873d896eff55e16c85a8261d282029a3",
+  "ancestry": {
+    "compare_status": "ahead",
+    "merge_base": "dfe9f7a1813109d71f26db80f50453720bddf1a6",
+    "total_commits": 1
+  },
+  "commits": [
+    {
+      "sha": "c12e1d32873d896eff55e16c85a8261d282029a3",
+      "committed": "2026-08-19T01:27:33Z"
+    }
+  ],
+  "first_feedback_at": "2026-08-25T14:18:29Z",
+  "title_description": "identity.md: title as of first feedback from rename events; description never edited after it",
+  "project_guidance": "not supplied",
+  "limits": {
+    "max_files": 30,
+    "max_bytes": 100000
+  },
+  "total_bytes": 83341,
+  "files": [
+    {
+      "name": "diff.patch",
+      "revision": "dfe9f7a1813109d71f26db80f50453720bddf1a6...c12e1d32873d896eff55e16c85a8261d282029a3",
+      "bytes": 15724,
+      "sha256": "d5b1cfdfbc5ce6b1cc64c17e7b6f053f18e24a1ce82a24541a596a585e314c95"
+    },
+    {
+      "name": "identity.md",
+      "bytes": 613,
+      "sha256": "aeb648bfbcaf6d2aeeee9e2e52f6ad92f15c112b02637272d6bcae82e94a7aaf"
+    },
+    {
+      "name": "head/src__libostree__ostree-repo-private.h",
+      "path": "src/libostree/ostree-repo-private.h",
+      "revision": "c12e1d32873d896eff55e16c85a8261d282029a3",
+      "bytes": 20643,
+      "sha256": "8f96c0f043f92dfd655119f3f52d24439cb0fa2deb8e9dc43bcef76460c90e9f"
+    },
+    {
+      "name": "head/man__ostree.repo-config.xml",
+      "path": "man/ostree.repo-config.xml",
+      "revision": "c12e1d32873d896eff55e16c85a8261d282029a3",
+      "bytes": 22619,
+      "sha256": "4e1aa6b5c9188f849ed4ba4798d16ba68f67fa5a47a7e2e9424f009fa9ac0152"
+    },
+    {
+      "name": "head/tests__test-basic-c.c",
+      "path": "tests/test-basic-c.c",
+      "revision": "c12e1d32873d896eff55e16c85a8261d282029a3",
+      "bytes": 23742,
+      "sha256": "a3fa96a0c89a302f9f9bd5fa07d249f0ff2838d0004f234dbe809fb7f474869c"
+    }
+  ],
+  "omitted": [
+    {
+      "path": "tests/test-repo.c",
+      "revision": "c12e1d32873d896eff55e16c85a8261d282029a3",
+      "bytes": 32662,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "src/libostree/ostree-repo-commit.c",
+      "revision": "c12e1d32873d896eff55e16c85a8261d282029a3",
+      "bytes": 172142,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    },
+    {
+      "path": "src/libostree/ostree-repo.c",
+      "revision": "c12e1d32873d896eff55e16c85a8261d282029a3",
+      "bytes": 234261,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    }
+  ]
+}

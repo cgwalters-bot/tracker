@@ -1,0 +1,144 @@
+{
+  "schema": "architecture-review.packet.v1",
+  "id": "B2200",
+  "visibility": "Controller only: the reviewer receives the packet files, never this manifest.",
+  "repository": "bootc-dev/bootc",
+  "base": "07735ee22110cd83ac6c26dd9b87bd81fa9a2179",
+  "head": "3a9dc2b53b849bd98883083659564b11edb73db5",
+  "ancestry": {
+    "compare_status": "ahead",
+    "merge_base": "07735ee22110cd83ac6c26dd9b87bd81fa9a2179",
+    "total_commits": 4
+  },
+  "commits": [
+    {
+      "sha": "ce8443a7bb60cdf0c43aa42d5c41e66070b91a66",
+      "committed": "2026-05-15T08:06:31Z"
+    },
+    {
+      "sha": "d2961e5bfe90ecee85f495ded0aa1423c66e9d3d",
+      "committed": "2026-05-18T10:09:46Z"
+    },
+    {
+      "sha": "17cf382c63566fa156f333d9aa8c057def86f4e6",
+      "committed": "2026-05-18T10:09:47Z"
+    },
+    {
+      "sha": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "committed": "2026-05-18T10:09:47Z"
+    }
+  ],
+  "first_feedback_at": "2026-05-18T12:53:24Z",
+  "title_description": "identity.md: title as of first feedback from rename events; description never edited after it",
+  "project_guidance": "not supplied",
+  "limits": {
+    "max_files": 30,
+    "max_bytes": 100000
+  },
+  "total_bytes": 94528,
+  "files": [
+    {
+      "name": "diff.patch",
+      "revision": "07735ee22110cd83ac6c26dd9b87bd81fa9a2179...3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 30574,
+      "sha256": "be22a1e5a4d653277463b6c356f1a7beb2662b9be0d6df332b98fa0483dd20fc"
+    },
+    {
+      "name": "identity.md",
+      "bytes": 938,
+      "sha256": "eb1ae98bc35c7dc4e99938a6afc1d98701eb0dbd07a40c0b3a93e82e705684a7"
+    },
+    {
+      "name": "head/tmt__tests__booted__test-install-bootloader-none.nu",
+      "path": "tmt/tests/booted/test-install-bootloader-none.nu",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 685,
+      "sha256": "43af309b313bdd41cf9fda267482fd98a33463f64126a3b2c33b0383c5d46a2a"
+    },
+    {
+      "name": "head/tmt__tests__booted__test-install-no-boot-dir.nu",
+      "path": "tmt/tests/booted/test-install-no-boot-dir.nu",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 775,
+      "sha256": "9d9b2ce9aa0fcde64e31b66e4135645c28faadd3e341170d021bfe835527ff58"
+    },
+    {
+      "name": "head/docs__src__man__bootc-container-ukify.8.md",
+      "path": "docs/src/man/bootc-container-ukify.8.md",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 1168,
+      "sha256": "3d2081ea856a14a19ab18588048cf0bff0ff987f31ced9843743f9048ef25186"
+    },
+    {
+      "name": "head/contrib__packaging__finalize-uki",
+      "path": "contrib/packaging/finalize-uki",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 1672,
+      "sha256": "8a4935f136aa9f8d542f8a1bc36ce07faf6344c7d5058d7a1d031d2c26c56a93"
+    },
+    {
+      "name": "head/contrib__packaging__seal-uki",
+      "path": "contrib/packaging/seal-uki",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 2296,
+      "sha256": "cff195dbc8458a06522798442f834399d195278ac0c52eea54e00ab282290824"
+    },
+    {
+      "name": "head/tmt__tests__Dockerfile.upgrade",
+      "path": "tmt/tests/Dockerfile.upgrade",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 3286,
+      "sha256": "173424bd89920d22c4fa5c284662830ad06e55569d42d7c10a1f4ce06c462f52"
+    },
+    {
+      "name": "head/tmt__tests__booted__tap.nu",
+      "path": "tmt/tests/booted/tap.nu",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 4580,
+      "sha256": "2b5be047b9e60adb350475e2cf96dab2b64ff6a34295cfff819a3cf55f39f1f8"
+    },
+    {
+      "name": "head/crates__lib__src__ukify.rs",
+      "path": "crates/lib/src/ukify.rs",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 5870,
+      "sha256": "948ab7d9a010aa4a8a6b3d9cb75fe73101474459fe311e69b421314251f32a85"
+    },
+    {
+      "name": "head/tmt__tests__booted__test-install-to-filesystem-var-mount.sh",
+      "path": "tmt/tests/booted/test-install-to-filesystem-var-mount.sh",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 7251,
+      "sha256": "d66272c2d530f83fb53991f9f2c91a6b5879c89135ca283887e8b69d3077e6f1"
+    },
+    {
+      "name": "head/tmt__plans__integration.fmf",
+      "path": "tmt/plans/integration.fmf",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 7381,
+      "sha256": "32070e92790698e0a9c47edfa4d61f8e3ea9b5f8c6d84dd9445954888463b8b8"
+    },
+    {
+      "name": "head/crates__tests-integration__src__container.rs",
+      "path": "crates/tests-integration/src/container.rs",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 13271,
+      "sha256": "0e50ff6d0da024767159c5189cc946e3074dda6e51fe1420cee9780d0d3ae835"
+    },
+    {
+      "name": "head/Dockerfile",
+      "path": "Dockerfile",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 14781,
+      "sha256": "4a5564f666b338102b1b210d298d9e0925c5cbc683ee59b16c1caccf5200e72a"
+    }
+  ],
+  "omitted": [
+    {
+      "path": "crates/lib/src/cli.rs",
+      "revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "bytes": 97583,
+      "reason": "packet byte/file limit; changed hunks remain in diff.patch"
+    }
+  ]
+}

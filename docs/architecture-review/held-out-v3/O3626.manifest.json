@@ -1,0 +1,202 @@
+{
+  "schema": "architecture-review.packet.v1",
+  "id": "O3626",
+  "visibility": "Controller only: the reviewer receives the packet files, never this manifest.",
+  "repository": "ostreedev/ostree",
+  "base": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+  "head": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+  "ancestry": {
+    "compare_status": "ahead",
+    "merge_base": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+    "total_commits": 1
+  },
+  "commits": [
+    {
+      "sha": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "committed": "2026-08-05T01:13:34Z"
+    }
+  ],
+  "first_feedback_at": "2026-08-05T12:58:56Z",
+  "title_description": "identity.md: title as of first feedback from rename events; description never edited after it",
+  "project_guidance": "not supplied",
+  "limits": {
+    "max_files": 30,
+    "max_bytes": 100000
+  },
+  "total_bytes": 90563,
+  "files": [
+    {
+      "name": "diff.patch",
+      "revision": "91a712a248b921e8101a50c289352d3e6ebbfaa3...e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 13329,
+      "sha256": "046cced491fd209fdfb180b76084140b713c7283af41bb751f8fe346b2f0f77b"
+    },
+    {
+      "name": "identity.md",
+      "bytes": 1151,
+      "sha256": "d4a527df294c77cd34503c59f6ccbcc9a8079dd3cf351cebcf7b7bc92dcd5ea8"
+    },
+    {
+      "name": "head/src__libostree__ostree-bootloader-zipl.h",
+      "path": "src/libostree/ostree-bootloader-zipl.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 1307,
+      "sha256": "b40e40e104d88580b241dae84128c7d9b5a939e08d8f59161dc7d4bcaa8245cb"
+    },
+    {
+      "name": "head/src__libostree__ostree-bootloader-aboot.h",
+      "path": "src/libostree/ostree-bootloader-aboot.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 1321,
+      "sha256": "682e801a73c0285a23d5673005e9e855afbd7d72c33763cb9c6744c0d75bb9c9"
+    },
+    {
+      "name": "head/src__libostree__ostree-bootloader-syslinux.h",
+      "path": "src/libostree/ostree-bootloader-syslinux.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 1356,
+      "sha256": "a9b97597015771c0c5c545e4b70e0f84eaa4da97bac78f50f66ed3c4965b006d"
+    },
+    {
+      "name": "head/src__libostree__ostree-bootloader-uboot.h",
+      "path": "src/libostree/ostree-bootloader-uboot.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 1450,
+      "sha256": "7c8808a67c33eeb6b1f3c997a8524bc690851af3d9717349c93d00f730ec1b13"
+    },
+    {
+      "name": "head/src__libostree__ostree-bootloader-grub2.h",
+      "path": "src/libostree/ostree-bootloader-grub2.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 1574,
+      "sha256": "763c68b5111ae18eb81d479f12829923560fe82e4a4a282e8f7c774c78f54e0d"
+    },
+    {
+      "name": "head/src__libostree__ostree-remote.h",
+      "path": "src/libostree/ostree-remote.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 1693,
+      "sha256": "45fa04bfb70bfe62a219c499dbf437eb9c7c98f70aadd339c2a42df4d7a18fd1"
+    },
+    {
+      "name": "head/src__libostree__ostree-lzma-compressor.h",
+      "path": "src/libostree/ostree-lzma-compressor.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 1833,
+      "sha256": "a905ed081867a9b24ba2db44118e50733bdbfc464dc60a97e45ca84e95657290"
+    },
+    {
+      "name": "head/src__libostree__ostree-lzma-decompressor.h",
+      "path": "src/libostree/ostree-lzma-decompressor.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 1915,
+      "sha256": "3a44323e36b48c42dbd8c2fe012e344d580334dbfde11a749f5e3fef71b8121c"
+    },
+    {
+      "name": "head/src__libostree__ostree-tls-cert-interaction-private.h",
+      "path": "src/libostree/ostree-tls-cert-interaction-private.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2050,
+      "sha256": "e94a06fd4971bac6fa3dfbba0c2e53f3d7034f11f6c3fb5701fd1060f431597e"
+    },
+    {
+      "name": "head/src__libostree__ostree-metalink.h",
+      "path": "src/libostree/ostree-metalink.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2189,
+      "sha256": "8fd6416c876447064af8537fac66420c07ebecde3a37f1a0fd39c839b5905658"
+    },
+    {
+      "name": "head/src__libostree__ostree-repo-file-enumerator.h",
+      "path": "src/libostree/ostree-repo-file-enumerator.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2232,
+      "sha256": "5ea9724c7e4d3246ab914488e9c2b9ec0a9e62dde4043609633f9631fdb459df"
+    },
+    {
+      "name": "head/src__libotutil__ot-checksum-instream.h",
+      "path": "src/libotutil/ot-checksum-instream.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2359,
+      "sha256": "1ace1d70ba4218cb8caa4261e73e5f7a5f200f4a9f1c5c4bfc1a01b06c6283d4"
+    },
+    {
+      "name": "head/src__libostree__ostree-chain-input-stream.h",
+      "path": "src/libostree/ostree-chain-input-stream.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2381,
+      "sha256": "1fa84fe3b7260e99ccb25ddc86eddf82863a0cffbb9df349b3621ecea85fa6d7"
+    },
+    {
+      "name": "head/src__libostree__ostree-checksum-input-stream.h",
+      "path": "src/libostree/ostree-checksum-input-stream.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2559,
+      "sha256": "5c5a227938c3a9bc522ced4ca7b7c1214920c74c8df795918b54a53cfc49bc3e"
+    },
+    {
+      "name": "head/src__libostree__ostree-libarchive-input-stream.h",
+      "path": "src/libostree/ostree-libarchive-input-stream.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2624,
+      "sha256": "295c1491a702d61c59ceaa4815556bc6c6c4639112916da9582185ae9bb757fa"
+    },
+    {
+      "name": "head/src__libostree__ostree-bootloader.h",
+      "path": "src/libostree/ostree-bootloader.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2824,
+      "sha256": "3b0990ba5d06cf7836a8f5f837333781a5b800ac2ea5bf605bee630fe26be970"
+    },
+    {
+      "name": "head/src__libostree__ostree-bootconfig-parser.h",
+      "path": "src/libostree/ostree-bootconfig-parser.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 2881,
+      "sha256": "ef38c8f52c588d645cfcb0fd5e8645cb4ab74fed6d71d7c632a6be729c0d5f83"
+    },
+    {
+      "name": "head/src__libostree__ostree-repo-file.h",
+      "path": "src/libostree/ostree-repo-file.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 3167,
+      "sha256": "3e11d68eb3fe6339dccf69ec8633653a916313efff50b3c0ee4271aaedc80696"
+    },
+    {
+      "name": "head/src__libostree__ostree-async-progress.h",
+      "path": "src/libostree/ostree-async-progress.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 3335,
+      "sha256": "3eba58f1c3071adb76c75af4aa1e01a659ff8eff246f4f5bf174f4ef1aef4727"
+    },
+    {
+      "name": "head/src__libostree__ostree-deployment.h",
+      "path": "src/libostree/ostree-deployment.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 3929,
+      "sha256": "c2a4019574c8c7edbf42eeb21ba1adf23729bcb36c11360245ccca43241a8540"
+    },
+    {
+      "name": "head/src__libostree__ostree-mutable-tree.h",
+      "path": "src/libostree/ostree-mutable-tree.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 4564,
+      "sha256": "f314d6e8f22f771da2f80307b95e24e002c2eff51a5a0ee8389204b9b3187139"
+    },
+    {
+      "name": "head/src__libostree__ostree-fetcher.h",
+      "path": "src/libostree/ostree-fetcher.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 6008,
+      "sha256": "c393c0937fe07fbf048fbf2db6ab8a02862d38cd886ef2a9b4c4178015b4413b"
+    },
+    {
+      "name": "head/src__libostree__ostree-repo-private.h",
+      "path": "src/libostree/ostree-repo-private.h",
+      "revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "bytes": 20532,
+      "sha256": "830a6e5906c0cadccebf13ac0039a0e4fce6174f36668b36ab0c633d1e1d4fc3"
+    }
+  ],
+  "omitted": []
+}
