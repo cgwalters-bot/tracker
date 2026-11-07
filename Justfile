@@ -559,19 +559,29 @@ test-architecture-review mode="test" id="B2588":
       }).join('\n');
     }
 
-    function select(diff, sources, limits) {
-      const files = [{ name: 'diff.patch', data: Buffer.from(annotate(text(diff)), 'utf8') }];
-      let total = files[0].data.length;
-      assert.ok(limits.max_files >= 1 && total <= limits.max_bytes, 'complete annotated diff must fit');
+    // Context (historical identity) follows the diff, counts toward the limits
+    // and is never omitted: a packet that cannot hold it is not built.
+    function select(diff, sources, limits, context = []) {
+      const files = [{ name: 'diff.patch', data: Buffer.from(annotate(text(diff)), 'utf8') }, ...context];
+      let total = files.reduce((sum, f) => sum + f.data.length, 0);
+      assert.ok(limits.max_files >= files.length && total <= limits.max_bytes, 'complete annotated diff and context must fit');
       const omitted = [];
-      const names = new Set(['diff.patch']);
+      const names = new Set(files.map(f => f.name));
       // UTF-8 byte ordering is independent of the host locale.
       sources.sort((a, b) => a.data.length - b.data.length || Buffer.compare(Buffer.from(a.path), Buffer.from(b.path)));
       for (const source of sources) {
-        text(source.data); // No lossy decoding, BOM stripping or newline normalization.
         const name = 'head/' + source.path.replaceAll('/', '__');
         assert.ok(!names.has(name), `filename collision: ${source.path}`);
         names.add(name);
+        // No lossy decoding, BOM stripping or newline normalization: binary
+        // sources are omitted whole, as the diff only says they changed.
+        try {
+          text(source.data);
+        } catch {
+          omitted.push({ path: source.path, revision: source.revision, bytes: source.data.length,
+            reason: 'not UTF-8 text; diff.patch records the binary change' });
+          continue;
+        }
         if (files.length >= limits.max_files || total + source.data.length > limits.max_bytes) {
           omitted.push({ path: source.path, revision: source.revision, bytes: source.data.length,
             reason: 'packet byte/file limit; changed hunks remain in diff.patch' });
@@ -618,14 +628,14 @@ test-architecture-review mode="test" id="B2588":
       const names = manifest.files.map(f => f.name);
       assert.equal(new Set(names).size, names.length, 'duplicate packet filename');
       assert.ok(names.includes('diff.patch'), 'missing diff.patch');
-      for (const name of names) assert.match(name, /^(?:diff\.patch|head\/[^/]+)$/);
+      for (const name of names) assert.match(name, /^(?:diff\.patch|identity\.md|head\/[^/]+)$/);
       for (const name of names) assert.ok(!['head/.', 'head/..'].includes(name), 'unsafe packet filename');
       const directories = names.some(n => n.startsWith('head/')) ? ['', 'head'] : [''];
       for (const dir of directories) {
         const path = dir ? `${directory}/${dir}` : directory;
         assert.ok(lstatSync(path).isDirectory(), `not a real directory: ${path}`);
         const expected = dir ? names.filter(n => n.startsWith('head/')).map(n => n.slice(5)) :
-          ['diff.patch', ...(directories.includes('head') ? ['head'] : [])];
+          [...names.filter(n => !n.includes('/')), ...(directories.includes('head') ? ['head'] : [])];
         assert.deepEqual([...readdirSync(path)].sort(), expected.sort(), `unexpected packet entries: ${path}`);
       }
       return names.map(name => {
@@ -635,11 +645,221 @@ test-architecture-review mode="test" id="B2588":
       });
     }
 
+    function fetchSources(repository, files, revision) {
+      return files.filter(f => f.status !== 'removed').map(f => {
+        const path = f.filename.split('/').map(encodeURIComponent).join('/');
+        const content = apiJSON(`repos/${repository}/contents/${path}?ref=${revision}`);
+        assert.equal(content.type, 'file');
+        assert.equal(content.encoding, 'base64');
+        const data = Buffer.from(content.content, 'base64');
+        assert.equal(data.length, content.size, 'missing or truncated contents');
+        return { path: f.filename, revision, data };
+      });
+    }
+
+    function publish(directory, packet, manifest) {
+      const staging = mkdtempSync(`${directory}.staging-`);
+      try {
+        if (packet.files.some(f => f.name.startsWith('head/'))) mkdirSync(`${staging}/head`);
+        for (const file of packet.files) writeFileSync(`${staging}/${file.name}`, file.data);
+        const files = readPacket(staging, manifest);
+        assert.ok(comparePacket({ ...packet, files }, manifest).all_match, 'staged packet MISMATCH');
+        // Replace the entire old tree: no stale source or scoring material survives.
+        // Publication is after comparison; a failed retrieval never publishes new bytes.
+        rmSync(directory, { recursive: true, force: true });
+        renameSync(staging, directory);
+      } finally {
+        rmSync(staging, { recursive: true, force: true });
+      }
+    }
+
+    const heldOutLimits = { max_files: 30, max_bytes: 100000 };
+    const packetDirectory = (id, heldOut) => `/tmp/opencode/architecture-review-${heldOut ? 'held-out-' : ''}${id}`;
+
+    const identityQuery = `query($owner: String!, $name: String!, $number: Int!) {
+      repository(owner: $owner, name: $name) { pullRequest(number: $number) { title body lastEditedAt
+        timelineItems(itemTypes: [RENAMED_TITLE_EVENT], first: 100) { pageInfo { hasNextPage }
+          nodes { ... on RenamedTitleEvent { createdAt previousTitle } } } } } }`;
+
+    // Neutral identity as of first feedback: repository, title and the
+    // author's description verbatim, without the PR number or URL. Title
+    // renames are timeline events; a description
+    // edited after feedback has no trusted snapshot here, so it is unavailable.
+    function historicalIdentity(repository, pr, at) {
+      const renames = pr.timelineItems.nodes;
+      if (pr.timelineItems.pageInfo.hasNextPage || (pr.lastEditedAt && pr.lastEditedAt >= at) ||
+        renames.some(r => r.createdAt === at)) return null;
+      const later = renames.filter(r => r.createdAt > at).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const title = later.length ? later[0].previousTitle : pr.title;
+      return Buffer.from(`Repository: ${repository}\nTitle: ${title}\n\n${pr.body ?? ''}`, 'utf8');
+    }
+
+    // Held-out samples by protocol version: each has its own selection log and
+    // manifest directory; IDs are unique across them by exclusion.
+    const heldOutSets = [{ selection: 'held-out-selection.json', dir: 'held-out' },
+      { selection: 'held-out-v3-selection.json', dir: 'held-out-v3' }];
+    // Discovery repositories in search order and their sample ID prefixes.
+    const heldOutPrefix = { 'bootc-dev/bootc': 'B', 'ostreedev/ostree': 'O', 'composefs/composefs': 'C' };
+    function findHeldOut(id) {
+      for (const set of heldOutSets) {
+        let selection;
+        try { selection = json(set.selection); } catch (error) { if (error.code === 'ENOENT') continue; throw error; }
+        const s = selection.selected.find(s => s.id === id);
+        if (s) return { ...set, s };
+      }
+      return null;
+    }
+
+    // Reads every page of a channel up to the protocol's cap; keep() maps each
+    // record, so dropped fields (such as bodies) never leave this function.
+    function pages(endpoint, keep) {
+      const rows = [], sizes = [];
+      for (let page = 1; page <= 10; page++) {
+        const batch = apiJSON(`${endpoint}${endpoint.includes('?') ? '&' : '?'}per_page=100&page=${page}`);
+        sizes.push(batch.length);
+        rows.push(...batch.map(keep).filter(Boolean));
+        if (batch.length < 100) return { rows, page_sizes: sizes, complete: true };
+      }
+      return { rows, page_sizes: sizes, complete: false };
+    }
+
+    // Metadata-only eligibility of protocols 2 and 3, in rule order. It returns
+    // the first failing rule, `pending` with the next metadata stage to fetch,
+    // or acceptance with the first feedback time and reviewed revision. Version
+    // 3 differs only in how discovery fetches the base and handles failures.
+    const v2Excluded = /^(?:docs?|tests?|ci|hack|contrib|\.github|tmt)\/|(?:^|\/)tests?\/|\.(?:md|txt|adoc|lock|sum|toml|ya?ml|json)$/;
+    function v2Component(path) {
+      const parts = path.split('/');
+      if (parts.length === 1) return '.';
+      return ['crates', 'src', 'lib', 'rust'].includes(parts[0]) && parts.length >= 3 ? parts.slice(0, 2).join('/') : parts[0];
+    }
+    function decideHeldOut(m, excluded) {
+      if (excluded.includes(`${m.repository}#${m.pr}`)) return { rule: 1, reason: 'excluded: pilot, version 1 or tracker-named' };
+      if (m.author === 'cgwalters') return { rule: 2, reason: 'authored by cgwalters' };
+      if (m.author_type === 'Bot' || m.author.endsWith('[bot]')) return { rule: 3, reason: 'bot author' };
+      if (m.error) return { rule: m.error.rule, reason: `metadata request failed: ${m.error.message}` };
+      if (!m.channels) return { pending: 'channels' };
+      assert.deepEqual(m.channels.map(c => c.channel), ['inline', 'review', 'pr']);
+      if (!m.channels.every(c => c.complete)) return { rule: 4, reason: 'channel beyond the page cap' };
+      const [inline, review, pr] = m.channels.map(c => c.records);
+      if (!review.length) return { rule: 5, reason: 'no cgwalters review' };
+      const all = [...inline, ...review, ...pr].map(r => r.at).sort();
+      const anchor = [...review, ...inline].sort((a, b) => a.at.localeCompare(b.at))[0];
+      if (pr.some(r => r.at < anchor.at)) return { rule: 5, reason: 'PR comment precedes his first review: revision ambiguous' };
+      if (!anchor.commit_id) return { rule: 5, reason: 'first review or inline record has no commit ID' };
+      const found = { first_feedback_at: all[0], reviewed_revision: anchor.commit_id };
+      if (!m.comparison) return { pending: 'comparison', ...found };
+      const c = m.comparison;
+      if (c.status !== 'ahead' || c.total_commits !== c.commits.length || c.total_commits > 250 || c.files_listed >= 300 ||
+        c.commits.at(-1)?.sha !== anchor.commit_id)
+        return { rule: 6, reason: 'history not ahead, truncated or not ending at the reviewed revision' };
+      if (c.base_committed > found.first_feedback_at || c.commits.some(x => x.committed > found.first_feedback_at))
+        return { rule: 6, reason: 'history committed after first feedback' };
+      const code = m.files.filter(f => !v2Excluded.test(f.filename));
+      const components = new Set(code.map(f => v2Component(f.filename)));
+      const lines = code.reduce((sum, f) => sum + f.additions + f.deletions, 0);
+      if (components.size < 2 || lines < 40) return { rule: 7, reason: `architecture proxy: ${components.size} components, ${lines} code lines` };
+      if (m.packet_bytes === undefined) return { pending: 'packet', ...found };
+      if (m.packet_bytes > heldOutLimits.max_bytes) return { rule: 8, reason: `diff and identity are ${m.packet_bytes} bytes` };
+      return { rule: null, reason: 'eligible', ...found };
+    }
+
+    function fetchIdentity(repository, number, at) {
+      const [owner, name] = repository.split('/');
+      const response = JSON.parse(text(execFileSync('gh', ['api', 'graphql', '-f', `query=${identityQuery}`,
+        '-f', `owner=${owner}`, '-f', `name=${name}`, '-F', `number=${number}`], { timeout: 20000, maxBuffer: 8 * 1024 * 1024 })));
+      assert.ok(!response.errors, `identity query: ${JSON.stringify(response.errors)}`);
+      return historicalIdentity(repository, response.data.repository.pullRequest, at);
+    }
+
+    // Discovery and selection under protocol version 3, from metadata only:
+    // feedback bodies are dropped as records arrive. Writes the selection log
+    // once; a frozen log is never rewritten.
+    if (process.argv[2] === 'held-out-discover') {
+      const h = json('held-out-v3.json');
+      for (const [file, digest] of Object.entries(h.protocol_sha256)) assert.equal(sha256(read(file)), digest, `${file} changed after freeze`);
+      assert.equal(sha256(read('held-out-v2-rubric.md')), h.rubric_sha256, 'rubric changed after freeze');
+      assert.throws(() => read('held-out-v3-selection.json'), /ENOENT/, 'selection already frozen');
+      const discovery = Object.keys(heldOutPrefix).map(repository => {
+        const query = `repo:${repository} is:pr is:merged reviewed-by:cgwalters -author:cgwalters -involves:cgwalters-bot merged:2026-07-01..2026-11-04`;
+        const entry = { repository, query, endpoint: 'GET /search/issues', sort: 'created', order: 'asc', per_page: 20, page: 1,
+          retrieved_at: new Date().toISOString() };
+        try {
+          const raw = api(`search/issues?q=${encodeURIComponent(query)}&sort=created&order=asc&per_page=20&page=1`);
+          const r = JSON.parse(text(raw));
+          return { ...entry, status: r.incomplete_results ? 'incomplete' : 'ok', response_sha256: sha256(raw), total_count: r.total_count,
+            incomplete_results: r.incomplete_results, results: r.incomplete_results ? [] : r.items.map((item, i) => ({ rank: i + 1,
+              pr: item.number, url: item.html_url, author: item.user.login, author_type: item.user.type, created_at: item.created_at,
+              merged_at: item.pull_request.merged_at, metadata_sha256: sha256(JSON.stringify(item)) })) };
+        } catch (error) {
+          return { ...entry, status: 'failed', error: String(error.message).split('\n')[0], results: [] };
+        }
+      });
+      const order = [];
+      for (let rank = 1; rank <= 20; rank++)
+        for (const d of discovery) {
+          const r = d.results.find(r => r.rank === rank);
+          if (r) order.push({ repository: d.repository, ...r });
+        }
+      const examined = [], selected = [];
+      for (const r of order) {
+        if (selected.length === h.minimum_eligible_prs) break;
+        const m = { repository: r.repository, pr: r.pr, author: r.author, author_type: r.author_type };
+        let d;
+        while ((d = decideHeldOut(m, h.exclusions.prs)).pending) try {
+          if (d.pending === 'channels') {
+            const mine = row => row.user?.login === 'cgwalters';
+            m.channels = [
+              ['inline', `repos/${r.repository}/pulls/${r.pr}/comments`, x => ({ id: x.id, at: x.created_at, commit_id: x.original_commit_id })],
+              ['review', `repos/${r.repository}/pulls/${r.pr}/reviews`, x => x.submitted_at && ({ id: x.id, at: x.submitted_at, commit_id: x.commit_id, state: x.state })],
+              ['pr', `repos/${r.repository}/issues/${r.pr}/comments`, x => ({ id: x.id, at: x.created_at })],
+            ].map(([channel, endpoint, keep]) => {
+              const p = pages(endpoint, x => mine(x) && keep(x));
+              return { channel, endpoint, page_sizes: p.page_sizes, complete: p.complete, records: p.rows };
+            });
+          } else if (d.pending === 'comparison') {
+            // The PR's recorded base tip, not the branch's current one: a merged
+            // head is an ancestor of today's branch and would be its own base.
+            const { ref: base_ref, sha: base_sha } = apiJSON(`repos/${r.repository}/pulls/${r.pr}`).base;
+            const merge = apiJSON(`repos/${r.repository}/compare/${base_sha}...${d.reviewed_revision}`).merge_base_commit;
+            const c = apiJSON(`repos/${r.repository}/compare/${merge.sha}...${d.reviewed_revision}`);
+            m.comparison = { base_ref, base_sha, base: merge.sha, base_committed: merge.commit.committer.date, status: c.status,
+              total_commits: c.total_commits, files_listed: c.files.length,
+              commits: c.commits.map(x => ({ sha: x.sha, committed: x.commit.committer.date })) };
+            m.files = c.files.map(({ filename, status, additions, deletions }) => ({ filename, status, additions, deletions }));
+          } else {
+            const endpoint = `repos/${r.repository}/compare/${m.comparison.base}...${d.reviewed_revision}`;
+            const diff = api(endpoint, 'application/vnd.github.diff');
+            const identity = fetchIdentity(r.repository, r.pr, d.first_feedback_at);
+            m.diff_bytes = diff.length;
+            m.diff_sha256 = sha256(diff);
+            m.identity = identity ? 'available' : 'unavailable';
+            m.packet_bytes = Buffer.byteLength(annotate(text(diff))) + (identity ? identity.length : 0);
+          }
+        } catch (error) {
+          m.error = { rule: { channels: 4, comparison: 6, packet: 8 }[d.pending], message: String(error.message).split('\n')[0] };
+        }
+        examined.push({ ...m, decision: d.rule === null ? 'accepted' : 'rejected', rule: d.rule, reason: d.reason });
+        if (d.rule === null) selected.push({ id: `${heldOutPrefix[r.repository]}${r.pr}`, repository: r.repository, pr: r.pr,
+          first_feedback_at: d.first_feedback_at, reviewed_revision: d.reviewed_revision,
+          revision_evidence: 'commit ID of his earliest review or inline comment', base: m.comparison.base,
+          base_committed: m.comparison.base_committed, base_method: `merge-base of the PR's recorded ${m.comparison.base_ref} tip ${m.comparison.base_sha}`,
+          commits: m.comparison.commits, files: m.files, diff_bytes: m.diff_bytes, diff_sha256: m.diff_sha256 });
+        console.log(`${r.repository}#${r.pr}: ${d.rule === null ? 'accepted' : `rule ${d.rule}: ${d.reason}`}`);
+      }
+      save('held-out-v3-selection.json', { schema: 'architecture-review.held-out-selection.v3', issue: 1300,
+        visibility: 'Controller only: never historical reviewer or scorer input.', protocol_sha256: h.protocol_sha256,
+        discovery, examined, selected });
+      console.log(`${selected.length} of ${h.minimum_eligible_prs} selected after examining ${examined.length} of ${order.length}`);
+      process.exit(0);
+    }
+
     if (process.argv[2] === 'verify') {
       const id = process.argv[3];
-      assert.ok(sample.samples.some(s => s.id === id && s.status === 'evaluated'), 'unknown evaluated sample');
-      const manifest = json(`runs/${id}.manifest.json`);
-      const files = readPacket(`/tmp/opencode/architecture-review-${id}`, manifest);
+      const heldOut = findHeldOut(id);
+      assert.ok(heldOut || sample.samples.some(s => s.id === id && s.status === 'evaluated'), 'unknown evaluated sample');
+      const manifest = json(heldOut ? `${heldOut.dir}/${id}.manifest.json` : `runs/${id}.manifest.json`);
+      const files = readPacket(packetDirectory(id, heldOut), manifest);
       const report = comparePacket({ files, omitted: manifest.omitted,
         total_bytes: files.reduce((sum, f) => sum + f.data.length, 0) }, manifest);
       // Exact directory integrity and bytes, not independently reconstructed selection/omissions.
@@ -658,38 +878,61 @@ test-architecture-review mode="test" id="B2588":
       const comparison = apiJSON(endpoint);
       validateHistory(comparison, s, manifest);
       const diff = api(endpoint, 'application/vnd.github.diff');
-      const sources = comparison.files.filter(f => f.status !== 'removed').map(f => {
-        const path = f.filename.split('/').map(encodeURIComponent).join('/');
-        const content = apiJSON(`repos/${s.repository}/contents/${path}?ref=${s.head}`);
-        assert.equal(content.type, 'file');
-        assert.equal(content.encoding, 'base64');
-        const data = Buffer.from(content.content, 'base64');
-        assert.equal(data.length, content.size, 'missing or truncated contents');
-        return { path: f.filename, revision: s.head, data };
-      });
-      const packet = select(diff, sources, manifest.limits);
-      const directory = `/tmp/opencode/architecture-review-${id}`;
+      const packet = select(diff, fetchSources(s.repository, comparison.files, s.head), manifest.limits);
       const report = { schema: 'architecture-review.rebuild.v1', id, builder: 'Justfile test-architecture-review rebuild',
         historical_identity: 'Only matching bytes are reconstructed evidence; no new historical review ran.',
         manifest_sha256: sha256(read(`runs/${id}.manifest.json`)),
         ancestry: { status: comparison.status, merge_base: comparison.merge_base_commit.sha, commits_match: true, pre_feedback: true },
         ...comparePacket(packet, manifest) };
       assert.ok(report.all_match, `reconstructed packet MISMATCH: ${JSON.stringify(report)}`);
-      const staging = mkdtempSync(`${directory}.staging-`);
-      try {
-        if (packet.files.some(f => f.name.startsWith('head/'))) mkdirSync(`${staging}/head`);
-        for (const file of packet.files) writeFileSync(`${staging}/${file.name}`, file.data);
-        const files = readPacket(staging, manifest);
-        assert.ok(comparePacket({ ...packet, files }, manifest).all_match, 'staged packet MISMATCH');
-        // Replace the entire old tree: no stale source or scoring material survives.
-        // Publication is after comparison; a failed retrieval never publishes new bytes.
-        rmSync(directory, { recursive: true, force: true });
-        renameSync(staging, directory);
-      } finally {
-        rmSync(staging, { recursive: true, force: true });
-      }
+      publish(`/tmp/opencode/architecture-review-${id}`, packet, manifest);
       save(`runs/${id}.rebuild.json`, report);
       console.log(`${id}: exact packet matches; details in runs/${id}.rebuild.json`);
+      process.exit(0);
+    }
+
+    // Builds a frozen held-out candidate's packet from the selection alone (no
+    // feedback is fetched) and archives its controller-only manifest; a later
+    // run must reproduce that manifest exactly.
+    if (process.argv[2] === 'held-out-packet') {
+      const id = process.argv[3];
+      const heldOut = findHeldOut(id);
+      assert.ok(heldOut, 'unknown held-out candidate');
+      const { s } = heldOut;
+      const endpoint = `repos/${s.repository}/compare/${s.base}...${s.reviewed_revision}`;
+      const comparison = apiJSON(endpoint);
+      validateHistory(comparison, { candidate_base: s.base, feedback_at: s.first_feedback_at },
+        { first_feedback_at: s.first_feedback_at, commits: s.commits });
+      assert.deepEqual(comparison.files.map(({ filename, status, additions, deletions }) => ({ filename, status, additions, deletions })),
+        s.files, 'changed files differ from the frozen selection');
+      const diff = api(endpoint, 'application/vnd.github.diff');
+      assert.equal(sha256(diff), s.diff_sha256, 'diff differs from the frozen selection');
+      const identity = fetchIdentity(s.repository, s.pr, s.first_feedback_at);
+      const packet = select(diff, fetchSources(s.repository, comparison.files, s.reviewed_revision), heldOutLimits,
+        identity ? [{ name: 'identity.md', data: identity }] : []);
+      const manifest = { schema: 'architecture-review.packet.v1', id,
+        visibility: 'Controller only: the reviewer receives the packet files, never this manifest.',
+        repository: s.repository, base: s.base, head: s.reviewed_revision,
+        ancestry: { compare_status: comparison.status, merge_base: comparison.merge_base_commit.sha, total_commits: comparison.total_commits },
+        commits: s.commits, first_feedback_at: s.first_feedback_at,
+        title_description: identity ? 'identity.md: title as of first feedback from rename events; description never edited after it' :
+          'unavailable: renamed at first feedback, truncated rename history or description edited after it; current text omitted',
+        project_guidance: 'not supplied', limits: heldOutLimits, total_bytes: packet.total_bytes,
+        files: packet.files.map(f => ({ name: f.name,
+          ...(f.name === 'diff.patch' ? { revision: `${s.base}...${s.reviewed_revision}` } :
+            f.path ? { path: f.path, revision: s.reviewed_revision } : {}),
+          bytes: f.data.length, sha256: sha256(f.data) })),
+        omitted: packet.omitted };
+      const file = `${heldOut.dir}/${id}.manifest.json`;
+      let frozen = null;
+      try { frozen = json(file); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      if (frozen) assert.deepEqual(manifest, frozen, `${id}: reconstruction differs from the archived manifest`);
+      publish(packetDirectory(id, true), packet, manifest);
+      if (!frozen) {
+        mkdirSync(`docs/architecture-review/${heldOut.dir}`, { recursive: true });
+        save(file, manifest);
+      }
+      console.log(`${id}: packet in ${packetDirectory(id, true)} matches ${file}`);
       process.exit(0);
     }
 
@@ -726,7 +969,7 @@ test-architecture-review mode="test" id="B2588":
       process.exit(0);
     }
 
-    assert.ok(['test', 'fixtures', 'e2e'].includes(process.argv[2]), 'expected test, fixtures, e2e, rebuild, verify or feedback');
+    assert.ok(['test', 'fixtures', 'e2e'].includes(process.argv[2]), 'expected test, fixtures, e2e, rebuild, held-out-packet, held-out-discover, verify or feedback');
     if (process.argv[2] === 'e2e') test('offline canned-API rebuild/verify dispatch', () => {
       const fs = require('node:fs');
       const vm = require('node:vm');
@@ -862,6 +1105,25 @@ test-architecture-review mode="test" id="B2588":
       assert.throws(() => select(Buffer.from('abc'), [], { max_files: 30, max_bytes: 2 }));
       assert.throws(() => select(Buffer.from(''), [{ path: 'a/b', data: Buffer.from('') }, { path: 'a__b', data: Buffer.from('') }], { max_files: 30, max_bytes: 10 }));
       assert.throws(() => text(Buffer.from([255])));
+      const binary = select(Buffer.from(''), [{ path: 'b', data: Buffer.from([255]) }, ...sources], { max_files: 30, max_bytes: 100 });
+      assert.deepEqual(binary.files.map(f => f.name), ['diff.patch', 'head/a', 'head/z', 'head/large']);
+      assert.deepEqual(binary.omitted.map(o => [o.path, o.reason]), [['b', 'not UTF-8 text; diff.patch records the binary change']]);
+      const context = [{ name: 'identity.md', data: Buffer.from('id') }];
+      assert.deepEqual(select(Buffer.from(''), sources, { max_files: 2, max_bytes: 3 }, context).files.map(f => f.name), ['diff.patch', 'identity.md']);
+      assert.throws(() => select(Buffer.from(''), sources, { max_files: 1, max_bytes: 100 }, context));
+      assert.throws(() => select(Buffer.from(''), sources, { max_files: 30, max_bytes: 1 }, context));
+      const renamed = { title: 'new', body: 'text\r\n', lastEditedAt: null,
+        timelineItems: { pageInfo: { hasNextPage: false }, nodes: [{ createdAt: '2026-01-03T00:00:00Z', previousTitle: 'old' },
+          { createdAt: '2026-01-01T00:00:00Z', previousTitle: 'older' }, { createdAt: '2026-01-04T00:00:00Z', previousTitle: 'mid' }] } };
+      const at = '2026-01-02T00:00:00Z';
+      assert.equal(text(historicalIdentity('o/r', renamed, at)), 'Repository: o/r\nTitle: old\n\ntext\r\n');
+      assert.equal(text(historicalIdentity('o/r', { ...renamed, body: null, lastEditedAt: '2026-01-01T00:00:00Z' }, '2026-01-05T00:00:00Z')),
+        'Repository: o/r\nTitle: new\n\n');
+      for (const change of [{ lastEditedAt: at }, { lastEditedAt: '2026-01-03T00:00:00Z' },
+        { timelineItems: { ...renamed.timelineItems, pageInfo: { hasNextPage: true } } },
+        { timelineItems: { ...renamed.timelineItems, nodes: [{ createdAt: at, previousTitle: 'x' }] } }]) {
+        assert.equal(historicalIdentity('o/r', { ...renamed, ...change }, at), null);
+      }
       const manifest = { files: packet.files.map(f => ({ name: f.name, bytes: f.data.length, sha256: sha256(f.data) })), total_bytes: 2, omitted: packet.omitted };
       assert.equal(comparePacket(packet, manifest).all_match, true);
       assert.equal(comparePacket({ ...packet, files: packet.files.map(f => ({ ...f, data: Buffer.from('bad') })) }, manifest).all_match, false);
@@ -880,6 +1142,333 @@ test-architecture-review mode="test" id="B2588":
       assert.throws(() => validateHistory({ ...history, files: Array(300).fill({}) }, s, frozen));
       assert.throws(() => validateHistory(history, { ...s, feedback_at: '2025-01-01T00:00:00Z' }, { ...frozen, first_feedback_at: '2025-01-01T00:00:00Z' }));
       assert.throws(() => validateHistory(history, s, { ...frozen, commits: [] }));
+    });
+
+    // The frozen selection: an ordered prefix of discovery, five accepted PRs
+    // outside every exclusion, and history that precedes first feedback.
+    function validateHeldOutSelection(h, sel) {
+      assert.equal(sel.schema, 'architecture-review.held-out-selection.v1');
+      const order = sel.discovery.flatMap(d => d.results.map(r => `${d.repository}#${r.pr}`));
+      assert.equal(order.length, h.denominators.discovered_prs);
+      assert.ok(order.length <= h.discovery_cap);
+      assert.ok(sel.discovery.every(d => d.status === 'failed' || (d.incomplete_results === false && d.results.length === d.per_page)));
+      const examined = sel.examined.map(e => `${e.repository}#${e.pr}`);
+      // A failed search may only follow every examined PR: selection never skips a repository.
+      const failed = sel.discovery.findIndex(d => d.status !== 'ok');
+      assert.ok(failed === -1 || sel.discovery.slice(failed).every(d => !examined.some(e => e.startsWith(`${d.repository}#`))),
+        'examined past a failed search');
+      assert.deepEqual(examined, order.slice(0, examined.length), 'examined out of discovery order');
+      assert.equal(examined.length, h.denominators.examined_prs);
+      const accepted = sel.examined.filter(e => e.decision === 'accepted');
+      assert.ok(sel.examined.every(e => ['accepted', 'rejected'].includes(e.decision) && (e.reason || e.contract)));
+      assert.equal(accepted.length, h.minimum_eligible_prs);
+      assert.equal(sel.examined.at(-1).decision, 'accepted', 'examination continued past the fifth eligible PR');
+      const excluded = [...h.pilot_exclusions, ...h.derivation_inventory.exclusions];
+      assert.ok(accepted.every(e => !excluded.includes(`${e.repository}#${e.pr}`)), 'excluded PR accepted');
+      assert.deepEqual(h.candidates, sel.selected.map(s => ({ id: s.id, repository: s.repository, pr: s.pr })));
+      assert.deepEqual(accepted.map(e => `${e.repository}#${e.pr}`), sel.selected.map(s => `${s.repository}#${s.pr}`));
+      for (const s of sel.selected) {
+        const e = accepted.find(e => e.repository === s.repository && e.pr === s.pr);
+        assert.ok(e.contract && e.changed_symbols.length > 0 && s.base_method, s.id);
+        assert.deepEqual(e.channels.map(c => c.channel), ['inline', 'review', 'pr'], `${s.id}: channels`);
+        assert.ok(e.channels.every(c => c.complete), `${s.id}: truncated channel`);
+        assert.equal(s.first_feedback_at, e.first_feedback.at);
+        assert.equal(s.reviewed_revision, e.first_feedback.commit_id);
+        assert.match(s.reviewed_revision, /^[a-f0-9]{40}$/);
+        assert.ok(s.commits.length > 0 && s.commits.at(-1).sha === s.reviewed_revision, `${s.id}: head`);
+        assert.ok(s.commits.every(c => c.committed <= s.first_feedback_at) && s.base_committed <= s.first_feedback_at, `${s.id}: post-feedback history`);
+      }
+    }
+
+    // Archived manifests of the held-out packets: frozen history, the shared
+    // limits, the complete diff first and the counted identity file beside it.
+    function validateHeldOutPackets(h, sel, dir = 'held-out') {
+      assert.deepEqual(h.packets.map(p => p.id), h.candidates.map(c => c.id), 'a packet for each candidate, in order');
+      for (const p of h.packets) {
+        assert.equal(p.manifest, `${dir}/${p.id}.manifest.json`);
+        assert.equal(sha256(read(p.manifest)), p.manifest_sha256, p.id);
+        const m = json(p.manifest);
+        const s = sel.selected.find(s => s.id === p.id);
+        assert.equal(m.id, p.id);
+        assert.equal(m.repository, s.repository, p.id);
+        assert.equal(m.base, s.base, p.id);
+        assert.equal(m.head, s.reviewed_revision, p.id);
+        assert.equal(m.first_feedback_at, s.first_feedback_at, p.id);
+        assert.deepEqual(m.commits, s.commits, p.id);
+        assert.deepEqual(m.ancestry, { compare_status: 'ahead', merge_base: s.base, total_commits: s.commits.length }, p.id);
+        assert.deepEqual(m.limits, heldOutLimits, p.id);
+        assert.equal(m.files[0].name, 'diff.patch', p.id);
+        assert.equal(m.files.some(f => f.name === 'identity.md'), m.title_description.startsWith('identity.md'), p.id);
+        assert.ok(m.files.length <= m.limits.max_files, p.id);
+        assert.equal(m.total_bytes, m.files.reduce((sum, f) => sum + f.bytes, 0), p.id);
+        assert.ok(m.total_bytes <= m.limits.max_bytes, p.id);
+      }
+    }
+
+    // The shipped prompt/library bytes: the working tree, the ledger's hashes and
+    // the pinned revision (read back with git) must all agree.
+    function validateFrozenArtifacts(h) {
+      assert.match(h.frozen_from_revision, /^[a-f0-9]{40}$/);
+      assert.deepEqual(Object.keys(h.artifact_sha256).sort(), ['patterns.md', 'prompt.md', 'references.json']);
+      for (const [file, digest] of Object.entries(h.artifact_sha256)) {
+        assert.equal(sha256(read(file)), digest, file);
+        assert.equal(sha256(execFileSync('git', ['show', `${h.frozen_from_revision}:docs/architecture-review/${file}`],
+          { stdio: ['ignore', 'pipe', 'ignore'] })), digest,
+          `${file} at ${h.frozen_from_revision}`);
+      }
+    }
+
+    // Selection under protocols 2 and 3: discovery after the freeze, the
+    // round-robin order, each examined PR's decision recomputed from its
+    // archived metadata, and no feedback text archived before review.
+    function heldOutOrder(sel) {
+      const order = [];
+      for (let rank = 1; rank <= 20; rank++)
+        for (const d of sel.discovery) {
+          const r = d.results.find(r => r.rank === rank);
+          if (r) order.push(`${d.repository}#${r.pr}`);
+        }
+      return order;
+    }
+    function validateHeldOutDiscovery(h, sel) {
+      assert.deepEqual(sel.discovery.map(d => d.repository), Object.keys(heldOutPrefix));
+      assert.ok(sel.discovery.every(d => d.retrieved_at > h.frozen_at), 'discovery before the protocol freeze');
+      assert.ok(sel.discovery.every(d => d.status !== 'ok' ||
+        (d.incomplete_results === false && d.results.length === Math.min(d.per_page, d.total_count))), 'partial discovery page');
+      assert.ok(sel.discovery.every(d => d.status === 'ok' || d.results.length === 0), 'results from a failed search');
+      const order = heldOutOrder(sel);
+      assert.ok(order.length <= h.discovery_cap);
+      const examined = sel.examined.map(e => `${e.repository}#${e.pr}`);
+      assert.deepEqual(examined, order.slice(0, examined.length), 'examined out of discovery order');
+      for (const d of sel.discovery) {
+        assert.equal(d.query, `repo:${d.repository} is:pr is:merged reviewed-by:cgwalters -author:cgwalters -involves:cgwalters-bot merged:2026-07-01..2026-11-04`);
+        assert.deepEqual([d.sort, d.order, d.per_page, d.page], ['created', 'asc', 20, 1]);
+      }
+      assert.deepEqual(sel.protocol_sha256, h.protocol_sha256);
+      const accepted = [];
+      for (const e of sel.examined) {
+        const key = `${e.repository}#${e.pr}`;
+        const found = sel.discovery.find(d => d.repository === e.repository).results.find(r => r.pr === e.pr);
+        assert.deepEqual([e.author, e.author_type], [found.author, found.author_type], `${key}: author differs from discovery`);
+        assert.ok(!e.error || [4, 6, 8].includes(e.error.rule), `${key}: failure under an unfetched rule`);
+        const d = decideHeldOut(e, h.exclusions.prs);
+        assert.equal(d.pending, undefined, `${key}: decided without its metadata`);
+        assert.equal(e.rule, d.rule, key);
+        assert.equal(e.decision, d.rule === null ? 'accepted' : 'rejected', key);
+        if (d.rule === null) accepted.push({ e, d });
+      }
+      assert.deepEqual(accepted.map(({ e }) => `${e.repository}#${e.pr}`), sel.selected.map(s => `${s.repository}#${s.pr}`));
+      for (const [i, { e, d }] of accepted.entries()) {
+        const s = sel.selected[i];
+        assert.equal(s.id, `${heldOutPrefix[s.repository]}${s.pr}`);
+        assert.equal(s.first_feedback_at, d.first_feedback_at, s.id);
+        assert.equal(s.reviewed_revision, d.reviewed_revision, s.id);
+        assert.equal(s.base, e.comparison.base, s.id);
+        assert.equal(s.base_committed, e.comparison.base_committed, s.id);
+        assert.deepEqual(s.commits, e.comparison.commits, s.id);
+        assert.deepEqual(s.files, e.files, s.id);
+        assert.equal(s.diff_sha256, e.diff_sha256, s.id);
+      }
+      assert.ok(accepted.length <= h.minimum_eligible_prs);
+      if (accepted.length === h.minimum_eligible_prs) assert.equal(sel.examined.at(-1).decision, 'accepted', 'examined past the fifth');
+      else assert.equal(examined.length, order.length, 'stopped before the end with fewer than five');
+      assert.ok(!JSON.stringify(sel).includes('"body"'), 'feedback text archived before review');
+      return { order, accepted: accepted.length };
+    }
+
+    // Version 3's ledger: frozen inputs, the abandoned version 2 attempt,
+    // exclusions covering every earlier sample, exact packet membership and
+    // denominators. With fewer than five PRs it must stay incomplete and empty
+    // of runs; accepting reviews or scores needs new evidence checks first.
+    function validateHeldOutV3(h, sel, v2, v2sel) {
+      assert.equal(h.schema, 'architecture-review.held-out.v3');
+      assert.equal(h.held_out_claim, false);
+      validateFrozenArtifacts(h);
+      assert.deepEqual(h.artifact_sha256, json('held-out.json').artifact_sha256, 'shipped bytes differ from version 1');
+      assert.deepEqual(Object.keys(h.protocol_sha256), ['held-out-protocol-v2.md', 'held-out-protocol-v3.md']);
+      for (const [file, digest] of Object.entries(h.protocol_sha256)) assert.equal(sha256(read(file)), digest, file);
+      assert.equal(h.rubric_sha256, sha256(read('held-out-v2-rubric.md')));
+      assert.equal(h.minimum_eligible_prs, 5);
+      assert.equal(h.discovery_cap, 60);
+
+      assert.equal(v2.status, 'abandoned');
+      assert.equal(v2.superseded_by, 'held-out-v3.json');
+      assert.equal(v2.protocol_sha256, h.protocol_sha256['held-out-protocol-v2.md']);
+      assert.equal(v2.rubric_sha256, h.rubric_sha256);
+      assert.equal(v2.selection_sha256, sha256(read('held-out-v2-selection.json')));
+      assert.deepEqual(v2.exclusions, h.exclusions);
+      assert.ok(v2.frozen_at < h.frozen_at && v2sel.discovery.every(d => d.retrieved_at < h.frozen_at), 'version 3 frozen after version 2 ran');
+      const v2run = validateHeldOutDiscovery(v2, v2sel);
+      assert.equal(v2.outcome.discovered_prs, v2run.order.length);
+      assert.equal(v2.outcome.examined_prs, v2sel.examined.length);
+      assert.equal(v2.outcome.selected_prs, v2run.accepted);
+      const byRule = {};
+      for (const e of v2sel.examined.filter(e => e.rule !== null)) byRule[e.rule] = (byRule[e.rule] ?? 0) + 1;
+      assert.deepEqual(v2.outcome.rejections_by_rule, byRule);
+
+      // Sample separation: every earlier sample and exposure source is excluded.
+      const v1 = json('held-out.json');
+      const v1sel = json('held-out-selection.json');
+      const earlier = [...sample.samples.map(s => `${s.repository}#${s.pr}`), ...v1.derivation_inventory.exclusions,
+        ...v1sel.discovery.flatMap(d => d.results.map(r => `${d.repository}#${r.pr}`))];
+      assert.ok(earlier.every(p => h.exclusions.prs.includes(p)), 'an earlier sample PR is not excluded');
+      assert.equal(new Set(h.exclusions.prs).size, h.exclusions.prs.length);
+
+      assert.equal(h.candidate_feedback_accessed, 'metadata-only');
+      assert.equal(h.selection_sha256, sha256(read('held-out-v3-selection.json')));
+      assert.equal(sel.schema, 'architecture-review.held-out-selection.v3');
+      const run = validateHeldOutDiscovery(h, sel);
+      assert.deepEqual(h.candidates, sel.selected.map(s => ({ id: s.id, repository: s.repository, pr: s.pr })));
+      assert.ok(h.candidates.every(c => !earlier.includes(`${c.repository}#${c.pr}`)));
+      validateHeldOutPackets(h, sel, 'held-out-v3');
+      assert.deepEqual(h.denominators, { discovered_prs: run.order.length, examined_prs: sel.examined.length,
+        selected_prs: h.candidates.length, eligible_prs: h.candidates.length, packet_complete_prs: h.packets.length,
+        attempted_prs: 0, completed_prs: 0, contaminated_prs: 0, scored_prs: 0 });
+      assert.ok(h.candidates.length < h.minimum_eligible_prs, 'a complete sample needs review and scoring evidence checks');
+      assert.equal(h.status, 'incomplete');
+      assert.ok(h.stop_reason.length > 0);
+      for (const key of ['runs', 'scoring_runs']) assert.deepEqual(h[key], []);
+      assert.equal(h.scores, null, 'no scores without isolated reviews and separate scoring evidence');
+      assert.match(h.human_adjudication, /Not obtained/);
+    }
+
+    test('held-out eligibility rules on synthetic metadata', () => {
+      const at = (day, h = 0) => `2026-08-0${day}T0${h}:00:00Z`;
+      const ok = { repository: 'o/r', pr: 1, author: 'a', author_type: 'User',
+        channels: [{ channel: 'inline', complete: true, records: [{ id: 1, at: at(3), commit_id: 'c2' }] },
+          { channel: 'review', complete: true, records: [{ id: 2, at: at(2), commit_id: 'c1' }] },
+          { channel: 'pr', complete: true, records: [{ id: 3, at: at(4) }] }],
+        comparison: { base: 'b', base_committed: at(1), status: 'ahead', total_commits: 1, files_listed: 3, commits: [{ sha: 'c1', committed: at(1, 1) }] },
+        files: [{ filename: 'src/a/x.c', additions: 30, deletions: 0 }, { filename: 'src/b/y.c', additions: 10, deletions: 0 },
+          { filename: 'tests/z.c', additions: 500, deletions: 0 }],
+        packet_bytes: 100000 };
+      assert.deepEqual(decideHeldOut(ok, []), { rule: null, reason: 'eligible', first_feedback_at: at(2), reviewed_revision: 'c1' });
+      const channel = (name, change) => ok.channels.map(c => c.channel === name ? { ...c, ...change } : c);
+      const cases = [
+        [{}, 1, ['o/r#1']], [{ author: 'cgwalters' }, 2], [{ author: 'x[bot]' }, 3], [{ author_type: 'Bot' }, 3],
+        [{ channels: channel('pr', { complete: false }) }, 4], [{ channels: channel('review', { records: [] }) }, 5],
+        [{ channels: channel('pr', { records: [{ id: 3, at: at(1) }] }) }, 5],
+        [{ channels: channel('review', { records: [{ id: 2, at: at(2), commit_id: null }] }) }, 5],
+        [{ error: { rule: 6, message: 'HTTP 404' } }, 6], [{ comparison: { ...ok.comparison, status: 'identical' } }, 6],
+        [{ comparison: { ...ok.comparison, commits: [{ sha: 'c1', committed: at(5) }] } }, 6],
+        [{ comparison: { ...ok.comparison, total_commits: 2 } }, 6],
+        [{ files: ok.files.slice(1) }, 7], [{ files: [{ filename: 'src/a/x.c', additions: 20, deletions: 9 }, ok.files[1]] }, 7],
+        [{ files: ok.files.map(f => ({ ...f, filename: f.filename.replace('src/b/y.c', 'src/a/y.md') })) }, 7],
+        [{ packet_bytes: 100001 }, 8],
+      ];
+      for (const [change, rule, excluded = []] of cases) assert.equal(decideHeldOut({ ...ok, ...change }, excluded).rule, rule, JSON.stringify(change));
+      for (const [stage, change] of [['channels', { channels: undefined }], ['comparison', { comparison: undefined }], ['packet', { packet_bytes: undefined }]])
+        assert.equal(decideHeldOut({ ...ok, ...change }, []).pending, stage);
+      assert.deepEqual(['main.rs', 'src/x.c', 'src/libostree/x.c', 'crates/lib/src/x.rs', 'lib/x.rs'].map(v2Component),
+        ['.', 'src', 'src/libostree', 'crates/lib', 'lib']);
+    });
+
+    test('held-out versions 2 and 3: frozen protocol, recomputed metadata-only selection, packets and denominators', () => {
+      const [h, sel, v2, v2sel] = ['held-out-v3.json', 'held-out-v3-selection.json', 'held-out-v2.json', 'held-out-v2-selection.json'].map(json);
+      validateHeldOutV3(h, sel, v2, v2sel);
+      const i = sel.examined.findIndex(e => e.decision === 'accepted');
+      const e = sel.examined[i];
+      const examined = change => ({ examined: sel.examined.map((x, j) => j === i ? { ...x, ...change } : x) });
+      const invalid = [
+        [{ status: 'complete' }], [{ held_out_claim: true }], [{ scores: {} }], [{ runs: [{ id: 'invented' }] }],
+        [{ scoring_runs: [{ id: 'invented' }] }], [{ minimum_eligible_prs: 4 }], [{ frozen_at: '2026-12-01T00:00:00Z' }],
+        [{ frozen_from_revision: h.frozen_from_revision.replace(/.$/, c => c === '0' ? '1' : '0') }],
+        [{ artifact_sha256: { ...h.artifact_sha256, 'prompt.md': '0'.repeat(64) } }],
+        [{ protocol_sha256: { ...h.protocol_sha256, 'held-out-protocol-v3.md': '0'.repeat(64) } }],
+        [{ rubric_sha256: '0'.repeat(64) }], [{ selection_sha256: '0'.repeat(64) }],
+        [{ exclusions: { ...h.exclusions, prs: h.exclusions.prs.filter(p => p !== 'bootc-dev/bootc#2603') } }],
+        [{ exclusions: { ...h.exclusions, prs: [...h.exclusions.prs, `${e.repository}#${e.pr}`] } }],
+        [{ candidates: h.candidates.slice(1) }], [{ packets: h.packets.slice(1) }], [{ packets: [...h.packets].reverse() }],
+        [{ packets: h.packets.map((p, j) => j ? p : { ...p, manifest_sha256: '0'.repeat(64) }) }],
+        [{ packets: h.packets.map((p, j) => j ? p : { ...p, manifest: `held-out/${p.id}.manifest.json` }) }],
+        ...Object.keys(h.denominators).map(key => [{ denominators: { ...h.denominators, [key]: h.denominators[key] + 1 } }]),
+        [{}, examined({ rule: 3 })], [{}, examined({ decision: 'rejected' })], [{}, examined({ author: 'cgwalters' })],
+        [{}, examined({ packet_bytes: 100001 })], [{}, examined({ comparison: { ...e.comparison, base_committed: '2099-01-01T00:00:00Z' } })],
+        [{}, examined({ channels: e.channels.map(c => c.channel === 'pr' ? { ...c, records: [{ id: 1, at: '2000-01-01T00:00:00Z' }] } : c) })],
+        [{}, examined({ channels: e.channels.map(c => ({ ...c, records: c.records.map(r => ({ ...r, body: 'leak' })) })) })],
+        [{}, { examined: [...sel.examined].reverse() }], [{}, { examined: sel.examined.slice(0, -1) }],
+        [{}, { selected: sel.selected.slice(1) }],
+        [{}, { selected: sel.selected.map((s, j) => j ? s : { ...s, reviewed_revision: '0'.repeat(40) }) }],
+        [{}, { discovery: sel.discovery.map(d => ({ ...d, retrieved_at: '2026-01-01T00:00:00Z' })) }],
+        [{}, { discovery: sel.discovery.map(d => ({ ...d, incomplete_results: true })) }],
+        [{}, {}, { status: 'frozen' }], [{}, {}, { selection_sha256: '0'.repeat(64) }],
+        [{}, {}, { outcome: { ...v2.outcome, selected_prs: 2 } }],
+      ];
+      for (const [hc, sc = {}, v2c = {}] of invalid)
+        assert.throws(() => validateHeldOutV3({ ...h, ...hc }, { ...sel, ...sc }, { ...v2, ...v2c }, v2sel), JSON.stringify(hc) + JSON.stringify(sc).slice(0, 80));
+    });
+
+    // This ledger is a checkpoint before any review, not a schema for completed
+    // runs. A future execution must add evidence validation before accepting scores.
+    function validateHeldOutCheckpoint(h, sel) {
+      assert.equal(h.schema, 'architecture-review.held-out.v1');
+      assert.equal(h.status, 'unfinished');
+      assert.equal(h.held_out_claim, false);
+      assert.match(h.frozen_from_revision, /^[a-f0-9]{40}$/);
+      assert.equal(h.minimum_eligible_prs, 5);
+      assert.equal(h.discovery_cap, 60);
+      assert.deepEqual(Object.keys(h.artifact_sha256).sort(), ['patterns.md', 'prompt.md', 'references.json']);
+      validateFrozenArtifacts(h);
+      assert.equal(h.protocol_sha256, sha256(read('held-out-protocol.md')));
+      assert.deepEqual([...h.pilot_exclusions].sort(), sample.samples.map(s => `${s.repository}#${s.pr}`).sort());
+      assert.equal(h.derivation_inventory.status, 'complete');
+      assert.ok(h.derivation_inventory.sources.length > 0);
+      assert.equal(new Set(h.derivation_inventory.exclusions).size, h.derivation_inventory.exclusions.length);
+      assert.ok(h.pilot_exclusions.every(p => h.derivation_inventory.exclusions.includes(p)));
+      assert.deepEqual(h.prerequisites, { inference: 'unavailable', isolation: 'unverified', candidate_eligibility: 'verified' });
+      assert.ok(h.blockers.length > 0 && h.blockers.every(b => typeof b === 'string' && b.length > 0));
+      assert.equal(h.candidate_feedback_accessed, 'metadata-only');
+      assert.equal(h.selection_sha256, sha256(read('held-out-selection.json')));
+      validateHeldOutSelection(h, sel);
+      validateHeldOutPackets(h, sel);
+      for (const key of ['runs', 'scoring_runs']) assert.deepEqual(h[key], []);
+      assert.deepEqual(h.denominators, { ...h.denominators, selected_prs: h.candidates.length,
+        eligible_prs: h.candidates.length, packet_complete_prs: h.packets.length, attempted_prs: 0, completed_prs: 0,
+        contaminated_prs: 0, scored_prs: 0 });
+      assert.equal(h.scores, null, 'no scores without isolated reviews and separate scoring evidence');
+      assert.match(h.human_adjudication, /Not obtained/);
+    }
+
+    test('held-out freeze, exclusion inventory, frozen selection and unexecuted denominators', () => {
+      const h = json('held-out.json');
+      const sel = json('held-out-selection.json');
+      validateHeldOutCheckpoint(h, sel);
+      const [first] = sel.selected;
+      const accepted = sel.examined.findIndex(e => e.decision === 'accepted');
+      const invalid = [
+        { status: 'completed' }, { held_out_claim: true }, { scores: {} },
+        { candidate_feedback_accessed: true }, { minimum_eligible_prs: 4 },
+        { discovery_cap: 39 }, { pilot_exclusions: h.pilot_exclusions.slice(0, -1) },
+        { pilot_exclusions: [...h.pilot_exclusions, h.pilot_exclusions[0]] },
+        { artifact_sha256: { ...h.artifact_sha256, 'prompt.md': '0'.repeat(64) } },
+        { protocol_sha256: '0'.repeat(64) }, { selection_sha256: '0'.repeat(64) },
+        { derivation_inventory: { ...h.derivation_inventory, status: 'pending' } },
+        { derivation_inventory: { ...h.derivation_inventory, exclusions: [...h.derivation_inventory.exclusions, 'bootc-dev/bootc#105'] } },
+        { prerequisites: { ...h.prerequisites, isolation: 'verified' } },
+        { candidates: [{ id: 'B2603', repository: 'bootc-dev/bootc', pr: 2603 }, ...h.candidates.slice(1)] },
+        { candidates: h.candidates.slice(1) },
+        { runs: [{ id: 'invented' }] }, { scoring_runs: [{ id: 'invented' }] },
+        { packets: h.packets.slice(1) }, { packets: [...h.packets].reverse() },
+        { packets: h.packets.map((p, i) => i ? p : { ...p, manifest_sha256: '0'.repeat(64) }) },
+        { packets: h.packets.map((p, i) => i ? p : { ...p, manifest: 'runs/B2588.manifest.json' }) },
+        { blockers: [] },
+        ...Object.keys(h.denominators).map(key => ({ denominators: { ...h.denominators, [key]: h.denominators[key] + 1 } })),
+      ];
+      for (const change of invalid) assert.throws(() => validateHeldOutCheckpoint({ ...h, ...change }, sel));
+      const invalidSelection = [
+        { examined: [...sel.examined].reverse() },
+        { examined: sel.examined.map((e, i) => i === accepted ? { ...e, decision: 'rejected', reason: 'x' } : e) },
+        { examined: [...sel.examined, { ...sel.examined[0], decision: 'rejected', reason: 'x' }] },
+        { selected: [{ ...first, first_feedback_at: '2000-01-01T00:00:00Z' }, ...sel.selected.slice(1)] },
+        { selected: [{ ...first, reviewed_revision: '0'.repeat(40) }, ...sel.selected.slice(1)] },
+        { selected: [{ ...first, commits: [] }, ...sel.selected.slice(1)] },
+        { discovery: sel.discovery.map(d => ({ ...d, incomplete_results: true })) },
+        { discovery: [...sel.discovery, sel.discovery[0]] },
+        { discovery: [{ ...sel.discovery[0], status: 'failed' }, ...sel.discovery.slice(1)] },
+        { examined: sel.examined.map((e, i) => i === accepted ? { ...e, channels: e.channels.slice(1) } : e) },
+        { selected: [{ ...first, base_method: undefined }, ...sel.selected.slice(1)] },
+      ];
+      for (const change of invalidSelection) assert.throws(() => validateHeldOutSelection(h, { ...sel, ...change }));
     });
 
     function validateCounts(r) {

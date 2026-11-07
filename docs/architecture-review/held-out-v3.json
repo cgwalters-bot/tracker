@@ -1,0 +1,87 @@
+{
+  "schema": "architecture-review.held-out.v3",
+  "issue": 1300,
+  "status": "incomplete",
+  "stop_reason": "Four of the 41 discovered PRs qualified; the protocol needs five and forbids relaxing a rule or borrowing a PR, so no review or scoring ran. Continuing needs an operator decision on new bounds under a version 4 protocol and sample.",
+  "held_out_claim": false,
+  "frozen_at": "2026-11-07T20:35:39Z",
+  "frozen_from_revision": "2665dbb77eda413f593238d432fb6323cf6bd62d",
+  "artifact_sha256": {
+    "prompt.md": "41fff6f107981d80956cc4bebc30a782a6f9c9b17fe630e305c8e881f6170e9e",
+    "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
+    "references.json": "771045ba21c8eac23c82338576f1aef2c9fa6095f6f0c7cab21a8e16ce26bb24"
+  },
+  "protocol_sha256": {
+    "held-out-protocol-v2.md": "43429600227cfaf935b744d835265edfb4279e7fea027cefb50d3b440455cad2",
+    "held-out-protocol-v3.md": "2506c9c7a738a5cd4260493c7ccd029484d9b40bab74be3bf90c73265a1ebe78"
+  },
+  "rubric_sha256": "f590b327f07729851b002517a78ca377f6f9839b6ee682a4d207f7a3ea6dde1d",
+  "minimum_eligible_prs": 5,
+  "discovery_cap": 60,
+  "spend_cap_usd": 60,
+  "previous_attempts": ["held-out.json", "held-out-v2.json"],
+  "preflight": {
+    "at": "2026-11-07T20:24:00Z",
+    "inference": "available through the environment's headless client; direct requests to the configured address returned HTTP 429",
+    "isolation": "noncandidate prompt in an empty HOME and working directory: the initialisation record listed no tools and no MCP servers, and the context reported no prior messages and did not know a controller canary",
+    "candidate_material": "none"
+  },
+  "exclusions": {
+    "sources": [
+      "sample.json (accepted and rejected pilot PRs)",
+      "held-out.json derivation inventory",
+      "held-out-selection.json discovery list (all 40 PRs, including the five frozen in version 1)",
+      "PR and issue numbers in bootc-dev/bootc, ostreedev/ostree and composefs/composefs named in tracker files at 71edc5c and e12084d, all tracker commit messages, and issues/comments of #1224, #1227, #1300 and #1303 (2026-11-07)"
+    ],
+    "prs": [
+      "bootc-dev/bootc#12", "bootc-dev/bootc#105", "bootc-dev/bootc#137", "bootc-dev/bootc#144", "bootc-dev/bootc#161",
+      "bootc-dev/bootc#167", "bootc-dev/bootc#174", "bootc-dev/bootc#179", "bootc-dev/bootc#180", "bootc-dev/bootc#182",
+      "bootc-dev/bootc#195", "bootc-dev/bootc#196", "bootc-dev/bootc#197", "bootc-dev/bootc#198", "bootc-dev/bootc#202",
+      "bootc-dev/bootc#208", "bootc-dev/bootc#236", "bootc-dev/bootc#238", "bootc-dev/bootc#244", "bootc-dev/bootc#249",
+      "bootc-dev/bootc#2402", "bootc-dev/bootc#2455", "bootc-dev/bootc#2494", "bootc-dev/bootc#2588", "bootc-dev/bootc#2603",
+      "bootc-dev/bootc#2611",
+      "composefs/composefs#389", "composefs/composefs#416", "composefs/composefs#437", "composefs/composefs#450",
+      "ostreedev/ostree#1221", "ostreedev/ostree#1767", "ostreedev/ostree#1877", "ostreedev/ostree#1878", "ostreedev/ostree#1912",
+      "ostreedev/ostree#1937", "ostreedev/ostree#1946", "ostreedev/ostree#1948", "ostreedev/ostree#1954", "ostreedev/ostree#1957",
+      "ostreedev/ostree#1959", "ostreedev/ostree#1965", "ostreedev/ostree#1985", "ostreedev/ostree#1987", "ostreedev/ostree#1998",
+      "ostreedev/ostree#1999", "ostreedev/ostree#2015", "ostreedev/ostree#2025", "ostreedev/ostree#2041", "ostreedev/ostree#2044",
+      "ostreedev/ostree#3664", "ostreedev/ostree#3680", "ostreedev/ostree#3690"
+    ]
+  },
+  "candidate_feedback_accessed": "metadata-only",
+  "selection_sha256": "dd48b43c6598afd1e43da8f115b6c7a3b074dd996debc3ab3ff812cd989cbd63",
+  "candidates": [
+    { "id": "B2200", "repository": "bootc-dev/bootc", "pr": 2200 },
+    { "id": "O3624", "repository": "ostreedev/ostree", "pr": 3624 },
+    { "id": "O3626", "repository": "ostreedev/ostree", "pr": 3626 },
+    { "id": "O3640", "repository": "ostreedev/ostree", "pr": 3640 }
+  ],
+  "packets": [
+    { "id": "B2200", "manifest": "held-out-v3/B2200.manifest.json", "manifest_sha256": "0528d730fec868a3090aa8989f66e17408a0a09bb64b4b6e29cb892d95f0dc2d" },
+    { "id": "O3624", "manifest": "held-out-v3/O3624.manifest.json", "manifest_sha256": "e3ea65c45ac29a68f5a554dc1f0d9fd6b221aa651fcf41dc10031636c0cf5eaf" },
+    { "id": "O3626", "manifest": "held-out-v3/O3626.manifest.json", "manifest_sha256": "82cb67af184d7250d6d0fe0258017028f39e5fa046023476a99ab91efb85b2ab" },
+    { "id": "O3640", "manifest": "held-out-v3/O3640.manifest.json", "manifest_sha256": "ecea451fcfd507dddc02391c67c7918bc724c69be82fd7f7f4aa505bd734117c" }
+  ],
+  "open_concerns": [
+    "The window filters on merge date: B2200's first feedback (2026-05-18) precedes the reviewing model's stated training cutoff.",
+    "The architecture proxy rejected most bootc PRs because nearly all of bootc's code is one component (crates/lib).",
+    "Model training exposure and the client's prepended system line cannot be measured or archived.",
+    "Correction to held-out-protocol-v3.md (pinned, so not edited): the version 2 attempt fetched two diffs (bootc#2200 and bootc#2297), decoded and annotated them to count bytes, and fetched both PRs' titles and descriptions; no feedback text.",
+    "Freeze-before-discovery is self-attested: frozen_at and retrieved_at were written by the same uncommitted run, not by an external timestamp."
+  ],
+  "runs": [],
+  "scoring_runs": [],
+  "denominators": {
+    "discovered_prs": 41,
+    "examined_prs": 41,
+    "selected_prs": 4,
+    "eligible_prs": 4,
+    "packet_complete_prs": 4,
+    "attempted_prs": 0,
+    "completed_prs": 0,
+    "contaminated_prs": 0,
+    "scored_prs": 0
+  },
+  "scores": null,
+  "human_adjudication": "Not obtained; preserve the pilot's outstanding human-adjudication request."
+}

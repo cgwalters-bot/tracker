@@ -1,0 +1,1619 @@
+{
+  "schema": "architecture-review.held-out-selection.v1",
+  "issue": 1300,
+  "visibility": "Controller only: never give this file, its reasons or feedback timestamps to a historical reviewer.",
+  "discovery": [
+    {
+      "repository": "bootc-dev/bootc",
+      "query": "repo:bootc-dev/bootc is:pr is:merged reviewed-by:cgwalters merged:<2026-11-05",
+      "endpoint": "GET /search/issues",
+      "sort": "created",
+      "order": "asc",
+      "per_page": 20,
+      "page": 1,
+      "retrieved_at": "2026-11-05T01:12:38Z",
+      "status": "ok",
+      "response_sha256": "e896ec57eb23c313cf1a565a695324cb18a79eb87e7fa093ed9f7a55dea51a6e",
+      "total_count": 744,
+      "incomplete_results": false,
+      "results": [
+        {
+          "rank": 1,
+          "pr": 12,
+          "url": "https://github.com/bootc-dev/bootc/pull/12",
+          "author": "cgwalters",
+          "created_at": "2022-12-02T18:37:34Z",
+          "merged_at": "2022-12-02T22:29:08Z",
+          "metadata_sha256": "6834ab0824734fa7f14be8ebb7f9bb21e27fe618b148710d16c4b2bb56b3900d"
+        },
+        {
+          "rank": 2,
+          "pr": 105,
+          "url": "https://github.com/bootc-dev/bootc/pull/105",
+          "author": "jbtrystram",
+          "created_at": "2023-07-04T13:41:53Z",
+          "merged_at": "2023-07-06T07:50:49Z",
+          "metadata_sha256": "3c4e7f0847628e8a2a74ec9ebc422fc4c3e63438c14fa541101dc243dd278f15"
+        },
+        {
+          "rank": 3,
+          "pr": 137,
+          "url": "https://github.com/bootc-dev/bootc/pull/137",
+          "author": "cgwalters",
+          "created_at": "2023-10-02T17:59:02Z",
+          "merged_at": "2024-11-18T20:17:46Z",
+          "metadata_sha256": "a6479e98bd8c924a0c9aec1c5037830e438bb4a446603dab2e34540e976f77fe"
+        },
+        {
+          "rank": 4,
+          "pr": 144,
+          "url": "https://github.com/bootc-dev/bootc/pull/144",
+          "author": "cgwalters",
+          "created_at": "2023-10-13T20:12:36Z",
+          "merged_at": "2023-10-13T20:49:28Z",
+          "metadata_sha256": "0163966e7cad951304871517cb912f2357d02ce203abdb8e736803e4d881deae"
+        },
+        {
+          "rank": 5,
+          "pr": 161,
+          "url": "https://github.com/bootc-dev/bootc/pull/161",
+          "author": "cgwalters",
+          "created_at": "2023-10-27T18:03:24Z",
+          "merged_at": "2023-10-27T19:06:16Z",
+          "metadata_sha256": "4b87568c4f4c210e697093ba30e7eb5d7ca771b5a880fc5fbd66d072b35d030d"
+        },
+        {
+          "rank": 6,
+          "pr": 167,
+          "url": "https://github.com/bootc-dev/bootc/pull/167",
+          "author": "jlebon",
+          "created_at": "2023-11-01T13:29:33Z",
+          "merged_at": "2023-11-01T18:31:02Z",
+          "metadata_sha256": "8c4cb089e37064e8bbe1d79499e31433433206cf3bf1bfaa78a5f30a6d2513db"
+        },
+        {
+          "rank": 7,
+          "pr": 174,
+          "url": "https://github.com/bootc-dev/bootc/pull/174",
+          "author": "ipanova",
+          "created_at": "2023-11-03T15:57:31Z",
+          "merged_at": "2023-11-03T17:59:15Z",
+          "metadata_sha256": "ae2dab2104d9bb24be797c8aa670555492c9821a25a648e23fcce8340d6c7bc5"
+        },
+        {
+          "rank": 8,
+          "pr": 179,
+          "url": "https://github.com/bootc-dev/bootc/pull/179",
+          "author": "cgwalters",
+          "created_at": "2023-11-03T21:56:34Z",
+          "merged_at": "2024-01-17T20:54:30Z",
+          "metadata_sha256": "390629ed7b4c5240e2a360fd0bc19fb42a1bf28b859c5e11587fad0937297f99"
+        },
+        {
+          "rank": 9,
+          "pr": 180,
+          "url": "https://github.com/bootc-dev/bootc/pull/180",
+          "author": "vrothberg",
+          "created_at": "2023-11-06T14:19:37Z",
+          "merged_at": "2023-11-06T17:58:09Z",
+          "metadata_sha256": "e74657271e1c2e64217611a11862fa7ff9a58ceba835e93247e45f994d902d39"
+        },
+        {
+          "rank": 10,
+          "pr": 182,
+          "url": "https://github.com/bootc-dev/bootc/pull/182",
+          "author": "cgwalters",
+          "created_at": "2023-11-06T19:04:35Z",
+          "merged_at": "2023-11-06T20:34:22Z",
+          "metadata_sha256": "0a0c70b815836a5e3f59d5e308cf22a3f939cb83319dbb15c413ebb07f0aec03"
+        },
+        {
+          "rank": 11,
+          "pr": 195,
+          "url": "https://github.com/bootc-dev/bootc/pull/195",
+          "author": "miabbott",
+          "created_at": "2023-11-10T20:53:47Z",
+          "merged_at": "2023-11-10T22:56:44Z",
+          "metadata_sha256": "24edd1116ca0ddefc0f6bd77be9a848a54b5696743de827e4ccd0ae2191f06ba"
+        },
+        {
+          "rank": 12,
+          "pr": 196,
+          "url": "https://github.com/bootc-dev/bootc/pull/196",
+          "author": "miabbott",
+          "created_at": "2023-11-10T22:09:16Z",
+          "merged_at": "2023-11-11T15:22:20Z",
+          "metadata_sha256": "7491bae1ce2b74fb22fb113fd2045b948cf1c5158498829b2966bf405bfb955a"
+        },
+        {
+          "rank": 13,
+          "pr": 197,
+          "url": "https://github.com/bootc-dev/bootc/pull/197",
+          "author": "miabbott",
+          "created_at": "2023-11-10T22:21:00Z",
+          "merged_at": "2023-11-10T22:41:32Z",
+          "metadata_sha256": "4456ea34d72abe03e6411cff704678b759b4ff7d0241052dcc2a7dd3a04588b1"
+        },
+        {
+          "rank": 14,
+          "pr": 198,
+          "url": "https://github.com/bootc-dev/bootc/pull/198",
+          "author": "miabbott",
+          "created_at": "2023-11-10T22:31:09Z",
+          "merged_at": "2023-11-10T22:49:44Z",
+          "metadata_sha256": "de8dfc016f2a61f7c6a58de94da4a156141e0243136ae85542d30773133f0542"
+        },
+        {
+          "rank": 15,
+          "pr": 202,
+          "url": "https://github.com/bootc-dev/bootc/pull/202",
+          "author": "miabbott",
+          "created_at": "2023-11-11T15:43:50Z",
+          "merged_at": "2023-11-11T16:41:25Z",
+          "metadata_sha256": "dd7f96f75a9c9bf6e104fc594be75236d3dd9164ab2c6c01c265c7f157887b8a"
+        },
+        {
+          "rank": 16,
+          "pr": 208,
+          "url": "https://github.com/bootc-dev/bootc/pull/208",
+          "author": "miabbott",
+          "created_at": "2023-11-18T20:32:12Z",
+          "merged_at": "2023-11-21T15:28:10Z",
+          "metadata_sha256": "b420e5b43a171f9c88535523cb02056ecbc4ba7178394660de7c3d864b036efe"
+        },
+        {
+          "rank": 17,
+          "pr": 236,
+          "url": "https://github.com/bootc-dev/bootc/pull/236",
+          "author": "jeckersb",
+          "created_at": "2023-12-18T21:33:31Z",
+          "merged_at": "2023-12-19T17:08:22Z",
+          "metadata_sha256": "c17b103c5bf5424a5479b18ca4457b6cc19b8a3ce896e1e9feec355b77e49dff"
+        },
+        {
+          "rank": 18,
+          "pr": 238,
+          "url": "https://github.com/bootc-dev/bootc/pull/238",
+          "author": "jeckersb",
+          "created_at": "2023-12-19T16:38:19Z",
+          "merged_at": "2023-12-19T18:13:04Z",
+          "metadata_sha256": "85330682929debb4fa8d9cfb62743013abf7c7093f4f9cca50a41563829bb4d5"
+        },
+        {
+          "rank": 19,
+          "pr": 244,
+          "url": "https://github.com/bootc-dev/bootc/pull/244",
+          "author": "cgwalters",
+          "created_at": "2023-12-20T12:54:39Z",
+          "merged_at": "2024-01-02T07:56:19Z",
+          "metadata_sha256": "99e90a887f5c8f0e814b1e7f6a7606e1c805c372a3805f131c1f8f545ff00cbe"
+        },
+        {
+          "rank": 20,
+          "pr": 249,
+          "url": "https://github.com/bootc-dev/bootc/pull/249",
+          "author": "cgwalters",
+          "created_at": "2024-01-03T16:19:17Z",
+          "merged_at": "2024-01-05T15:54:01Z",
+          "metadata_sha256": "d62a6ff4820456b19000b14a74d8f6e9dff31cabfeb93aa60b4f73d58922e06a"
+        }
+      ]
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "query": "repo:ostreedev/ostree is:pr is:merged reviewed-by:cgwalters merged:<2026-11-05",
+      "endpoint": "GET /search/issues",
+      "sort": "created",
+      "order": "asc",
+      "per_page": 20,
+      "page": 1,
+      "retrieved_at": "2026-11-05T01:12:38Z",
+      "status": "ok",
+      "response_sha256": "188d07cb21dd05c24c2a6e58d7c613655f0cbb5beaabd3c5b6ddf2917f43f7cb",
+      "total_count": 491,
+      "incomplete_results": false,
+      "results": [
+        {
+          "rank": 1,
+          "pr": 1221,
+          "url": "https://github.com/ostreedev/ostree/pull/1221",
+          "author": "cgwalters",
+          "created_at": "2017-09-27T02:03:00Z",
+          "merged_at": "2019-12-03T14:41:09Z",
+          "metadata_sha256": "986c5ae7204680458c4066437dd3f83a270b414c4b7ddd48271e68a7e0df23ca"
+        },
+        {
+          "rank": 2,
+          "pr": 1767,
+          "url": "https://github.com/ostreedev/ostree/pull/1767",
+          "author": "cgwalters",
+          "created_at": "2018-10-29T19:01:05Z",
+          "merged_at": "2019-12-11T20:34:37Z",
+          "metadata_sha256": "49ccd8efa5e97c80746c7e66f199c42d8cc5550621fbc47e8802239108d77955"
+        },
+        {
+          "rank": 3,
+          "pr": 1877,
+          "url": "https://github.com/ostreedev/ostree/pull/1877",
+          "author": "dbnicholson",
+          "created_at": "2019-06-21T12:38:31Z",
+          "merged_at": "2020-01-26T17:20:52Z",
+          "metadata_sha256": "8cfb91b724630d4b1a3caaf18a828fcd6a92dd57c4f3f49604c2d0d5d09731ba"
+        },
+        {
+          "rank": 4,
+          "pr": 1878,
+          "url": "https://github.com/ostreedev/ostree/pull/1878",
+          "author": "d4s",
+          "created_at": "2019-06-25T22:01:16Z",
+          "merged_at": "2020-04-04T17:46:13Z",
+          "metadata_sha256": "1c5ec510c239112c88b4beb09f03b6166aa72d118c692c1ed30cd4cfbef0f899"
+        },
+        {
+          "rank": 5,
+          "pr": 1912,
+          "url": "https://github.com/ostreedev/ostree/pull/1912",
+          "author": "akiernan",
+          "created_at": "2019-09-03T17:16:03Z",
+          "merged_at": "2019-10-16T18:15:56Z",
+          "metadata_sha256": "cc5a718315231c9a7f3cb0738f3305316048c16b68965bcec3e215caf36abc67"
+        },
+        {
+          "rank": 6,
+          "pr": 1937,
+          "url": "https://github.com/ostreedev/ostree/pull/1937",
+          "author": "cgwalters",
+          "created_at": "2019-10-14T19:25:16Z",
+          "merged_at": "2019-10-16T15:21:11Z",
+          "metadata_sha256": "f374930d05cd1b86db7e3782e611b60d20199b3ad7c70e8f93c407ea8c31210c"
+        },
+        {
+          "rank": 7,
+          "pr": 1946,
+          "url": "https://github.com/ostreedev/ostree/pull/1946",
+          "author": "dbnicholson",
+          "created_at": "2019-10-16T21:05:47Z",
+          "merged_at": "2023-02-09T13:24:59Z",
+          "metadata_sha256": "4bb6576c898c668755b5d8ad58d61ab531a9ace5b66e95f63d51ba18089b0c69"
+        },
+        {
+          "rank": 8,
+          "pr": 1948,
+          "url": "https://github.com/ostreedev/ostree/pull/1948",
+          "author": "dbnicholson",
+          "created_at": "2019-10-18T16:59:59Z",
+          "merged_at": "2020-01-24T20:43:00Z",
+          "metadata_sha256": "148091eba6f07b393084014233ff3b73731af80c25ab49a85837a887a3dcd67b"
+        },
+        {
+          "rank": 9,
+          "pr": 1954,
+          "url": "https://github.com/ostreedev/ostree/pull/1954",
+          "author": "jlebon",
+          "created_at": "2019-10-23T15:17:10Z",
+          "merged_at": "2019-10-23T16:02:31Z",
+          "metadata_sha256": "e7705e2f8b9033046a03f00fafe9f34099634bcc72f73a5b82b3ab2efaf367ea"
+        },
+        {
+          "rank": 10,
+          "pr": 1957,
+          "url": "https://github.com/ostreedev/ostree/pull/1957",
+          "author": "dbnicholson",
+          "created_at": "2019-10-24T23:16:09Z",
+          "merged_at": "2020-01-27T16:25:59Z",
+          "metadata_sha256": "0b8950b0ea191e1c873c680ef2aab9122a1bdeb4a91bf3009cd4dad70fc606ed"
+        },
+        {
+          "rank": 11,
+          "pr": 1959,
+          "url": "https://github.com/ostreedev/ostree/pull/1959",
+          "author": "cgwalters",
+          "created_at": "2019-10-25T22:08:23Z",
+          "merged_at": "2020-01-28T21:01:41Z",
+          "metadata_sha256": "c132fe3b9c5530a36d7ad1c8037193ed2d87a492b42651ab88a8225b49a23d91"
+        },
+        {
+          "rank": 12,
+          "pr": 1965,
+          "url": "https://github.com/ostreedev/ostree/pull/1965",
+          "author": "akiernan",
+          "created_at": "2019-10-31T18:35:21Z",
+          "merged_at": "2019-11-01T18:42:20Z",
+          "metadata_sha256": "a549d07150297457936e4b24783a18f21b89abd3aa6e94acd61b219c252b0623"
+        },
+        {
+          "rank": 13,
+          "pr": 1985,
+          "url": "https://github.com/ostreedev/ostree/pull/1985",
+          "author": "fdanis-oss",
+          "created_at": "2019-12-13T13:45:30Z",
+          "merged_at": "2020-09-24T14:21:17Z",
+          "metadata_sha256": "e418662e172d616d62adb0f5aa7de4cace553e5d2902e7cb45c0a0ac617b6adc"
+        },
+        {
+          "rank": 14,
+          "pr": 1987,
+          "url": "https://github.com/ostreedev/ostree/pull/1987",
+          "author": "akiernan",
+          "created_at": "2019-12-29T14:26:04Z",
+          "merged_at": "2020-01-16T15:47:42Z",
+          "metadata_sha256": "8c9e8e3cc3733a2c49497481c2efb1352e7300709c75fe4e1c18acd21cae5cf1"
+        },
+        {
+          "rank": 15,
+          "pr": 1998,
+          "url": "https://github.com/ostreedev/ostree/pull/1998",
+          "author": "cgwalters",
+          "created_at": "2020-02-03T15:43:30Z",
+          "merged_at": "2020-02-03T18:42:56Z",
+          "metadata_sha256": "c8373e1ca195334ae6bf908672269dfa589fddfc72682fcaaa56bbe9b5107e94"
+        },
+        {
+          "rank": 16,
+          "pr": 1999,
+          "url": "https://github.com/ostreedev/ostree/pull/1999",
+          "author": "cgwalters",
+          "created_at": "2020-02-03T20:52:15Z",
+          "merged_at": "2020-02-07T14:08:06Z",
+          "metadata_sha256": "16329c6ae3c5c2d041e2b80ea10ba45f907c59d52682329cb9477d0854ff66b3"
+        },
+        {
+          "rank": 17,
+          "pr": 2015,
+          "url": "https://github.com/ostreedev/ostree/pull/2015",
+          "author": "cgwalters",
+          "created_at": "2020-02-21T14:47:30Z",
+          "merged_at": "2020-02-21T15:16:51Z",
+          "metadata_sha256": "91323532b8af60dd6af186b48937d51a92d80aa493dd138633461a745c53f078"
+        },
+        {
+          "rank": 18,
+          "pr": 2025,
+          "url": "https://github.com/ostreedev/ostree/pull/2025",
+          "author": "cgwalters",
+          "created_at": "2020-03-11T20:36:57Z",
+          "merged_at": "2020-03-19T16:32:24Z",
+          "metadata_sha256": "4b67f377c92b41dfe9aa493fde33abd3380cddd67adfa6f4860cd8aadd9b471e"
+        },
+        {
+          "rank": 19,
+          "pr": 2041,
+          "url": "https://github.com/ostreedev/ostree/pull/2041",
+          "author": "cgwalters",
+          "created_at": "2020-03-23T12:22:08Z",
+          "merged_at": "2020-03-24T19:06:56Z",
+          "metadata_sha256": "1ee06e9663122d04ca86ff7ce80f76a68432a7de540999fd3d518397052d955d"
+        },
+        {
+          "rank": 20,
+          "pr": 2044,
+          "url": "https://github.com/ostreedev/ostree/pull/2044",
+          "author": "martinezjavier",
+          "created_at": "2020-03-26T18:43:20Z",
+          "merged_at": "2020-04-07T13:54:09Z",
+          "metadata_sha256": "f8993cbf975f8692c88528995947fd61ec5112a6f3f26704d617bdd1e4f81841"
+        }
+      ]
+    },
+    {
+      "repository": "containers/composefs",
+      "query": "repo:containers/composefs is:pr is:merged reviewed-by:cgwalters merged:<2026-11-05",
+      "endpoint": "GET /search/issues",
+      "sort": "created",
+      "order": "asc",
+      "per_page": 20,
+      "page": 1,
+      "retrieved_at": "2026-11-05T01:12:38Z",
+      "status": "failed",
+      "response_sha256": "502628f89bc579d19df54f4b73e0aae64d39552e7815bc63584625244d70b628",
+      "error": "HTTP 422 Validation Failed: The listed users and repositories cannot be searched either because the resources do not exist or you do not have permission to view them.",
+      "note": "The repository now lives at composefs/composefs; not substituted. Not needed: the first two repositories yielded the five eligible PRs.",
+      "results": []
+    }
+  ],
+  "examined": [
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 12,
+      "title": "Cleanly display/error if origin is rpm-ostree owned",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 105,
+      "title": "cli: Add a `--check` flag for update",
+      "author": "jbtrystram",
+      "historical_availability": "Reviewed revision, base and diff retrievable through the public compare API.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            3
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            3
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            7
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 8,
+      "first_feedback": {
+        "channel": "inline",
+        "id": 1252059234,
+        "at": "2023-07-04T13:52:01Z",
+        "commit_id": "74c29d6ffdbf56c7cb136e5b7df9e212b8353a7a"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 1,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "accepted",
+      "contract": "public compatibility",
+      "rationale": "Adds the public `bootc upgrade --check` flag, which prepares the image import without staging.",
+      "changed_symbols": [
+        "UpgradeOpts::check",
+        "upgrade"
+      ]
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 137,
+      "title": "Add support for `--replace-mode=alongside` for ostree target",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 144,
+      "title": "install: Relax restriction on separate /boot",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 161,
+      "title": "README.md: A few clarifications on status",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 167,
+      "title": "cli/edit: Minor tweaks",
+      "author": "jlebon",
+      "historical_availability": "Reviewed revision, base and diff retrievable through the public compare API.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 1,
+      "first_feedback": {
+        "channel": "review",
+        "id": 1708799557,
+        "at": "2023-11-01T18:30:58Z",
+        "commit_id": "9e13cd4be2767fc7d7f0d1a933e42a5ed9e52bc3"
+      },
+      "force_pushes_before_first_feedback": 1,
+      "force_pushes_total": 1,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "accepted",
+      "contract": "public compatibility",
+      "rationale": "Replaces `bootc edit`'s positional filename (`-` for stdin) with `-f/--filename`, and an unchanged spec now exits 0 instead of failing.",
+      "changed_symbols": [
+        "EditOpts::filename",
+        "edit"
+      ]
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 174,
+      "title": "Docs: Updated links referencing project Sagano.",
+      "author": "ipanova",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 1,
+      "first_feedback": {
+        "channel": "review",
+        "id": 1713253833,
+        "at": "2023-11-03T17:59:07Z",
+        "commit_id": "303d4c470c5070c3604fd71db606781e1a14dcee"
+      },
+      "force_pushes_before_first_feedback": 1,
+      "force_pushes_total": 1,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Documentation-only pre-feedback diff (README.md, docs/bootc-images.md)."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 179,
+      "title": "  systemd: New bootc-fetch-apply-updates.{timer,service} ",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 180,
+      "title": "minor doc tweaks",
+      "author": "vrothberg",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            3
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            4
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 3,
+      "first_feedback": {
+        "channel": "inline",
+        "id": 1383428559,
+        "at": "2023-11-06T14:29:03Z",
+        "commit_id": "2c34228e884246d6ed80c0b7155a8a75909819ec"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 1,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Documentation-only pre-feedback diff (docs/install.md)."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 182,
+      "title": "install: Verify target image fetch by default",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 195,
+      "title": "docs: additional details around bootc images, install",
+      "author": "miabbott",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            17
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            13
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            4
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 14,
+      "first_feedback": {
+        "channel": "inline",
+        "id": 1389910562,
+        "at": "2023-11-10T20:58:32Z",
+        "commit_id": "b09e20b76098b5572c88dcfa6b54d6f6ad3d7afd"
+      },
+      "force_pushes_before_first_feedback": 2,
+      "force_pushes_total": 5,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Documentation-only pre-feedback diff (docs/install.md)."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 196,
+      "title": "docs: update required dependencies",
+      "author": "miabbott",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            2
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            2
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 2,
+      "first_feedback": {
+        "channel": "inline",
+        "id": 1389985349,
+        "at": "2023-11-10T22:32:20Z",
+        "commit_id": "5719c88373f159c2d9485a280f3818b10b4d423e"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 0,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Documentation-only pre-feedback diff (CONTRIBUTING.md)."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 197,
+      "title": "lib: apply clippy fix for needless borrowing",
+      "author": "miabbott",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            2
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 1,
+      "first_feedback": {
+        "channel": "review",
+        "id": 1725743976,
+        "at": "2023-11-10T22:33:58Z",
+        "commit_id": "52e568f416e378faa57287af9c4330d9557b54de"
+      },
+      "force_pushes_before_first_feedback": 1,
+      "force_pushes_total": 1,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Purely local refactor: clippy needless-borrow fixes."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 198,
+      "title": "github: update artifact actions to v3",
+      "author": "miabbott",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 1,
+      "first_feedback": {
+        "channel": "review",
+        "id": 1725742294,
+        "at": "2023-11-10T22:32:35Z",
+        "commit_id": "939ab0d314dbe71fc6e4809885c01c220afc05bd"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 0,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Dependency-bump-only: CI artifact actions v2 to v3."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 202,
+      "title": "containerenv: small error message fix",
+      "author": "miabbott",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 1,
+      "first_feedback": {
+        "channel": "review",
+        "id": 1726085908,
+        "at": "2023-11-11T16:41:21Z",
+        "commit_id": "641bb5a5831c7948249f685bbbe450e6664a59ff"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 0,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Purely local: error message text and a comment."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 208,
+      "title": "faq: remove distro-specific examples",
+      "author": "miabbott",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            6
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            8
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 5,
+      "first_feedback": {
+        "channel": "review",
+        "id": 1738645913,
+        "at": "2023-11-19T15:49:59Z",
+        "commit_id": "c29a578adf4218a478216a78680ede48947ed025"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 2,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Documentation-only pre-feedback diff (docs/faq.md)."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 236,
+      "title": "Fix clippy warnings",
+      "author": "jeckersb",
+      "historical_availability": "Reviewed revision not identifiable.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            5
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 3,
+      "first_feedback": {
+        "channel": "pr",
+        "id": 1862756833,
+        "at": "2023-12-19T13:26:08Z",
+        "commit_id": null
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 1,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Ambiguous reviewed revision: first feedback is a PR comment without a commit ID, the head was force-pushed and its only commit was committed after that feedback."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 238,
+      "title": "ci: gate clippy on `correctness` and `suspicious`",
+      "author": "jeckersb",
+      "historical_availability": "Not needed: rejected on the pre-feedback diff.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            0
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            1
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 1,
+      "first_feedback": {
+        "channel": "review",
+        "id": 1789451561,
+        "at": "2023-12-19T18:03:39Z",
+        "commit_id": "b6ab090dc1355d836673015e700ffb94e9cf7c77"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 0,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "CI configuration only: clippy lint gating."
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 244,
+      "title": "Add `HostType`, change `status` to always succeed",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 249,
+      "title": "docs: Extend rpm-ostree relationship a bit",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1221,
+      "title": "    pull: Add support for basic auth",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1767,
+      "title": "Support mounting /sysroot (and /boot) read-only",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1877,
+      "title": "More specific GPG errors",
+      "author": "dbnicholson",
+      "historical_availability": "Reviewed revision, base and diff retrievable through the public compare API.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            9
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            8
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            10
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 4,
+      "first_feedback": {
+        "channel": "inline",
+        "id": 370167425,
+        "at": "2020-01-23T14:58:41Z",
+        "commit_id": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207"
+      },
+      "force_pushes_before_first_feedback": 3,
+      "force_pushes_total": 4,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "accepted",
+      "contract": "public compatibility",
+      "rationale": "Adds public OstreeGpgError codes and returns them from signature verification, so callers matching error codes (flatpak) change behaviour.",
+      "changed_symbols": [
+        "OSTREE_GPG_ERROR_EXPIRED_SIGNATURE",
+        "OSTREE_GPG_ERROR_EXPIRED_KEY",
+        "OSTREE_GPG_ERROR_REVOKED_KEY",
+        "ostree_gpg_verify_result_require_valid_signature"
+      ]
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1878,
+      "title": "Alternative signing system",
+      "author": "d4s",
+      "historical_availability": "Reviewed revision not identifiable.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            89
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            50
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            38
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 41,
+      "first_feedback": {
+        "channel": "pr",
+        "id": 506987229,
+        "at": "2019-06-29T21:07:31Z",
+        "commit_id": null
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 31,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Ambiguous reviewed revision: first feedback is a PR comment without a commit ID, no pushed commit precedes it in the timeline and the head was later force-pushed 31 times."
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1912,
+      "title": "Gate ostree-trivial-httpd on BUILDOPT_TRIVIAL_HTTPD",
+      "author": "akiernan",
+      "historical_availability": "Reviewed revision not identifiable.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            3
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            2
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            18
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 7,
+      "first_feedback": {
+        "channel": "pr",
+        "id": 527695097,
+        "at": "2019-09-04T00:55:06Z",
+        "commit_id": null
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 9,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Ambiguous reviewed revision: first feedback is a PR comment without a commit ID and the head was later force-pushed."
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1937,
+      "title": " bootloader: Add a zipl bootloader backend ",
+      "author": "cgwalters",
+      "decision": "rejected",
+      "reason": "Authored by cgwalters: no reviewer feedback on another author's change (#1300 asks for PRs reviewed by cgwalters; docs/review-corpus.md defines feedback the same way).",
+      "metadata_source": "search result"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1946,
+      "title": "ostree-metadata commit API",
+      "author": "dbnicholson",
+      "historical_availability": "Reviewed revision not identifiable.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            9
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            8
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            15
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 6,
+      "first_feedback": {
+        "channel": "pr",
+        "id": 543169254,
+        "at": "2019-10-17T13:14:58Z",
+        "commit_id": null
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 5,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "rejected",
+      "reason": "Ambiguous reviewed revision: first feedback is a PR comment without a commit ID and the head was later force-pushed."
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1948,
+      "title": "ostree/trivial-httpd: Fix --autoexit with --daemonize and --log-file",
+      "author": "dbnicholson",
+      "historical_availability": "Reviewed revision, base and diff retrievable through the public compare API.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            6
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            6
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            9
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 5,
+      "first_feedback": {
+        "channel": "inline",
+        "id": 337257457,
+        "at": "2019-10-21T21:53:25Z",
+        "commit_id": "6126fd302f97b4e20e9a8775ff60be242a1d5aee"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 1,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "accepted",
+      "contract": "activation ordering",
+      "rationale": "ostree-trivial-httpd --daemonize forks early and the parent exits only after the child reports setup success over a pipe; --autoexit and --log-file lifetime change for callers.",
+      "changed_symbols": [
+        "run",
+        "on_dir_changed"
+      ]
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 1954,
+      "title": "lib/pull: Avoid calling destroy on unref'ed GSource",
+      "author": "jlebon",
+      "historical_availability": "Reviewed revision, base and diff retrievable through the public compare API.",
+      "metadata_source": "GET pulls, pulls/comments, pulls/reviews, issues/comments and issues/timeline (100 per page, at most 10 pages); bodies discarded before storage",
+      "channels": [
+        {
+          "channel": "inline",
+          "page_sizes": [
+            4
+          ],
+          "complete": true
+        },
+        {
+          "channel": "review",
+          "page_sizes": [
+            4
+          ],
+          "complete": true
+        },
+        {
+          "channel": "pr",
+          "page_sizes": [
+            3
+          ],
+          "complete": true
+        }
+      ],
+      "cgwalters_records": 6,
+      "first_feedback": {
+        "channel": "inline",
+        "id": 338114097,
+        "at": "2019-10-23T15:18:42Z",
+        "commit_id": "d4a186e80e139b366c527d6398173bd1a80c7c0b"
+      },
+      "force_pushes_before_first_feedback": 0,
+      "force_pushes_total": 0,
+      "exposure": "No reference in tracker files, commit messages, related issues (#1224, #1227, #1300) or tracker search; review-corpus release absent.",
+      "decision": "accepted",
+      "contract": "resource lifetime",
+      "rationale": "The progress GSource attached to the caller's thread-default GMainContext is no longer destroyed when ostree_repo_pull_with_options returns.",
+      "changed_symbols": [
+        "ostree_repo_pull_with_options",
+        "update_timeout"
+      ]
+    }
+  ],
+  "selected": [
+    {
+      "id": "B105",
+      "repository": "bootc-dev/bootc",
+      "pr": 105,
+      "first_feedback_at": "2023-07-04T13:52:01Z",
+      "reviewed_revision": "74c29d6ffdbf56c7cb136e5b7df9e212b8353a7a",
+      "revision_evidence": "inline record 1252059234 commit ID",
+      "base": "730c07e4c36ff2ff2dfb6181e8c237f46b7b12c0",
+      "base_committed": "2023-05-23T20:36:02Z",
+      "base_method": "merge-base",
+      "commits": [
+        {
+          "sha": "74c29d6ffdbf56c7cb136e5b7df9e212b8353a7a",
+          "committed": "2023-07-04T13:41:18Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "CONTRIBUTING.md",
+          "status": "added",
+          "additions": 18,
+          "deletions": 0
+        },
+        {
+          "filename": "lib/src/cli.rs",
+          "status": "modified",
+          "additions": 35,
+          "deletions": 9
+        }
+      ],
+      "diff_bytes": 3064,
+      "diff_sha256": "a1c889adf3b646b4c3383d7737d671f89e480151c482a5321c504db0f8bed2c9"
+    },
+    {
+      "id": "B167",
+      "repository": "bootc-dev/bootc",
+      "pr": 167,
+      "first_feedback_at": "2023-11-01T18:30:58Z",
+      "reviewed_revision": "9e13cd4be2767fc7d7f0d1a933e42a5ed9e52bc3",
+      "revision_evidence": "review record 1708799557 commit ID",
+      "base": "82a6a5a570277c54f027ae19f8da89030ab9de0b",
+      "base_committed": "2023-10-31T12:07:28Z",
+      "base_method": "ancestor-walk:2",
+      "commits": [
+        {
+          "sha": "0f166638e9297e941a5d048b1bccafabf82fab54",
+          "committed": "2023-11-01T13:32:50Z"
+        },
+        {
+          "sha": "9e13cd4be2767fc7d7f0d1a933e42a5ed9e52bc3",
+          "committed": "2023-11-01T13:32:52Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "lib/src/cli.rs",
+          "status": "modified",
+          "additions": 9,
+          "deletions": 7
+        }
+      ],
+      "diff_bytes": 1756,
+      "diff_sha256": "864cce285b38b529bcdbf910d6f2345eb1abfa40dd4b9034091c30e8142c019d"
+    },
+    {
+      "id": "O1877",
+      "repository": "ostreedev/ostree",
+      "pr": 1877,
+      "first_feedback_at": "2020-01-23T14:58:41Z",
+      "reviewed_revision": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+      "revision_evidence": "inline record 370167425 commit ID",
+      "base": "859dd00bfab6eda13f381f3bebffc6adc4075e32",
+      "base_committed": "2020-01-21T20:13:02Z",
+      "base_method": "merge-base",
+      "commits": [
+        {
+          "sha": "6cd2dfb57878662174f5abb52fc4cf1f8b976af1",
+          "committed": "2020-01-21T20:44:09Z"
+        },
+        {
+          "sha": "ec3fff6b65ca9313119705ff01284724f0a7478c",
+          "committed": "2020-01-21T20:44:09Z"
+        },
+        {
+          "sha": "8cc2391cde82aa175e814a5280ec990d7117016e",
+          "committed": "2020-01-21T20:44:09Z"
+        },
+        {
+          "sha": "a757ace160d3f6a9851108764718d3c268177f8d",
+          "committed": "2020-01-21T20:57:41Z"
+        },
+        {
+          "sha": "c50f2beb6a8822fa0c2e14fb0f526a3bcdbcad6e",
+          "committed": "2020-01-21T20:57:41Z"
+        },
+        {
+          "sha": "ac01ac5c633c0c6f09b467017859e5a132416743",
+          "committed": "2020-01-21T20:57:41Z"
+        },
+        {
+          "sha": "3baedd8616defeec6c7e0a895bcd6bbd5d073a06",
+          "committed": "2020-01-21T20:57:41Z"
+        },
+        {
+          "sha": "d59b02585d5abebcfa5885125ac93065d9336b26",
+          "committed": "2020-01-21T20:57:41Z"
+        },
+        {
+          "sha": "d408024bbc8d8ae4c70da1bdcb7805ae85459d89",
+          "committed": "2020-01-21T20:57:41Z"
+        },
+        {
+          "sha": "6359b5d7d1e756679c84e89247d0ef5c9e2f4a42",
+          "committed": "2020-01-21T20:57:41Z"
+        },
+        {
+          "sha": "5a1c9e5ef8caf275e18b9c06f88152fb15ab1207",
+          "committed": "2020-01-21T23:21:32Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "Makefile-tests.am",
+          "status": "modified",
+          "additions": 8,
+          "deletions": 1
+        },
+        {
+          "filename": "ci/flatpak-1.4.1-ostree-gpg-errors.patch",
+          "status": "added",
+          "additions": 65,
+          "deletions": 0
+        },
+        {
+          "filename": "ci/flatpak.sh",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 0
+        },
+        {
+          "filename": "src/libostree/ostree-gpg-verify-result.c",
+          "status": "modified",
+          "additions": 52,
+          "deletions": 9
+        },
+        {
+          "filename": "src/libostree/ostree-gpg-verify-result.h",
+          "status": "modified",
+          "additions": 8,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpg-verify-data/README.md",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 2
+        },
+        {
+          "filename": "tests/gpg-verify-data/lgpl2.sig0",
+          "status": "added",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpg-verify-data/lgpl2.sig1",
+          "status": "added",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpg-verify-data/lgpl2.sig2",
+          "status": "added",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpg-verify-data/lgpl2.sig3",
+          "status": "added",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpg-verify-data/lgpl2.sig4",
+          "status": "added",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpg-verify-data/trustdb.gpg",
+          "status": "modified",
+          "additions": 0,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpghome/revocations/key1.rev",
+          "status": "added",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpghome/revocations/key2.rev",
+          "status": "added",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/gpghome/revocations/key3.rev",
+          "status": "added",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "filename": "tests/libtest.sh",
+          "status": "modified",
+          "additions": 9,
+          "deletions": 5
+        },
+        {
+          "filename": "tests/test-gpg-verify-result.c",
+          "status": "modified",
+          "additions": 191,
+          "deletions": 23
+        },
+        {
+          "filename": "tests/test-pull-summary-sigs.sh",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "tests/test-remote-gpg-import.sh",
+          "status": "modified",
+          "additions": 63,
+          "deletions": 4
+        }
+      ],
+      "diff_bytes": 34213,
+      "diff_sha256": "036fc74fc14cc924b969a041f49c0f236823b2bcc8fa2ccdcde6643e76bcaa77"
+    },
+    {
+      "id": "O1948",
+      "repository": "ostreedev/ostree",
+      "pr": 1948,
+      "first_feedback_at": "2019-10-21T21:53:25Z",
+      "reviewed_revision": "6126fd302f97b4e20e9a8775ff60be242a1d5aee",
+      "revision_evidence": "inline record 337257457 commit ID",
+      "base": "72c7619bffef10172c2e06606cfd630197a2c16d",
+      "base_committed": "2019-10-15T15:59:00Z",
+      "base_method": "merge-base",
+      "commits": [
+        {
+          "sha": "0522813dfbb9e43080778797c13b53aaa5cab323",
+          "committed": "2019-10-18T16:58:41Z"
+        },
+        {
+          "sha": "e63a377d133186bf395e2750a7e5b9a8459698af",
+          "committed": "2019-10-18T16:58:41Z"
+        },
+        {
+          "sha": "6126fd302f97b4e20e9a8775ff60be242a1d5aee",
+          "committed": "2019-10-18T17:03:52Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "src/ostree/ostree-trivial-httpd.c",
+          "status": "modified",
+          "additions": 113,
+          "deletions": 31
+        }
+      ],
+      "diff_bytes": 6290,
+      "diff_sha256": "563234d48cda7212703c0280992a08e658538c83eabe365deff42597974bdecd"
+    },
+    {
+      "id": "O1954",
+      "repository": "ostreedev/ostree",
+      "pr": 1954,
+      "first_feedback_at": "2019-10-23T15:18:42Z",
+      "reviewed_revision": "d4a186e80e139b366c527d6398173bd1a80c7c0b",
+      "revision_evidence": "inline record 338114097 commit ID",
+      "base": "f333ae74f4a06dc537315d52959714a79be464c7",
+      "base_committed": "2019-10-21T21:43:22Z",
+      "base_method": "ancestor-walk:1",
+      "commits": [
+        {
+          "sha": "d4a186e80e139b366c527d6398173bd1a80c7c0b",
+          "committed": "2019-10-23T15:15:02Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "src/libostree/ostree-repo-pull.c",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 4
+        }
+      ],
+      "diff_bytes": 1771,
+      "diff_sha256": "5b4b0d16ec86b0f33da7ecbe437be635f41604c9560cbc59ee38b309faa48f82"
+    }
+  ]
+}

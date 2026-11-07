@@ -1,0 +1,94 @@
+{
+  "schema": "architecture-review.held-out.v1",
+  "issue": 1300,
+  "status": "unfinished",
+  "held_out_claim": false,
+  "frozen_from_revision": "2665dbb77eda413f593238d432fb6323cf6bd62d",
+  "artifact_sha256": {
+    "prompt.md": "41fff6f107981d80956cc4bebc30a782a6f9c9b17fe630e305c8e881f6170e9e",
+    "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
+    "references.json": "771045ba21c8eac23c82338576f1aef2c9fa6095f6f0c7cab21a8e16ce26bb24"
+  },
+  "protocol_sha256": "755ce991368d15b1e5c7f8dae67e7724e96c12c6b36e14a4b7291aa440ec95a7",
+  "minimum_eligible_prs": 5,
+  "discovery_cap": 60,
+  "pilot_exclusions": [
+    "bootc-dev/bootc#2603",
+    "bootc-dev/bootc#2588",
+    "ostreedev/ostree#3680",
+    "ostreedev/ostree#3664"
+  ],
+  "derivation_inventory": {
+    "status": "complete",
+    "sources": [
+      "Library history (7191997, d8e475a, d403e92, ad71726): derived from the pinned references in references.json and the pilot sample only.",
+      "Every upstream PR or issue named in tracker files, commit messages and issues #1224, #1227, #1300 and #1303.",
+      "The review-corpus release: absent (tag not found) and added after the library's last change, so not a derivation source.",
+      "Model training exposure cannot be inventoried; the protocol already treats it as unmeasured."
+    ],
+    "exclusions": [
+      "bootc-dev/bootc#2603",
+      "bootc-dev/bootc#2588",
+      "ostreedev/ostree#3680",
+      "ostreedev/ostree#3664",
+      "bootc-dev/bootc#2402",
+      "bootc-dev/bootc#2455",
+      "composefs/composefs#389",
+      "composefs/composefs#416",
+      "composefs/composefs#437",
+      "composefs/composefs#450"
+    ]
+  },
+  "prerequisites": {
+    "inference": "unavailable",
+    "isolation": "unverified",
+    "candidate_eligibility": "verified"
+  },
+  "blockers": [
+    "The environment's inference endpoint rejected every direct request (HTTP 429 in one run, HTTP 401 for lack of a credential in the next); the controller's own already-informed session is not a permitted fallback.",
+    "Fresh reviewer/scorer isolation has not been verified."
+  ],
+  "deviations": [
+    "Eleven PRs authored by cgwalters were rejected as having no reviewer feedback from him (#1300 asks for PRs he reviewed). The frozen protocol does not state this rule and it was applied after the discovery titles were seen; a human must accept it or require a new sample under a revised protocol.",
+    "Eligibility used current titles from search; the packets carry the historical ones, which differ only for B105 (a trailing period).",
+    "The packet builder was extended after the sample was frozen: select() now omits non-UTF-8 sources instead of failing (O1877 needs it for six signature/trustdb files), and identity.md is placed after diff.patch and counted. Pilot packets are unaffected; a human must accept this or require a new sample.",
+    "The historical title/description lookup uses an authenticated, read-only GraphQL query, not the public GETs the protocol names."
+  ],
+  "open_concerns": [
+    "Creation-ascending discovery selects 2019-2023 PRs, where model training exposure is most likely.",
+    "B167's only cgwalters record is a review submitted four seconds before merge and may yield no scorable root; the protocol keeps it in the denominator.",
+    "Historical descriptions keep the author's bare issue references (for example 'Fixes #3'); they are not links and the reviewer cannot follow them.",
+    "Project guidance is not supplied, as in the pilot packets."
+  ],
+  "candidate_feedback_accessed": "metadata-only",
+  "selection_sha256": "eac993148e527de5de4135ed2cf4027e32cc0d7ebc307658548ae216adebf67b",
+  "candidates": [
+    { "id": "B105", "repository": "bootc-dev/bootc", "pr": 105 },
+    { "id": "B167", "repository": "bootc-dev/bootc", "pr": 167 },
+    { "id": "O1877", "repository": "ostreedev/ostree", "pr": 1877 },
+    { "id": "O1948", "repository": "ostreedev/ostree", "pr": 1948 },
+    { "id": "O1954", "repository": "ostreedev/ostree", "pr": 1954 }
+  ],
+  "packets": [
+    { "id": "B105", "manifest": "held-out/B105.manifest.json", "manifest_sha256": "3a94e37d9211db145c402a4316cf7ec05aa9bff77c4ab3db05b6a298ff310c52" },
+    { "id": "B167", "manifest": "held-out/B167.manifest.json", "manifest_sha256": "2795384ac7a83489fc176aba37af91d165c8f51c0fb008efcb4fd207e48a58de" },
+    { "id": "O1877", "manifest": "held-out/O1877.manifest.json", "manifest_sha256": "933cf4f67618d65bb324fc5acd4a8ee08047b8542bd484d866e105ae4fa60705" },
+    { "id": "O1948", "manifest": "held-out/O1948.manifest.json", "manifest_sha256": "1d5bb2731effef5c63ae055c0ae524240001f11e5d72839c6d61ddf12f333567" },
+    { "id": "O1954", "manifest": "held-out/O1954.manifest.json", "manifest_sha256": "11674d6f1e13220213027599d351c837128d5b95231a55e63c14c2ba7836f1a9" }
+  ],
+  "runs": [],
+  "scoring_runs": [],
+  "denominators": {
+    "discovered_prs": 40,
+    "examined_prs": 29,
+    "selected_prs": 5,
+    "eligible_prs": 5,
+    "packet_complete_prs": 5,
+    "attempted_prs": 0,
+    "completed_prs": 0,
+    "contaminated_prs": 0,
+    "scored_prs": 0
+  },
+  "scores": null,
+  "human_adjudication": "Not obtained; preserve the pilot's outstanding human-adjudication request."
+}

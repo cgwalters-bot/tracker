@@ -1,0 +1,4653 @@
+{
+  "schema": "architecture-review.held-out-selection.v3",
+  "issue": 1300,
+  "visibility": "Controller only: never historical reviewer or scorer input.",
+  "protocol_sha256": {
+    "held-out-protocol-v2.md": "43429600227cfaf935b744d835265edfb4279e7fea027cefb50d3b440455cad2",
+    "held-out-protocol-v3.md": "2506c9c7a738a5cd4260493c7ccd029484d9b40bab74be3bf90c73265a1ebe78"
+  },
+  "discovery": [
+    {
+      "repository": "bootc-dev/bootc",
+      "query": "repo:bootc-dev/bootc is:pr is:merged reviewed-by:cgwalters -author:cgwalters -involves:cgwalters-bot merged:2026-07-01..2026-11-04",
+      "endpoint": "GET /search/issues",
+      "sort": "created",
+      "order": "asc",
+      "per_page": 20,
+      "page": 1,
+      "retrieved_at": "2026-11-07T20:36:04.626Z",
+      "status": "ok",
+      "response_sha256": "5ae6b4e6d46e27aa794001c37776f293bb7c8d661db34a5c097f066672421878",
+      "total_count": 76,
+      "incomplete_results": false,
+      "results": [
+        {
+          "rank": 1,
+          "pr": 2200,
+          "url": "https://github.com/bootc-dev/bootc/pull/2200",
+          "author": "Johan-Liebert1",
+          "author_type": "User",
+          "created_at": "2026-05-15T07:22:34Z",
+          "merged_at": "2026-07-08T14:54:34Z",
+          "metadata_sha256": "5ac6364ff251749951593ae40e3cfd7449191ae1bffc1a0ad6634f3cccc8f33c"
+        },
+        {
+          "rank": 2,
+          "pr": 2262,
+          "url": "https://github.com/bootc-dev/bootc/pull/2262",
+          "author": "orowith2os",
+          "author_type": "User",
+          "created_at": "2026-06-22T10:01:40Z",
+          "merged_at": "2026-07-01T03:48:41Z",
+          "metadata_sha256": "875cbf1c9668e32dc4733dfed486551d65edb0bf56fcab07e08522f37e8b4f76"
+        },
+        {
+          "rank": 3,
+          "pr": 2269,
+          "url": "https://github.com/bootc-dev/bootc/pull/2269",
+          "author": "Johan-Liebert1",
+          "author_type": "User",
+          "created_at": "2026-06-26T05:54:32Z",
+          "merged_at": "2026-07-01T14:47:21Z",
+          "metadata_sha256": "423b0eb7287dea64ede41070f5a3a94215479dbf6baaf7b9962b6a9245087ae2"
+        },
+        {
+          "rank": 4,
+          "pr": 2276,
+          "url": "https://github.com/bootc-dev/bootc/pull/2276",
+          "author": "ricardosalveti",
+          "author_type": "User",
+          "created_at": "2026-07-03T03:05:39Z",
+          "merged_at": "2026-07-08T10:54:41Z",
+          "metadata_sha256": "78457c17ed2f85ffa06bc15bef4299e130a159ae13663678c09e668c552e5438"
+        },
+        {
+          "rank": 5,
+          "pr": 2277,
+          "url": "https://github.com/bootc-dev/bootc/pull/2277",
+          "author": "Johan-Liebert1",
+          "author_type": "User",
+          "created_at": "2026-07-03T08:47:17Z",
+          "merged_at": "2026-07-08T10:54:41Z",
+          "metadata_sha256": "9f066d6def3591eff82f05573a48b134b119fc745bf2475f35d8b608182603c4"
+        },
+        {
+          "rank": 6,
+          "pr": 2297,
+          "url": "https://github.com/bootc-dev/bootc/pull/2297",
+          "author": "jeckersb",
+          "author_type": "User",
+          "created_at": "2026-07-08T19:50:02Z",
+          "merged_at": "2026-07-09T03:35:08Z",
+          "metadata_sha256": "d5b9e18024bca34f75118ddbcd5f938b5b8a44c060e2d5f6822e88ee31845661"
+        },
+        {
+          "rank": 7,
+          "pr": 2305,
+          "url": "https://github.com/bootc-dev/bootc/pull/2305",
+          "author": "Johan-Liebert1",
+          "author_type": "User",
+          "created_at": "2026-07-10T08:28:43Z",
+          "merged_at": "2026-07-10T19:06:45Z",
+          "metadata_sha256": "17e99aedb6a4fe7ecb9c9149767a6f92d538e3da5a6367b97c7ade6ef1968524"
+        },
+        {
+          "rank": 8,
+          "pr": 2307,
+          "url": "https://github.com/bootc-dev/bootc/pull/2307",
+          "author": "gursewak1997",
+          "author_type": "User",
+          "created_at": "2026-07-10T23:08:36Z",
+          "merged_at": "2026-07-13T23:01:22Z",
+          "metadata_sha256": "54b37c4df1ea81f65901ce6b789ba6fc89d613466a3daa770d7bc1acd98880ba"
+        },
+        {
+          "rank": 9,
+          "pr": 2312,
+          "url": "https://github.com/bootc-dev/bootc/pull/2312",
+          "author": "gursewak1997",
+          "author_type": "User",
+          "created_at": "2026-07-13T23:59:56Z",
+          "merged_at": "2026-07-14T09:06:33Z",
+          "metadata_sha256": "2ea98843e8b8c617189db8e2a897abc3a5b7c2f0add3cfe1db2b53c7d348a4ea"
+        },
+        {
+          "rank": 10,
+          "pr": 2314,
+          "url": "https://github.com/bootc-dev/bootc/pull/2314",
+          "author": "Johan-Liebert1",
+          "author_type": "User",
+          "created_at": "2026-07-14T07:52:54Z",
+          "merged_at": "2026-10-01T12:00:00Z",
+          "metadata_sha256": "9a542ca2e2fe200211fea2ece00a648beadf4577313e98de40b76a42d614b4fa"
+        },
+        {
+          "rank": 11,
+          "pr": 2315,
+          "url": "https://github.com/bootc-dev/bootc/pull/2315",
+          "author": "Johan-Liebert1",
+          "author_type": "User",
+          "created_at": "2026-07-15T11:17:16Z",
+          "merged_at": "2026-08-03T21:28:32Z",
+          "metadata_sha256": "22b3315b6e982abb14538ea68569ade1da45a5f5d4ea3ae1e0fa9339ed8c9016"
+        },
+        {
+          "rank": 12,
+          "pr": 2325,
+          "url": "https://github.com/bootc-dev/bootc/pull/2325",
+          "author": "bootc-bot[bot]",
+          "author_type": "Bot",
+          "created_at": "2026-07-19T00:56:16Z",
+          "merged_at": "2026-07-20T22:39:47Z",
+          "metadata_sha256": "c2332b57822984455c4f838e18b9a27963bf0a0a1faf3c1b1f9420e582f3df91"
+        },
+        {
+          "rank": 13,
+          "pr": 2329,
+          "url": "https://github.com/bootc-dev/bootc/pull/2329",
+          "author": "jmarrero",
+          "author_type": "User",
+          "created_at": "2026-07-20T17:52:34Z",
+          "merged_at": "2026-07-23T01:52:59Z",
+          "metadata_sha256": "94bde1aca2e80d8ad2e7b3f3858bc990f61fbbebf6ce614d520ba685b88cb17c"
+        },
+        {
+          "rank": 14,
+          "pr": 2337,
+          "url": "https://github.com/bootc-dev/bootc/pull/2337",
+          "author": "bootc-bot[bot]",
+          "author_type": "Bot",
+          "created_at": "2026-07-26T00:58:48Z",
+          "merged_at": "2026-07-30T21:18:08Z",
+          "metadata_sha256": "d93c53d8d10fe3ba0d94bd557de30819ab3be666677189c51d7514e0fa728a4c"
+        },
+        {
+          "rank": 15,
+          "pr": 2342,
+          "url": "https://github.com/bootc-dev/bootc/pull/2342",
+          "author": "Johan-Liebert1",
+          "author_type": "User",
+          "created_at": "2026-07-27T04:50:21Z",
+          "merged_at": "2026-08-24T12:42:20Z",
+          "metadata_sha256": "cb1e0cfe4d76bae86861cff3d28cc6a45e222aa73b38f3636e1fc00ccf729b5f"
+        },
+        {
+          "rank": 16,
+          "pr": 2343,
+          "url": "https://github.com/bootc-dev/bootc/pull/2343",
+          "author": "Johan-Liebert1",
+          "author_type": "User",
+          "created_at": "2026-07-27T06:00:23Z",
+          "merged_at": "2026-07-31T00:27:53Z",
+          "metadata_sha256": "d503440a526a6e2efe16a9a08dc25fe2d47e44dd8b8e1b413387c5a2594879ad"
+        },
+        {
+          "rank": 17,
+          "pr": 2352,
+          "url": "https://github.com/bootc-dev/bootc/pull/2352",
+          "author": "bootc-bot[bot]",
+          "author_type": "Bot",
+          "created_at": "2026-07-29T14:55:06Z",
+          "merged_at": "2026-07-31T00:32:52Z",
+          "metadata_sha256": "9575c7dbd37546020d3f2d285d843fbffd2f59ef2d1fd44a0cf61f5a2b4ea45b"
+        },
+        {
+          "rank": 18,
+          "pr": 2356,
+          "url": "https://github.com/bootc-dev/bootc/pull/2356",
+          "author": "dustinkirkland",
+          "author_type": "User",
+          "created_at": "2026-07-30T23:28:37Z",
+          "merged_at": "2026-08-04T13:23:52Z",
+          "metadata_sha256": "6f96deadc8db2cc6e85fca13748d77ae17f5ecbdb25761ebb28c2fd48721a2af"
+        },
+        {
+          "rank": 19,
+          "pr": 2357,
+          "url": "https://github.com/bootc-dev/bootc/pull/2357",
+          "author": "jeckersb",
+          "author_type": "User",
+          "created_at": "2026-07-31T14:41:48Z",
+          "merged_at": "2026-08-03T20:58:20Z",
+          "metadata_sha256": "c1bc48500205d6e39a507709162b731a33a1a173b0cdd14f0e76e85694aeb155"
+        },
+        {
+          "rank": 20,
+          "pr": 2368,
+          "url": "https://github.com/bootc-dev/bootc/pull/2368",
+          "author": "joelcapitao",
+          "author_type": "User",
+          "created_at": "2026-08-05T14:47:56Z",
+          "merged_at": "2026-09-02T18:04:08Z",
+          "metadata_sha256": "fcbfb574b8a95557419cc3f3b74718016c8576c50995c7bcc51b48494ccf775b"
+        }
+      ]
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "query": "repo:ostreedev/ostree is:pr is:merged reviewed-by:cgwalters -author:cgwalters -involves:cgwalters-bot merged:2026-07-01..2026-11-04",
+      "endpoint": "GET /search/issues",
+      "sort": "created",
+      "order": "asc",
+      "per_page": 20,
+      "page": 1,
+      "retrieved_at": "2026-11-07T20:36:05.308Z",
+      "status": "ok",
+      "response_sha256": "0952b93123bc3646e6afe525f7412465cd64c32e4058a30bdf2f59050e767549",
+      "total_count": 40,
+      "incomplete_results": false,
+      "results": [
+        {
+          "rank": 1,
+          "pr": 3554,
+          "url": "https://github.com/ostreedev/ostree/pull/3554",
+          "author": "razzeee",
+          "author_type": "User",
+          "created_at": "2025-12-13T16:41:34Z",
+          "merged_at": "2026-10-16T17:25:11Z",
+          "metadata_sha256": "83128c3ce76e462362930b79330fbb319bd5c4af64ce0a73b5fe0e7801fb6b01"
+        },
+        {
+          "rank": 2,
+          "pr": 3566,
+          "url": "https://github.com/ostreedev/ostree/pull/3566",
+          "author": "jeckersb",
+          "author_type": "User",
+          "created_at": "2026-01-27T19:58:49Z",
+          "merged_at": "2026-07-31T12:45:33Z",
+          "metadata_sha256": "04ab10100fbc2886f31b434e1717a4ad1e9973459708c5dff3219d316ffbfac3"
+        },
+        {
+          "rank": 3,
+          "pr": 3589,
+          "url": "https://github.com/ostreedev/ostree/pull/3589",
+          "author": "miabbott",
+          "author_type": "User",
+          "created_at": "2026-05-15T18:47:49Z",
+          "merged_at": "2026-07-31T12:43:28Z",
+          "metadata_sha256": "d4a934dd5f807599745633bcf41d092b92660c607545982a9a96dde799c7e25f"
+        },
+        {
+          "rank": 4,
+          "pr": 3603,
+          "url": "https://github.com/ostreedev/ostree/pull/3603",
+          "author": "electricface",
+          "author_type": "User",
+          "created_at": "2026-06-29T08:07:41Z",
+          "merged_at": "2026-07-08T13:00:53Z",
+          "metadata_sha256": "730feef5deabdf14e0ceb7da26c3ed49588ae9a1c957647cdfe3fca949825c4c"
+        },
+        {
+          "rank": 5,
+          "pr": 3607,
+          "url": "https://github.com/ostreedev/ostree/pull/3607",
+          "author": "jmarrero",
+          "author_type": "User",
+          "created_at": "2026-07-02T15:03:50Z",
+          "merged_at": "2026-07-31T11:37:53Z",
+          "metadata_sha256": "5d7ce489b20cfc5e81b16f49f7ca473319cd441ceea0f910ebb357214ebd3de1"
+        },
+        {
+          "rank": 6,
+          "pr": 3608,
+          "url": "https://github.com/ostreedev/ostree/pull/3608",
+          "author": "ricardosalveti",
+          "author_type": "User",
+          "created_at": "2026-07-03T02:34:54Z",
+          "merged_at": "2026-07-31T12:55:13Z",
+          "metadata_sha256": "316309bdd4364f59478edca4a3a7167eae18caa318044b9424a1947204094e6a"
+        },
+        {
+          "rank": 7,
+          "pr": 3614,
+          "url": "https://github.com/ostreedev/ostree/pull/3614",
+          "author": "jlebon",
+          "author_type": "User",
+          "created_at": "2026-07-22T19:50:39Z",
+          "merged_at": "2026-07-23T16:20:26Z",
+          "metadata_sha256": "83352e577b9d3d03a9e3884359a150e3f9c1fb56ab11a1222573a607803a7dc8"
+        },
+        {
+          "rank": 8,
+          "pr": 3615,
+          "url": "https://github.com/ostreedev/ostree/pull/3615",
+          "author": "jlebon",
+          "author_type": "User",
+          "created_at": "2026-07-24T21:59:49Z",
+          "merged_at": "2026-07-25T15:35:09Z",
+          "metadata_sha256": "bae5fa6074fe54ba8389b8487a1e78937dc11609ce683adb3d44694ba458605e"
+        },
+        {
+          "rank": 9,
+          "pr": 3620,
+          "url": "https://github.com/ostreedev/ostree/pull/3620",
+          "author": "pwithnall",
+          "author_type": "User",
+          "created_at": "2026-08-03T15:40:00Z",
+          "merged_at": "2026-08-04T12:45:46Z",
+          "metadata_sha256": "c591d90d3da45b4e3717cf93c2d83b88be99ef1c9304b9075b2496edfe18c34b"
+        },
+        {
+          "rank": 10,
+          "pr": 3624,
+          "url": "https://github.com/ostreedev/ostree/pull/3624",
+          "author": "pwithnall",
+          "author_type": "User",
+          "created_at": "2026-08-04T16:02:44Z",
+          "merged_at": "2026-08-05T13:50:36Z",
+          "metadata_sha256": "6c468d3f1e6452b92220dee51b5fef49b7b00a69d9f0b4ea88051eea597bd212"
+        },
+        {
+          "rank": 11,
+          "pr": 3625,
+          "url": "https://github.com/ostreedev/ostree/pull/3625",
+          "author": "pwithnall",
+          "author_type": "User",
+          "created_at": "2026-08-04T16:18:55Z",
+          "merged_at": "2026-08-04T16:45:12Z",
+          "metadata_sha256": "dc89973b6550ee8f1062b1c640e71c92146217431d0379832a9a901f4ab3b43b"
+        },
+        {
+          "rank": 12,
+          "pr": 3626,
+          "url": "https://github.com/ostreedev/ostree/pull/3626",
+          "author": "lzwind",
+          "author_type": "User",
+          "created_at": "2026-08-05T00:46:33Z",
+          "merged_at": "2026-08-05T12:59:03Z",
+          "metadata_sha256": "06a56f0845128fc92de32e9d0e6dc46bba100264303e7ea5305dc64ba525ec10"
+        },
+        {
+          "rank": 13,
+          "pr": 3627,
+          "url": "https://github.com/ostreedev/ostree/pull/3627",
+          "author": "lzwind",
+          "author_type": "User",
+          "created_at": "2026-08-05T01:02:21Z",
+          "merged_at": "2026-08-05T12:15:00Z",
+          "metadata_sha256": "1fe9c5a48f7d59df1dd834ded13f7a2a6886933d9e83978fdc7e5db4c478d0d7"
+        },
+        {
+          "rank": 14,
+          "pr": 3629,
+          "url": "https://github.com/ostreedev/ostree/pull/3629",
+          "author": "jmarrero",
+          "author_type": "User",
+          "created_at": "2026-08-05T04:40:27Z",
+          "merged_at": "2026-08-05T12:14:29Z",
+          "metadata_sha256": "ca5c4db696f57889c601c9889f22910c17e7bdb78c1662bb95d04311418b5047"
+        },
+        {
+          "rank": 15,
+          "pr": 3630,
+          "url": "https://github.com/ostreedev/ostree/pull/3630",
+          "author": "jmarrero",
+          "author_type": "User",
+          "created_at": "2026-08-05T13:07:27Z",
+          "merged_at": "2026-08-05T23:08:32Z",
+          "metadata_sha256": "09f63e7cc0edd9e30e3924df7f23ad6367719f5ce4201d3d1fc667d316834a59"
+        },
+        {
+          "rank": 16,
+          "pr": 3631,
+          "url": "https://github.com/ostreedev/ostree/pull/3631",
+          "author": "jmarrero",
+          "author_type": "User",
+          "created_at": "2026-08-05T23:51:21Z",
+          "merged_at": "2026-08-06T14:40:50Z",
+          "metadata_sha256": "4d7f7e62a2ff047e4428573726d091149af4c645e4f4d44963937c1fa422e668"
+        },
+        {
+          "rank": 17,
+          "pr": 3632,
+          "url": "https://github.com/ostreedev/ostree/pull/3632",
+          "author": "pwithnall",
+          "author_type": "User",
+          "created_at": "2026-08-06T12:26:37Z",
+          "merged_at": "2026-09-02T18:14:26Z",
+          "metadata_sha256": "3f92fb5c988fba0ca1baf63b5f9efece3e12606291908d3a251b5dba2f4618b7"
+        },
+        {
+          "rank": 18,
+          "pr": 3636,
+          "url": "https://github.com/ostreedev/ostree/pull/3636",
+          "author": "correctmost",
+          "author_type": "User",
+          "created_at": "2026-08-08T11:23:55Z",
+          "merged_at": "2026-08-18T15:54:35Z",
+          "metadata_sha256": "8fdbda949776d5b82a89dba44350e7f80e1b537bb3966b29cc687f77d9cabe5a"
+        },
+        {
+          "rank": 19,
+          "pr": 3638,
+          "url": "https://github.com/ostreedev/ostree/pull/3638",
+          "author": "kali834x",
+          "author_type": "User",
+          "created_at": "2026-08-12T21:34:00Z",
+          "merged_at": "2026-08-18T12:23:06Z",
+          "metadata_sha256": "bf1e6099d94e4e4b560819c4145914ac2486eb4e5f2429e0cf6f3b12646e3655"
+        },
+        {
+          "rank": 20,
+          "pr": 3640,
+          "url": "https://github.com/ostreedev/ostree/pull/3640",
+          "author": "lzwind",
+          "author_type": "User",
+          "created_at": "2026-08-14T01:17:15Z",
+          "merged_at": "2026-08-25T14:18:36Z",
+          "metadata_sha256": "e187679fa7a8e5aeb806772e448915e72286ab85593851740de2f6f6fc2a0e12"
+        }
+      ]
+    },
+    {
+      "repository": "composefs/composefs",
+      "query": "repo:composefs/composefs is:pr is:merged reviewed-by:cgwalters -author:cgwalters -involves:cgwalters-bot merged:2026-07-01..2026-11-04",
+      "endpoint": "GET /search/issues",
+      "sort": "created",
+      "order": "asc",
+      "per_page": 20,
+      "page": 1,
+      "retrieved_at": "2026-11-07T20:36:05.957Z",
+      "status": "ok",
+      "response_sha256": "9a256b013da3e950487295b7f38ff6cba69398365985fa08553545c0aff23e66",
+      "total_count": 1,
+      "incomplete_results": false,
+      "results": [
+        {
+          "rank": 1,
+          "pr": 439,
+          "url": "https://github.com/composefs/composefs/pull/439",
+          "author": "bootc-bot[bot]",
+          "author_type": "Bot",
+          "created_at": "2026-06-26T12:14:33Z",
+          "merged_at": "2026-07-28T20:14:04Z",
+          "metadata_sha256": "1b97f2a2e4756dc04b7119dd71e62eebcf7daf2d1418d9e1061680cb24a47938"
+        }
+      ]
+    }
+  ],
+  "examined": [
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2200,
+      "author": "Johan-Liebert1",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2200/comments",
+          "page_sizes": [
+            50
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3259034191,
+              "at": "2026-05-18T12:53:24Z",
+              "commit_id": "3a9dc2b53b849bd98883083659564b11edb73db5"
+            },
+            {
+              "id": 3259045399,
+              "at": "2026-05-18T12:55:19Z",
+              "commit_id": "3a9dc2b53b849bd98883083659564b11edb73db5"
+            },
+            {
+              "id": 3266527929,
+              "at": "2026-05-19T13:11:05Z",
+              "commit_id": "503b07a4360c68392275238b0662e4bd07610903"
+            },
+            {
+              "id": 3266529323,
+              "at": "2026-05-19T13:11:17Z",
+              "commit_id": "503b07a4360c68392275238b0662e4bd07610903"
+            },
+            {
+              "id": 3266549204,
+              "at": "2026-05-19T13:14:13Z",
+              "commit_id": "1eb1e3e9fcae4dc97e367c51b31c0fbd4038702b"
+            },
+            {
+              "id": 3266651050,
+              "at": "2026-05-19T13:27:49Z",
+              "commit_id": "1eb1e3e9fcae4dc97e367c51b31c0fbd4038702b"
+            },
+            {
+              "id": 3318073431,
+              "at": "2026-05-28T13:26:10Z",
+              "commit_id": "1eb1e3e9fcae4dc97e367c51b31c0fbd4038702b"
+            },
+            {
+              "id": 3318320016,
+              "at": "2026-05-28T14:02:53Z",
+              "commit_id": "20e2fede405dfc8511ed067a291118d9446e3200"
+            },
+            {
+              "id": 3318329857,
+              "at": "2026-05-28T14:04:22Z",
+              "commit_id": "20e2fede405dfc8511ed067a291118d9446e3200"
+            },
+            {
+              "id": 3325106818,
+              "at": "2026-05-29T14:50:33Z",
+              "commit_id": "1eb1e3e9fcae4dc97e367c51b31c0fbd4038702b"
+            },
+            {
+              "id": 3364756008,
+              "at": "2026-06-05T18:57:57Z",
+              "commit_id": "1eb1e3e9fcae4dc97e367c51b31c0fbd4038702b"
+            },
+            {
+              "id": 3452217602,
+              "at": "2026-06-22T12:34:14Z",
+              "commit_id": "4df19933698b929925aef8686678f1c3a4f019a7"
+            },
+            {
+              "id": 3454703385,
+              "at": "2026-06-22T18:49:59Z",
+              "commit_id": "4df19933698b929925aef8686678f1c3a4f019a7"
+            },
+            {
+              "id": 3455644190,
+              "at": "2026-06-22T21:50:11Z",
+              "commit_id": "dbd2686ad5a28adddde9cb7d828fb660c2d76159"
+            },
+            {
+              "id": 3455648680,
+              "at": "2026-06-22T21:51:15Z",
+              "commit_id": "dbd2686ad5a28adddde9cb7d828fb660c2d76159"
+            },
+            {
+              "id": 3455650548,
+              "at": "2026-06-22T21:51:42Z",
+              "commit_id": "dbd2686ad5a28adddde9cb7d828fb660c2d76159"
+            },
+            {
+              "id": 3467409346,
+              "at": "2026-06-24T13:23:21Z",
+              "commit_id": "4df19933698b929925aef8686678f1c3a4f019a7"
+            },
+            {
+              "id": 3468187031,
+              "at": "2026-06-24T15:13:20Z",
+              "commit_id": "35383449a3e82acd9b07a54d1729b913db787015"
+            },
+            {
+              "id": 3470450956,
+              "at": "2026-06-24T21:32:35Z",
+              "commit_id": "35383449a3e82acd9b07a54d1729b913db787015"
+            },
+            {
+              "id": 3470469239,
+              "at": "2026-06-24T21:36:56Z",
+              "commit_id": "35383449a3e82acd9b07a54d1729b913db787015"
+            },
+            {
+              "id": 3474130484,
+              "at": "2026-06-25T11:51:00Z",
+              "commit_id": "35383449a3e82acd9b07a54d1729b913db787015"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2200/reviews",
+          "page_sizes": [
+            39
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4310298610,
+              "at": "2026-05-18T12:56:30Z",
+              "commit_id": "3a9dc2b53b849bd98883083659564b11edb73db5",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4319222352,
+              "at": "2026-05-19T13:27:59Z",
+              "commit_id": "503b07a4360c68392275238b0662e4bd07610903",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4381314570,
+              "at": "2026-05-28T13:26:11Z",
+              "commit_id": "20e2fede405dfc8511ed067a291118d9446e3200",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4381630576,
+              "at": "2026-05-28T15:52:51Z",
+              "commit_id": "20e2fede405dfc8511ed067a291118d9446e3200",
+              "state": "CHANGES_REQUESTED"
+            },
+            {
+              "id": 4390529398,
+              "at": "2026-05-29T14:50:38Z",
+              "commit_id": "8fb3ce55d2e3d5eb7a8e1e9be177f2dfb130fb6f",
+              "state": "CHANGES_REQUESTED"
+            },
+            {
+              "id": 4438857408,
+              "at": "2026-06-05T18:57:57Z",
+              "commit_id": "1eb1e3e9fcae4dc97e367c51b31c0fbd4038702b",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4449950610,
+              "at": "2026-06-08T13:32:17Z",
+              "commit_id": "45f9bd2fd1332795da589fa9b3da5396393be152",
+              "state": "DISMISSED"
+            },
+            {
+              "id": 4544050465,
+              "at": "2026-06-22T21:51:45Z",
+              "commit_id": "4df19933698b929925aef8686678f1c3a4f019a7",
+              "state": "CHANGES_REQUESTED"
+            },
+            {
+              "id": 4562576141,
+              "at": "2026-06-24T21:37:04Z",
+              "commit_id": "35383449a3e82acd9b07a54d1729b913db787015",
+              "state": "CHANGES_REQUESTED"
+            },
+            {
+              "id": 4570608189,
+              "at": "2026-06-25T11:51:00Z",
+              "commit_id": "35383449a3e82acd9b07a54d1729b913db787015",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4600990902,
+              "at": "2026-06-30T13:57:45Z",
+              "commit_id": "c39267663b4df5ae02def61f34e0b705203b282f",
+              "state": "DISMISSED"
+            },
+            {
+              "id": 4617505150,
+              "at": "2026-07-02T12:43:35Z",
+              "commit_id": "eecbb1194ab2884b704a152932415954f4b5cc76",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2200/comments",
+          "page_sizes": [
+            13
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4502966439,
+              "at": "2026-05-20T21:55:58Z"
+            },
+            {
+              "id": 4649491163,
+              "at": "2026-06-08T13:31:30Z"
+            }
+          ]
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "3d6f071c84643ed774c54747b5095b21396b406f",
+        "base": "07735ee22110cd83ac6c26dd9b87bd81fa9a2179",
+        "base_committed": "2026-05-14T23:30:45Z",
+        "status": "ahead",
+        "total_commits": 4,
+        "files_listed": 13,
+        "commits": [
+          {
+            "sha": "ce8443a7bb60cdf0c43aa42d5c41e66070b91a66",
+            "committed": "2026-05-15T08:06:31Z"
+          },
+          {
+            "sha": "d2961e5bfe90ecee85f495ded0aa1423c66e9d3d",
+            "committed": "2026-05-18T10:09:46Z"
+          },
+          {
+            "sha": "17cf382c63566fa156f333d9aa8c057def86f4e6",
+            "committed": "2026-05-18T10:09:47Z"
+          },
+          {
+            "sha": "3a9dc2b53b849bd98883083659564b11edb73db5",
+            "committed": "2026-05-18T10:09:47Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "Dockerfile",
+          "status": "modified",
+          "additions": 38,
+          "deletions": 8
+        },
+        {
+          "filename": "contrib/packaging/finalize-uki",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 13
+        },
+        {
+          "filename": "contrib/packaging/seal-uki",
+          "status": "modified",
+          "additions": 71,
+          "deletions": 27
+        },
+        {
+          "filename": "crates/lib/src/cli.rs",
+          "status": "modified",
+          "additions": 33,
+          "deletions": 0
+        },
+        {
+          "filename": "crates/lib/src/ukify.rs",
+          "status": "modified",
+          "additions": 36,
+          "deletions": 18
+        },
+        {
+          "filename": "crates/tests-integration/src/container.rs",
+          "status": "modified",
+          "additions": 13,
+          "deletions": 1
+        },
+        {
+          "filename": "docs/src/man/bootc-container-ukify.8.md",
+          "status": "modified",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "filename": "tmt/plans/integration.fmf",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "filename": "tmt/tests/Dockerfile.upgrade",
+          "status": "modified",
+          "additions": 29,
+          "deletions": 5
+        },
+        {
+          "filename": "tmt/tests/booted/tap.nu",
+          "status": "modified",
+          "additions": 24,
+          "deletions": 4
+        },
+        {
+          "filename": "tmt/tests/booted/test-install-bootloader-none.nu",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "filename": "tmt/tests/booted/test-install-no-boot-dir.nu",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "filename": "tmt/tests/booted/test-install-to-filesystem-var-mount.sh",
+          "status": "modified",
+          "additions": 40,
+          "deletions": 15
+        }
+      ],
+      "diff_bytes": 27329,
+      "diff_sha256": "6d41cfa70467015cce4a2003bcf39b100bd6439e190ecef0a6a9a019696831ed",
+      "identity": "available",
+      "packet_bytes": 31512,
+      "decision": "accepted",
+      "rule": null,
+      "reason": "eligible"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3554,
+      "author": "razzeee",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3554/comments",
+          "page_sizes": [
+            14
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4276251892,
+              "at": "2026-10-14T21:04:52Z",
+              "commit_id": "cb66c5b3d40c6c5ef5e41e40bd9e5215e3fdcde7"
+            },
+            {
+              "id": 4276435438,
+              "at": "2026-10-14T21:25:31Z",
+              "commit_id": "cb66c5b3d40c6c5ef5e41e40bd9e5215e3fdcde7"
+            },
+            {
+              "id": 4297316918,
+              "at": "2026-10-16T17:17:43Z",
+              "commit_id": "b2ff0a327d21b83843032f0d9fcc3a2073e0b395"
+            },
+            {
+              "id": 4297344179,
+              "at": "2026-10-16T17:20:56Z",
+              "commit_id": "b2ff0a327d21b83843032f0d9fcc3a2073e0b395"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3554/reviews",
+          "page_sizes": [
+            9
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5524644853,
+              "at": "2026-10-14T21:04:52Z",
+              "commit_id": "cb66c5b3d40c6c5ef5e41e40bd9e5215e3fdcde7",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 5524868632,
+              "at": "2026-10-14T21:25:31Z",
+              "commit_id": "cb66c5b3d40c6c5ef5e41e40bd9e5215e3fdcde7",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 5551219392,
+              "at": "2026-10-16T17:25:02Z",
+              "commit_id": "c7d590b9f2bce12f9adf6e0a3755cc1b354d3cc7",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3554/comments",
+          "page_sizes": [
+            4
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5143104699,
+              "at": "2026-07-31T12:58:20Z"
+            }
+          ]
+        }
+      ],
+      "decision": "rejected",
+      "rule": 5,
+      "reason": "PR comment precedes his first review: revision ambiguous"
+    },
+    {
+      "repository": "composefs/composefs",
+      "pr": 439,
+      "author": "bootc-bot[bot]",
+      "author_type": "Bot",
+      "decision": "rejected",
+      "rule": 3,
+      "reason": "bot author"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2262,
+      "author": "orowith2os",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2262/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2262/reviews",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4548072638,
+              "at": "2026-06-22T21:02:21Z",
+              "commit_id": "bcbe7bc3eccbecc569a271943e8f01f3cd20230d",
+              "state": "DISMISSED"
+            },
+            {
+              "id": 4601690019,
+              "at": "2026-06-30T15:19:35Z",
+              "commit_id": "6b5a9000cb2df10ea6872b01daf71e47242b1c55",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2262/comments",
+          "page_sizes": [
+            5
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4768544179,
+              "at": "2026-06-22T13:00:09Z"
+            },
+            {
+              "id": 4773119354,
+              "at": "2026-06-22T21:10:43Z"
+            },
+            {
+              "id": 4848137619,
+              "at": "2026-06-30T21:40:44Z"
+            }
+          ]
+        }
+      ],
+      "decision": "rejected",
+      "rule": 5,
+      "reason": "PR comment precedes his first review: revision ambiguous"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3566,
+      "author": "jeckersb",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3566/comments",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3566/reviews",
+          "page_sizes": [
+            5
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3713406178,
+              "at": "2026-01-27T20:51:34Z",
+              "commit_id": "ad1defac64073303c69a16494f61291cc199c4e5",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3566/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "1d2b902b5513287355ad3322cb4027b67bb71b88",
+        "base": "911f9cd471f9d0f28160ba2a6a4394a70c466c42",
+        "base_committed": "2026-01-19T20:57:52Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "ad1defac64073303c69a16494f61291cc199c4e5",
+            "committed": "2026-01-27T19:57:23Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "README.md",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 3
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 0 components, 0 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2269,
+      "author": "Johan-Liebert1",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2269/comments",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3482924033,
+              "at": "2026-06-26T17:04:08Z",
+              "commit_id": "40a8a9509e4bd2629aae61247dfaf7d1294057b5"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2269/reviews",
+          "page_sizes": [
+            4
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4581258313,
+              "at": "2026-06-26T17:04:46Z",
+              "commit_id": "40a8a9509e4bd2629aae61247dfaf7d1294057b5",
+              "state": "DISMISSED"
+            },
+            {
+              "id": 4601396207,
+              "at": "2026-06-30T14:44:53Z",
+              "commit_id": "7e7d36045e9e193abba21bee28bf33a36f64acbf",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2269/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "0d8a907c49357bd3d8b4c7992d559e2c6512e0c4",
+        "base": "a7f95e743aa54a2f966edc1a0417ef6d509df9af",
+        "base_committed": "2026-06-24T04:50:40Z",
+        "status": "ahead",
+        "total_commits": 2,
+        "files_listed": 8,
+        "commits": [
+          {
+            "sha": "bfd8c7b7befd1e7b8831377467b7ccdd0c62d3d2",
+            "committed": "2026-06-26T05:51:51Z"
+          },
+          {
+            "sha": "40a8a9509e4bd2629aae61247dfaf7d1294057b5",
+            "committed": "2026-06-26T05:53:19Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/lib/src/bootc_composefs/backwards_compat/bcompat_boot.rs",
+          "status": "modified",
+          "additions": 7,
+          "deletions": 3
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/boot.rs",
+          "status": "modified",
+          "additions": 7,
+          "deletions": 3
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/delete.rs",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 3
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/state.rs",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 3
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/status.rs",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 3
+        },
+        {
+          "filename": "crates/lib/src/bootloader.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/parsers/bls_config.rs",
+          "status": "modified",
+          "additions": 141,
+          "deletions": 21
+        },
+        {
+          "filename": "tmt/tests/booted/readonly/053-test-efi-uki-key.nu",
+          "status": "added",
+          "additions": 53,
+          "deletions": 0
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 211 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3589,
+      "author": "miabbott",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3589/comments",
+          "page_sizes": [
+            4
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3589/reviews",
+          "page_sizes": [
+            4
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4301682420,
+              "at": "2026-05-15T22:08:34Z",
+              "commit_id": "305163b311f6510d5a5d0eb053f30220a0598ddb",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3589/comments",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "1d2b902b5513287355ad3322cb4027b67bb71b88",
+        "base": "1d2b902b5513287355ad3322cb4027b67bb71b88",
+        "base_committed": "2026-04-10T21:27:14Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 3,
+        "commits": [
+          {
+            "sha": "305163b311f6510d5a5d0eb053f30220a0598ddb",
+            "committed": "2026-05-15T18:58:11Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "README.md",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "docs/index.md",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "docs/related-projects.md",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 0 components, 0 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2276,
+      "author": "ricardosalveti",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2276/comments",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2276/reviews",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4636638437,
+              "at": "2026-07-06T14:11:08Z",
+              "commit_id": "72e3131ace9617e1c523fe0dad7a0be3376d4a99",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2276/comments",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "54768712ee0308c51ccd27e8d7772d9c9f9aad39",
+        "base": "54768712ee0308c51ccd27e8d7772d9c9f9aad39",
+        "base_committed": "2026-07-01T12:11:28Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "72e3131ace9617e1c523fe0dad7a0be3376d4a99",
+            "committed": "2026-07-03T02:37:27Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/initramfs/src/lib.rs",
+          "status": "modified",
+          "additions": 7,
+          "deletions": 2
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 9 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3603,
+      "author": "electricface",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3603/comments",
+          "page_sizes": [
+            7
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3493716559,
+              "at": "2026-06-29T17:58:16Z",
+              "commit_id": "96a6854ad34b4791622ad70fef1718d24ff7e59f"
+            },
+            {
+              "id": 3493721685,
+              "at": "2026-06-29T17:59:19Z",
+              "commit_id": "96a6854ad34b4791622ad70fef1718d24ff7e59f"
+            },
+            {
+              "id": 3493725389,
+              "at": "2026-06-29T18:00:05Z",
+              "commit_id": "96a6854ad34b4791622ad70fef1718d24ff7e59f"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3603/reviews",
+          "page_sizes": [
+            7
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4594198276,
+              "at": "2026-06-29T17:59:23Z",
+              "commit_id": "96a6854ad34b4791622ad70fef1718d24ff7e59f",
+              "state": "CHANGES_REQUESTED"
+            },
+            {
+              "id": 4594208561,
+              "at": "2026-06-29T18:00:08Z",
+              "commit_id": "96a6854ad34b4791622ad70fef1718d24ff7e59f",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4638138477,
+              "at": "2026-07-06T17:10:55Z",
+              "commit_id": "9fd0804c5624a0a160c02fb27ee23b96564fa969",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3603/comments",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4903226307,
+              "at": "2026-07-07T11:24:09Z"
+            }
+          ]
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "856a295a10b79deab4bdbaf182e2b5000e79cf5d",
+        "base": "170ac983d4f2a17ae09167f4748d17eda122d66a",
+        "base_committed": "2026-06-26T19:49:04Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "96a6854ad34b4791622ad70fef1718d24ff7e59f",
+            "committed": "2026-06-29T08:16:00Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/libostree/ostree-repo-commit.c",
+          "status": "modified",
+          "additions": 25,
+          "deletions": 2
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 27 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2277,
+      "author": "Johan-Liebert1",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2277/comments",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3529446673,
+              "at": "2026-07-06T13:59:06Z",
+              "commit_id": "17f1a1d009332618d636cf8a5a5bbc3cbf89bf45"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2277/reviews",
+          "page_sizes": [
+            6
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4636252454,
+              "at": "2026-07-06T13:23:51Z",
+              "commit_id": "17f1a1d009332618d636cf8a5a5bbc3cbf89bf45",
+              "state": "DISMISSED"
+            },
+            {
+              "id": 4636541887,
+              "at": "2026-07-06T13:59:06Z",
+              "commit_id": "17f1a1d009332618d636cf8a5a5bbc3cbf89bf45",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4644624916,
+              "at": "2026-07-07T11:35:06Z",
+              "commit_id": "aa3a2fbad5433a654f413e720b9e35b7c0392b4b",
+              "state": "DISMISSED"
+            },
+            {
+              "id": 4648490758,
+              "at": "2026-07-07T20:00:08Z",
+              "commit_id": "a95bbbb73139c1817aa64d0e0a3d494203360d7b",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2277/comments",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4905577909,
+              "at": "2026-07-07T15:38:25Z"
+            }
+          ]
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "54768712ee0308c51ccd27e8d7772d9c9f9aad39",
+        "base": "54768712ee0308c51ccd27e8d7772d9c9f9aad39",
+        "base_committed": "2026-07-01T12:11:28Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 3,
+        "commits": [
+          {
+            "sha": "17f1a1d009332618d636cf8a5a5bbc3cbf89bf45",
+            "committed": "2026-07-03T08:54:03Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/lib/src/bootc_composefs/export.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/status.rs",
+          "status": "modified",
+          "additions": 12,
+          "deletions": 5
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/update.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 21 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3607,
+      "author": "jmarrero",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3607/comments",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3607/reviews",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4618970045,
+              "at": "2026-07-02T15:28:45Z",
+              "commit_id": "71a6f798e710774463be35799de35c5fc237f0b9",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3607/comments",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "4abc815b6b3726b1acf8032d91048e8cda2c18a5",
+        "base": "4abc815b6b3726b1acf8032d91048e8cda2c18a5",
+        "base_committed": "2026-07-01T17:51:23Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "71a6f798e710774463be35799de35c5fc237f0b9",
+            "committed": "2026-07-02T15:05:41Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": ".cci.jenkinsfile",
+          "status": "added",
+          "additions": 77,
+          "deletions": 0
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 77 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2297,
+      "author": "jeckersb",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2297/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2297/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4657640628,
+              "at": "2026-07-08T20:20:43Z",
+              "commit_id": "c3127484f4078a957f709cfd66808ca4281f62e1",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2297/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "dda407d55c158caff8602f1c0202035e540a10f6",
+        "base": "dda407d55c158caff8602f1c0202035e540a10f6",
+        "base_committed": "2026-07-08T11:33:36Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 24,
+        "commits": [
+          {
+            "sha": "c3127484f4078a957f709cfd66808ca4281f62e1",
+            "committed": "2026-07-08T19:47:37Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "Cargo.lock",
+          "status": "modified",
+          "additions": 13,
+          "deletions": 13
+        },
+        {
+          "filename": "Cargo.toml",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "filename": "crates/initramfs/Cargo.toml",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/initramfs/src/lib.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/kernel_cmdline/Cargo.toml",
+          "status": "removed",
+          "additions": 0,
+          "deletions": 19
+        },
+        {
+          "filename": "crates/kernel_cmdline/src/bytes.rs",
+          "status": "removed",
+          "additions": 0,
+          "deletions": 1129
+        },
+        {
+          "filename": "crates/kernel_cmdline/src/lib.rs",
+          "status": "removed",
+          "additions": 0,
+          "deletions": 32
+        },
+        {
+          "filename": "crates/kernel_cmdline/src/utf8.rs",
+          "status": "removed",
+          "additions": 0,
+          "deletions": 953
+        },
+        {
+          "filename": "crates/lib/Cargo.toml",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/boot.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/soft_reboot.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/state.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/status.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/utils.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_kargs.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/deploy.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/install.rs",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 3
+        },
+        {
+          "filename": "crates/lib/src/install/baseline.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/kernel.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/lib.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/loader_entries.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/parsers/bls_config.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/ukify.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/tests-integration/Cargo.toml",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "diff_bytes": 88810,
+      "diff_sha256": "a2699fc74ea1e784c1ea07e3125cadfcef87e689d7ae4286cfa987267f0488b3",
+      "identity": "available",
+      "packet_bytes": 101594,
+      "decision": "rejected",
+      "rule": 8,
+      "reason": "diff and identity are 101594 bytes"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3608,
+      "author": "ricardosalveti",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3608/comments",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3608/reviews",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4828633863,
+              "at": "2026-07-31T12:55:06Z",
+              "commit_id": "62109dca5f6dcf10583dab47fc0424513baa59ac",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3608/comments",
+          "page_sizes": [
+            10
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5375372612,
+              "at": "2026-08-21T21:01:18Z"
+            },
+            {
+              "id": 5381153307,
+              "at": "2026-08-22T15:26:17Z"
+            },
+            {
+              "id": 5426421804,
+              "at": "2026-08-26T13:59:12Z"
+            },
+            {
+              "id": 5426968044,
+              "at": "2026-08-26T14:40:08Z"
+            },
+            {
+              "id": 5953734075,
+              "at": "2026-10-02T13:43:07Z"
+            },
+            {
+              "id": 5954596727,
+              "at": "2026-10-02T14:25:19Z"
+            }
+          ]
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "4abc815b6b3726b1acf8032d91048e8cda2c18a5",
+        "base": "4abc815b6b3726b1acf8032d91048e8cda2c18a5",
+        "base_committed": "2026-07-01T17:51:23Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "62109dca5f6dcf10583dab47fc0424513baa59ac",
+            "committed": "2026-07-03T02:57:38Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/switchroot/ostree-prepare-root.c",
+          "status": "modified",
+          "additions": 89,
+          "deletions": 0
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 89 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2305,
+      "author": "Johan-Liebert1",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2305/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2305/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4671117638,
+              "at": "2026-07-10T11:47:15Z",
+              "commit_id": "c05310496f9ebfe0e553e653440952f10aa3b68e",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2305/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "220f40458f3c8c9fccb96e298d73f939c8ff7884",
+        "base": "220f40458f3c8c9fccb96e298d73f939c8ff7884",
+        "base_committed": "2026-07-08T20:20:48Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "c05310496f9ebfe0e553e653440952f10aa3b68e",
+            "committed": "2026-07-10T08:25:59Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/lib/src/bootc_composefs/boot.rs",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 0
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 6 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3614,
+      "author": "jlebon",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3614/comments",
+          "page_sizes": [
+            4
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3633502423,
+              "at": "2026-07-22T20:16:49Z",
+              "commit_id": "e850985537996824eabb9de280cfae278ac955b6"
+            },
+            {
+              "id": 3633506813,
+              "at": "2026-07-22T20:17:36Z",
+              "commit_id": "e850985537996824eabb9de280cfae278ac955b6"
+            },
+            {
+              "id": 3633514645,
+              "at": "2026-07-22T20:18:53Z",
+              "commit_id": "e850985537996824eabb9de280cfae278ac955b6"
+            },
+            {
+              "id": 3633518249,
+              "at": "2026-07-22T20:19:31Z",
+              "commit_id": "e850985537996824eabb9de280cfae278ac955b6"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3614/reviews",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4758402741,
+              "at": "2026-07-22T20:19:43Z",
+              "commit_id": "e850985537996824eabb9de280cfae278ac955b6",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4766074669,
+              "at": "2026-07-23T16:20:14Z",
+              "commit_id": "2f9a659b53aae92098d643640006d2bf5d7bb094",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3614/comments",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "ae08c555201ec382ed8ae4fc118e7a714cbb32bb",
+        "base": "ae08c555201ec382ed8ae4fc118e7a714cbb32bb",
+        "base_committed": "2026-07-08T13:00:52Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 2,
+        "commits": [
+          {
+            "sha": "e850985537996824eabb9de280cfae278ac955b6",
+            "committed": "2026-07-22T20:04:24Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/libostree/ostree-repo-commit.c",
+          "status": "modified",
+          "additions": 33,
+          "deletions": 4
+        },
+        {
+          "filename": "tests/test-repo.c",
+          "status": "modified",
+          "additions": 103,
+          "deletions": 0
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 37 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2307,
+      "author": "gursewak1997",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2307/comments",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3571138665,
+              "at": "2026-07-13T13:46:23Z",
+              "commit_id": "9054d4273e0ce9d9316a4a598f7d6f94fc937a54"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2307/reviews",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4684763630,
+              "at": "2026-07-13T12:41:19Z",
+              "commit_id": "9054d4273e0ce9d9316a4a598f7d6f94fc937a54",
+              "state": "APPROVED"
+            },
+            {
+              "id": 4685273996,
+              "at": "2026-07-13T13:46:27Z",
+              "commit_id": "9054d4273e0ce9d9316a4a598f7d6f94fc937a54",
+              "state": "COMMENTED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2307/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "c60b9187e8fd68e9bd443d5bdc9b4a9ebf0e354c",
+        "base": "c60b9187e8fd68e9bd443d5bdc9b4a9ebf0e354c",
+        "base_committed": "2026-07-10T19:06:44Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 3,
+        "commits": [
+          {
+            "sha": "9054d4273e0ce9d9316a4a598f7d6f94fc937a54",
+            "committed": "2026-07-10T23:06:55Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/ostree-ext/src/container/mod.rs",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 26
+        },
+        {
+          "filename": "crates/ostree-ext/src/isolation.rs",
+          "status": "removed",
+          "additions": 0,
+          "deletions": 47
+        },
+        {
+          "filename": "crates/ostree-ext/src/lib.rs",
+          "status": "modified",
+          "additions": 0,
+          "deletions": 2
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 77 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3615,
+      "author": "jlebon",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3615/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3615/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4779521677,
+              "at": "2026-07-25T15:34:57Z",
+              "commit_id": "07547d29e05a7e6c321a8cc7101d0d7fd361f5a6",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3615/comments",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "827c0f8f0bcf480613003827dd2b63068382b338",
+        "base": "827c0f8f0bcf480613003827dd2b63068382b338",
+        "base_committed": "2026-07-23T16:20:25Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 2,
+        "commits": [
+          {
+            "sha": "07547d29e05a7e6c321a8cc7101d0d7fd361f5a6",
+            "committed": "2026-07-24T19:21:42Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/libostree/ostree-repo-commit.c",
+          "status": "modified",
+          "additions": 19,
+          "deletions": 3
+        },
+        {
+          "filename": "tests/test-repo.c",
+          "status": "modified",
+          "additions": 122,
+          "deletions": 0
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 22 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2312,
+      "author": "gursewak1997",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2312/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2312/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4690244104,
+              "at": "2026-07-14T01:43:55Z",
+              "commit_id": "4573b83c9b5c8e70a967d04e10999e11d9f7e435",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2312/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "9f660ea094d9af0f1d7c64915a814d7531d62a44",
+        "base": "9f660ea094d9af0f1d7c64915a814d7531d62a44",
+        "base_committed": "2026-07-13T12:41:42Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 4,
+        "commits": [
+          {
+            "sha": "4573b83c9b5c8e70a967d04e10999e11d9f7e435",
+            "committed": "2026-07-13T23:58:29Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/lib/src/bootc_composefs/repo.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/status.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/ostree-ext/src/container/mod.rs",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 27
+        },
+        {
+          "filename": "crates/ostree-ext/src/container/store.rs",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 2 components, 37 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3620,
+      "author": "pwithnall",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3620/comments",
+          "page_sizes": [
+            5
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3712383588,
+              "at": "2026-08-04T12:23:00Z",
+              "commit_id": "171f0cfe4677abcaa622de03b80d717c51587ddf"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3620/reviews",
+          "page_sizes": [
+            4
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4854272327,
+              "at": "2026-08-04T12:23:01Z",
+              "commit_id": "171f0cfe4677abcaa622de03b80d717c51587ddf",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4854534025,
+              "at": "2026-08-04T12:45:39Z",
+              "commit_id": "073f1334279238afb9f5adee8fd6a2686e45aacb",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3620/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "c8421d3ee58b4f414966717f569cab09e7e6bd84",
+        "base": "ae08c555201ec382ed8ae4fc118e7a714cbb32bb",
+        "base_committed": "2026-07-08T13:00:52Z",
+        "status": "ahead",
+        "total_commits": 3,
+        "files_listed": 4,
+        "commits": [
+          {
+            "sha": "3cd9e443a4d0ad04348dae3fd3e263ba9f84e054",
+            "committed": "2026-08-03T15:31:25Z"
+          },
+          {
+            "sha": "09493d67c1a16d9681bb1d03db8ca31fcf93db21",
+            "committed": "2026-08-03T15:35:46Z"
+          },
+          {
+            "sha": "171f0cfe4677abcaa622de03b80d717c51587ddf",
+            "committed": "2026-08-03T15:38:47Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "man/ostree-sign.xml",
+          "status": "modified",
+          "additions": 3,
+          "deletions": 3
+        },
+        {
+          "filename": "src/libostree/ostree-blob-reader-base64.c",
+          "status": "modified",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "filename": "src/libostree/ostree-sign-ed25519.c",
+          "status": "modified",
+          "additions": 7,
+          "deletions": 2
+        },
+        {
+          "filename": "src/ostree/ot-builtin-sign.c",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 3 components, 24 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2314,
+      "author": "Johan-Liebert1",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2314/comments",
+          "page_sizes": [
+            23
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3580500915,
+              "at": "2026-07-14T15:47:27Z",
+              "commit_id": "da0b310e9720b152b4b2f45332d5184c6d69ce2e"
+            },
+            {
+              "id": 3580517014,
+              "at": "2026-07-14T15:49:29Z",
+              "commit_id": "da0b310e9720b152b4b2f45332d5184c6d69ce2e"
+            },
+            {
+              "id": 3682691744,
+              "at": "2026-07-30T12:37:36Z",
+              "commit_id": "da0b310e9720b152b4b2f45332d5184c6d69ce2e"
+            },
+            {
+              "id": 3872185109,
+              "at": "2026-08-27T13:32:32Z",
+              "commit_id": "1c6ff526fc00a5353873c95d8264c71bc6dd4865"
+            },
+            {
+              "id": 3872321820,
+              "at": "2026-08-27T13:48:34Z",
+              "commit_id": "ef89bee03d37fa70d6f2d4fc95bfe72c6872a981"
+            },
+            {
+              "id": 3872363810,
+              "at": "2026-08-27T13:52:31Z",
+              "commit_id": "ef89bee03d37fa70d6f2d4fc95bfe72c6872a981"
+            },
+            {
+              "id": 4062614779,
+              "at": "2026-09-21T13:34:10Z",
+              "commit_id": "e1d269b05879465412d1024a3b352b63dd6c7d8b"
+            },
+            {
+              "id": 4155091551,
+              "at": "2026-10-01T11:58:21Z",
+              "commit_id": "8d6d76e952918bd0feee7c8e711752485adc9749"
+            },
+            {
+              "id": 4155098109,
+              "at": "2026-10-01T11:59:12Z",
+              "commit_id": "8d6d76e952918bd0feee7c8e711752485adc9749"
+            },
+            {
+              "id": 4155100545,
+              "at": "2026-10-01T11:59:31Z",
+              "commit_id": "8d6d76e952918bd0feee7c8e711752485adc9749"
+            },
+            {
+              "id": 4169945895,
+              "at": "2026-10-02T21:22:24Z",
+              "commit_id": "8d6d76e952918bd0feee7c8e711752485adc9749"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2314/reviews",
+          "page_sizes": [
+            18
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4696070786,
+              "at": "2026-07-14T15:49:41Z",
+              "commit_id": "da0b310e9720b152b4b2f45332d5184c6d69ce2e",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4818781271,
+              "at": "2026-07-30T12:37:37Z",
+              "commit_id": "da0b310e9720b152b4b2f45332d5184c6d69ce2e",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 5041352501,
+              "at": "2026-08-27T13:52:54Z",
+              "commit_id": "e1d269b05879465412d1024a3b352b63dd6c7d8b",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 5267234441,
+              "at": "2026-09-21T13:35:44Z",
+              "commit_id": "e1d269b05879465412d1024a3b352b63dd6c7d8b",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 5378901578,
+              "at": "2026-10-01T11:59:50Z",
+              "commit_id": "8d6d76e952918bd0feee7c8e711752485adc9749",
+              "state": "APPROVED"
+            },
+            {
+              "id": 5396979892,
+              "at": "2026-10-02T21:23:06Z",
+              "commit_id": "8d6d76e952918bd0feee7c8e711752485adc9749",
+              "state": "COMMENTED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2314/comments",
+          "page_sizes": [
+            8
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5130909562,
+              "at": "2026-07-30T12:39:14Z"
+            },
+            {
+              "id": 5589517800,
+              "at": "2026-09-08T17:55:34Z"
+            },
+            {
+              "id": 5896152258,
+              "at": "2026-09-29T18:25:52Z"
+            }
+          ]
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "d296202cb2c4e44ab5270323f422e14137d3a16a",
+        "base": "c60b9187e8fd68e9bd443d5bdc9b4a9ebf0e354c",
+        "base_committed": "2026-07-10T19:06:44Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "da0b310e9720b152b4b2f45332d5184c6d69ce2e",
+            "committed": "2026-07-14T07:51:05Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/lib/src/install/baseline.rs",
+          "status": "modified",
+          "additions": 252,
+          "deletions": 104
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 356 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3624,
+      "author": "pwithnall",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3624/comments",
+          "page_sizes": [
+            6
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3624/reviews",
+          "page_sizes": [
+            5
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4865080363,
+              "at": "2026-08-05T13:50:29Z",
+              "commit_id": "c7895569503b6cc256e00415e09f0522bbb8e75d",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3624/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+        "base": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+        "base_committed": "2026-08-04T12:45:45Z",
+        "status": "ahead",
+        "total_commits": 4,
+        "files_listed": 7,
+        "commits": [
+          {
+            "sha": "06a384d64c36e51bf87ac0835b674b62d065db8f",
+            "committed": "2026-08-04T15:46:25Z"
+          },
+          {
+            "sha": "8eac67e4d74d06098dd1509bed7d44013878c4b8",
+            "committed": "2026-08-04T15:58:57Z"
+          },
+          {
+            "sha": "d180a0e5ba038e975c9f4c5f951bbeb7dfcb9051",
+            "committed": "2026-08-04T16:31:36Z"
+          },
+          {
+            "sha": "c7895569503b6cc256e00415e09f0522bbb8e75d",
+            "committed": "2026-08-04T16:31:42Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "Makefile-libostree.am",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "apidoc/ostree-sections.txt",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "filename": "src/libostree/libostree-devel.sym",
+          "status": "modified",
+          "additions": 5,
+          "deletions": 0
+        },
+        {
+          "filename": "src/libostree/ostree-repo.c",
+          "status": "modified",
+          "additions": 58,
+          "deletions": 12
+        },
+        {
+          "filename": "src/libostree/ostree-repo.h",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 0
+        },
+        {
+          "filename": "src/ostree/ot-builtin-summary.c",
+          "status": "modified",
+          "additions": 71,
+          "deletions": 10
+        },
+        {
+          "filename": "tests/test-summary-view.sh",
+          "status": "modified",
+          "additions": 27,
+          "deletions": 5
+        }
+      ],
+      "diff_bytes": 17319,
+      "diff_sha256": "122eb471f99b14d08dff6d8ec8941d6d0a5a2eb20cd9dfcaa364179905c56227",
+      "identity": "available",
+      "packet_bytes": 20284,
+      "decision": "accepted",
+      "rule": null,
+      "reason": "eligible"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2315,
+      "author": "Johan-Liebert1",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2315/comments",
+          "page_sizes": [
+            5
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3587626591,
+              "at": "2026-07-15T13:26:57Z",
+              "commit_id": "c9d209db0eae53710d7736a504f10db75edbef0a"
+            },
+            {
+              "id": 3587636641,
+              "at": "2026-07-15T13:28:07Z",
+              "commit_id": "c9d209db0eae53710d7736a504f10db75edbef0a"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2315/reviews",
+          "page_sizes": [
+            6
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4704514833,
+              "at": "2026-07-15T13:28:34Z",
+              "commit_id": "c9d209db0eae53710d7736a504f10db75edbef0a",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4828581287,
+              "at": "2026-07-31T12:46:59Z",
+              "commit_id": "7f488383c681bb420c5d4ec80391787154bee490",
+              "state": "APPROVED"
+            },
+            {
+              "id": 4828714415,
+              "at": "2026-07-31T13:06:51Z",
+              "commit_id": "7f488383c681bb420c5d4ec80391787154bee490",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2315/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "73b4639e805d56266d04c8d53796c499a41a3711",
+        "base": "20d17fcd736177023dd44e73c3e82fbf1cae8a0f",
+        "base_committed": "2026-07-14T20:00:31Z",
+        "status": "ahead",
+        "total_commits": 2,
+        "files_listed": 8,
+        "commits": [
+          {
+            "sha": "b6d1dc81f270326765c13d725597f90a03af5da2",
+            "committed": "2026-07-15T11:14:12Z"
+          },
+          {
+            "sha": "c9d209db0eae53710d7736a504f10db75edbef0a",
+            "committed": "2026-07-15T12:53:15Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "contrib/packaging/finalize-uki",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 0
+        },
+        {
+          "filename": "contrib/packaging/seal-uki",
+          "status": "modified",
+          "additions": 8,
+          "deletions": 1
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/boot.rs",
+          "status": "modified",
+          "additions": 92,
+          "deletions": 13
+        },
+        {
+          "filename": "crates/lib/src/bootc_composefs/update.rs",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "filename": "tmt/plans/integration.fmf",
+          "status": "modified",
+          "additions": 7,
+          "deletions": 0
+        },
+        {
+          "filename": "tmt/tests/booted/tap.nu",
+          "status": "modified",
+          "additions": 7,
+          "deletions": 2
+        },
+        {
+          "filename": "tmt/tests/booted/test-composefs-uki-dumpfile.nu",
+          "status": "added",
+          "additions": 60,
+          "deletions": 0
+        },
+        {
+          "filename": "tmt/tests/tests.fmf",
+          "status": "modified",
+          "additions": 5,
+          "deletions": 0
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 109 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3625,
+      "author": "pwithnall",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3625/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3625/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4856872111,
+              "at": "2026-08-04T16:45:02Z",
+              "commit_id": "59c56c4fdbaa253f2b4c0c3e59238ba2db52e2ed",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3625/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+        "base": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+        "base_committed": "2026-08-04T12:45:45Z",
+        "status": "ahead",
+        "total_commits": 3,
+        "files_listed": 3,
+        "commits": [
+          {
+            "sha": "e54fdffac61a3a794c8c1e44729a6995cf88a9b2",
+            "committed": "2026-08-04T16:13:16Z"
+          },
+          {
+            "sha": "10285e5b92e86679a68b00e96cd8042b73a41e7b",
+            "committed": "2026-08-04T16:17:07Z"
+          },
+          {
+            "sha": "59c56c4fdbaa253f2b4c0c3e59238ba2db52e2ed",
+            "committed": "2026-08-04T16:17:29Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "man/ostree-commit.xml",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 2
+        },
+        {
+          "filename": "man/ostree-show.xml",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "man/ostree-summary.xml",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 2
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 18 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2325,
+      "author": "bootc-bot[bot]",
+      "author_type": "Bot",
+      "decision": "rejected",
+      "rule": 3,
+      "reason": "bot author"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3626,
+      "author": "lzwind",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3626/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3626/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4864570549,
+              "at": "2026-08-05T12:58:56Z",
+              "commit_id": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3626/comments",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "699a051a2454f76e2481fe20b37084cb43e3ccf1",
+        "base": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+        "base_committed": "2026-08-04T12:45:45Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 23,
+        "commits": [
+          {
+            "sha": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+            "committed": "2026-08-05T01:13:34Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/libostree/ostree-async-progress.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootconfig-parser.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-aboot.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-grub2.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-syslinux.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-uboot.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-zipl.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-chain-input-stream.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-checksum-input-stream.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-deployment.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-fetcher.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-libarchive-input-stream.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-lzma-compressor.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-lzma-decompressor.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-metalink.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-mutable-tree.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-remote.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-repo-file-enumerator.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-repo-file.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-repo-private.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-tls-cert-interaction-private.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libotutil/ot-checksum-instream.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "diff_bytes": 12409,
+      "diff_sha256": "7d8f40c7255e5995aa11fb1bd6cecae51d37da277edbc4e8bd94859d43e9feef",
+      "identity": "available",
+      "packet_bytes": 14480,
+      "decision": "accepted",
+      "rule": null,
+      "reason": "eligible"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2329,
+      "author": "jmarrero",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2329/comments",
+          "page_sizes": [
+            8
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3616410278,
+              "at": "2026-07-20T17:54:23Z",
+              "commit_id": "10af7e44eb2f55cf462589830238d8f28f87e677"
+            },
+            {
+              "id": 3616418273,
+              "at": "2026-07-20T17:55:40Z",
+              "commit_id": "10af7e44eb2f55cf462589830238d8f28f87e677"
+            },
+            {
+              "id": 3617620058,
+              "at": "2026-07-20T21:14:50Z",
+              "commit_id": "5e34091709f19780a33b08a2bc86c68db38daed6"
+            },
+            {
+              "id": 3622668069,
+              "at": "2026-07-21T13:45:52Z",
+              "commit_id": "10af7e44eb2f55cf462589830238d8f28f87e677"
+            },
+            {
+              "id": 3623365461,
+              "at": "2026-07-21T15:16:36Z",
+              "commit_id": "5e34091709f19780a33b08a2bc86c68db38daed6"
+            },
+            {
+              "id": 3630498979,
+              "at": "2026-07-22T13:15:25Z",
+              "commit_id": "82aece9c5ba689558a42774670cd068220b39cda"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2329/reviews",
+          "page_sizes": [
+            8
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4737551665,
+              "at": "2026-07-20T17:57:46Z",
+              "commit_id": "10af7e44eb2f55cf462589830238d8f28f87e677",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4739048499,
+              "at": "2026-07-20T21:14:52Z",
+              "commit_id": "5e34091709f19780a33b08a2bc86c68db38daed6",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4745270290,
+              "at": "2026-07-21T15:16:45Z",
+              "commit_id": "5e34091709f19780a33b08a2bc86c68db38daed6",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4747956892,
+              "at": "2026-07-21T18:42:40Z",
+              "commit_id": "c385003f2b89ea36a9c6b9072dc951fd700f2193",
+              "state": "DISMISSED"
+            },
+            {
+              "id": 4748656975,
+              "at": "2026-07-21T20:11:48Z",
+              "commit_id": "82aece9c5ba689558a42774670cd068220b39cda",
+              "state": "APPROVED"
+            },
+            {
+              "id": 4754678995,
+              "at": "2026-07-22T13:15:25Z",
+              "commit_id": "82aece9c5ba689558a42774670cd068220b39cda",
+              "state": "COMMENTED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2329/comments",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5037754269,
+              "at": "2026-07-21T18:42:49Z"
+            }
+          ]
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "18b96d7b24d7f244c53dcb117247534967021cc2",
+        "base": "17734242daf00b7be6696a1f28c925579a4b8db5",
+        "base_committed": "2026-07-20T00:59:01Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "10af7e44eb2f55cf462589830238d8f28f87e677",
+            "committed": "2026-07-20T17:51:52Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/lib/src/store/mod.rs",
+          "status": "modified",
+          "additions": 113,
+          "deletions": 8
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 121 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3627,
+      "author": "lzwind",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3627/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3627/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4864211702,
+              "at": "2026-08-05T12:14:53Z",
+              "commit_id": "2a71b8f897e716abea7db82552c381463182d4d5",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3627/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "699a051a2454f76e2481fe20b37084cb43e3ccf1",
+        "base": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+        "base_committed": "2026-08-04T12:45:45Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "2a71b8f897e716abea7db82552c381463182d4d5",
+            "committed": "2026-08-05T00:59:56Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/ostree/ot-builtin-find-remotes.c",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 3
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 7 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2337,
+      "author": "bootc-bot[bot]",
+      "author_type": "Bot",
+      "decision": "rejected",
+      "rule": 3,
+      "reason": "bot author"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3629,
+      "author": "jmarrero",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3629/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3629/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4864207260,
+              "at": "2026-08-05T12:14:20Z",
+              "commit_id": "f456c65d05b922e655c51050b568cac2618761c7",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3629/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "699a051a2454f76e2481fe20b37084cb43e3ccf1",
+        "base": "699a051a2454f76e2481fe20b37084cb43e3ccf1",
+        "base_committed": "2026-08-04T16:45:11Z",
+        "status": "ahead",
+        "total_commits": 2,
+        "files_listed": 2,
+        "commits": [
+          {
+            "sha": "8530dc56ba2e92d540165e805d15804381acd97f",
+            "committed": "2026-08-05T03:53:53Z"
+          },
+          {
+            "sha": "f456c65d05b922e655c51050b568cac2618761c7",
+            "committed": "2026-08-05T04:38:56Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/libostree/ostree-repo-finder-mount.c",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 1
+        },
+        {
+          "filename": "tests/test-bsdiff.c",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 6
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 3 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2342,
+      "author": "Johan-Liebert1",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2342/comments",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2342/reviews",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2342/comments",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "decision": "rejected",
+      "rule": 5,
+      "reason": "no cgwalters review"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3630,
+      "author": "jmarrero",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3630/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3630/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4868502261,
+              "at": "2026-08-05T20:32:37Z",
+              "commit_id": "53b92b5a5754fa3e754a2d23455f7c1e2b8dec14",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3630/comments",
+          "page_sizes": [
+            5
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5192692788,
+              "at": "2026-08-05T13:57:31Z"
+            },
+            {
+              "id": 5196652961,
+              "at": "2026-08-05T19:55:09Z"
+            },
+            {
+              "id": 5204572701,
+              "at": "2026-08-06T12:22:45Z"
+            }
+          ]
+        }
+      ],
+      "decision": "rejected",
+      "rule": 5,
+      "reason": "PR comment precedes his first review: revision ambiguous"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2343,
+      "author": "Johan-Liebert1",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2343/comments",
+          "page_sizes": [
+            4
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3657075845,
+              "at": "2026-07-27T12:30:45Z",
+              "commit_id": "7c28ce736606d438b3ccf121a003d0b1513dc91c"
+            },
+            {
+              "id": 3665024360,
+              "at": "2026-07-28T11:15:04Z",
+              "commit_id": "16d2c1b114f58a22bb884235ce6d1a139e7fa0a9"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2343/reviews",
+          "page_sizes": [
+            6
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4786911015,
+              "at": "2026-07-27T12:30:44Z",
+              "commit_id": "7c28ce736606d438b3ccf121a003d0b1513dc91c",
+              "state": "COMMENTED"
+            },
+            {
+              "id": 4786911671,
+              "at": "2026-07-27T12:30:49Z",
+              "commit_id": "7c28ce736606d438b3ccf121a003d0b1513dc91c",
+              "state": "CHANGES_REQUESTED"
+            },
+            {
+              "id": 4796627505,
+              "at": "2026-07-28T11:15:17Z",
+              "commit_id": "16d2c1b114f58a22bb884235ce6d1a139e7fa0a9",
+              "state": "DISMISSED"
+            },
+            {
+              "id": 4823250556,
+              "at": "2026-07-30T21:09:45Z",
+              "commit_id": "6ae666944b7a809cbac64b5aa8e0382cd08c1707",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2343/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "06d8c6a9aa2942e432afae9f61b2cfae3738135c",
+        "base": "a2bc817222e7f33147662d0802da0f62246609c7",
+        "base_committed": "2026-07-24T19:33:47Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "7c28ce736606d438b3ccf121a003d0b1513dc91c",
+            "committed": "2026-07-27T06:00:01Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/ostree-ext/src/container/skopeo.rs",
+          "status": "modified",
+          "additions": 104,
+          "deletions": 3
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 107 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3631,
+      "author": "jmarrero",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3631/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3631/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4875831752,
+              "at": "2026-08-06T14:38:09Z",
+              "commit_id": "0efe2e8e131834f760dd8798a073058e14adcd74",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3631/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "1b36550d4054c4246f207c8e9cfb452338fe76f3",
+        "base": "1b36550d4054c4246f207c8e9cfb452338fe76f3",
+        "base_committed": "2026-08-05T23:08:31Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 2,
+        "commits": [
+          {
+            "sha": "0efe2e8e131834f760dd8798a073058e14adcd74",
+            "committed": "2026-08-05T23:49:42Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "tests/kolainst/destructive/kargs-proc-cmdline-quoted.sh",
+          "status": "modified",
+          "additions": 3,
+          "deletions": 1
+        },
+        {
+          "filename": "tests/kolainst/destructive/soft-reboot.sh",
+          "status": "modified",
+          "additions": 11,
+          "deletions": 7
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 0 components, 0 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2352,
+      "author": "bootc-bot[bot]",
+      "author_type": "Bot",
+      "decision": "rejected",
+      "rule": 3,
+      "reason": "bot author"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3632,
+      "author": "pwithnall",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3632/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3632/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5093431199,
+              "at": "2026-09-02T18:14:16Z",
+              "commit_id": "4017149281198641f8ebc0a4d6e331927ceb41e2",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3632/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "1b36550d4054c4246f207c8e9cfb452338fe76f3",
+        "base": "1b36550d4054c4246f207c8e9cfb452338fe76f3",
+        "base_committed": "2026-08-05T23:08:31Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "4017149281198641f8ebc0a4d6e331927ceb41e2",
+            "committed": "2026-08-06T12:24:50Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/libostree/ostree-repo.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 2 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2356,
+      "author": "dustinkirkland",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2356/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2356/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4846035698,
+              "at": "2026-08-03T15:51:35Z",
+              "commit_id": "27255fc734e946341b215faf599023e9b2cff0fc",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2356/comments",
+          "page_sizes": [
+            7
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5138400886,
+              "at": "2026-07-31T02:03:08Z"
+            },
+            {
+              "id": 5142258800,
+              "at": "2026-07-31T11:15:02Z"
+            },
+            {
+              "id": 5147572208,
+              "at": "2026-07-31T21:21:15Z"
+            },
+            {
+              "id": 5151930793,
+              "at": "2026-08-01T14:49:38Z"
+            }
+          ]
+        }
+      ],
+      "decision": "rejected",
+      "rule": 5,
+      "reason": "PR comment precedes his first review: revision ambiguous"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3636,
+      "author": "correctmost",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3636/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3636/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4963079727,
+              "at": "2026-08-18T15:54:29Z",
+              "commit_id": "33eabee0d94da876444b0b0476fe2d6596866829",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3636/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "1e90125e786a0e7090d3e198469b008f7144f48b",
+        "base": "1e90125e786a0e7090d3e198469b008f7144f48b",
+        "base_committed": "2026-08-06T14:40:49Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "33eabee0d94da876444b0b0476fe2d6596866829",
+            "committed": "2026-08-08T11:13:36Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/libostree/ostree-enumtypes.h.template",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 2 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2357,
+      "author": "jeckersb",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2357/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2357/reviews",
+          "page_sizes": [
+            1
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4829677590,
+              "at": "2026-07-31T15:02:43Z",
+              "commit_id": "d783439453cd494577b2180ae1b7e18d5a7bcbcf",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2357/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "73b4639e805d56266d04c8d53796c499a41a3711",
+        "base": "73b4639e805d56266d04c8d53796c499a41a3711",
+        "base_committed": "2026-07-30T21:10:34Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 2,
+        "commits": [
+          {
+            "sha": "d783439453cd494577b2180ae1b7e18d5a7bcbcf",
+            "committed": "2026-07-31T14:40:44Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "Dockerfile",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "filename": "tmt/plans/integration.fmf",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 1
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 5 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3638,
+      "author": "kali834x",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3638/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3638/reviews",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4960926329,
+              "at": "2026-08-18T12:22:59Z",
+              "commit_id": "7da79688c91981973a7fa235727ceb0313014cb6",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3638/comments",
+          "page_sizes": [
+            0
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "1e90125e786a0e7090d3e198469b008f7144f48b",
+        "base": "1e90125e786a0e7090d3e198469b008f7144f48b",
+        "base_committed": "2026-08-06T14:40:49Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 2,
+        "commits": [
+          {
+            "sha": "7da79688c91981973a7fa235727ceb0313014cb6",
+            "committed": "2026-08-12T21:33:43Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "src/libostree/ostree-core.c",
+          "status": "modified",
+          "additions": 0,
+          "deletions": 1
+        },
+        {
+          "filename": "tests/test-basic-c.c",
+          "status": "modified",
+          "additions": 13,
+          "deletions": 0
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 1 code lines"
+    },
+    {
+      "repository": "bootc-dev/bootc",
+      "pr": 2368,
+      "author": "joelcapitao",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2368/comments",
+          "page_sizes": [
+            3
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 3721937480,
+              "at": "2026-08-05T15:39:05Z",
+              "commit_id": "4b022384edc5ecafc3437fae7bab9045f554d19d"
+            },
+            {
+              "id": 3722057564,
+              "at": "2026-08-05T15:55:52Z",
+              "commit_id": "4b022384edc5ecafc3437fae7bab9045f554d19d"
+            },
+            {
+              "id": 3722089596,
+              "at": "2026-08-05T16:00:12Z",
+              "commit_id": "4b022384edc5ecafc3437fae7bab9045f554d19d"
+            }
+          ]
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/bootc-dev/bootc/pulls/2368/reviews",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 4866148624,
+              "at": "2026-08-05T16:05:45Z",
+              "commit_id": "4b022384edc5ecafc3437fae7bab9045f554d19d",
+              "state": "COMMENTED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/bootc-dev/bootc/issues/2368/comments",
+          "page_sizes": [
+            5
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5498643700,
+              "at": "2026-09-01T18:38:44Z"
+            },
+            {
+              "id": 5508331644,
+              "at": "2026-09-02T10:44:53Z"
+            },
+            {
+              "id": 5587611849,
+              "at": "2026-09-08T15:26:19Z"
+            }
+          ]
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "98bc78d441bc620201b598e44db88e28c8640d10",
+        "base": "71ad2d3c6bf051a184e020f6118006c81d1e866d",
+        "base_committed": "2026-08-05T04:00:19Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 1,
+        "commits": [
+          {
+            "sha": "4b022384edc5ecafc3437fae7bab9045f554d19d",
+            "committed": "2026-08-05T14:45:17Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "crates/lib/src/lsm.rs",
+          "status": "modified",
+          "additions": 11,
+          "deletions": 1
+        }
+      ],
+      "decision": "rejected",
+      "rule": 7,
+      "reason": "architecture proxy: 1 components, 12 code lines"
+    },
+    {
+      "repository": "ostreedev/ostree",
+      "pr": 3640,
+      "author": "lzwind",
+      "author_type": "User",
+      "channels": [
+        {
+          "channel": "inline",
+          "endpoint": "repos/ostreedev/ostree/pulls/3640/comments",
+          "page_sizes": [
+            4
+          ],
+          "complete": true,
+          "records": []
+        },
+        {
+          "channel": "review",
+          "endpoint": "repos/ostreedev/ostree/pulls/3640/reviews",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": [
+            {
+              "id": 5020021853,
+              "at": "2026-08-25T14:18:29Z",
+              "commit_id": "c12e1d32873d896eff55e16c85a8261d282029a3",
+              "state": "APPROVED"
+            }
+          ]
+        },
+        {
+          "channel": "pr",
+          "endpoint": "repos/ostreedev/ostree/issues/3640/comments",
+          "page_sizes": [
+            2
+          ],
+          "complete": true,
+          "records": []
+        }
+      ],
+      "comparison": {
+        "base_ref": "main",
+        "base_sha": "dfe9f7a1813109d71f26db80f50453720bddf1a6",
+        "base": "dfe9f7a1813109d71f26db80f50453720bddf1a6",
+        "base_committed": "2026-08-18T15:54:34Z",
+        "status": "ahead",
+        "total_commits": 1,
+        "files_listed": 6,
+        "commits": [
+          {
+            "sha": "c12e1d32873d896eff55e16c85a8261d282029a3",
+            "committed": "2026-08-19T01:27:33Z"
+          }
+        ]
+      },
+      "files": [
+        {
+          "filename": "man/ostree.repo-config.xml",
+          "status": "modified",
+          "additions": 12,
+          "deletions": 8
+        },
+        {
+          "filename": "src/libostree/ostree-repo-commit.c",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-repo-private.h",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 3
+        },
+        {
+          "filename": "src/libostree/ostree-repo.c",
+          "status": "modified",
+          "additions": 46,
+          "deletions": 11
+        },
+        {
+          "filename": "tests/test-basic-c.c",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "filename": "tests/test-repo.c",
+          "status": "modified",
+          "additions": 91,
+          "deletions": 0
+        }
+      ],
+      "diff_bytes": 14404,
+      "diff_sha256": "815922986213b0bad76a32149fc44a5dcd1adfe092dd83038b90170231a3cbb7",
+      "identity": "available",
+      "packet_bytes": 16337,
+      "decision": "accepted",
+      "rule": null,
+      "reason": "eligible"
+    }
+  ],
+  "selected": [
+    {
+      "id": "B2200",
+      "repository": "bootc-dev/bootc",
+      "pr": 2200,
+      "first_feedback_at": "2026-05-18T12:53:24Z",
+      "reviewed_revision": "3a9dc2b53b849bd98883083659564b11edb73db5",
+      "revision_evidence": "commit ID of his earliest review or inline comment",
+      "base": "07735ee22110cd83ac6c26dd9b87bd81fa9a2179",
+      "base_committed": "2026-05-14T23:30:45Z",
+      "base_method": "merge-base of the PR's recorded main tip 3d6f071c84643ed774c54747b5095b21396b406f",
+      "commits": [
+        {
+          "sha": "ce8443a7bb60cdf0c43aa42d5c41e66070b91a66",
+          "committed": "2026-05-15T08:06:31Z"
+        },
+        {
+          "sha": "d2961e5bfe90ecee85f495ded0aa1423c66e9d3d",
+          "committed": "2026-05-18T10:09:46Z"
+        },
+        {
+          "sha": "17cf382c63566fa156f333d9aa8c057def86f4e6",
+          "committed": "2026-05-18T10:09:47Z"
+        },
+        {
+          "sha": "3a9dc2b53b849bd98883083659564b11edb73db5",
+          "committed": "2026-05-18T10:09:47Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "Dockerfile",
+          "status": "modified",
+          "additions": 38,
+          "deletions": 8
+        },
+        {
+          "filename": "contrib/packaging/finalize-uki",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 13
+        },
+        {
+          "filename": "contrib/packaging/seal-uki",
+          "status": "modified",
+          "additions": 71,
+          "deletions": 27
+        },
+        {
+          "filename": "crates/lib/src/cli.rs",
+          "status": "modified",
+          "additions": 33,
+          "deletions": 0
+        },
+        {
+          "filename": "crates/lib/src/ukify.rs",
+          "status": "modified",
+          "additions": 36,
+          "deletions": 18
+        },
+        {
+          "filename": "crates/tests-integration/src/container.rs",
+          "status": "modified",
+          "additions": 13,
+          "deletions": 1
+        },
+        {
+          "filename": "docs/src/man/bootc-container-ukify.8.md",
+          "status": "modified",
+          "additions": 12,
+          "deletions": 0
+        },
+        {
+          "filename": "tmt/plans/integration.fmf",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 0
+        },
+        {
+          "filename": "tmt/tests/Dockerfile.upgrade",
+          "status": "modified",
+          "additions": 29,
+          "deletions": 5
+        },
+        {
+          "filename": "tmt/tests/booted/tap.nu",
+          "status": "modified",
+          "additions": 24,
+          "deletions": 4
+        },
+        {
+          "filename": "tmt/tests/booted/test-install-bootloader-none.nu",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "filename": "tmt/tests/booted/test-install-no-boot-dir.nu",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 1
+        },
+        {
+          "filename": "tmt/tests/booted/test-install-to-filesystem-var-mount.sh",
+          "status": "modified",
+          "additions": 40,
+          "deletions": 15
+        }
+      ],
+      "diff_bytes": 27329,
+      "diff_sha256": "6d41cfa70467015cce4a2003bcf39b100bd6439e190ecef0a6a9a019696831ed"
+    },
+    {
+      "id": "O3624",
+      "repository": "ostreedev/ostree",
+      "pr": 3624,
+      "first_feedback_at": "2026-08-05T13:50:29Z",
+      "reviewed_revision": "c7895569503b6cc256e00415e09f0522bbb8e75d",
+      "revision_evidence": "commit ID of his earliest review or inline comment",
+      "base": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+      "base_committed": "2026-08-04T12:45:45Z",
+      "base_method": "merge-base of the PR's recorded main tip 91a712a248b921e8101a50c289352d3e6ebbfaa3",
+      "commits": [
+        {
+          "sha": "06a384d64c36e51bf87ac0835b674b62d065db8f",
+          "committed": "2026-08-04T15:46:25Z"
+        },
+        {
+          "sha": "8eac67e4d74d06098dd1509bed7d44013878c4b8",
+          "committed": "2026-08-04T15:58:57Z"
+        },
+        {
+          "sha": "d180a0e5ba038e975c9f4c5f951bbeb7dfcb9051",
+          "committed": "2026-08-04T16:31:36Z"
+        },
+        {
+          "sha": "c7895569503b6cc256e00415e09f0522bbb8e75d",
+          "committed": "2026-08-04T16:31:42Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "Makefile-libostree.am",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "apidoc/ostree-sections.txt",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 0
+        },
+        {
+          "filename": "src/libostree/libostree-devel.sym",
+          "status": "modified",
+          "additions": 5,
+          "deletions": 0
+        },
+        {
+          "filename": "src/libostree/ostree-repo.c",
+          "status": "modified",
+          "additions": 58,
+          "deletions": 12
+        },
+        {
+          "filename": "src/libostree/ostree-repo.h",
+          "status": "modified",
+          "additions": 6,
+          "deletions": 0
+        },
+        {
+          "filename": "src/ostree/ot-builtin-summary.c",
+          "status": "modified",
+          "additions": 71,
+          "deletions": 10
+        },
+        {
+          "filename": "tests/test-summary-view.sh",
+          "status": "modified",
+          "additions": 27,
+          "deletions": 5
+        }
+      ],
+      "diff_bytes": 17319,
+      "diff_sha256": "122eb471f99b14d08dff6d8ec8941d6d0a5a2eb20cd9dfcaa364179905c56227"
+    },
+    {
+      "id": "O3626",
+      "repository": "ostreedev/ostree",
+      "pr": 3626,
+      "first_feedback_at": "2026-08-05T12:58:56Z",
+      "reviewed_revision": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+      "revision_evidence": "commit ID of his earliest review or inline comment",
+      "base": "91a712a248b921e8101a50c289352d3e6ebbfaa3",
+      "base_committed": "2026-08-04T12:45:45Z",
+      "base_method": "merge-base of the PR's recorded main tip 699a051a2454f76e2481fe20b37084cb43e3ccf1",
+      "commits": [
+        {
+          "sha": "e87513c56081deb8b277fd2b467165c8e7f5adbe",
+          "committed": "2026-08-05T01:13:34Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "src/libostree/ostree-async-progress.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootconfig-parser.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-aboot.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-grub2.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-syslinux.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-uboot.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader-zipl.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-bootloader.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-chain-input-stream.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-checksum-input-stream.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-deployment.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-fetcher.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-libarchive-input-stream.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-lzma-compressor.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-lzma-decompressor.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-metalink.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-mutable-tree.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-remote.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-repo-file-enumerator.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-repo-file.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-repo-private.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-tls-cert-interaction-private.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libotutil/ot-checksum-instream.h",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        }
+      ],
+      "diff_bytes": 12409,
+      "diff_sha256": "7d8f40c7255e5995aa11fb1bd6cecae51d37da277edbc4e8bd94859d43e9feef"
+    },
+    {
+      "id": "O3640",
+      "repository": "ostreedev/ostree",
+      "pr": 3640,
+      "first_feedback_at": "2026-08-25T14:18:29Z",
+      "reviewed_revision": "c12e1d32873d896eff55e16c85a8261d282029a3",
+      "revision_evidence": "commit ID of his earliest review or inline comment",
+      "base": "dfe9f7a1813109d71f26db80f50453720bddf1a6",
+      "base_committed": "2026-08-18T15:54:34Z",
+      "base_method": "merge-base of the PR's recorded main tip dfe9f7a1813109d71f26db80f50453720bddf1a6",
+      "commits": [
+        {
+          "sha": "c12e1d32873d896eff55e16c85a8261d282029a3",
+          "committed": "2026-08-19T01:27:33Z"
+        }
+      ],
+      "files": [
+        {
+          "filename": "man/ostree.repo-config.xml",
+          "status": "modified",
+          "additions": 12,
+          "deletions": 8
+        },
+        {
+          "filename": "src/libostree/ostree-repo-commit.c",
+          "status": "modified",
+          "additions": 1,
+          "deletions": 1
+        },
+        {
+          "filename": "src/libostree/ostree-repo-private.h",
+          "status": "modified",
+          "additions": 4,
+          "deletions": 3
+        },
+        {
+          "filename": "src/libostree/ostree-repo.c",
+          "status": "modified",
+          "additions": 46,
+          "deletions": 11
+        },
+        {
+          "filename": "tests/test-basic-c.c",
+          "status": "modified",
+          "additions": 2,
+          "deletions": 2
+        },
+        {
+          "filename": "tests/test-repo.c",
+          "status": "modified",
+          "additions": 91,
+          "deletions": 0
+        }
+      ],
+      "diff_bytes": 14404,
+      "diff_sha256": "815922986213b0bad76a32149fc44a5dcd1adfe092dd83038b90170231a3cbb7"
+    }
+  ]
+}
