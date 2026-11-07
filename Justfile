@@ -1433,8 +1433,9 @@ test-supervisor-workflow:
 
 # The needs-you publication the pin's approval-preserving fit (agent-board#722)
 # serves keeps its settings: the private holds issue with `holds.needsYou`,
-# the operator-path rule, and approval evidence off (tracker#1336). Manual,
-# with read-only checkouts and no token or forge request: BOARD at the pin,
+# the operator-path rule, and Act now and Today enabled with pass view and
+# approval evidence as prerequisites (tracker#1424). Manual, with read-only
+# checkouts and no token or forge request: BOARD at the pin,
 # whose serialized 174-decision fixture must keep every approval's card at
 # its full head with a descriptor offering `review-at-head` there, and REVIEW
 # (node >=22.18), whose own parser and inbox cards must read it complete,
@@ -1450,7 +1451,8 @@ test-needs-you-fit board="" review="":
     const [board, review] = process.argv.slice(2);
     const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
     assert.deepEqual([pass.holds.repository, pass.holds.needsYou], ['cgwalters-forge/bot-ops', true]);
-    assert.ok(!pass.holds.approvalEvidence, 'approval evidence stays off (tracker#1336)');
+    assert.deepEqual([pass.holds.actNow, pass.holds.today, pass.holds.passView, pass.holds.approvalEvidence],
+      [true, true, true, true], 'Act now and Today stay enabled with their publication prerequisites');
     // Gated by key, less its feature switches (agent-board#746).
     assert.ok(pass.pr.operatorPaths.some(p => p.split('#')[0] === '.github/pass.json'), 'the fixture approval is for an operator path');
     if (!board) {
