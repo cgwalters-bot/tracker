@@ -41,6 +41,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: just build-supervisor-agent-board
+      # Mandatory real resolver/policy replay. These immutable dependencies
+      # match the incident, not an arbitrary installed agentic-job binary.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cgwalters-forge/agentic-job
+          ref: a5f7a3963fd41f3eb09c4406aa5bc8e30ee42be2 # v0.6.10
+          path: admission-policy
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cgwalters-forge/actions
+          ref: bac2da6d67101ab6ca520d9d63adc46da77e4513
+          fetch-depth: 0 # also contains the earlier recorded wrapper
+          path: admission-actions
+          persist-credentials: false
+      - name: Required offline dispatch admission replay
+        run: just test-dispatch-policy admission-actions admission-policy
       - run: just test
         env:
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board

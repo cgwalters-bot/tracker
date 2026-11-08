@@ -93,6 +93,75 @@ pull request for review and fix; `OWNER/REPO` must be listed in
 `.github/agentic-job/dispatch.toml` (`fix.toml` for a fix), or, for a
 midstream fork, in `midstream.toml` and `midstream-fix.toml` instead.
 
+### Excluded fix requests: receiving evidence (#1293, companion #1292)
+
+The four historical requests reached tracker with `fix.toml` supplied, and
+policy refused the excluded heads before agent/apply work:
+
+| Target / head | First receiving run | Repeated receiving run |
+| --- | --- | --- |
+| agentic-job#2107 / `per-forge-bounds-sections` | [41910329480](https://github.com/cgwalters-forge/tracker/actions/runs/41910329480) | [41919391010](https://github.com/cgwalters-forge/tracker/actions/runs/41919391010) |
+| tracker#1050 / `pass-follow-midstream` | [41910378386](https://github.com/cgwalters-forge/tracker/actions/runs/41910378386) | [41919396986](https://github.com/cgwalters-forge/tracker/actions/runs/41919396986) |
+
+Both targets closed unmerged on 4 November 2026 around 22:20 UTC. #2107 named
+#2978 as replacement (now obsolete, superseded by merged #2641); #1050's
+[move receipt](https://github.com/cgwalters-forge/tracker/pull/1050#issuecomment-6643599909)
+names #1282, merged at 22:42:18. Do not reopen/retry either target, revive
+#2978, widen bounds or add owner-branch acceptance to clear these refusals.
+
+Read-only investigation refreshed on 8 November still identifies no owning
+producer route. `workflow_dispatch` and actor `cgwalters-bot` identify the
+receiving event and credential owner, not the initiating command/session.
+Nearby passes [41909029850](https://github.com/cgwalters-forge/tracker/actions/runs/41909029850),
+[41910623749](https://github.com/cgwalters-forge/tracker/actions/runs/41910623749) and
+[41918624419](https://github.com/cgwalters-forge/tracker/actions/runs/41918624419)
+record `needs-human` skips, not a dispatch receipt linking these requests.
+The searched target comments/round receipts likewise do not tie a producer
+to these four runs. The later malformed JSON Lines report on #656 was refused
+before writes; it is not an initiating receipt. Missing evidence is the
+producer's command/session/workflow receipt and its admission inputs. A current
+pass regression or scheduler defect is not established; lifecycle resolution
+does not close this attribution gap.
+
+`just test-dispatch-policy ACTIONS_CHECKOUT POLICY_CHECKOUT` builds the real
+agentic-job resolver/compiler at `a5f7a3963fd41f3eb09c4406aa5bc8e30ee42be2`
+(v0.6.10), outside the read-only source checkout. CI's required `test` job
+checks out that revision and runs this replay without a missing-binary skip.
+The actions checkout must contain `95c09b9947f39100117fbc69bf0b6239d2cf22c3`
+and `bac2da6d67101ab6ca520d9d63adc46da77e4513`. Tests read their actual wrapper
+guards, dependencies and bounds selector, including apply's policy-success
+condition. The fixture carries #1438's sanitized closed-PR projections;
+open-state incident variants reconstruct the policy logs. Historical bounds
+are projected to the two target repositories and relevant push/noop outputs;
+current branch globs must still match. Repeated identical requests on both
+excluded heads refuse; closed/superseded targets stop at resolution even with
+an allowed head, while an open `bot/**` control compiles. This is offline
+receiving coverage, **not prevention of external redispatch**, live Actions
+execution or proof of a producer fix. The non-review production wrapper still
+follows main, so these historical assertions do not attest future revisions.
+
+This continuation of draft #1438 consolidates the overlapping #1437 incident
+coverage here instead of adding a second tracker-only replay or incident note.
+#1437 should drop its duplicate fixture/config-policy test, manual caller recipe
+and incident prose when reconciling these drafts; its wrapper apply-condition
+follow-up is covered here. Neither draft should claim producer attribution.
+
+The optional admission receipt addresses a specific diagnostic leak: Actions
+prints step `env` before the script can truncate or escape it. It is **off by
+default**, enabled only by tracker repository variable
+`DISPATCH_ADMISSION_RECEIPT=enabled`; no caller is required to enable it.
+No raw dispatch inputs enter that step's env or script interpolation. The
+script reads the event file locally, selects only validated public metadata,
+and emits one bounded JSON-escaped `tracker-dispatch-admission/v1` line.
+Bounds outputs are allowlisted before Actions logs env; missing/invalid fields
+become empty, including missing profile outputs. No task, whole-event dump,
+credential or claimed producer identity is emitted. The job has no permissions,
+checkout or secrets and a one-minute timeout. It neither admits requests nor
+changes bounds; wrapper failure alone is not proof of policy refusal. Tests
+cover oversized/missing inputs and outputs, including pre-script env exposure.
+The threat addressed is diagnostic exposure, not producer authentication; the
+receipt cannot recover an absent producer receipt or resolve the whole issue.
+
 Runs push as `cgwalters-bot`, and apply pushes a branch to a repository
 that account owns only if the repository's default branch has
 `.github/agentic-job/accept-owner-branches` naming it

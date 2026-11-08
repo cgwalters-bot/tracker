@@ -1,0 +1,20 @@
+{
+  "source": "Continuation of #1438; sanitized PR field projections recorded 2026-11-07. Open incident variants reconstructed from policy logs, not archived raw API payloads. Shares #1437 incident policy and wrapper revisions; no producer identified.",
+  "policy_revision": "a5f7a3963fd41f3eb09c4406aa5bc8e30ee42be2",
+  "wrapper_revisions": ["95c09b9947f39100117fbc69bf0b6239d2cf22c3", "bac2da6d67101ab6ca520d9d63adc46da77e4513"],
+  "runs": [41910329480, 41919391010, 41910378386, 41919396986],
+  "pulls": [
+    {
+      "number":2107,"state":"closed","closed_at":"2026-11-04T22:20:14Z","merged_at":null,
+      "user":{"login":"cgwalters-bot"},
+      "head":{"ref":"per-forge-bounds-sections","sha":"a41b1ce255f254fed18d9c423654348fc9983aac","repo":{"full_name":"cgwalters-forge/agentic-job"}},
+      "base":{"ref":"main","sha":"85526701f759f645c7022d62d8004fcdedcc02e7","repo":{"full_name":"cgwalters-forge/agentic-job"}}
+    },
+    {
+      "number":1050,"state":"closed","closed_at":"2026-11-04T22:20:11Z","merged_at":null,
+      "user":{"login":"cgwalters-bot"},
+      "head":{"ref":"pass-follow-midstream","sha":"12503008eb45ab3c258d79232db08989dd0e4725","repo":{"full_name":"cgwalters-bot/tracker"}},
+      "base":{"ref":"main","sha":"fd2b212e052d3d91a44a906d47c94cf07cbf19db","repo":{"full_name":"cgwalters-forge/tracker"}}
+    }
+  ]
+}

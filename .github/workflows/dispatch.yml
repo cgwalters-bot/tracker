@@ -307,3 +307,39 @@ jobs:
     # status comment on an item of another repository; to nothing else.
     secrets:
       SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
+
+  # Opt-in public diagnostics only, never admission or producer attestation.
+  # Do not put dispatch inputs in env: Actions prints env before run starts.
+  admission-receipt:
+    needs: [profile, run]
+    if: ${{ always() && inputs.kind != 'review' && vars.DISPATCH_ADMISSION_RECEIPT == 'enabled' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - name: Record dispatch admission outcome
+        env:
+          ALLOW: ${{ contains(fromJSON('[".github/agentic-job/dispatch.toml",".github/agentic-job/comment.toml",".github/agentic-job/midstream.toml"]'), needs.profile.outputs.allow) && needs.profile.outputs.allow || '' }}
+          FIX_ALLOW: ${{ contains(fromJSON('[".github/agentic-job/fix.toml",".github/agentic-job/midstream-fix.toml"]'), needs.profile.outputs.fix-allow) && needs.profile.outputs.fix-allow || '' }}
+          PROFILE_RESULT: ${{ needs.profile.result }}
+          WRAPPER_RESULT: ${{ needs.run.result }}
+        run: |
+          node -e '
+          const e = process.env;
+          const inputs = JSON.parse(require("node:fs").readFileSync(e.GITHUB_EVENT_PATH, "utf8")).inputs || {};
+          const text = (v, pattern, max = 256) => typeof v === "string" && v.length <= max && pattern.test(v) ? v : "";
+          const choice = (v, values) => values.includes(v) ? v : "";
+          const kind = choice(inputs.kind, ["implement", "fix", "triage", "research"]);
+          const allow = choice(e.ALLOW, [".github/agentic-job/dispatch.toml", ".github/agentic-job/comment.toml", ".github/agentic-job/midstream.toml"]);
+          const fix = choice(e.FIX_ALLOW, [".github/agentic-job/fix.toml", ".github/agentic-job/midstream-fix.toml"]);
+          const result = v => choice(v, ["success", "failure", "cancelled", "skipped"]);
+          console.log(JSON.stringify({ schema: "tracker-dispatch-admission/v1",
+            run_id: text(e.GITHUB_RUN_ID, /^[0-9]+$/, 20), run_attempt: text(e.GITHUB_RUN_ATTEMPT, /^[0-9]+$/, 10),
+            event: choice(e.GITHUB_EVENT_NAME, ["workflow_dispatch"]),
+            actor: text(e.GITHUB_ACTOR, /^[A-Za-z0-9_-]+(?:\[bot\])?$/, 100),
+            triggering_actor: text(e.GITHUB_TRIGGERING_ACTOR, /^[A-Za-z0-9_-]+(?:\[bot\])?$/, 100),
+            kind, repo: text(inputs.repo, /^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/, 201),
+            item: text(inputs.item, /^[1-9][0-9]*$/, 15), allow, fix_allow: fix,
+            selected_bounds: kind === "fix" ? fix : allow,
+            profile_result: result(e.PROFILE_RESULT), wrapper_result: result(e.WRAPPER_RESULT) }));
+          '
