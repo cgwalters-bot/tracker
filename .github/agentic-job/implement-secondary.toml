@@ -1,0 +1,47 @@
+# Opt-in implement bounds; dispatch.yml selects these only for ordinary targets
+# other than misctool. Keep primary scope/exemptions in sync with dispatch.toml
+# (config-test enforces parity); both publications here stay drafts.
+hosts = ["github.com"]
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io", "cgwalters-forge/atomic-linux-sandbox"]
+bases = ["main"]
+# The actual actions wrapper requests 3 total, not a configurable ceiling:
+# one primary + one secondary + at most one ancillary request. Never raise
+# create_pull_request.max to make room for the secondary (its own max does that).
+max_outputs = 3
+max_patch_bytes = 1048576
+max_patch_files = 50
+
+[github.outputs]
+create_pull_request = { max = 1 }
+add_comment = { max = 1 }
+noop = { max = 1 }
+missing_tool = { max = 1 }
+missing_data = { max = 1 }
+
+# Threat: redirecting the apply token to arbitrary repositories or submitting
+# an unbounded tool change. Check pins this sole destination, draft/run branch,
+# and independent patch limits. No primary protected-file exemption is inherited;
+# no secondary exemption is justified for this initial source-only pilot.
+[github.secondary_pull_request]
+repo = "cgwalters-forge/misctool"
+base = "main"
+branch_prefix = "misctool/"
+max = 1
+max_patch_bytes = 65536
+max_patch_files = 10
+
+# Primary exceptions only, under dispatch.toml's existing review gates and
+# operator decisions. The secondary table above deliberately has none.
+[unprotected_files]
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome"]
+files = ["AGENTS.md", "README.md", "package.json", "bun.lockb",
+  "bunfig.toml", "deno.json", "deno.jsonc", "deno.lock", "global.json",
+  "NuGet.Config", "Directory.Packages.props", "mix.exs", "mix.lock",
+  "go.mod", "go.sum", "stack.yaml", "stack.yaml.lock", "pom.xml",
+  "build.gradle", "build.gradle.kts", "settings.gradle",
+  "settings.gradle.kts", "gradle.properties", "package-lock.json",
+  "yarn.lock", "pnpm-lock.yaml", "npm-shrinkwrap.json", "requirements.txt",
+  "Pipfile", "Pipfile.lock", "pyproject.toml", "setup.py", "setup.cfg",
+  "Gemfile", "Gemfile.lock", "uv.lock", "CODEOWNERS", "DESIGN.md",
+  "CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md", "CLAUDE.md"]
+dot_folders = [".github"]

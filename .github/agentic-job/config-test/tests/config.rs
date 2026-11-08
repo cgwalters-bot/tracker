@@ -509,6 +509,143 @@ fn misctool_is_a_dispatch_and_fix_target_with_matching_workflow_edit_bounds() {
     }
 }
 
+#[test]
+fn secondary_bounds_are_independent_and_preserve_primary_scope() {
+    let mut expected = toml_file("dispatch.toml");
+    expected.get_mut("repos").unwrap().as_array_mut().unwrap().retain(|r| r.as_str() != Some("cgwalters-forge/misctool"));
+    expected.get_mut("unprotected_files").unwrap()["repos"].as_array_mut().unwrap().retain(|r| r.as_str() != Some("cgwalters-forge/misctool"));
+    expected.get_mut("github").unwrap()["outputs"]["create_pull_request"].as_table_mut().unwrap().remove("ready_when_complete");
+    let mut actual = toml_file("implement-secondary.toml");
+    let secondary = actual.get_mut("github").unwrap().as_table_mut().unwrap().remove("secondary_pull_request").unwrap();
+    assert_eq!(actual, expected, "only draft readiness and misctool exclusion differ from primary bounds");
+    assert_eq!(secondary, toml::from_str::<toml::Table>(r#"
+repo = "cgwalters-forge/misctool"
+base = "main"
+branch_prefix = "misctool/"
+max = 1
+max_patch_bytes = 65536
+max_patch_files = 10
+"#).unwrap().into());
+    assert_eq!(actual["max_outputs"].as_integer(), Some(3), "two PRs plus one ancillary request fit the wrapper's fixed ceiling");
+    for file in ["dispatch.toml", "fix.toml", "comment.toml", "midstream.toml", "midstream-fix.toml"] {
+        assert!(toml_file(file)["github"].get("secondary_pull_request").is_none(), "{file}");
+    }
+    assert!(dispatch().contains("SECONDARY: ${{ vars.MISCTOOL_SECONDARY }}"));
+}
+
+#[test]
+fn secondary_dispatch_selection_is_opt_in_and_implement_only() {
+    let step = step_script("Resolve the bounds");
+    for activation in ["", "disabled", "true", "enabled"] {
+        for repo in ["cgwalters-forge/tracker", "cgwalters-forge/misctool", "CGWALTERS-FORGE/MISCTOOL", "cgwalters-forge/bootc"] {
+            for kind in KINDS {
+                let midstream = repo == "cgwalters-forge/bootc";
+                let allow = match kind {
+                    "triage" | "research" => "comment.toml",
+                    _ if midstream => "midstream.toml",
+                    "implement" if activation == "enabled" && !repo.eq_ignore_ascii_case("cgwalters-forge/misctool") => "implement-secondary.toml",
+                    _ => "dispatch.toml",
+                };
+                let fix = if midstream { "midstream-fix.toml" } else { "fix.toml" };
+                assert_eq!(run_step(&step, &[("KIND", kind), ("REPO", repo), ("SECONDARY", activation)]),
+                    Ok(format!("allow=.github/agentic-job/{allow}\nfix-allow=.github/agentic-job/{fix}\n")),
+                    "{activation:?} {kind} {repo}");
+            }
+        }
+    }
+}
+
+#[test]
+fn agentic_job_secondary_policy_admission() {
+    if !agentic_job_installed() {
+        return;
+    }
+    for (file, repo, kind, outputs, extra, has_secondary) in [
+        ("implement-secondary.toml", "cgwalters-forge/tracker", "branch", "create_pull_request,noop,missing_data", vec![], true),
+        ("dispatch.toml", "cgwalters-forge/misctool", "branch", "create_pull_request,noop", vec![], false),
+        ("comment.toml", "cgwalters-forge/tracker", "analysis", "add_comment,noop", vec![], false),
+        ("implement-secondary.toml", "cgwalters-forge/tracker", "analysis", "add_comment,noop", vec![], false),
+        ("fix.toml", "cgwalters-forge/tracker", "branch", "push_to_pull_request_branch,noop",
+            vec!["--pull-request", "1", "--head", "0000000000000000000000000000000000000000"], false),
+    ] {
+        let file_path = path_of(file);
+        let url = format!("https://github.com/{repo}");
+        let base = if file == "fix.toml" { "dispatch/test" } else { "main" };
+        let mut args = vec!["policy", "--allow", &file_path, "--repo", repo, "--clone-url", &url,
+            "--kind", kind, "--outputs", outputs, "--max-outputs", "3", "--base", base, "--output-repo", repo];
+        args.extend(extra);
+        let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).unwrap();
+        assert_eq!(policy.get("secondary_pull_request").is_some_and(|s| !s.is_null()), has_secondary, "{file} {kind}: {policy}");
+        if has_secondary {
+            assert_eq!(policy["secondary_pull_request"]["repo"], "cgwalters-forge/misctool");
+            assert_eq!(policy["secondary_pull_request"]["max_patch_bytes"], 65536);
+            assert_eq!(policy["secondary_pull_request"]["max_patch_files"], 10);
+            assert_ne!(policy["safe_outputs"]["create_pull_request"]["ready_when_complete"], true);
+            assert_eq!(policy["safe_outputs"]["create_pull_request"]["max"], 1);
+            assert_eq!(policy["max_outputs"], 3);
+            let secondary = &policy["secondary_pull_request"];
+            assert_eq!(secondary["protect_top_level_dot_folders"], true);
+            assert!(secondary.get("unprotected_dot_folders").is_none());
+            for name in ["AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
+                assert!(secondary["protected_files"].as_array().unwrap().contains(&json!(name)), "{name}");
+            }
+            check_secondary_batch(&policy);
+        }
+    }
+    for (repo, output) in [("cgwalters-forge/misctool", "cgwalters-forge/tracker"),
+        ("cgwalters-forge/tracker", "cgwalters-forge/misctool")] {
+        let result = agentic_job(&["policy", "--allow", &path_of("implement-secondary.toml"),
+            "--repo", repo, "--clone-url", &format!("https://github.com/{repo}"), "--output-repo", output,
+            "--kind", "branch", "--outputs", "create_pull_request,noop", "--max-outputs", "3", "--base", "main"]);
+        assert!(!result.status.success(), "must reject same primary target/output as secondary: {repo} {output}");
+    }
+}
+
+/// Exercise collection and independent checking with the shipped bounds, not
+/// just policy compilation. No forge requests, git writes or credentials.
+fn check_secondary_batch(policy: &Value) {
+    let dir = temp_path("secondary-check");
+    let out = dir.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    let policy_path = dir.join("policy.json");
+    let collected = dir.join("collected.json");
+    std::fs::write(&policy_path, policy.to_string()).unwrap();
+    let head = "0".repeat(40);
+    for (file, repo) in [("base.json", "cgwalters-forge/tracker"), ("secondary-base.json", "cgwalters-forge/misctool")] {
+        std::fs::write(out.join(file), json!({"repo": repo, "ref": "main", "commit": head}).to_string()).unwrap();
+    }
+    let patch = |path: &str| format!("From {} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: {head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test secondary admission\n\n---\ndiff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+test\n", "1".repeat(40));
+    std::fs::write(out.join("aw-agent-run-7.patch"), patch("src/test.rs")).unwrap();
+    let primary = json!({"type": "create_pull_request", "title": "Primary", "body": "Test.", "branch": "agent-run-7", "draft": true});
+    let secondary = json!({"type": "create_pull_request", "repo": "cgwalters-forge/misctool", "title": "Secondary", "body": "Test.", "branch": "misctool/agent-run-7", "draft": true});
+    let ancillary = json!({"type": "noop", "message": "Test."});
+    let mut many_files = patch("src/tool0.rs");
+    for n in 1..11 {
+        let next = patch(&format!("src/tool{n}.rs"));
+        many_files.push_str(&next[next.find("diff --git").unwrap()..]);
+    }
+    for (name, items, secondary_patch, accepted) in [
+        ("two PRs", vec![primary.clone(), secondary.clone()], patch("src/tool.rs"), true),
+        ("two PRs plus ancillary", vec![primary.clone(), secondary.clone(), ancillary.clone()], patch("src/tool.rs"), true),
+        ("four outputs", vec![primary.clone(), secondary.clone(), ancillary, json!({"type": "missing_data", "reason": "Test."})], patch("src/tool.rs"), false),
+        ("two primary", vec![primary.clone(), primary.clone(), secondary.clone()], patch("src/tool.rs"), false),
+        ("two secondary", vec![primary.clone(), secondary.clone(), secondary.clone()], patch("src/tool.rs"), false),
+        ("secondary protected", vec![primary.clone(), secondary.clone()], patch("AGENTS.md"), false),
+        ("secondary workflows", vec![primary.clone(), secondary.clone()], patch(".github/workflows/test.yml"), false),
+        ("secondary bytes", vec![primary.clone(), secondary.clone()], patch("src/tool.rs") + &"x".repeat(65536), false),
+        ("secondary files", vec![primary, secondary], many_files, false),
+    ] {
+        std::fs::write(out.join("aw-cgwalters-forge-misctool-misctool-agent-run-7.patch"), secondary_patch).unwrap();
+        std::fs::write(out.join("outputs.jsonl"), items.iter().map(|item| format!("{item}\n")).collect::<String>()).unwrap();
+        let collect = agentic_job(&["collect", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
+        let result = if collect.status.success() {
+            agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap(), "--run-id", "7"])
+        } else { collect };
+        assert_eq!(result.status.success(), accepted, "{name}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 // forge-infra (#812) is followed and a target, but no run may edit its
 // `.github/` or protected files until a per-repository ruleset is on its
 // main; for now the organization's ruleset is its only gate.

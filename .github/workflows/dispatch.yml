@@ -227,6 +227,9 @@ jobs:
         env:
           KIND: ${{ inputs.kind }}
           REPO: ${{ inputs.repo }}
+          # Threat: an injected task turning on cross-repository publication.
+          # Only trusted caller settings opt in; unset is off, never an input.
+          SECONDARY: ${{ vars.MISCTOOL_SECONDARY }}
         run: |
           dir=.github/agentic-job
           listed() {
@@ -237,6 +240,9 @@ jobs:
             triage|research) allow=$dir/comment.toml ;;
             *) allow=$dir/dispatch.toml; listed "$dir/midstream.toml" && allow=$dir/midstream.toml ;;
           esac
+          if [[ "$KIND" == implement && "${SECONDARY:-}" == enabled && "${REPO,,}" != cgwalters-forge/misctool && "$allow" == "$dir/dispatch.toml" ]]; then
+            allow=$dir/implement-secondary.toml
+          fi
           fix=$dir/fix.toml
           listed "$dir/midstream-fix.toml" && fix=$dir/midstream-fix.toml
           printf 'allow=%s\nfix-allow=%s\n' "$allow" "$fix" >> "$GITHUB_OUTPUT"
@@ -301,6 +307,8 @@ jobs:
       apply-environment: agent-apply
       # From the profile job, which says how it picks them.
       allow: ${{ needs.profile.outputs.allow }}
+      # The wrapper's fixed max-outputs is 3 (no caller input): with secondary
+      # bounds, two draft PRs share that ceiling with one ancillary request.
       fix-allow: ${{ needs.profile.outputs.fix-allow }}
     # The bot's token, an organization secret, named and never inherited.
     # The wrapper hands it to apply, in the environment above, and to the

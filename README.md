@@ -141,6 +141,53 @@ A fork with that topic must be added to those lists before receiving dispatches.
 cgwalters-review skips drafts, so a midstream pull request gets no automatic
 review; `/review` still works.
 
+### Misctool secondary publication (dormant)
+
+The threat is an injected task redirecting the apply token to an arbitrary
+repository or proposing an unbounded tool change. `dispatch.yml` selects
+`implement-secondary.toml` only when the trusted repository variable
+`MISCTOOL_SECONDARY` is exactly `enabled`, the kind is `implement`, and the
+primary target/output is neither misctool nor a midstream fork. Unset is off;
+there is no dispatch input bypass. Primary misctool work still uses
+`dispatch.toml`; analysis, review, fix and midstream routing is unchanged.
+
+The opt-in admits one primary draft and one secondary draft to
+`cgwalters-forge/misctool`, base `main`, under the separate `misctool/` run
+branch prefix. The secondary gets at most 65,536 patch bytes and 10 files,
+with **no protected-file exemptions**; primary exemptions are not inherited.
+Primary scope/exemptions remain those of dispatch.toml except for excluding
+misctool. Both PRs remain drafts on this route, even for complete work.
+
+The actual [actions wrapper](https://github.com/cgwalters-forge/actions/blob/e084c52a9aa07f1279182cfc738de68b96016278/.github/workflows/cgwalters-agentic-job.yml)
+pins agentic-job `427ce2295925654be9c35e91ca5cee91bbc2c9ea`, not the task's
+historical v0.6.11. It forwards `allow`, `output-repo = inputs.repo` and
+`SAFE_OUTPUTS_PAT` to apply, and requests **3 total outputs** with no caller
+`max-outputs` input. These bounds match that ceiling: two PRs leave room for
+only one ancillary request. The primary `create_pull_request.max` stays 1;
+the secondary's own max supplies the extra collector allowance. Raising a
+bounds ceiling would not raise the wrapper's requested limit.
+
+The replacement acceptance child [actions#203](https://github.com/cgwalters-forge/actions/issues/203)
+completed through [actions#222](https://github.com/cgwalters-forge/actions/pull/222).
+The API records successful [dispatch 42348718765](https://github.com/cgwalters-forge/tracker/actions/runs/42348718765)
+and [review 42320676566](https://github.com/cgwalters-forge/actions/actions/runs/42320676566),
+both referencing wrapper `ba6c569` and helpers `427ce22`. This satisfies that
+wrapper gate, **not two-PR publication**. Dispatch still follows wrapper main.
+
+No variable, credential or live publication was changed here. Before enabling,
+an authorized operator must run a controlled primary-plus-secondary draft
+publication and retain both PR URLs and the run URL. Confirm apply's PAT can
+fork misctool, disable and read back fork Actions, push only the run branch
+and open the draft PR. Never copy that credential into artifacts or logs.
+Local Rust selection/admission tests are not this proof. Upstream's pinned
+secondary [publisher refusal tests](https://github.com/cgwalters-forge/agentic-job/blob/427ce2295925654be9c35e91ca5cee91bbc2c9ea/crates/safe-outputs/src/apply/secondary.rs)
+and shared checker enforce foreign destinations,
+other-run branches, patch limits and protected paths; they do not attest
+this deployment's token access. Missing live authority/access remains an
+acceptance blocker. Roll back by unsetting `MISCTOOL_SECONDARY`; cancel or
+inspect outstanding runs separately, and inspect a pushed orphan branch
+before retrying a failed publication.
+
 ### Paced-review cutover
 
 **Prepared, not activated (5 November 2026, #1198/#1171).** This updates the
