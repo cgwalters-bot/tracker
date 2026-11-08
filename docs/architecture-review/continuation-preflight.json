@@ -1,0 +1,75 @@
+{
+  "schema": "architecture-review.continuation-preflight.v1",
+  "issue": 1300,
+  "status": "incomplete",
+  "starting_revision": "ac8a2f8498668b653d6b74e6b5d0e2e2646d28cb",
+  "continuation_checkpoint": "3ca0e9a84ab2c1761686b74bc6d75eccd37c0745",
+  "checkpoint_pr": 1444,
+  "checkpoint_recovery": {
+    "initially_present": false,
+    "fetch_exit_code": 0,
+    "method": "git fetch --no-tags --depth=1 origin 3ca0e9a84ab2c1761686b74bc6d75eccd37c0745",
+    "inspected": [
+      "held-out.json",
+      "held-out-v2.json",
+      "held-out-v3.json",
+      "held-out-protocol-v2.md",
+      "held-out-protocol-v3.md"
+    ],
+    "preservation": "No prior evidence was edited. The continuation artifacts remain at the exact checkpoint; they have not been imported into this older checkout. This file is a prerequisite-failure record, not a replacement evaluation or a completed carry-forward."
+  },
+  "concrete_threat": "Substituting a reachable direct inference request or the informed controller for the required isolated headless reviewer would make historical review provenance misleading.",
+  "preflight": {
+    "candidate_material_supplied": false,
+    "configuration_source": "The existing configuration located from OPENCODE_CONFIG; no inference address or credential copied into this record or new code.",
+    "client": "Node fetch, direct noncandidate diagnostics only; not the protocol headless client",
+    "timeout_ms_per_request": 20000,
+    "requested_max_output_tokens": 32,
+    "attempts": [
+      { "endpoint_kind": "chat/completions", "http_status": 404, "duration_ms": 216, "exit_code": 1, "error_body": "withheld" },
+      { "endpoint_kind": "responses", "http_status": 400, "duration_ms": 516, "exit_code": 1, "error_body": "withheld" },
+      { "endpoint_kind": "responses diagnostic repeat", "http_status": 400, "duration_ms": 681, "exit_code": 1, "error_body": { "detail": "Input must be a list" } },
+      { "endpoint_kind": "responses with list input", "http_status": 400, "duration_ms": 664, "exit_code": 1, "error_body": { "detail": "Stream must be set to true" } },
+      { "endpoint_kind": "responses with list input and streaming", "http_status": 200, "duration_ms": 2727, "exit_code": 0 }
+    ],
+    "successful_request": {
+      "model": "gpt-6.1-sol",
+      "instructions": "You are a read-only reviewer. This is a noncandidate isolation preflight.",
+      "input": [{ "role": "user", "content": "Reply PREFLIGHT_OK only. No candidate material is provided." }],
+      "tools": [],
+      "store": false,
+      "stream": true,
+      "max_output_tokens": 32
+    },
+    "response_excerpt": {
+      "id": "resp_012a1b60ab8ac4fa016af0e137efc887d2847536132c40ba79",
+      "created_at": 1794171192,
+      "completed_at": 1794171193,
+      "status": "completed",
+      "model": "gpt-6.1-sol",
+      "previous_response_id": null,
+      "tools": [],
+      "store": false,
+      "max_output_tokens": null,
+      "output_text_verbatim": "PREFLIGHT_OK",
+      "input_tokens": 38,
+      "output_tokens": 8,
+      "total_tokens": 46
+    },
+    "archive_limitations": "Response excerpt transcribed from terminal output, not an exact SSE archive or a historical reviewer run. Earlier error bodies were not retained. No charge was returned; total cost and prior cumulative spend are unverified. The requested token bound was not echoed as active.",
+    "inference": "reachable",
+    "reviewer_isolation": "unverified",
+    "scorer_isolation": "unverified",
+    "headless_client_initialisation": "not obtained",
+    "controller_substituted": false
+  },
+  "new_discovery_requests": 0,
+  "new_candidate_feedback_bodies_read": 0,
+  "new_review_runs": [],
+  "new_scoring_runs": [],
+  "scores": null,
+  "v4_protocol_frozen": false,
+  "stop_reason": "The required headless-client reviewer/scorer isolation preflight remains unverified. Direct reachability is insufficient; the response also did not confirm enforcement of the requested output-token bound. Stop before prospective v4 freeze or discovery, without creating inference infrastructure or changing ceilings.",
+  "next": "Continue from the exact #1444 checkpoint, preserving all v1-v3 evidence and the pilot human-adjudication request. Verify the existing headless client's tool-less fresh reviewer/scorer isolation and bounded spending first. Then freeze the prospective v4 protocol and rubric before discovery; exclude all v2/v3 examined candidates, including B2200, O3624, O3626 and O3640. This run has not closed the exposure inventory or specified/fetched the expanded pagination.",
+  "human_adjudication": "Not obtained; the pilot request remains outstanding. No agent disposition is human approval."
+}
