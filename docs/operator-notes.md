@@ -579,3 +579,11 @@ My reading: the controller cuts agentic-job releases whenever they are needed, w
 My reading: the bot created cgwalters-forge/misctool (tracker#677).
 
 Plans for review (tracker#676): the operator approved #674, #677 and #680 by adding the `epic` label. On #674 he removed step-to-step tampering from secure-host's threat model ("Any step can compromise subsequent ones, we can’t fix that") and approved the probes in cgwalters-forge-stage/board-test.
+
+## 2026-11-07, agents decide our own infrastructure (tracker#1445)
+
+> I think what I want as a standing thing is it only for our own infrastructure only big picture architecture related things come to me I trust our multi agent architecture otherwise.
+
+Coordinator's reading: for our own infrastructure (the cgwalters-forge and cgwalters-bot repositories), agents decide and act on routine work; only big-picture architecture and the unchanged reserved posture decisions go to the operator. The review agent's approval suffices to merge, subject to existing CODEOWNERS and human approval gates; this instruction does not change those gates or settings.
+
+Upstream posting, midstream promotion, credentials, broker policy, rulesets and bypasses, spending caps, security disclosure, and changes to which repositories agents may target remain reserved to the operator. These are posture decisions, not routine infrastructure work; delegating them would require a separate instruction.
