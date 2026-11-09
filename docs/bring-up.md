@@ -142,6 +142,71 @@ for a run and fails unless it succeeds; `gh run view RUN -R
 cgwalters-forge/tracker --json jobs -q '.jobs[] | select(.conclusion ==
 "failure") | .name'` names its failed jobs.
 
+### External-runner runtime handoff (#1490)
+
+**Blocked, not wired (9 November 2026).** The concrete threat is associating
+an unrelated, replayed or agent-controlled external handback with a trusted
+tracker apply. A disabled profile alone does not establish that association.
+Keep `runner=hosted` as the default and every external profile disabled;
+do not remove the unconditional external-execution refusal in `runner-gate`
+until the reviewed interfaces below exist. This is a prerequisite record,
+not deployment authorization or a runtime acceptance result.
+
+The lower resolver slice is already merged as
+[tracker#1491](https://github.com/cgwalters-forge/tracker/pull/1491), commit
+`bcf3a21d9115a60e000760360fe717952a3630b0`, closing #1489. Reuse it rather
+than restacking or recreating the map. Its `just test-runner-profiles` checks
+hosted map bypass and external refusals, not dispatch/correlation/apply.
+Read-only inspection of current source and open issues/PRs found no equivalent
+tracker runtime draft. The upstream
+[slice list](https://github.com/cgwalters-forge/agentic-job/blob/4692b7525a07a5e8682bcdef358e9876701454a9/docs/plan.md#external-runner-implementation-slices)
+still describes interfaces to build, not interfaces to call.
+
+Prerequisites observed at agentic-job main
+`4692b7525a07a5e8682bcdef358e9876701454a9` and actions main
+`eef41d3b216c731fda0960d6c9876a6ab3cd159a`:
+
+| Owning work | Missing integration prerequisite |
+| --- | --- |
+| [agentic-job#3292](https://github.com/cgwalters-forge/agentic-job/issues/3292), [PR#3300](https://github.com/cgwalters-forge/agentic-job/pull/3300) | Evidence draft is open, review required, at `ff5c7c25ec5be518e64600edf7e704a5ae1f864c`. Need reviewed collection/check/apply support for bounded attempts, patch-bound evidence and outcome counts. This head is not an approved runtime pin. |
+| [agentic-job#3293](https://github.com/cgwalters-forge/agentic-job/issues/3293) | Correlation/fetch/re-check is an open issue; no matching implementation PR was found. Need its dispatch-record schema and bounded binary API, trusted base/branch-run policy/check/apply inputs, and an explicit successful-detection output enforced by apply. |
+| [agentic-job#3291](https://github.com/cgwalters-forge/agentic-job/issues/3291), [PR#3295](https://github.com/cgwalters-forge/agentic-job/pull/3295) | Capability preflight draft is open. The wrapper needs reviewed KVM/session-libvirt refusal before inference, with no hosted fallback. |
+| [actions#232](https://github.com/cgwalters-forge/actions/issues/232) | External-mode interface remains an open issue with no matching implementation PR found. The inspected ordinary wrapper has no external mode or dispatch-id/base-commit inputs and still composes apply. Need artifact-only mode, exact run identity, raw/checked artifact contract, fixed limits and credential isolation. |
+
+Recheck those sources, reviews and equivalent drafts before resuming. Do not
+invent CLI flags, workflow inputs, artifact names or compatible commits from
+these requirements. Do not call the ordinary wrapper as an external substitute.
+No new option or caller setting is introduced by this handoff.
+
+Once reviewed APIs exist, the dormant tracker composition must persist a
+trusted record from the caller commit before dispatch: fresh random dispatch-id,
+exact target/kind/base commit, selected map/profile and immutable pins, caller
+run/attempt, and finite deadline within the resolver's 330-minute ceiling.
+Only the dispatch step may hold the external dispatch credential. Waiting,
+correlation and fetch get read access only, with no dispatch, forge-write,
+OIDC registration or lifecycle authority; agent/test processes must likewise
+have none of those credentials. Missing credentials or capabilities refuse.
+
+Re-upload verified raw handback into this tracker run, then directly compose
+the reviewed agentic-job `policy.yml`, `check.yml` and `apply.yml` with current
+`midstream.toml` bounds, this upload's ID/digest and `agent-apply`. Never trust
+external policy/config or treat a digest as provenance. Apply must require
+tracker-owned successful detection and the trusted record's exact base and
+branch-run identity. Include external run/attempt/digest and evidence outcome
+counts in the resulting draft. Preserve hosted dispatch, per-item concurrency
+and existing apply replay/idempotency guards; do not widen admission or bounds.
+
+Pending fixture acceptance is mocked dispatch/correlation plus real local
+collect/check/staged apply: positive association, ambiguity/no match, replay,
+moved/stale base, wrong digest/pins/actor, skipped detection and missing
+credential/capability. Check credential absence in agent/tests and read-only
+waiting jobs, not just happy-path job ordering. None of these runtime fixtures
+is implemented by this documentation change. An enabled external run and
+cancellation/runner-loss destruction proofs require a later, separately
+authorized deployment; green fixtures cannot establish them. Do not provision
+secrets, alter broker admission, contact the external sandbox or enable a
+profile here. Read inference endpoints only from deployment configuration.
+
 ### gh-agentic-workflows upgrade handoff (#258)
 
 To prevent staged changes from advancing an upstream-tracking fork main,
