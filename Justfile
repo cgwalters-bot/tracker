@@ -1685,22 +1685,37 @@ build-supervisor-agent-board:
     {{ just_executable() }} build-agent-board "$rev"
 
 # The agent-board.json of maintain-shadow.yml's poll: pass.json's operator,
-# bot and dispatch settings and the `pr` keys poll reads, following only
-# FOLLOW.
+# bot and dispatch settings and its whole `pr` policy, following only FOLLOW.
+# The pinned poll takes every `pr` key of the pinned pass at its top level
+# under the same name (agent-board docs/poll.md, Configuration), so each is
+# copied with its value, except the two lists that may name only followed
+# repositories, which keep their FOLLOW entry alone. A key in neither list
+# fails the run: a key the pass gains must be placed here, never dropped
+# unseen, or the preview would compare a different policy (#1362).
 maintain-shadow-config pass follow:
     #!/usr/bin/env bash
     set -euo pipefail
-    jq -e --arg follow "$2" '{operator, bot, dispatchRepo, dispatchWorkflow, follow: [$follow]}
-      + (.pr | {reviewWorkflow, fixPools, mergeAuthors, rebaseRounds, mergeQueue,
-        unstall, noMerge, operatorPaths, headOwners, ownerBranches, ownSpaceOnly, checkReruns, staleDays})
-      | with_entries(select(.value != null))' "$1"
+    jq -e --arg follow "$2" '
+      ["reviewWorkflow", "fixPools", "toilFixPool", "conflictFixPool", "mergeAuthors", "rebaseRounds", "mergeQueue",
+        "checkReruns", "unstall", "ownerBranches", "ownSpaceOnly", "foldRounds", "reviewPools",
+        "headOwners", "noMerge", "operatorPaths", "staleDays"] as $copied
+      | ["reviewDispatchRepositories", "draftReviewRepositories"] as $scoped
+      | (.pr // {}) as $pr
+      | ($pr | keys - $copied - $scoped) as $unknown
+      | if $unknown != [] then
+          "maintain-shadow-config: pr key(s) \($unknown | join(", ")) not in its lists; add each the pinned poll reads to the Justfile recipe\n" | halt_error
+        else . end
+      | ({operator, bot, dispatchRepo, dispatchWorkflow} | with_entries(select(.value != null))) + {follow: [$follow]}
+      + ($pr | with_entries(select(.key | IN($copied[]))))
+      + ($pr | with_entries(select(.key | IN($scoped[]))
+          | .value |= map(select(ascii_downcase == ($follow | ascii_downcase)))))' "$1"
 
 # maintain-shadow.yml previews with the job token only, and its poll gets
 # pass.json's settings. With AGENT_BOARD, the pinned CLI must take its flags.
 test-maintain-shadow:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
-    const { execFileSync } = require('node:child_process');
+    const { execFileSync, spawnSync } = require('node:child_process');
     const fs = require('node:fs');
     const workflow = fs.readFileSync('.github/workflows/maintain-shadow.yml', 'utf8');
     assert.doesNotMatch(workflow, /secrets\.|: write|--apply/);
@@ -1738,7 +1753,7 @@ test-maintain-shadow:
         [null, 1, 0, false], [1800, 0, 1, true],
       ]) {
         fs.writeFileSync(`${temp}/calls`, '');
-        const got = require('node:child_process').spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
+        const got = spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
           encoding: 'utf8', env: { PATH: `${temp}:${process.env.PATH}`, GH_TOKEN: '', DEFAULT_BRANCH: 'custom-default',
             CAPTURE: `${temp}/calls`, LATEST: age === null ? '' : new Date((2000000000 - age) * 1000).toISOString(),
             LIST_EXIT: String(listExit), DISPATCH_EXIT: String(dispatchExit) },
@@ -1755,19 +1770,57 @@ test-maintain-shadow:
       fs.rmSync(temp, { recursive: true, force: true });
     }
     console.log('ok poll next wakes the shadow only when enabled and stale; failures warn without breaking the chain');
-    const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
-    const config = JSON.parse(execFileSync('{{ just_executable() }}',
-      ['maintain-shadow-config', '.github/pass.json', 'cgwalters-forge/agentic-job'], { encoding: 'utf8' }));
-    assert.deepEqual(config, {
-      operator: pass.operator, bot: pass.bot, dispatchRepo: pass.dispatchRepo,
-      dispatchWorkflow: pass.dispatchWorkflow, follow: ['cgwalters-forge/agentic-job'],
-      reviewWorkflow: pass.pr.reviewWorkflow, fixPools: pass.pr.fixPools, mergeAuthors: pass.pr.mergeAuthors,
-      rebaseRounds: pass.pr.rebaseRounds, mergeQueue: pass.pr.mergeQueue,
-      unstall: pass.pr.unstall, noMerge: pass.pr.noMerge, operatorPaths: pass.pr.operatorPaths,
-      headOwners: pass.pr.headOwners, ownerBranches: pass.pr.ownerBranches,
-      ownSpaceOnly: pass.pr.ownSpaceOnly, checkReruns: pass.pr.checkReruns, staleDays: pass.pr.staleDays,
-    });
-    console.log('ok maintain-shadow previews read-only with pass.json\'s poll settings');
+    // Each fixture's own `pr` keys set what its config must hold, not the
+    // generator's lists: every key is copied with its value, or, for the two
+    // lists the pinned poll lets name only followed repositories, cut to the
+    // follow entry as the poll compares it, and a key the generator does not
+    // know fails naming it (#1362). The pinned pass has no `pr` key the pinned
+    // poll refuses, so nothing is left out on purpose.
+    const follow = 'cgwalters-forge/agentic-job';
+    const scoped = ['reviewDispatchRepositories', 'draftReviewRepositories'];
+    const dir = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'shadow-config-'));
+    process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
+    const generate = (pass) => {
+      fs.writeFileSync(`${dir}/pass.json`, JSON.stringify(pass));
+      return spawnSync('{{ just_executable() }}', ['maintain-shadow-config', `${dir}/pass.json`, follow], { encoding: 'utf8' });
+    };
+    const today = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
+    const base = { operator: 'op', bot: 'bot', dispatchRepo: 'o/tracker', dispatchWorkflow: 'dispatch.yml', follow: ['o/x'] };
+    const reviews = { reviewWorkflow: 'review.yml', reviewPools: ['claude'],
+      reviewDispatchRepositories: ['cgwalters-forge/agent-board', follow.toUpperCase(), 'cgwalters-forge/tracker'],
+      draftReviewRepositories: ['cgwalters-forge/agent-board', follow], noMerge: [follow] };
+    const fixtures = {
+      today,
+      foldRounds: { ...base, pr: { foldRounds: true } },
+      reviewPools: { ...base, pr: { reviewWorkflow: 'review.yml', reviewPools: ['claude', 'openai'] } },
+      scoped: { ...base, pr: reviews },
+      pools: { ...base, pr: { fixPools: ['claude'], toilFixPool: 'openai', conflictFixPool: 'claude' } },
+      off: { ...base, pr: { checkReruns: false, unstall: false, ownerBranches: false, ownSpaceOnly: false, foldRounds: false,
+        staleDays: 0, rebaseRounds: 0, fixPools: [], mergeAuthors: [], headOwners: [], noMerge: [], operatorPaths: [],
+        reviewPools: [], reviewDispatchRepositories: [], draftReviewRepositories: [], mergeQueue: {} } },
+      full: { ...today, pr: { ...today.pr, foldRounds: true, toilFixPool: 'openai', conflictFixPool: 'claude', ...reviews } },
+      unfollowed: { ...base, pr: { reviewWorkflow: 'review.yml', reviewPools: ['claude'], reviewDispatchRepositories: ['cgwalters-forge/agent-board'] } },
+      noPr: base,
+    };
+    const configs = {};
+    for (const [name, pass] of Object.entries(fixtures)) {
+      const got = generate(pass);
+      assert.equal(got.status, 0, `${name}: ${got.stderr}`);
+      const expected = { operator: pass.operator, bot: pass.bot, dispatchRepo: pass.dispatchRepo,
+        dispatchWorkflow: pass.dispatchWorkflow, follow: [follow] };
+      for (const [key, value] of Object.entries(pass.pr ?? {})) {
+        expected[key] = scoped.includes(key) ? value.filter((r) => r.toLowerCase() === follow.toLowerCase()) : value;
+      }
+      assert.deepEqual(configs[name] = JSON.parse(got.stdout), expected, name);
+    }
+    assert.deepEqual(configs.scoped.reviewDispatchRepositories, [follow.toUpperCase()]);
+    assert.deepEqual(configs.scoped.draftReviewRepositories, [follow]);
+    assert.deepEqual(configs.unfollowed.reviewDispatchRepositories, []);
+    const unknown = generate({ ...base, pr: { ...today.pr, futureKey: true, otherKey: [] } });
+    assert.notEqual(unknown.status, 0);
+    assert.equal(unknown.stdout, '');
+    assert.match(unknown.stderr, /pr key\(s\) futureKey, otherKey not in its lists/);
+    console.log('ok maintain-shadow previews read-only; each fixture\'s pr keys reach its config, cut to its follow, or fail it');
     if (process.env.AGENT_BOARD) {
       const help = execFileSync(process.env.AGENT_BOARD, ['poll', '--help']).toString();
       const command = /"\$AGENT_BOARD" poll [\s\S]*?\| tee/.exec(workflow)[0];
@@ -1775,8 +1828,19 @@ test-maintain-shadow:
         assert.match(help, new RegExp(`${flag}(?![\\w-])`), `${flag} in agent-board poll --help`);
       }
       console.log('ok the pinned agent-board poll takes every flag maintain-shadow passes');
+      // The pinned poll decodes its config before it needs a token, so with
+      // none each generated config either fails decoding, naming the key, or
+      // gets as far as asking for one.
+      const { GH_TOKEN, GITHUB_TOKEN, ...env } = process.env;
+      for (const [name, config] of Object.entries(configs)) {
+        fs.writeFileSync(`${dir}/${name}.json`, JSON.stringify(config));
+        const got = spawnSync(process.env.AGENT_BOARD, ['poll', '--dry-run', '--config', `${dir}/${name}.json`, '--follow', follow],
+          { encoding: 'utf8', env });
+        assert.match(got.stderr, /authentication required/, `${name}: ${got.stderr}`);
+      }
+      console.log('ok the pinned agent-board poll decodes every generated config');
     } else {
-      console.log('skipped: set AGENT_BOARD to check the flags against the pinned CLI');
+      console.log('skipped: set AGENT_BOARD to check the flags and the generated configs against the pinned CLI');
     }
 
 # No moving refs or source fallback: substituted assets must not run with the
