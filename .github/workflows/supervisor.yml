@@ -108,6 +108,9 @@ jobs:
       idle: ${{ steps.session.outputs.idle }}
       session-repo: ${{ steps.session.outputs.repo }}
       session-issue: ${{ steps.session.outputs.issue }}
+      # The agenthome commit compose resolved the profile branch to, so execute
+      # checks the same text the agent read.
+      profile-commit: ${{ steps.compose.outputs.profile_commit || steps.session.outputs.profile_commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -314,7 +317,7 @@ jobs:
 
   # Runs no agent-produced code: it parses the requests as data.
   execute:
-    needs: agent
+    needs: [health, agent]
     if: ${{ (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') && needs.agent.outputs.result-url != '' }}
     # Health passes run outside supervisor-agent, so keep the executor's cap
     # census and reservation serialized across both groups.
@@ -365,8 +368,10 @@ jobs:
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           RESULT_URL: ${{ needs.agent.outputs.result-url }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PROFILE_COMMIT: ${{ needs.health.outputs.profile-commit }}
         run: |
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise execute \
             --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
             --pools .github/agentic-job/pools.json --result-url "$RESULT_URL" \
+            ${PROFILE_COMMIT:+--profile-commit "$PROFILE_COMMIT"} \
             | tee -a "$GITHUB_STEP_SUMMARY"
