@@ -1213,10 +1213,10 @@ test-review-caller:
       ['issue_comment', true, 'not /review', false],
       ['issue_comment', false, '/review', false],
       ['workflow_dispatch', false, '', false],
-    ]) {
+    ]) for (const vars of [{}, { REVIEW_DISPATCH: 'true' }, { REVIEW_DISPATCH: 'Enabled' }, { REVIEW_DISPATCH: 'enabled' }]) {
       const github = { event_name, event: { issue: { pull_request: pull }, comment: { body } } };
-      assert.equal(runInNewContext(gate, { github, startsWith: (s, prefix) => s.startsWith(prefix) }), want,
-        `${event_name}: ${body}`);
+      assert.equal(runInNewContext(gate, { github, vars, startsWith: (s, prefix) => s.startsWith(prefix) }),
+        want, `${event_name}: ${body}: REVIEW_DISPATCH=${vars.REVIEW_DISPATCH}`);
     }
     assert.match(workflow, /^    types: \[opened, synchronize, reopened, ready_for_review\]$/m);
     assert.match(workflow, /^    types: \[created\]$/m);

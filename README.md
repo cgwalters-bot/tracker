@@ -210,16 +210,35 @@ review; `/review` still works.
 
 ### Paced-review cutover
 
-**Prepared, not activated (5 November 2026, #1198/#1171).** This updates the
-merged #1103 preparation, not its old separate-review-wrapper route. The threat
-is duplicate, unpaced inference for one PR head while event reviews remain
-authoritative. `dispatch.yml` therefore rejects reviews unless the trusted
-repository variable `REVIEW_DISPATCH` is exactly `enabled` (unset is off), before
-calling any wrapper or inference. No dispatch input bypasses that gate.
+**Prepared, not activated (#1198/#1171; activation deferred in #1500).**
 `pr.reviewPools` and `pr.reviewDispatchRepositories` remain absent in
-`.github/pass.json`. Existing `review.yml`, its SHA pin, events, base bounds/task
-and write-authorized `/review` admission remain unchanged and authoritative.
-No settings, credentials, admission, rulesets or live reviews were changed.
+`.github/pass.json`. The event-review outage tracked in #1496 does not make
+the dispatch route ready: enabling pools with the producer reviewed in #1500,
+agent-board `efc8cbe30068f8b70b76e500278690ee8ac126d5`, counts reviews in every followed
+repository, including those not selected for dispatch. A missing legacy
+`review.yml` makes that accounting unreadable and holds review starts globally.
+Before activation, fix and pin the producer's accounting contract for
+unconfigured followed repositories, with a mixed-follow test that includes a
+missing legacy workflow. Deploying only the ten proposed callers is not enough.
+
+Read-only deployed-source checks on 11 November 2026 still found no
+`dispatch.yml` in agent-board and no `review.yml` in cgwalters-forge/bootc.
+Readiness must be established from deployed default-branch callers accepting
+`kind`, `repo`, `item`, `head`, `pool` and `task`, with the exact run identity
+below, plus trusted settings and wrapper admission. A refused dispatch already
+has a durable reservation; deploying its caller later does not automatically
+retry that head. A configured repository list is not deployment evidence.
+
+The threat remains duplicate, unpaced inference for one PR head while event
+reviews remain authoritative. `dispatch.yml` rejects reviews unless the trusted
+repository variable `REVIEW_DISPATCH` is exactly `enabled` (unset is off), before
+calling any wrapper or inference. No dispatch input bypasses that gate. Existing
+`review.yml`, its SHA pin, events, base bounds/task and write-authorized `/review`
+admission remain unchanged. In particular, do not suppress the comment route
+until the producer accepts authorized `/review` on drafts with bounded command
+intake: the reviewed producer skips drafts without a draft-review opt-in. Add that owning-
+layer regression test before cutover. No settings, credentials, admission,
+rulesets or live reviews were changed here; this deferral does not repair #1496.
 
 The pinned producer's
 [ordinary dispatch contract](https://github.com/cgwalters-forge/agent-board/blob/6c7ecdabdad572d4f69713c55e6ab9f2c2b10e02/docs/pass.md#ordinary-dispatched-reviews-opt-in)
