@@ -1244,8 +1244,9 @@ test-poll-bounds:
 # poll's `next` step script, run with a stub agent-board that prints its
 # arguments: the supervisor and release-train wakes are added only under
 # their variables' gates. Every flag it passes is checked against the
-# pinned CLI's help (AGENT_BOARD), which reads no token. The failure-only
-# fallback uses runner tools and makes just one dispatch attempt.
+# pinned CLI's help (AGENT_BOARD), which reads no token. Best-effort recovery
+# uses runner tools and makes just one dispatch attempt. Fixtures are not
+# live proof of GitHub's missing-job behavior or schedule delivery.
 test-poll-next:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
@@ -1293,16 +1294,27 @@ test-poll-next:
     }
     const fallback = /^ {2}next-fallback:\n([\s\S]+)$/m.exec(poll)?.[1];
     assert.ok(fallback, 'the final fallback job');
-    assert.match(fallback, /^ {4}needs: next$/m);
-    const gate = /^ {4}if: \$\{\{ (.*) \}\}$/m.exec(fallback)[1];
-    for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
+    assert.match(fallback, /^ {4}needs: \[pass, next\]$/m);
+    const gate = /^ {4}if: >-\n((?: {6}.*\n)+)/m.exec(fallback)[1].trim().replace(/^\$\{\{ | \}\}$/g, '');
+    for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
+      for (const pass of ['success', 'failure', 'cancelled', 'skipped', '']) {
       for (const cancelled of [false, true]) {
         for (const apply of ['', 'enabled', 'disabled']) {
+          for (const event of ['schedule', 'workflow_dispatch', 'push']) {
+          for (const applying of [false, true]) {
+          for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
           const got = require('node:vm').runInNewContext(gate, {
-            cancelled: () => cancelled, needs: { next: { result } }, vars: { PASS_APPLY: apply },
+            cancelled: () => cancelled, needs: { pass: { result: pass }, next: { result } }, vars: { PASS_APPLY: apply },
+            github: { ref, event_name: event, event: { repository: { default_branch: 'main' } } },
+            inputs: { apply: applying }, format: (template, branch) => template.replace('{0}', branch),
           });
-          assert.equal(got, result === 'failure' && !cancelled && apply === 'enabled');
+          assert.equal(got, ['failure', 'skipped', ''].includes(result) && pass !== 'cancelled' && !cancelled &&
+            apply === 'enabled' && ref === 'refs/heads/main' && (event === 'schedule' || (event === 'workflow_dispatch' && applying)));
+          }
+          }
+          }
         }
+      }
       }
     }
     assert.match(fallback, /^ {4}timeout-minutes: 12$/m);
@@ -1311,35 +1323,78 @@ test-poll-next:
     assert.equal((fallback.match(/^ {6}- /gm) ?? []).length, 1, 'one step without setup');
     assert.match(fallback, /^ {10}GH_TOKEN: \$\{\{ github.token \}\}$/m);
     assert.match(fallback, /^ {10}DEFAULT_BRANCH: \$\{\{ github.event.repository.default_branch \}\}$/m);
+    for (const job of ['PASS', 'NEXT']) assert.ok(fallback.includes(`${job}_RESULT: \u0024{` + `{ needs.${job.toLowerCase()}.result }}`));
     const recovery = /^ {8}run: \|\n((?: {10}.*\n)+)/m.exec(fallback)[1].replace(/^ {10}/gm, '');
     const sandbox = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'poll-fallback-'));
     try {
-      fs.writeFileSync(path.join(sandbox, 'gh'), '#!/bin/bash\nif [[ $1 == api ]]; then printf "%s\\n" "$*" >&2; printf "2026-11-02T17:51:00Z\\n"; exit "${API_EXIT:-0}"; fi\nprintf "%s\\n" "$*"\nexit "${DISPATCH_EXIT:-0}"\n', { mode: 0o755 });
+      fs.writeFileSync(path.join(sandbox, 'gh'), `#!${process.execPath}
+    const args = process.argv.slice(2);
+    require('node:fs').appendFileSync(process.env.CALLS, JSON.stringify(args) + '\\n');
+    if (args[0] === 'api') {
+      const listing = args.includes('--method');
+      if (process.env.API_FAIL === (listing ? 'list' : 'start')) { console.error('fixture API failure'); process.exit(1); }
+      process.stdout.write(listing ? (process.env[args.includes('page=2') ? 'PAGE2' : 'RUNS']) : (process.env.START || '2026-11-02T17:51:00Z'));
+    } else { console.log(args.join(' ')); process.exit(Number(process.env.DISPATCH_EXIT || 0)); }
+    `, { mode: 0o755 });
       fs.writeFileSync(path.join(sandbox, 'date'), '#!/bin/bash\nif [[ $1 == -d ]]; then printf "1000\\n"; else printf "%s\\n" "$NOW"; fi\n', { mode: 0o755 });
       fs.writeFileSync(path.join(sandbox, 'sleep'), '#!/bin/bash\nprintf "sleep %s\\n" "$*"\n', { mode: 0o755 });
-      const api = 'api repos/owner/repo/actions/runs/42 --jq .run_started_at';
       const dispatch = 'workflow run poll.yml --repo owner/repo --ref main -f apply=true';
-      const recover = (env) => require('node:child_process').spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', recovery], {
-        env: { PATH: `${sandbox}:${process.env.PATH}`, GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '42', DEFAULT_BRANCH: 'main', ...env }, encoding: 'utf8',
-      });
+      const me = { id: 42, created_at: '2026-11-02T17:51:00Z', head_branch: 'main', event: 'workflow_dispatch', display_title: 'pass (apply)', status: 'in_progress' };
+      const rows = runs => JSON.stringify({ workflow_runs: runs });
+      const log = 'Recovery dependencies: pass=<> next=<skipped>';
+      const callsPath = path.join(sandbox, 'calls');
+      const recover = (env = {}) => {
+        fs.writeFileSync(callsPath, '');
+        return require('node:child_process').spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', recovery], {
+          env: { PATH: `${sandbox}:${process.env.PATH}`, GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '42', DEFAULT_BRANCH: 'main',
+            PASS_RESULT: '', NEXT_RESULT: 'skipped', CALLS: callsPath, NOW: '1900', RUNS: rows([me]), ...env }, encoding: 'utf8',
+        });
+      };
+      const calls = () => fs.readFileSync(callsPath, 'utf8').trim().split('\n').map(JSON.parse);
       for (const [now, delay] of [['1120', '480'], ['1600', null], ['1900', null], ['900', '600']]) {
         const got = recover({ NOW: now });
         assert.equal(got.status, 0, got.stderr);
-        assert.equal(got.stderr.trimEnd(), api);
-        assert.deepEqual(got.stdout.trimEnd().split('\n'), [...(delay ? [`sleep ${delay}`] : []), dispatch]);
+        assert.deepEqual(got.stdout.trimEnd().split('\n'), [log, ...(delay ? [`sleep ${delay}`] : []), dispatch]);
+        assert.deepEqual(calls().at(-1), dispatch.split(' '));
+        assert.equal(calls().length, 3);
       }
       const failed = recover({ NOW: '1900', DISPATCH_EXIT: '1' });
       assert.equal(failed.status, 1, 'dispatch failure stays visible');
-      assert.equal(failed.stderr.trimEnd(), api);
-      assert.deepEqual(failed.stdout.trimEnd().split('\n'), [dispatch], 'no retry on failure');
-      const unreadable = recover({ NOW: '1900', API_EXIT: '1' });
-      assert.equal(unreadable.status, 1);
-      assert.equal(unreadable.stderr.trimEnd(), api);
-      assert.equal(unreadable.stdout, '', 'API failure stops recovery');
+      assert.deepEqual(failed.stdout.trimEnd().split('\n'), [log, dispatch], 'no retry on failure');
+      assert.equal(calls().filter(args => args[0] === 'workflow').length, 1);
+      for (const env of [{ API_FAIL: 'start' }, { API_FAIL: 'list' }, { START: 'null' }, { RUNS: '{}' }, { RUNS: '{' },
+        { RUNS: rows([]) }, { RUNS: rows([{ ...me, status: null }]) }, { RUNS: rows([{ ...me, created_at: 'invalid' }]) }]) {
+        const unreadable = recover(env);
+        assert.notEqual(unreadable.status, 0, JSON.stringify(env));
+        assert.ok(unreadable.stderr, 'failure stays visible');
+        assert.equal(unreadable.stdout.trimEnd(), log, 'API failure stops recovery');
+        assert.ok(calls().every(args => args[0] === 'api'));
+      }
+      const newer = { ...me, id: 43 };
+      for (const status of ['queued', 'waiting', 'pending', 'requested', 'in_progress']) {
+        for (const event of ['schedule', 'workflow_dispatch']) {
+          const got = recover({ RUNS: rows([{ ...newer, status, event }, me]) });
+          assert.equal(got.status, 0, got.stderr);
+          assert.match(got.stdout, /run 43 continues the chain/);
+          assert.equal(calls().length, 2, 'no dispatch for newer active applying run');
+        }
+      }
+      for (const other of [{ ...newer, status: 'completed' }, { ...newer, head_branch: 'other' },
+        { ...newer, display_title: 'pass' }, { ...newer, event: 'push' }, { ...me, id: 41 },
+        { ...newer, created_at: '2026-11-02T17:50:59Z' }]) {
+        const got = recover({ RUNS: rows([other, me]) });
+        assert.equal(got.status, 0, got.stderr);
+        assert.match(got.stdout, /workflow run poll.yml/);
+      }
+      const full = Array.from({ length: 100 }, (_, i) => ({ ...newer, id: 100 + i, status: 'completed' }));
+      assert.equal(recover({ RUNS: rows(full), PAGE2: rows([me]) }).status, 0);
+      assert.equal(calls().length, 4, 'second page reaches current run before dispatch');
+      assert.notEqual(recover({ RUNS: rows(full), PAGE2: rows(full) }).status, 0);
+      assert.equal(calls().length, 3, 'bounded at two pages; no blind dispatch');
     } finally {
       fs.rmSync(sandbox, { recursive: true, force: true });
     }
-    console.log('ok poll fallback is failure-only, waits at most ten minutes and dispatches once');
+    console.log('ok offline fallback guards, dependency fixtures, bounded wait/listing, newer-run ownership and visible API failures; not live GitHub proof');
 
 # supervisor.yml's folded concurrency group and health `if`, evaluated as
 # JavaScript on events: a run the gate skips gets a group of its own
