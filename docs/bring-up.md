@@ -183,6 +183,71 @@ for a run and fails unless it succeeds; `gh run view RUN -R
 cgwalters-forge/tracker --json jobs -q '.jobs[] | select(.conclusion ==
 "failure") | .name'` names its failed jobs.
 
+### External-runner runtime handoff (#1490)
+
+**Blocked, not wired (16 November 2026).** The concrete threat is associating
+an unrelated, replayed or agent-controlled external handback with a trusted
+tracker apply. A disabled profile alone does not establish that association.
+Keep `runner=hosted` as the default and every external profile disabled;
+do not remove the unconditional external-execution refusal in `runner-gate`
+until the reviewed interfaces below exist. This is a prerequisite record,
+not deployment authorization or a runtime acceptance result.
+
+The lower resolver slice is already merged as
+[tracker#1491](https://github.com/cgwalters-forge/tracker/pull/1491), commit
+`bcf3a21d9115a60e000760360fe717952a3630b0`, closing #1489. Reuse it rather
+than restacking or recreating the map. Its `just test-runner-profiles` checks
+hosted map bypass and external refusals, not dispatch/correlation/apply.
+Read-only inspection of current source and open issues/PRs found no equivalent
+tracker runtime draft. This work is slice 7 of the upstream
+[slice list](https://github.com/cgwalters-forge/agentic-job/blob/ac4c8ce0e6f068f9a0eb41755a5b7cfb70776f6b/docs/plan.md#external-runner-implementation-slices),
+which depends on slices 1 (#1491), 4, 5 and 6.
+
+Prerequisites observed at agentic-job main
+`ac4c8ce0e6f068f9a0eb41755a5b7cfb70776f6b` and actions main
+`56a408507e9a423bf176bf871e06cc0706887e21`:
+
+| Owning work | Integration prerequisite |
+| --- | --- |
+| [agentic-job#3292](https://github.com/cgwalters-forge/agentic-job/issues/3292), [PR#3300](https://github.com/cgwalters-forge/agentic-job/pull/3300) | Merged as `47c5bd5135d822557e395c1eee9a6db24632fc3a`, off by default. Tracker's bounds still need `[github.test_evidence]` with the reviewed profile's limits before the composition can use it. |
+| [agentic-job#3293](https://github.com/cgwalters-forge/agentic-job/issues/3293), [PR#3379](https://github.com/cgwalters-forge/agentic-job/pull/3379), [PR#3321](https://github.com/cgwalters-forge/agentic-job/pull/3321) | **Incomplete.** Merged as `37c9957aa3db519693bbb872262ee6a35dad2c74` with follow-up `f94196c821dd07cde2fc9223449c8bb7215367d2`, off by default and tested against offline fixtures only; the issue is closed and [agentic-job#4287](https://github.com/cgwalters-forge/agentic-job/issues/4287) owns the first two gaps below. Its [review](https://github.com/cgwalters-forge/agentic-job/pull/3379#pullrequestreview-5851338169) found them, and they are still present at the observed main: check reports the raw digest as attribution without binding it to the uploaded files, so a caller wiring mistake could attribute a different patch to the run; a waiting job that starts after the ten-minute appearance deadline refuses a valid run; and the production redirect/credential boundary has no regression test. |
+| [agentic-job#3291](https://github.com/cgwalters-forge/agentic-job/issues/3291), [PR#3295](https://github.com/cgwalters-forge/agentic-job/pull/3295) | Merged as `6bdc848c7c7c4c6053c46fa099fa6793e04825f5`; the positive path on a KVM host is unverified. |
+| [actions#232](https://github.com/cgwalters-forge/actions/issues/232) | **Missing.** The issue is open and [actions#280](https://github.com/cgwalters-forge/actions/pull/280) only documents blockers: the wrapper first needs an exact dispatched-base pin through agentic-job's policy, run and check, and inference without lifecycle tokens on the runner ([agentic-job#2999](https://github.com/cgwalters-forge/agentic-job/issues/2999)). The wrapper at the observed main has no external mode or dispatch-id/base-commit inputs and still composes apply. Need artifact-only mode, exact run identity, raw/checked artifact contract, fixed limits and credential isolation. |
+
+Recheck those sources, reviews and equivalent drafts before resuming. Do not
+invent CLI flags, workflow inputs, artifact names or compatible commits from
+these requirements. Do not call the ordinary wrapper as an external substitute.
+No new option or caller setting is introduced by this handoff.
+
+Once reviewed APIs exist, the dormant tracker composition must persist a
+trusted record from the caller commit before dispatch: fresh random dispatch-id,
+exact target/kind/base commit, selected map/profile and immutable pins, caller
+run/attempt, and finite deadline within the resolver's 330-minute ceiling.
+Only the dispatch step may hold the external dispatch credential. Waiting,
+correlation and fetch get read access only, with no dispatch, forge-write,
+OIDC registration or lifecycle authority; agent/test processes must likewise
+have none of those credentials. Missing credentials or capabilities refuse.
+
+Re-upload verified raw handback into this tracker run, then directly compose
+the reviewed agentic-job `policy.yml`, `check.yml` and `apply.yml` with current
+`midstream.toml` bounds, this upload's ID/digest and `agent-apply`. Never trust
+external policy/config or treat a digest as provenance. Apply must require
+tracker-owned successful detection and the trusted record's exact base and
+branch-run identity. Include external run/attempt/digest and evidence outcome
+counts in the resulting draft. Preserve hosted dispatch, per-item concurrency
+and existing apply replay/idempotency guards; do not widen admission or bounds.
+
+Pending fixture acceptance is mocked dispatch/correlation plus real local
+collect/check/staged apply: positive association, ambiguity/no match, replay,
+moved/stale base, wrong digest/pins/actor, skipped detection and missing
+credential/capability. Check credential absence in agent/tests and read-only
+waiting jobs, not just happy-path job ordering. None of these runtime fixtures
+is implemented by this documentation change. An enabled external run and
+cancellation/runner-loss destruction proofs require a later, separately
+authorized deployment; green fixtures cannot establish them. Do not provision
+secrets, alter broker admission, contact the external sandbox or enable a
+profile here. Read inference endpoints only from deployment configuration.
+
 ### gh-agentic-workflows upgrade handoff (#258)
 
 To prevent staged changes from advancing an upstream-tracking fork main,
