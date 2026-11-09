@@ -126,5 +126,5 @@ origins = ["https://cgwalters-forge.github.io"]
 watch-item = true
 
 [commit]
-author = "agentic-job <agentic-job@users.noreply.github.com>"
-trailers = ["Generated-by: https://github.com/cgwalters/#llms"]
+author = "cgwalters-bot <17814078+cgwalters-bot@users.noreply.github.com>"
+trailers = ["Assisted-by: https://github.com/cgwalters/cgwalters#llms"]
