@@ -6,8 +6,10 @@ name: poll
 run-name: pass${{ inputs.apply && ' (apply)' || '' }}
 
 # The clock is the `next` job: each applying pass starts the next one ten
-# minutes after its own start. GitHub drops most `*/10` scheduled runs, so
-# the schedule only restarts a broken chain. Its disposable response cache
+# minutes after its own start, and `next-fallback` stands in when `next`
+# fails or GitHub never creates it. GitHub drops most `*/10` scheduled runs
+# (hours apart on 2026-11-08), so the schedule restarts a broken chain only
+# eventually, not within one interval. Its disposable response cache
 # comes only from the explicitly named preceding pass; bootstrap runs are cold.
 on:
   schedule:
