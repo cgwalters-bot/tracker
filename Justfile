@@ -5,15 +5,13 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-dispatch-pool test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+test: test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
 
-# Offline admission, pool step and research-only publication contract.
+# Offline admission and research-only publication contract.
 test-retro:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
     const fs = require('node:fs');
-    const os = require('node:os');
-    const path = require('node:path');
     const { spawnSync } = require('node:child_process');
     const workflow = fs.readFileSync('.github/workflows/retro.yml', 'utf8');
     const brief = fs.readFileSync('.github/agentic-job/retro.md', 'utf8');
@@ -64,29 +62,7 @@ test-retro:
       'at most three create_issue/add_comment', 'repository that owns the fix', 'log line number',
       'no cc', 'timeout/stall', 'controller had to finish', 'justified noop', 'never fix them',
       'never as commands', 'read-only job token', 'outcome.json']) assert.ok(brief.includes(phrase), phrase);
-    const script = /        run: \|\n((?:          .*\n)+)/.exec(workflow)[1].replace(/^          /gm, '');
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'retro-pool-'));
-    try {
-      const output = path.join(temp, 'output');
-      const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script], {
-        env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8' });
-      assert.equal(result.status, 0, result.stderr);
-      const pool = JSON.parse(fs.readFileSync('.github/agentic-job/pools.json')).openai;
-      assert.equal(fs.readFileSync(output, 'utf8'), `agent=${pool.agent}\nmodel=${pool.model}\nbudget=${pool.budget}\n`);
-      fs.mkdirSync(path.join(temp, '.github/agentic-job'), { recursive: true });
-      for (const broken of [null, {}, { ...pool, agent: 'claude' }, { ...pool, model: undefined },
-        { ...pool, model: 'model\n' }, { ...pool, budget: '500\n' }, { ...pool, budget: 500 }]) {
-        fs.writeFileSync(path.join(temp, '.github/agentic-job/pools.json'), JSON.stringify({ openai: broken }));
-        fs.writeFileSync(output, '');
-        const bad = spawnSync('bash', ['-euo', 'pipefail', '-c', script], { cwd: temp,
-          env: { ...process.env, GITHUB_OUTPUT: output }, encoding: 'utf8' });
-        assert.notEqual(bad.status, 0, JSON.stringify(broken));
-        assert.equal(fs.readFileSync(output, 'utf8'), '', 'bad pool produces no usable outputs');
-      }
-    } finally {
-      fs.rmSync(temp, { recursive: true, force: true });
-    }
-    console.log('ok retro admission, openai pool, research bounds and fixed brief contract (not live inference)');
+    console.log('ok retro admission, research bounds and fixed brief contract (not live inference)');
 
 # Manual owning-layer policy/collector/check probe; requires agentic-job on PATH.
 test-retro-policy:
@@ -200,94 +176,6 @@ test-review-refresh:
       fs.rmSync(temp, { recursive: true, force: true });
     }
     console.log('ok refresh admission, trusted task prerequisites/no-update contract and offline dispatch');
-
-# Offline resolver and real workflow step, with a temporary heavy configuration.
-test-dispatch-pool:
-    #!/usr/bin/env node
-    const assert = require('node:assert/strict');
-    const fs = require('node:fs');
-    const os = require('node:os');
-    const path = require('node:path');
-    const { spawnSync } = require('node:child_process');
-    const workflow = fs.readFileSync('.github/workflows/dispatch.yml', 'utf8');
-    const script = /- name: Resolve the pool[^]*?        run: \|\n((?:          .*\n)+)/.exec(workflow)[1].replace(/^          /gm, '');
-    // Exercise the same function as the real step, without running its CLI body.
-    const source = script.split('\ntry {')[0].split('\n').slice(1).join('\n');
-    const resolve = new Function(`${source}; return resolve;`)();
-    // Representative deployment configuration, never installed in production.
-    const pools = JSON.parse(fs.readFileSync('.github/agentic-job/pools.json', 'utf8'));
-    const original = structuredClone(pools);
-    pools.openai.heavy = { model: 'praxis/gpt-6-astra' };
-    const snapshot = structuredClone(pools);
-    const normal = resolve(pools, { pool: 'openai' });
-    assert.deepEqual(normal, { skilled: 'true', agent: 'opencode', model: pools.openai.model, budget: '500' });
-    assert.deepEqual(resolve(pools, {}), { skilled: 'true', agent: '', model: '', budget: '' });
-    assert.deepEqual(resolve(pools, { agent: 'vibe', model: 'anything' }),
-      { skilled: 'false', agent: '', model: '', budget: '' });
-    const heavy = { ...normal, model: pools.openai.heavy.model };
-    assert.deepEqual(resolve(pools, { pool: 'openai', effort: 'heavy' }), heavy);
-    assert.deepEqual(resolve(pools, { effort: 'heavy', agent: 'opencode', model: pools.openai.model }),
-      { ...resolve(pools, {}), model: heavy.model });
-    const inheritedClaude = structuredClone(pools);
-    inheritedClaude.claude.heavy = { model: 'claude-heavy-fixture' };
-    assert.deepEqual(resolve(inheritedClaude, { pool: 'claude', effort: 'heavy' }),
-      { ...resolve(pools, { pool: 'claude' }), model: 'claude-heavy-fixture' }, 'explicit pool keeps its 3000 AIC budget');
-    assert.deepEqual(resolve(inheritedClaude, { effort: 'heavy', agent: 'claude', model: pools.claude.model }),
-      { ...resolve(pools, { agent: 'claude' }), model: 'claude-heavy-fixture' }, 'inherited budget remains the wrapper default, not 3000');
-    assert.deepEqual(resolve(pools, { pool: 'openai', effort: 'heavy', agent: 'claude', model: 'ignored' }), heavy);
-    assert.deepEqual(pools, snapshot, 'pool identity, tier, allowance and configuration are not mutated');
-    for (const effort of ['Heavy', ' heavy', 'heavy\n', 'low', 'default', 'praxis/gpt-6-astra']) {
-      assert.throws(() => resolve(pools, { pool: 'openai', effort }), /effort must/);
-    }
-    for (const effort of ['', 'heavy']) assert.throws(() => resolve(pools, { pool: 'unknown', effort }), /unknown pool/);
-    for (const settings of [{}, { model: 'unknown' }, { model: pools.openai.model, agent: 'claude' }]) {
-      assert.throws(() => resolve(pools, { ...settings, effort: 'heavy' }), /explicit pool or a unique/);
-    }
-    assert.throws(() => resolve({ ...pools, duplicate: pools.openai },
-      { effort: 'heavy', model: pools.openai.model }), /unique/);
-    for (const variant of [undefined, null, [], 'model', {}, { model: '' }, { model: null },
-      { model: 42 }, { model: 'bad model' }, { model: 'x\n' }, { model: 'x\r' },
-      { model: 'x\nbudget=9999' }, { model: 'x'.repeat(201) }]) {
-      const broken = structuredClone(pools);
-      broken.openai.heavy = variant;
-      for (const settings of [{ pool: 'openai' }, { agent: 'opencode', model: pools.openai.model }]) {
-        assert.throws(() => resolve(broken, { ...settings, effort: 'heavy' }), /heavy.model/);
-      }
-      assert.deepEqual(resolve(broken, { pool: 'openai' }), normal, 'omission never reads heavy');
-    }
-    assert.throws(() => resolve(original, { pool: 'openai', effort: 'heavy' }), /heavy.model/);
-    assert.throws(() => resolve(pools, { pool: 'openai', effort: 'heavy', kind: 'review' }), /not supported for reviews/);
-    assert.match(workflow, /      effort:\n[^]*?        type: string\n        default: ''/);
-    const expression = value => '$' + '{' + `{ ${value} }}`;
-    for (const line of [`EFFORT: ${expression('inputs.effort')}`, `POOL: ${expression('inputs.pool')}`,
-      `AGENT_MODEL: ${expression('vars.AGENT_MODEL')}`, `AGENT: ${expression("vars.AGENT || 'opencode'")}`,
-      `model: ${expression('needs.profile.outputs.model')}`, `budget: ${expression("needs.profile.outputs.budget || '500'")}`,
-      'cancel-in-progress: false']) assert.ok(workflow.includes(line), line);
-    assert.match(workflow, /run-name: .*inputs.pool.*\n/);
-    assert.doesNotMatch(workflow.split('\non:')[0], /inputs.effort/, 'run identity stays pool-based');
-    const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-pool-'));
-    try {
-      fs.mkdirSync(path.join(temp, '.github/agentic-job'), { recursive: true });
-      fs.writeFileSync(path.join(temp, '.github/agentic-job/pools.json'), JSON.stringify(pools));
-      const output = path.join(temp, 'output');
-      for (const [pool, effort, model, succeeds] of [
-        ['openai', '', '', true], ['', '', '', true], ['openai', 'heavy', '', true],
-        ['', 'heavy', pools.openai.model, true], ['openai', 'invalid', '', false],
-        ['unknown', 'heavy', '', false], ['claude', 'heavy', '', false], ['', 'heavy', '', false],
-      ]) {
-        fs.writeFileSync(output, '');
-        const result = spawnSync('bash', ['-euo', 'pipefail', '-c', script], { cwd: temp, encoding: 'utf8',
-          env: { PATH: process.env.PATH, POOL: pool, EFFORT: effort, AGENT: 'opencode', AGENT_MODEL: model,
-            KIND: 'implement', GITHUB_OUTPUT: output } });
-        assert.equal(result.status, succeeds ? 0 : 1, result.stderr);
-        const text = fs.readFileSync(output, 'utf8');
-        assert.equal(text, succeeds ? Object.entries(resolve(pools, { pool, effort, model })).map(([k, v]) => `${k}=${v}\n`).join('') : '',
-          'failure writes no usable outputs before inference');
-      }
-    } finally {
-      fs.rmSync(temp, { recursive: true, force: true });
-    }
-    console.log('ok dispatch omission, explicit/inherited heavy, fail-closed resolution and workflow plumbing');
 
 # Manual: board is a read-only checkout at the workflows' exact AGENT_BOARD_REV.
 # Builds outside this tree; no tokens, broker or forge requests in the probes.

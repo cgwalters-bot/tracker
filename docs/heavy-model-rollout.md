@@ -15,8 +15,9 @@ review caller work. No review workflow, pin, scheduling setting or pool is chang
 The threat is a plan selecting an arbitrary model, escaping a pool's budget/holds,
 or silently receiving a weaker model. The only new control is string input
 `effort`, empty by default, with exactly one nonempty value: `heavy`.
-The resolver in `.github/workflows/dispatch.yml` reads
-`pools.json` from the trusted
+`.github/workflows/dispatch.yml` resolves through the pinned
+`agent-board pools resolve` (tracker#1476), whose tests now cover these rules;
+it reads `pools.json` from the trusted
 caller checkout, never from the target or an agent-selected path. Board parsing,
 pacing, holds, usage and broker accounting are not duplicated here.
 
@@ -67,7 +68,6 @@ the new member.
 Reproduce offline after obtaining read-only source checkouts at those revisions:
 
 ```sh
-just test-dispatch-pool
 just test-heavy-consumers /path/to/pinned-agent-board
 just test-heavy-review /path/to/inspected-review
 AGENT_BOARD=/path/to/pinned-agent-board/target/debug/agent-board just test

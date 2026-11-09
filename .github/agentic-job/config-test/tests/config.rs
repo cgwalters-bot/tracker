@@ -2,7 +2,7 @@
 //! this repository. Where a check pins a file's text, a line as written, it
 //! reads the text; where it reads values, it parses the TOML or JSON.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1018,16 +1018,6 @@ fn dispatch_turns_on_the_skills_for_implement_and_fix_only() {
     }
 }
 
-/// The `key=value` lines of a step's output.
-fn step_outputs(text: &str) -> BTreeMap<String, String> {
-    text.lines()
-        .filter_map(|l| {
-            let (key, value) = l.split_once('=')?;
-            (!key.is_empty() && key.chars().all(|c| c.is_ascii_lowercase())).then(|| (key.to_owned(), value.to_owned()))
-        })
-        .collect()
-}
-
 /// The task of a `task<<DELIMITER` heredoc output.
 fn heredoc_task(composed: &str) -> Option<&str> {
     let rest = composed.strip_prefix("task<<")?;
@@ -1044,19 +1034,22 @@ fn dispatch_gives_an_agent_without_skills_the_full_implement_profile() {
     let dispatch = dispatch();
     let index = |s: &str| dispatch.find(s).map_or(-1, |i| i as i64);
     assert!(index("- name: Resolve the pool") < index("- name: Put the profile before the task"));
+    // agent-board's `pools resolve` decides `skilled`, under its own tests;
+    // here each flag gets the input or variable it did in the inline resolver.
     let pool_step = step_script("Resolve the pool");
+    assert!(pool_step.contains(" pools resolve --pools .github/agentic-job/pools.json "));
+    for (flag, var, source) in [("pool", "POOL", "inputs.pool"), ("effort", "EFFORT", "inputs.effort"), ("kind", "KIND", "inputs.kind"),
+        ("fallback-agent", "AGENT", "vars.AGENT || 'opencode'"), ("fallback-model", "AGENT_MODEL", "vars.AGENT_MODEL")]
+    {
+        assert!(pool_step.contains(&format!("--{flag} \"${var}\"")), "--{flag}");
+        assert!(dispatch.contains(&format!("          {var}: ${{{{ {source} }}}}\n")), "{var}");
+    }
     let compose_step = step_script("Put the profile before the task");
-    let run = |pool: &str, kind: &str, agent: &str| -> Option<BTreeMap<String, String>> {
-        let mut resolved = step_outputs(&run_step(&pool_step, &[("POOL", pool), ("KIND", kind), ("AGENT", agent)]).ok()?);
-        let mut env = vec![("KIND", kind), ("TASK", "the task")];
-        if let Some(skilled) = resolved.get("skilled") {
-            env.push(("SKILLED", skilled.as_str()));
-        }
-        let composed = run_step(&compose_step, &env).ok()?;
+    let run = |kind: &str, skilled: bool| -> Option<String> {
+        let skilled = skilled.to_string();
+        let composed = run_step(&compose_step, &[("KIND", kind), ("TASK", "the task"), ("SKILLED", &skilled)]).ok()?;
         let task = heredoc_task(&composed).filter(|t| !t.is_empty());
-        let task = task.unwrap_or_else(|| panic!("{composed}")).to_owned();
-        resolved.insert("task".to_owned(), task);
-        Some(resolved)
+        Some(task.unwrap_or_else(|| panic!("{composed}")).to_owned())
     };
     let expected = |kind: &str, skilled: bool| {
         let full = format!("{kind}-full");
@@ -1066,33 +1059,18 @@ fn dispatch_gives_an_agent_without_skills_the_full_implement_profile() {
         };
         format!("{}\nthe task", profile(name))
     };
-    let unpooled = |skilled: &str, task: String| {
-        BTreeMap::from([("skilled", skilled), ("agent", ""), ("model", ""), ("budget", ""), ("task", task.as_str())].map(|(k, v)| (k.to_owned(), v.to_owned())))
-    };
     let pools = pools();
-    for (name, pool) in &pools {
-        let agent = pool["agent"].as_str().expect("a pool's agent");
-        let skilled = SKILLED_AGENTS.contains(&agent);
-        for kind in KINDS {
-            let r = run(name, kind, if skilled { "vibe" } else { "claude" });
-            let r = r.unwrap_or_else(|| panic!("{kind} on {name}"));
-            assert_eq!(r.get("agent").map(String::as_str), Some(agent));
-            assert_eq!(r.get("skilled"), Some(&skilled.to_string()));
-            assert_eq!(r.get("task"), Some(&expected(kind, skilled)));
-        }
-    }
-    let agents: Vec<&str> = pools.values().map(|p| p["agent"].as_str().unwrap_or_default()).collect();
+    let agents: Vec<&str> = pools.values().map(|p| p["agent"].as_str().expect("a pool's agent")).collect();
     assert!(agents.iter().any(|a| !SKILLED_AGENTS.contains(a)));
     assert!(agents.iter().any(|a| SKILLED_AGENTS.contains(a)));
-    for agent in ["claude", "opencode", "fake"] {
-        assert_eq!(run("", "implement", agent), Some(unpooled("true", expected("implement", true))));
+    for skilled in [true, false] {
+        for kind in KINDS {
+            assert_eq!(run(kind, skilled), Some(expected(kind, skilled)), "{kind}, skilled {skilled}");
+        }
     }
-    assert_eq!(run("", "implement", "vibe"), Some(unpooled("false", expected("implement", false))));
-    assert_eq!(run("", "fix", "vibe").expect("fix on vibe")["task"], expected("fix", false));
     assert_ne!(expected("implement", false), expected("implement", true));
     assert_eq!(expected("fix", false), expected("fix", true));
-    assert_eq!(run("nonesuch", "fix", "opencode"), None);
-    assert_eq!(run("", "implement-full", "vibe"), None);
+    assert_eq!(run("implement-full", false), None);
 }
 
 /// Whether `uses` is `OWNER/PATH@REV` with `rev` accepting its REV.

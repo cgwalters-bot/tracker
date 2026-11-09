@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 
 permissions: {}
+# The agent-board commit that resolves the pool, reviewed here as poll.yml's.
+env:
+  AGENT_BOARD_REV: 237c5e97189751627e49d29b8c9058717f08c0a4
 concurrency:
   group: retro
   cancel-in-progress: false
@@ -18,7 +21,8 @@ jobs:
     # before its scope is reviewed. One opt-in gates both entries, on main only.
     if: ${{ vars.RETRO == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 5
+    # Room for the crates.io fallback for just and the verified download.
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -29,12 +33,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - id: just
+        continue-on-error: true
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - if: steps.just.outcome == 'failure'
+        run: cargo install --locked --version 1.58.0 just && echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Install verified agent-board
+        env:
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
+      # agent-board validates every pool's model and budget; the agent
+      # config this job passes is opencode's, so the pool must be too.
       - name: Select the openai pool
         id: pool
+        timeout-minutes: 1
         run: |
-          node -e 'const fs = require("node:fs"); const p = JSON.parse(fs.readFileSync(".github/agentic-job/pools.json")).openai;
-          if (!p || p.agent !== "opencode" || typeof p.model !== "string" || p.model.trim() !== p.model || !/^[A-Za-z0-9][A-Za-z0-9_./:+-]{0,199}$/.test(p.model) || typeof p.budget !== "string" || !/^[1-9][0-9]*$/.test(p.budget) || p.budget.trim() !== p.budget) throw Error("invalid openai pool");
-          fs.appendFileSync(process.env.GITHUB_OUTPUT, ["agent", "model", "budget"].map(k => k + "=" + p[k] + "\n").join(""));'
+          out=$("$RUNNER_TEMP/agent-board/bin/agent-board" pools resolve --pools .github/agentic-job/pools.json --pool openai --kind analysis)
+          grep -qx 'agent=opencode' <<< "$out" || { echo "::error::the openai pool's agent is not opencode" >&2; exit 1; }
+          echo "$out" >> "$GITHUB_OUTPUT"
   policy:
     needs: brief
     uses: cgwalters-forge/agentic-job/.github/workflows/policy.yml@3f9f6425119b97bb3620a38fe0adc8e79be7dc8e # v0.6.11
