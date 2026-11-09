@@ -1,0 +1,24 @@
+{
+  "devspace-rhel10-64": {
+    "enabled": false,
+    "repository": "bootc-dev/cgwalters-devspace-sandbox",
+    "workflow": ".github/workflows/agent.yml",
+    "ref": "main",
+    "commit": "54d58072c793b1599114b6dbfa3b9e9e5fd6f71b",
+    "agentic-job": "427ce2295925654be9c35e91ca5cee91bbc2c9ea",
+    "actions": "e084c52a9aa07f1279182cfc738de68b96016278",
+    "inputs": { "cores": "64", "config": "rhel10-kvm-smoke", "pool": "claude" },
+    "kvm": true,
+    "libvirt": "session",
+    "limits": {
+      "vcpus": 64,
+      "memory-gib": 256,
+      "disk-gib": 500,
+      "max-guests": 4,
+      "job-minutes": 240,
+      "lifetime-minutes": 300,
+      "max-attempts": 5,
+      "artifact-retention-days": 30
+    }
+  }
+}

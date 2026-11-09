@@ -64,6 +64,10 @@ on:
         type: choice
         options: [hosted, acp-experiment]
         default: hosted
+      runner:
+        description: "Caller-owned runner profile; external execution is not implemented"
+        type: string
+        default: hosted
 
 permissions: {}
 # The agent-board commit that resolves the pool, a revision reviewed here
@@ -75,10 +79,118 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Threat: issue/plan text could redirect execution to a credential-bearing
+  # runner or arbitrary workflow. Only this caller commit owns the closed map.
+  # No external entry, even enabled, can start execution in this slice.
+  runner-gate:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 1
+    permissions:
+      contents: read
+    steps:
+      - if: inputs.runner != 'hosted'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout: |
+            .github/agentic-job/runner-profiles.json
+            .github/agentic-job/midstream.toml
+      - name: Validate runner profile
+        env:
+          RUNNER_PROFILE: ${{ inputs.runner }}
+          KIND: ${{ inputs.kind }}
+          REPO: ${{ inputs.repo }}
+          POOL: ${{ inputs.pool }}
+          EFFORT: ${{ inputs.effort }}
+          CONFIG: ${{ inputs.config }}
+          DETECT_MODEL: ${{ vars.AGENTIC_JOB_DETECT_MODEL }}
+          CALLER_REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, sys, tomllib
+          from pathlib import Path
+
+          def require(ok, message):
+              if not ok:
+                  sys.exit(message)
+
+          name = os.environ['RUNNER_PROFILE']
+          if name == 'hosted':
+              sys.exit(0)  # Do not even open the map or midstream bounds.
+          require(os.environ['CALLER_REF'] == 'refs/heads/' + os.environ['DEFAULT_BRANCH'],
+                  'external runner requires the trusted caller default branch')
+
+          def unique(pairs):
+              result = {}
+              for key, value in pairs:
+                  require(key not in result, 'duplicate runner map key')
+                  result[key] = value
+              return result
+
+          def keys(value, required, optional=()):
+              require(type(value) is dict and set(required) <= value.keys()
+                      and value.keys() <= set(required) | set(optional), 'invalid runner map keys')
+
+          def matches(value, pattern):
+              return type(value) is str and re.fullmatch(pattern, value) is not None
+
+          profiles = json.loads(Path('.github/agentic-job/runner-profiles.json').read_text(),
+                                object_pairs_hook=unique)
+          require(type(profiles) is dict, 'runner map must be an object')
+          limits = ('vcpus', 'memory-gib', 'disk-gib', 'max-guests', 'job-minutes',
+                    'lifetime-minutes', 'max-attempts', 'artifact-retention-days')
+          for key, profile in profiles.items():
+              require(key != 'hosted' and matches(key, r'[a-z0-9][a-z0-9_-]{0,31}'),
+                      'invalid runner profile name')
+              keys(profile, ('enabled', 'repository', 'workflow', 'ref', 'commit',
+                             'agentic-job', 'actions', 'inputs', 'kvm', 'limits'), ('libvirt',))
+              require(type(profile['enabled']) is bool and type(profile['kvm']) is bool,
+                      'runner enabled/kvm must be booleans')
+              require('libvirt' not in profile or profile['libvirt'] == 'session',
+                      'runner libvirt must be session or absent')
+              require(matches(profile['repository'], r'[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+')
+                      and profile['repository'].split('/')[1] not in ('.', '..')
+                      and not profile['repository'].endswith('.git'), 'invalid runner repository')
+              require(matches(profile['workflow'], r'\.github/workflows/[A-Za-z0-9_-]+\.ya?ml'),
+                      'invalid runner workflow path')
+              ref = profile['ref']
+              require(matches(ref, r'[A-Za-z0-9_-][A-Za-z0-9_./-]*') and '..' not in ref
+                      and '//' not in ref and not ref.endswith(('/', '.', '.lock')),
+                      'invalid runner branch ref')
+              for pin in ('commit', 'agentic-job', 'actions'):
+                  require(matches(profile[pin], r'[0-9a-f]{40}'), 'runner pins must be immutable lowercase commits')
+              inputs = profile['inputs']
+              require(type(inputs) is dict and all(matches(k, r'[A-Za-z][A-Za-z0-9_-]*')
+                      and type(v) is str for k, v in inputs.items()), 'runner inputs must be fixed strings')
+              # These belong to trusted dispatch, not the deployment's fixed choices.
+              require(not set(inputs) & {'task', 'kind', 'repo', 'item', 'base', 'head',
+                      'base-commit', 'dispatch-id', 'runner'}, 'runner inputs override dispatch identity')
+              keys(profile['limits'], limits)
+              require(all(type(profile['limits'][k]) is int and profile['limits'][k] > 0
+                          for k in limits), 'runner limits must be positive integers')
+              require(profile['limits']['job-minutes'] < profile['limits']['lifetime-minutes'] <= 330,
+                      'runner lifetime must exceed job time and fit the 330-minute waiting ceiling')
+          require(name in profiles, 'unknown runner profile')
+          profile = profiles[name]
+          require(profile['enabled'], 'runner profile is disabled')
+          require(os.environ['KIND'] == 'implement', 'external runner requires implement')
+          bounds = tomllib.loads(Path('.github/agentic-job/midstream.toml').read_text())
+          require(os.environ['REPO'].lower() in [r.lower() for r in bounds['repos']],
+                  'external runner target is outside midstream bounds')
+          require(not os.environ['POOL'] and not os.environ['EFFORT'], 'external runner refuses pool/effort')
+          require(os.environ['CONFIG'] == 'hosted', 'external runner requires hosted config')
+          require(os.environ['DETECT_MODEL'].strip(), 'external runner requires trusted detection configuration')
+          sys.exit('external runner execution is unimplemented')
+          PY
+
   # Threat: a manual/producer review dispatch could start duplicate, unpaced
   # inference while legacy events remain authoritative. Only a trusted repo
   # variable can activate this route; dispatch inputs cannot override it.
   review-gate:
+    needs: runner-gate
     if: ${{ inputs.kind == 'review' }}
     runs-on: ubuntu-26.04
     timeout-minutes: 1
@@ -122,6 +234,7 @@ jobs:
   # Read from the commit the run is on, which the wrapper requires to be
   # the default branch's, so a profile changes only by a merge here.
   profile:
+    needs: runner-gate
     if: ${{ inputs.kind != 'review' }}
     runs-on: ubuntu-26.04
     # Room for the crates.io fallback for just and the verified download.

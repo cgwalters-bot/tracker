@@ -677,14 +677,41 @@ fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str) {
     std::fs::write(out.join("outputs.jsonl"), item.to_string()).unwrap();
     std::fs::write(out.join("base.json"), json!({"repo": repo, "ref": policy["base"], "commit": head}).to_string()).unwrap();
     agentic_job_ok(&["collect", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
-    for path in ["src/test.txt", ".github/workflows/test.yml", ".other/test.txt", "AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
+    for path in ["src/test.txt", ".github/workflows/test.yml", ".github/agentic-job/runner-profiles.json", ".other/test.txt", "AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
+        if repo == "cgwalters-forge/tracker" && !path.contains('/') {
+            continue; // Tracker's existing filename exemptions are unchanged.
+        }
         let patch = format!("From {} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: {head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test workflow admission\n\n---\ndiff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+test\n", "1".repeat(40));
         std::fs::write(out.join("aw-dispatch-x.patch"), patch).unwrap();
         let result = agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
-        let accepted = path == "src/test.txt" || (repo == "cgwalters-forge/gh-agentic-workflows" && path == ".github/workflows/test.yml");
+        let accepted = path == "src/test.txt" || (["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/tracker"].contains(&repo) && path == ".github/workflows/test.yml");
         assert_eq!(result.status.success(), accepted, "{repo} {kind} {path}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
     }
     std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
+fn runner_map_edits_are_refused_even_with_tracker_workflow_exemption() {
+    if !agentic_job_installed() {
+        return;
+    }
+    let repo = "cgwalters-forge/tracker";
+    let head = "0".repeat(40);
+    for (file, kind) in [("dispatch.toml", "create_pull_request"), ("fix.toml", "push_to_pull_request_branch")] {
+        let file_path = path_of(file);
+        let mut args = vec!["policy", "--allow", &file_path, "--repo", repo,
+            "--clone-url", "https://github.com/cgwalters-forge/tracker", "--kind", "branch",
+            "--outputs", kind, "--max-outputs", "3", "--base"];
+        if kind == "create_pull_request" {
+            args.push("main");
+        } else {
+            args.extend(["dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", repo]);
+        }
+        let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).unwrap();
+        assert_eq!(policy["safe_outputs"][kind]["protected_paths"], json!([".github/agentic-job/runner-profiles.json"]));
+        // Reuse the real collector/checker, with a normal workflow positive control.
+        check_midstream_paths(&policy, repo, kind, &head);
+    }
 }
 
 // Without `ready_when_complete` apply opens every pull request as a draft,
