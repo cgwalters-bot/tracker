@@ -5,7 +5,84 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+test: test-runner-profiles test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+
+# Execute the workflow's actual resolver, without credentials or forge traffic.
+test-runner-profiles:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const { spawnSync } = require('node:child_process');
+    const workflow = fs.readFileSync('.github/workflows/dispatch.yml', 'utf8');
+    const gate = workflow.split('\n  runner-gate:\n')[1].split('\n  # Threat:')[0];
+    const script = /          python3 - <<'PY'\n([^]*?)          PY/.exec(gate)[1].replace(/^          /gm, '');
+    const mapPath = '.github/agentic-job/runner-profiles.json';
+    const example = JSON.parse(fs.readFileSync(mapPath));
+    assert.ok(Object.values(example).every(p => p.enabled === false));
+    const name = Object.keys(example)[0];
+    const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'runner-profile-'));
+    const env = { RUNNER_PROFILE: name, KIND: 'implement', REPO: 'cgwalters-forge/bootc',
+      POOL: '', EFFORT: '', CONFIG: 'hosted', DETECT_MODEL: 'deployment-model',
+      CALLER_REF: 'refs/heads/main', DEFAULT_BRANCH: 'main' };
+    const run = (map, extra = {}) => {
+      if (map === undefined) fs.rmSync(`${temp}/${mapPath}`, { force: true });
+      else fs.writeFileSync(`${temp}/${mapPath}`, typeof map === 'string' ? map : JSON.stringify(map));
+      return spawnSync('python3', ['-c', script], { cwd: temp, encoding: 'utf8', env: { ...process.env, ...env, ...extra } });
+    };
+    const refuse = (map, extra, reason) => {
+      const result = run(map, extra);
+      assert.notEqual(result.status, 0, reason);
+      assert.ok(result.stderr.includes(reason), result.stderr);
+      assert.equal(result.stdout, '', 'resolver releases no execution selectors');
+    };
+    const enabled = structuredClone(example);
+    enabled[name].enabled = true;
+    try {
+      fs.mkdirSync(`${temp}/.github/agentic-job`, { recursive: true });
+      fs.copyFileSync('.github/agentic-job/midstream.toml', `${temp}/.github/agentic-job/midstream.toml`);
+      for (const map of [undefined, '{', { hosted: {} }]) assert.equal(run(map, { RUNNER_PROFILE: 'hosted' }).status, 0);
+      refuse('{', {}, 'JSONDecodeError');
+      refuse(undefined, {}, 'FileNotFoundError');
+      refuse(example, { RUNNER_PROFILE: 'unknown' }, 'unknown runner');
+      refuse(example, {}, 'disabled');
+      refuse(enabled, {}, 'unimplemented');
+      for (const kind of ['fix', 'review', 'research', 'triage']) refuse(enabled, { KIND: kind }, 'requires implement');
+      for (const repo of ['cgwalters-forge/tracker', 'cgwalters-forge/ostree', 'bootc-dev/bootc']) refuse(enabled, { REPO: repo }, 'outside midstream');
+      for (const [key, value, reason] of [['POOL', 'claude', 'pool/effort'], ['EFFORT', 'heavy', 'pool/effort'],
+        ['CONFIG', 'acp-experiment', 'hosted config'], ['DETECT_MODEL', '', 'detection configuration'],
+        ['DETECT_MODEL', '  ', 'detection configuration'], ['CALLER_REF', 'refs/heads/other', 'default branch']]) refuse(enabled, { [key]: value }, reason);
+      for (const change of [p => { delete p.commit; }, p => { p.extra = true; }, p => { p.enabled = 'false'; },
+        p => { p.kvm = 1; }, p => { p.libvirt = 'system'; }, p => { p.libvirt = null; },
+        p => { p.repository = 'https://example/repo'; }, p => { p.workflow = '../agent.yml'; },
+        p => { p.ref = 'main..other'; }, p => { p.inputs.cores = 64; }, p => { p.inputs.task = 'override'; },
+        p => { p.inputs = []; }, p => { p.limits.extra = 1; }, p => { delete p.limits.vcpus; },
+        p => { p.limits['lifetime-minutes'] = 331; }, p => { p.limits['lifetime-minutes'] = 240; }]) {
+        const map = structuredClone(enabled); change(map[name]);
+        refuse(map, { RUNNER_PROFILE: 'unknown' }, 'runner'); // Whole map is validated, not just selected entry.
+        assert.ok(!run(map).stderr.includes('unimplemented'));
+      }
+      for (const pin of ['commit', 'agentic-job', 'actions']) for (const value of ['main', 'a'.repeat(39), 'A'.repeat(40)]) {
+        const map = structuredClone(enabled); map[name][pin] = value; refuse(map, {}, 'immutable');
+      }
+      for (const key of Object.keys(enabled[name].limits)) for (const value of [0, -1, 1.5, true, '1', null]) {
+        const map = structuredClone(enabled); map[name].limits[key] = value; refuse(map, {}, 'positive integers');
+      }
+      for (const badName of ['hosted', 'Bad', '../runner', 'x'.repeat(33)]) refuse({ [badName]: enabled[name] }, {}, 'profile name');
+      for (const map of ['[]', 'null', '{"x":{},"x":{}}']) refuse(map, {}, map.includes('"x"') ? 'duplicate' : 'object');
+      const ceiling = structuredClone(enabled); ceiling[name].limits['lifetime-minutes'] = 330;
+      delete ceiling[name].libvirt;
+      refuse(ceiling, { REPO: 'CGWALTERS-FORGE/BOOTC' }, 'unimplemented');
+      assert.match(gate, /if: inputs.runner != 'hosted'/);
+      assert.match(gate, /repository: \$\{\{ github.repository \}\}/);
+      assert.match(gate, /ref: \$\{\{ github.sha \}\}/);
+      assert.doesNotMatch(gate, /inputs.task|secrets\.|actions: write|workflow_dispatch|GITHUB_OUTPUT/);
+      for (const job of ['profile', 'review-gate']) assert.match(workflow, new RegExp(`  ${job}:\\n    needs: runner-gate`));
+      assert.match(workflow, /  run:\n    needs: profile/);
+      assert.match(workflow, /  review:\n    needs: review-gate/);
+      assert.match(workflow, /      runner:\n[^]*?default: hosted/);
+      assert.doesNotMatch(workflow, /runner: \$\{\{ inputs.runner/);
+      console.log('ok runner map validation, hosted bypass and workflow boundary (external execution remains unimplemented)');
+    } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 
 # Offline admission and research-only publication contract.
 test-retro:
