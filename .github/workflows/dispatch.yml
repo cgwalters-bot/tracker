@@ -66,6 +66,10 @@ on:
         default: hosted
 
 permissions: {}
+# The agent-board commit that resolves the pool, a revision reviewed here
+# like the pass's in poll.yml, never agent-board's moving branch.
+env:
+  AGENT_BOARD_REV: 237c5e97189751627e49d29b8c9058717f08c0a4
 concurrency:
   group: dispatch-${{ inputs.kind }}-${{ inputs.repo }}-${{ inputs.item }}
   cancel-in-progress: false
@@ -120,6 +124,8 @@ jobs:
   profile:
     if: ${{ inputs.kind != 'review' }}
     runs-on: ubuntu-26.04
+    # Room for the crates.io fallback for just and the verified download.
+    timeout-minutes: 15
     permissions:
       contents: read
     outputs:
@@ -140,14 +146,35 @@ jobs:
             .github/agentic-job/pools.json
             .github/agentic-job/midstream.toml
             .github/agentic-job/midstream-fix.toml
+            .github/agent-board-install
+            Justfile
+      # A GitHub release outage must not stop the job: build the same just
+      # from crates.io instead, as poll.yml does.
+      - id: just
+        continue-on-error: true
+        uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - if: steps.just.outcome == 'failure'
+        run: cargo install --locked --version 1.58.0 just && echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Install verified agent-board
+        env:
+          GH_TOKEN: ${{ github.token }}
+        timeout-minutes: 10
+        run: just build-agent-board "$AGENT_BOARD_REV"
       # The pool's agent, model and budget, all empty without a pool so that
       # the wrapper falls back to the variables and its default budget, and
       # whether that agent gets agentic-job's skills. A
       # name outside pools.json stops the run here rather than reaching the
-      # wrapper. Heavy requires an explicit or uniquely inherited pool and
-      # its valid heavy.model; inherited agent/budget fallbacks stay unchanged.
+      # wrapper. Heavy replaces only the pool's model; it requires an explicit
+      # pool or the one pool matching AGENT/AGENT_MODEL, never a guess from
+      # the agent alone, and its valid heavy.model; inherited agent/budget
+      # fallbacks stay unchanged. Reviews never take heavy: their model
+      # contract is separately pinned and base-owned (#1198). An error writes
+      # no outputs.
       - name: Resolve the pool
         id: pool
+        timeout-minutes: 1
         env:
           POOL: ${{ inputs.pool }}
           EFFORT: ${{ inputs.effort }}
@@ -156,50 +183,9 @@ jobs:
           AGENT: ${{ vars.AGENT || 'opencode' }}
           AGENT_MODEL: ${{ vars.AGENT_MODEL }}
         run: |
-          node <<'NODE' >> "$GITHUB_OUTPUT"
-          // Deployment-owned resolution: effort replaces only the pool's model.
-          function resolve(pools, { pool = '', effort = '', agent = 'opencode', model = '', kind = '' }) {
-            const explicit = Boolean(pool);
-            if (!['', 'heavy'].includes(effort)) throw Error('effort must be empty or heavy');
-            // Reviews have a separately pinned, base-owned model contract (#1198).
-            if (effort && kind === 'review') throw Error('heavy effort is not supported for reviews');
-            if (pool && !Object.hasOwn(pools, pool)) throw Error(`unknown pool '${pool}'`);
-            if (effort && !pool) {
-              // Never guess from the agent alone or a moving deployment default.
-              const matches = Object.keys(pools).filter(name => pools[name].agent === agent && pools[name].model === model);
-              if (!model || matches.length !== 1) throw Error('heavy requires an explicit pool or a unique AGENT/AGENT_MODEL pool');
-              [pool] = matches;
-            }
-            const selected = pool ? pools[pool] : null;
-            const actualAgent = selected ? selected.agent : agent;
-            let actualModel = selected ? selected.model : '';
-            if (effort) {
-              const heavy = selected.heavy;
-              if (!heavy || Array.isArray(heavy) || typeof heavy !== 'object' ||
-                  typeof heavy.model !== 'string' || heavy.model.trim() !== heavy.model ||
-                  !/^[A-Za-z0-9][A-Za-z0-9_./:+-]{0,199}$/.test(heavy.model)) {
-                throw Error(`pool ${pool} has no configured valid heavy.model`);
-              }
-              actualModel = heavy.model;
-            }
-            return {
-              skilled: String(['claude', 'opencode', 'fake'].includes(actualAgent)),
-              // Inherited calls keep the wrapper's original agent/budget fallback.
-              agent: explicit ? selected.agent : '',
-              model: actualModel,
-              budget: explicit ? selected.budget : '',
-            };
-          }
-          try {
-            const pools = JSON.parse(require('node:fs').readFileSync('.github/agentic-job/pools.json', 'utf8'));
-            const outputs = resolve(pools, { pool: process.env.POOL, effort: process.env.EFFORT,
-              agent: process.env.AGENT, model: process.env.AGENT_MODEL, kind: process.env.KIND });
-            process.stdout.write(Object.entries(outputs).map(([key, value]) => `${key}=${value}\n`).join(''));
-          } catch (error) {
-            console.error(error.message);
-            process.exitCode = 1;
-          }
-          NODE
+          "$RUNNER_TEMP/agent-board/bin/agent-board" pools resolve --pools .github/agentic-job/pools.json \
+            --pool "$POOL" --effort "$EFFORT" --kind "$KIND" \
+            --fallback-agent "$AGENT" --fallback-model "$AGENT_MODEL" >> "$GITHUB_OUTPUT"
       # The runner configuration's path, from the closed set alone: a path
       # a dispatcher typed could name any file of this repository as the
       # run's configuration, the bounds files included. Empty for hosted, so
