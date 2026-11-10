@@ -5,7 +5,7 @@ on:
 permissions: {}
 # The same reviewed agent-board commit as supervisor.yml's.
 env:
-  AGENT_BOARD_REV: cbe6fa94293ed9eac6feb97f46d9ead52f2a9d3b
+  AGENT_BOARD_REV: b6cf983860ccf47dbccdf0d7a666152d464abfcd
 concurrency:
   group: broker-probe
   cancel-in-progress: false
