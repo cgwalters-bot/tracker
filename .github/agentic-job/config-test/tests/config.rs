@@ -1240,6 +1240,10 @@ fn release_train_callers_hold_one_wrappers_pin() {
     let mut pins = BTreeSet::new();
     for file in caller["files"].as_array().expect("files") {
         let file = file.as_str().expect("a file name");
+        // Ordinary review pins move only with reviewed caller/admission changes,
+        // not the legacy review wrapper's release-train update.
+        assert_ne!(file, ".github/forge-sync/repos.json");
+        assert_ne!(file, ".github/workflows/dispatch.yml");
         let text = std::fs::read_to_string(here().join("../..").join(file)).unwrap_or_else(|e| panic!("reading {file}: {e}"));
         for (at, _) in text.match_indices(&uses) {
             let rest = &text[at + uses.len()..];

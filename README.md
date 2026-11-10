@@ -308,6 +308,39 @@ operator requests `/review` for each remaining head, then verify head/run-marker
 binding. Restoring events does not replay missed events: never push/reopen just
 to retrigger or clear reservations to force duplicate starts.
 
+#### Caller drift prerequisite for PR #1500
+
+The forge-sync manifest now checks the ordinary review caller, independently
+of [#1500](https://github.com/cgwalters-forge/tracker/pull/1500)'s scheduling
+and event stand-down changes. It covers that PR's ten review repositories,
+including actions and agentic-job: defining a legacy review wrapper locally
+is no longer an exemption from installing the ordinary caller. `review_pin`
+is replaced by `review_workflow = dispatch.yml` and the full `review_call`
+at the same immutable actions revision as tracker's `dispatch.yml` review
+job, `ba6c56925e63551fd4373fbeb23456a2f4a316da`.
+
+The concrete threat is a moving review wrapper changing the workflow gate
+without a reviewed pin update. `just forge-sync` reads the selected workflow
+from each repository's default branch and compares **jobs.review.uses** with
+that literal call. The ordinary non-review job can continue following main;
+a comment or an unrelated pinned job cannot make a moving review job pass.
+Missing callers are drift, not silently exempted. Legacy-shaped YAML in the
+offline fixtures still exercises the generic exact-job comparison; the real
+manifest and `just test-forge-sync-dispatch` require the ordinary caller.
+
+This source check neither starts reviews nor certifies live admission,
+author coverage, checked publication or merge provenance. Ordinary reviews
+remain off by default. Do not merge #1500's scheduling activation before its
+listed callers and settings are ready. This change does not duplicate that
+PR's pass settings or stand-down switch, delete event workflows or change
+rulesets, model variables or broker/tailnet admission. Those cutovers and the
+event-wrapper cleanup remain separate work. The forge-sync manifest is removed
+from the legacy release train's caller files so that train cannot rewrite the
+ordinary review pin or conflate it with the event wrapper's release pin. Other
+legacy caller entries remain while those workflows are still in use. During a pass outage
+no paced review starts; recovery must use the same bounded rescan and claims,
+not an unpaced fallback.
+
 ### Draft-review buckets
 
 **Blocked, not proposed (5 November 2026, #1324).** agent-board's
