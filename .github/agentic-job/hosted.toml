@@ -126,5 +126,7 @@ origins = ["https://cgwalters-forge.github.io"]
 watch-item = true
 
 [commit]
+# Public-base fixture evidence only (#1455); experiment stays opted out.
+allow-base-secret-lines = true
 author = "cgwalters-bot <17814078+cgwalters-bot@users.noreply.github.com>"
 trailers = ["Assisted-by: https://github.com/cgwalters/cgwalters#llms"]

@@ -356,7 +356,9 @@ fn acp_experiment_is_hosted_and_a_child_agent_and_hosted_has_none() {
     let mut parts = experiment_body.split(MARKER);
     let copy = parts.next().unwrap_or_default();
     let own = parts.next().expect("the marker before the experiment's own tables");
-    assert_eq!(copy, format!("{hosted_body}\n"), "acp-experiment.toml must keep hosted.toml unchanged");
+    // Only ordinary tasks opt in; the experiment keeps the default refusal.
+    let hosted_body = replace_line(&hosted_body, "allow-base-secret-lines = true", Some("allow-base-secret-lines = false"));
+    assert_eq!(copy, format!("{hosted_body}\n"), "acp-experiment.toml must keep the other hosted settings unchanged");
     assert!(!has_line_starting(&hosted, "[child-agent]"));
     assert!(has_lines(own, &["[child-agent]", r#"name = "vibe""#, r#"model = "zai-glm-5-3""#]));
     assert!(has_lines(own, &["[limits]", "max-requests = 400"]));
@@ -507,6 +509,26 @@ fn hosted_turns_the_egress_lockdown_off() {
     ]);
     assert!(has_lines(&hosted, &["[egress]", "proxy = false"]), "{hosted}");
     assert!(!hosted.contains("write-policy"), "{hosted}");
+}
+
+#[test]
+fn public_base_secret_lines_are_allowed_only_for_ordinary_tasks() {
+    for (file, expected) in [("hosted.toml", true), ("acp-experiment.toml", false), ("supervisor.toml", false)] {
+        let config = toml_file(file);
+        assert_eq!(config["commit"].get("allow-base-secret-lines").and_then(toml::Value::as_bool).unwrap_or(false), expected, "{file}");
+        if agentic_job_installed() {
+            if file == "hosted.toml" {
+                let resolved = agentic_job_ok(&[
+                    "config", "--from", &path_of(file), "--repo", "o/r",
+                    "--string", "agent.name=fake", "--integer", "limits.timeout-minutes=75", "--boolean", "limits.uncapped=true",
+                ]);
+                let resolved: toml::Table = resolved.parse().expect("resolved config");
+                assert_eq!(resolved["commit"]["allow-base-secret-lines"].as_bool(), Some(true));
+            }
+            let host = agentic_job_ok(&["config", "--host", "--from", &path_of(file)]);
+            assert!(!host.contains("allow-base-secret-lines"), "older host parser must not see the run-only option");
+        }
+    }
 }
 
 #[test]
