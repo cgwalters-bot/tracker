@@ -117,6 +117,35 @@ on it in a `workRepositories` repository, under a live epic or opened by
 the operator or the bot, is taken in Priority order. Dispatch by hand
 (docs/bring-up.md, "Dispatching a run") for anything else.
 
+### Organization repository lists: implementation handoff
+
+**Plan only (#1519, 10 November 2026).** The pinned agent-board revision,
+`e32d2bf58baf1899d695195a36c960d8fbfcb69a`, still declares `follow`,
+`workRepositories` and the harness repository list as `Vec<String>`. Do not
+replace tracker’s lists with objects yet. The first slice belongs to
+[agent-board#857](https://github.com/cgwalters-forge/agent-board/issues/857),
+not to an implement run patching tracker. This is a handoff plan, not a
+dispatch or an activation:
+
+```agent-board-plan
+{
+  "schema": "agent-board/job-plan/v1",
+  "repo": "cgwalters-forge/agent-board",
+  "item": 857,
+  "kind": "implement",
+  "runner": "hosted",
+  "brief": "Use the implement skill. Implement the agent-board slice of tracker#1519 in agent-board#857 only. Accept mixed exact repository names and {\"org\":\"cgwalters-forge\",\"forks\":false} entries through one shared repository-list resolver, including follow, workRepositories, holds.proposals.repositories and operatorAsk.harness.repositories; inventory other repository-list consumers and document any unsupported ones. No org discovery without an org entry; existing string-only configurations keep their behavior. The concrete threats are accidentally treating a fork or archived repository as ordinary org work, and acting on a truncated or failed census as if it were complete. Require live org membership, fork=false and archived=false for discovered entries; reject unsupported rule shapes rather than silently broadening them. Resolve each distinct org once per pass before affected actions, sharing the result across lists. Keep API requests, pagination, deadlines and final repository counts within existing pass limits; fail before affected writes on incomplete discovery or overflow, never truncate silently or reuse stale membership. Union explicit entries with discovered names, deduplicate case-insensitively, sort deterministically and log the resolved set. Explicit forks and external repositories retain their existing exact-entry rules. Preserve private-target refusal, midstream routing, noMerge, admission and spending/write limits; org membership grants no extra authority. Add recorded multi-page listing tests for non-forks, forks, archived repositories, additions/removals across passes, explicit extras, duplicates, legacy strings, invalid rules, API failure, truncation and limit exhaustion, including no affected writes on failure. Update configuration docs with the example and run the narrow resolver tests and the repository's required checks. Do not modify tracker settings or agentic-job bounds in this slice."
+}
+```
+
+Tracker's migration remains separate: first review pins carrying both this
+resolver and agentic-job's live `fork`/`archived` policy checks for org rules.
+Then replace the four pass lists with the org entry plus each list's explicit
+fork and external extras, and update `dispatch.toml` using agentic-job's tested
+syntax. Keep exact midstream routing and protected-file exceptions separate;
+an org target rule must not implicitly widen either. Preview the resolved sets
+and policy refusals before applying. No settings or pins change in this handoff.
+
 `.github/workflows/maintain-shadow.yml` (tracker#1356) runs `agent-board
 poll --dry-run` on agentic-job every half hour, with the job's read-only
 token and the settings `just maintain-shadow-config` takes from
