@@ -75,7 +75,7 @@ permissions: {}
 # The agent-board commit that resolves the pool, a revision reviewed here
 # like the pass's in poll.yml, never agent-board's moving branch.
 env:
-  AGENT_BOARD_REV: cab62b258468258257483ec9907ac911c423eb7d
+  AGENT_BOARD_REV: fe1a39f638d9a98555cd539e338f107bdbb60609
 concurrency:
   group: dispatch-${{ inputs.kind }}-${{ inputs.repo }}-${{ inputs.item }}
   cancel-in-progress: false
