@@ -24,7 +24,7 @@ permissions: {}
 # a revision reviewed here, never agent-board's moving branch: move it only
 # with a review of what that revision's `pass` does.
 env:
-  AGENT_BOARD_REV: fe1a39f638d9a98555cd539e338f107bdbb60609
+  AGENT_BOARD_REV: 030381b3a88805812ad5dab1f1a6a279b0570b31
 
 jobs:
   pass:
