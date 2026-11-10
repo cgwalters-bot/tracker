@@ -1179,8 +1179,15 @@ fn workflows_follow_our_own_repositories_at_main_review_excepted_and_pin_the_res
             seen += 1;
             // Except review.yml: its verdict is the only gate on .github/ here,
             // so the wrapper it calls moves only by a reviewed change to the pin.
+            // Compared in parts: this file is one the release train moves the
+            // review pin in (.github/release-train/config.json), and it
+            // stalls on a second, unversioned `actions/...yml@<commit>`.
             let ordinary_review = file == "dispatch.yml"
-                && uses == "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da";
+                && uses.split_once('@')
+                    == Some((
+                        "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml",
+                        "ba6c56925e63551fd4373fbeb23456a2f4a316da",
+                    ));
             // Retro composes the harness directly: policy/check/apply and the
             // actions must run at one immutable source revision. Its workflow
             // test checks that all six pins agree.
@@ -1214,6 +1221,35 @@ fn review_wrapper_uses_the_release_pin() {
                 .is_some_and(|owner| !owner.is_empty() && !owner.contains(char::is_whitespace))
     });
     assert!(pinned, "review.yml does not pin {pin}");
+}
+
+// The train reads the wrappers' pin from this repository's caller files and
+// stalls unless they hold exactly one `<wrappers>/.github/workflows/NAME.yml@`
+// commit (tracker#1369), so no other pin of the wrappers may be written there
+// in that form.
+#[test]
+fn release_train_callers_hold_one_wrappers_pin() {
+    let train = json_file("../release-train/config.json");
+    let uses = format!("{}/.github/workflows/", train["wrappers"]["repository"].as_str().expect("wrappers.repository"));
+    let caller = train["callers"]
+        .as_array()
+        .expect("callers")
+        .iter()
+        .find(|c| c["repository"] == "cgwalters-forge/tracker")
+        .expect("this repository is a caller");
+    let mut pins = BTreeSet::new();
+    for file in caller["files"].as_array().expect("files") {
+        let file = file.as_str().expect("a file name");
+        let text = std::fs::read_to_string(here().join("../..").join(file)).unwrap_or_else(|e| panic!("reading {file}: {e}"));
+        for (at, _) in text.match_indices(&uses) {
+            let rest = &text[at + uses.len()..];
+            let name = rest.find(|c: char| !(c.is_ascii_alphanumeric() || "_.-".contains(c))).unwrap_or(rest.len());
+            if let Some(pin) = rest[name..].strip_prefix('@').filter(|_| rest[..name].ends_with(".yml")) {
+                pins.insert(pin.chars().take(40).collect::<String>());
+            }
+        }
+    }
+    assert_eq!(pins.len(), 1, "the caller files pin the wrappers at {pins:?}");
 }
 
 #[test]
