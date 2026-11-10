@@ -1,0 +1,20 @@
+# Bounds for dispatch.yml's `session` kind, which hands back one comment,
+# the batch that the pass alone applies under its own bounds (pass.json's
+# `sessions`, agent-board's docs/sessions.md). comment.toml's outputs, but
+# only the cgwalters-forge repositories of dispatch.toml and midstream.toml:
+# D17 (docs/operator-notes.md, 2026-10-17) lets only triage and research
+# answer in bootc-dev, and a session is neither, so not even a hand
+# dispatch posts one upstream. No pull request and no protected file.
+hosts = ["github.com"]
+# config-test/ keeps this to the cgwalters-forge names of dispatch.toml and midstream.toml.
+repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/atomic-linux-sandbox", "cgwalters-forge/forge-infra", "cgwalters-forge/cgwalters-forge.github.io"]
+bases = ["main"]
+max_outputs = 3
+max_patch_bytes = 1048576
+max_patch_files = 50
+
+[github.outputs]
+add_comment = { max = 1 }
+noop = { max = 1 }
+missing_tool = { max = 1 }
+missing_data = { max = 1 }

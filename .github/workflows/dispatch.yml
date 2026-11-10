@@ -6,11 +6,13 @@
 # trigger and its inputs, the run name, the concurrency, the
 # environment that gates apply and which secret is the apply token; the
 # bounds are in .github/agentic-job (dispatch.toml, comment.toml for
-# `triage` and `research`, fix.toml for `fix`, midstream.toml and
+# `triage` and `research`, session.toml for `session`, fix.toml for `fix`, midstream.toml and
 # midstream-fix.toml in their place for a midstream fork) and
 # the runner configuration in hosted.toml there, the wrapper's default paths.
 # The `pool` input picks the agent and model from the closed set in pools.json
-# there; empty leaves them to the repository variables AGENT and AGENT_MODEL.
+# there; empty leaves them to the repository variables AGENT and AGENT_MODEL,
+# except for `session`, whose long whole-repository run takes the claude pool
+# then; the pass names the pool of the sessions it starts.
 # Optional effort=heavy changes only that pool's model; an inherited pool
 # must match AGENT/AGENT_MODEL uniquely. No guessed deployment-model default.
 # The `config` input picks the runner configuration from a closed set too:
@@ -43,7 +45,7 @@ on:
       kind:
         description: Fixed profile (review and fix take a pull request number; fix only where fix.toml or midstream-fix.toml allows it)
         type: choice
-        options: [implement, triage, research, review, fix]
+        options: [implement, triage, research, session, review, fix]
         required: true
       head:
         description: "Review only: required exact lowercase 40-hex expected PR head"
@@ -284,12 +286,14 @@ jobs:
       # the agent alone, and its valid heavy.model; inherited agent/budget
       # fallbacks stay unchanged. Reviews never take heavy: their model
       # contract is separately pinned and base-owned (#1198). An error writes
-      # no outputs.
+      # no outputs. A session without a pool, one started by hand, takes the
+      # claude pool rather than the variables: it reads the whole repository
+      # (agent-board's docs/sessions.md) and needs that pool's budget.
       - name: Resolve the pool
         id: pool
         timeout-minutes: 1
         env:
-          POOL: ${{ inputs.pool }}
+          POOL: ${{ inputs.pool || (inputs.kind == 'session' && 'claude' || '') }}
           EFFORT: ${{ inputs.effort }}
           KIND: ${{ inputs.kind }}
           # The wrapper's fallback without a pool, its default included.
@@ -316,7 +320,10 @@ jobs:
           echo "config=${path}" >> "$GITHUB_OUTPUT"
       # The bounds, by kind and target. Comment-only kinds have their own,
       # comment.toml, the only ones that admit bootc-dev besides fix.toml
-      # (D17, docs/operator-notes.md). A midstream fork, a target that
+      # (D17, docs/operator-notes.md). A session has session.toml: its batch
+      # is one comment too, which the pass alone applies, within the pass's
+      # own bounds (agent-board's docs/sessions.md), but only on
+      # cgwalters-forge, never bootc-dev. A midstream fork, a target that
       # midstream.toml or midstream-fix.toml lists, gets those, which keep
       # its pull requests drafts (#336); their repos lists are the only list
       # of midstreams here. The wrapper takes `fix-allow` for fix and
@@ -334,6 +341,7 @@ jobs:
           }
           case "$KIND" in
             triage|research) allow=$dir/comment.toml ;;
+            session) allow=$dir/session.toml ;;
             *) allow=$dir/dispatch.toml; listed "$dir/midstream.toml" && allow=$dir/midstream.toml ;;
           esac
           fix=$dir/fix.toml

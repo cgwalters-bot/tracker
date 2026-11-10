@@ -7,7 +7,8 @@
 # operatorComments, hence the one glob. agent-board starts only fix,
 # triage and research runs from those comments (its docs/design.md,
 # operatorComments), triage or research on someone else's pull request
-# with a tracker issue as the item. Nothing else posts there:
+# with a tracker issue as the item. Nothing else posts there: a session
+# has session.toml, which names no bootc-dev repository, and
 # implement and review keep dispatch.toml (midstream.toml on a midstream
 # fork), which does not name bootc-dev, and a fix there is fix.toml's. bootc-dev is external (docs/operator-notes.md,
 # 2026-10-09), so this file opens no pull request and exempts no protected
