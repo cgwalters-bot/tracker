@@ -1134,7 +1134,15 @@ test-review-caller:
     const inputs = { kind: 'review', repo: 'cgwalters-forge/tracker', item: '42', head, pool: 'openai', config: 'hosted' };
     assert.equal(title(inputs), `review cgwalters-forge/tracker#42 ${head} (openai)`);
     assert.equal(title({ ...inputs, config: 'acp-experiment' }), title(inputs), 'review title never gains config suffix');
-    for (const kind of ['implement', 'fix', 'triage', 'research', 'review']) {
+    const kinds = ['implement', 'triage', 'research', 'session', 'review', 'fix'];
+    assert.match(dispatch, new RegExp(`^        options: \\[${kinds.join(', ')}\\]$`, 'm'));
+    // The profile job's steps, run as they are: the bounds each kind gets
+    // and the pool a dispatch without one resolves.
+    const step = name => job('profile').split(`      - name: ${name}\n`)[1].split('\n      - ')[0];
+    const boundsScript = /run: \|\n([^]*)/.exec(step('Resolve the bounds'))[1].replace(/^          /gm, '');
+    const poolSource = /POOL: \$\{\{ (.*?) \}\}/.exec(step('Resolve the pool'))[1];
+    const output = `${fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'bounds-'))}/output`;
+    for (const kind of kinds) {
       const settings = { ...inputs, kind };
       for (const name of ['review-gate', 'review', 'profile', 'run']) {
         const condition = /if: \$\{\{ (.*?) \}\}/.exec(job(name))[1];
@@ -1143,6 +1151,14 @@ test-review-caller:
       if (kind !== 'review') {
         assert.equal(title(settings), `${kind} cgwalters-forge/tracker#42 (openai)`);
         assert.equal(title({ ...settings, pool: '', config: 'acp-experiment' }), `${kind} cgwalters-forge/tracker#42 [acp-experiment]`);
+        assert.ok(fs.statSync(`.github/agentic-job/profiles/${kind}.md`).size > 0, `${kind} has a profile`);
+        fs.rmSync(output, { force: true });
+        execFileSync('bash', ['-euo', 'pipefail', '-c', boundsScript],
+          { env: { PATH: process.env.PATH, KIND: kind, REPO: 'cgwalters-forge/agent-board', GITHUB_OUTPUT: output } });
+        const bounds = { triage: 'comment', research: 'comment', session: 'session' }[kind] ?? 'dispatch';
+        assert.match(fs.readFileSync(output, 'utf8'), new RegExp(`^allow=\\.github/agentic-job/${bounds}\\.toml$`, 'm'), kind);
+        assert.equal(evaluate(poolSource, settings), 'openai', `${kind} keeps a given pool`);
+        assert.equal(evaluate(poolSource, { ...settings, pool: '' }), kind === 'session' ? 'claude' : '', `${kind} without a pool`);
       }
     }
     // agent-board#680's draft buckets: the only shape the coordinated change

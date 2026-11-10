@@ -14,7 +14,7 @@ const MARKER: &str = "# The experiment's own tables; everything above is hosted.
 /// The agents that load skills; a pool of any other runs the `-full` profiles.
 const SKILLED_AGENTS: [&str; 2] = ["claude", "opencode"];
 
-const KINDS: [&str; 5] = ["implement", "fix", "triage", "research", "review"];
+const KINDS: [&str; 6] = ["implement", "fix", "triage", "research", "session", "review"];
 
 /// `.github/agentic-job`, which the files are named relative to.
 fn here() -> PathBuf {
@@ -801,6 +801,19 @@ fn only_triage_research_and_fix_may_target_bootc_dev() {
     }
 }
 
+// A session hands back one comment like triage and research, but D17 does
+// not name it, so its bounds are comment.toml's outputs on cgwalters-forge
+// alone.
+#[test]
+fn session_bounds_are_comment_bounds_on_cgwalters_forge_only() {
+    let expected: Vec<String> =
+        [repos("dispatch.toml"), repos("midstream.toml")].concat().into_iter().filter(|r| r.starts_with("cgwalters-forge/")).collect();
+    assert_eq!(sorted(repos("session.toml")), sorted(expected));
+    let head = |name: &str| drop_lines(before_table(&read(name)), |l| l.starts_with('#') || l.starts_with("repos = "));
+    assert_eq!((head("session.toml"), outputs("session.toml")), (head("comment.toml"), outputs("comment.toml")));
+    assert!(!has_line_starting(&read("session.toml"), "[unprotected_files]"));
+}
+
 // Midstream forks (the `bot-midstream` topic) take dispatch.toml's and
 // fix.toml's bounds without `ready_when_complete`, so their pull requests
 // stay drafts (#336); dispatch.yml picks them
@@ -856,6 +869,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
             for kind in KINDS {
                 let allow = match kind {
                     "triage" | "research" => "comment.toml",
+                    "session" => "session.toml",
                     _ => allow,
                 };
                 assert_eq!(
@@ -883,6 +897,7 @@ fn agentic_job_policy_admits_bootc_dev_only_for_comments_and_fixes() {
     };
     assert!(policy("comment.toml", "analysis", "add_comment,noop"));
     assert!(!policy("comment.toml", "branch", "create_pull_request,noop"));
+    assert!(!policy("session.toml", "analysis", "add_comment,noop"));
     assert!(!policy("dispatch.toml", "analysis", "add_comment,noop"));
     assert!(!policy("dispatch.toml", "branch", "create_pull_request,noop"));
     let head = "0".repeat(40);
