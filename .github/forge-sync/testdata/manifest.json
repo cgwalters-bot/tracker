@@ -1,6 +1,7 @@
 {
   "_comment": "The manifest test-forge-sync checks the pass-* and fail-* fixtures against.",
-  "review_pin": "1111111111111111111111111111111111111111",
+  "review_workflow": "review.yml",
+  "review_call": "cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@1111111111111111111111111111111111111111",
   "repos": [
     { "repo": "example/synced" },
     { "repo": "example/local-review", "exempt": { "review": "defines the review workflow itself" } },
