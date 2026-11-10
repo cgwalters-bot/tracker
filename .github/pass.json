@@ -55,6 +55,7 @@
   "maintain": {"repos": {"sinceDays": 90, "min": 5, "max": 15, "include": ["ostreedev/ostree", "composefs/composefs", "composefs/composefs-rs", "bootc-dev/bootc", "coreos/rpm-ostree"], "exclude": ["bootc-dev/cgwalters-ci-sandbox", "bootc-dev/cgwalters-devspace-sandbox", "fullsend-ai/fullsend", "packit/ai-workflows"]}, "share": 0.2, "digest": {"repository": "cgwalters-forge/tracker", "issue": 965}, "hourUtc": 9},
   "planPools": ["claude", "openai"],
   "triagePools": ["openai", "claude"],
+  "sessions": {"hourUtc": 6, "issues": ["cgwalters-forge/agent-board#830"]},
   "pools": {"claude": {"target": 0.95, "burst": 5}, "openai": {"target": 0.95, "burst": 50}},
   "usage": {"repository": "cgwalters-forge/bot-ops", "issue": 1, "probe": true},
   "holds": {"repository": "cgwalters-forge/bot-ops", "issue": 1, "needsYou": true, "passView": true, "approvalEvidence": true, "actNow": true, "today": true, "epicFocus": true,

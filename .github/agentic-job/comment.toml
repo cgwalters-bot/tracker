@@ -1,5 +1,5 @@
-# Bounds for dispatch.yml's `triage` and `research` kinds, whose runs hand
-# back comments only. dispatch.toml's repositories, and besides them
+# Bounds for dispatch.yml's `triage`, `research` and `session` kinds, whose
+# runs hand back comments only. dispatch.toml's repositories, and besides them
 # bootc-dev's: the operator's comments there become runs, and by the
 # operator's decision D17 (docs/operator-notes.md, 2026-10-17) triage and
 # research may answer in the bootc-dev thread the comment came from. D17

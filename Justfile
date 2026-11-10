@@ -1134,7 +1134,7 @@ test-review-caller:
     const inputs = { kind: 'review', repo: 'cgwalters-forge/tracker', item: '42', head, pool: 'openai', config: 'hosted' };
     assert.equal(title(inputs), `review cgwalters-forge/tracker#42 ${head} (openai)`);
     assert.equal(title({ ...inputs, config: 'acp-experiment' }), title(inputs), 'review title never gains config suffix');
-    for (const kind of ['implement', 'fix', 'triage', 'research', 'review']) {
+    for (const kind of ['implement', 'fix', 'triage', 'research', 'review', 'session']) {
       const settings = { ...inputs, kind };
       for (const name of ['review-gate', 'review', 'profile', 'run']) {
         const condition = /if: \$\{\{ (.*?) \}\}/.exec(job(name))[1];
@@ -1142,9 +1142,35 @@ test-review-caller:
       }
       if (kind !== 'review') {
         assert.equal(title(settings), `${kind} cgwalters-forge/tracker#42 (openai)`);
-        assert.equal(title({ ...settings, pool: '', config: 'acp-experiment' }), `${kind} cgwalters-forge/tracker#42 [acp-experiment]`);
+        assert.equal(title({ ...settings, pool: '', config: 'acp-experiment' }),
+          `${kind} cgwalters-forge/tracker#42${kind === 'session' ? ' (claude)' : ''} [acp-experiment]`);
       }
     }
+    // A session keeps its run name, by which the pass finds it in flight,
+    // but reaches the closed-kind wrapper as research, on the comment
+    // bounds and the claude pool unless given one.
+    // The operator session's rules are not this kind's profile.
+    assert.match(fs.readFileSync('.github/agentic-job/profiles/session.md', 'utf8'), /agent-board-session/);
+    const rules = /--rules (\S+)/.exec(fs.readFileSync('.github/workflows/session.yml', 'utf8'))[1];
+    assert.equal(rules, '.github/agentic-job/profiles/operator-session.md');
+    assert.match(fs.readFileSync(rules, 'utf8'), /^## Session rules/);
+    const wrapperKind = /^      kind: \$\{\{ (.*) \}\}$/m.exec(job('run'))[1];
+    const poolInput = /^          POOL: \$\{\{ (.*) \}\}$/m.exec(job('profile'))[1];
+    for (const kind of ['implement', 'fix', 'triage', 'research']) {
+      assert.equal(evaluate(wrapperKind, { kind }), kind);
+      assert.equal(evaluate(poolInput, { kind, pool: '' }), '');
+    }
+    assert.equal(evaluate(wrapperKind, { kind: 'session' }), 'research');
+    assert.equal(evaluate(poolInput, { kind: 'session', pool: '' }), 'claude');
+    assert.equal(evaluate(poolInput, { kind: 'session', pool: 'openai' }), 'openai');
+    const boundsScript = /- name: Resolve the bounds\n[^]*?run: \|\n([^]*?)\n      - name:/.exec(job('profile'))[1].replace(/^          /gm, '');
+    const resolveBounds = (KIND, REPO) => {
+      const output = `${fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'bounds-'))}/output`;
+      execFileSync('bash', ['-euo', 'pipefail', '-c', boundsScript], { env: { PATH: process.env.PATH, KIND, REPO, GITHUB_OUTPUT: output } });
+      return /^allow=(.*)$/m.exec(fs.readFileSync(output, 'utf8'))[1];
+    };
+    assert.equal(resolveBounds('session', 'cgwalters-forge/agent-board'), '.github/agentic-job/comment.toml');
+    assert.equal(resolveBounds('implement', 'cgwalters-forge/agent-board'), '.github/agentic-job/dispatch.toml');
     // agent-board#680's draft buckets: the only shape the coordinated change
     // may take (README, "Draft-review buckets"), and off until it lands.
     // Rollback is removing the draft opt-in, which must read as off.

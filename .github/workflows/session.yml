@@ -67,7 +67,7 @@ jobs:
         run: |
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise session \
             --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
-            --session .github/agentic-job/session.json --rules .github/agentic-job/profiles/session.md \
+            --session .github/agentic-job/session.json --rules .github/agentic-job/profiles/operator-session.md \
             --pools .github/agentic-job/pools.json --pool "$POOL" --idle-minutes "$IDLE" \
             --prompt "$PROMPT" >> "$GITHUB_OUTPUT"
   run:

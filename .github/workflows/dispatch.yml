@@ -6,7 +6,7 @@
 # trigger and its inputs, the run name, the concurrency, the
 # environment that gates apply and which secret is the apply token; the
 # bounds are in .github/agentic-job (dispatch.toml, comment.toml for
-# `triage` and `research`, fix.toml for `fix`, midstream.toml and
+# `triage`, `research` and `session`, fix.toml for `fix`, midstream.toml and
 # midstream-fix.toml in their place for a midstream fork) and
 # the runner configuration in hosted.toml there, the wrapper's default paths.
 # The `pool` input picks the agent and model from the closed set in pools.json
@@ -20,10 +20,15 @@
 # `profile` job puts it before the task, so a dispatch carries only what is
 # particular to its item. The wrapper adds its own line on top, which says
 # what the kind may hand back.
+# A `session` is agent-board's one long run over a repository, answered by
+# one batch comment on its anchor issue (agent-board's docs/sessions.md). The
+# wrapper's kinds are closed, so it runs as research there: comment-only,
+# with the comment bounds. The run name keeps `session`, which the pass reads
+# to find a session in flight. It takes the claude pool unless given one.
 # Non-review calls follow main (#544). Review is a separate immutable call:
 # its wrapper owns REVIEW_POOLS, base policy/config and checked submission.
 name: dispatch
-run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.kind == 'review' && format(' {0} ({1})', inputs.head, inputs.pool) || (inputs.pool && format(' ({0})', inputs.pool) || '') }}${{ inputs.kind != 'review' && inputs.config == 'acp-experiment' && ' [acp-experiment]' || '' }}
+run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.kind == 'review' && format(' {0} ({1})', inputs.head, inputs.pool) || ((inputs.pool || inputs.kind == 'session') && format(' ({0})', inputs.pool || 'claude') || '') }}${{ inputs.kind != 'review' && inputs.config == 'acp-experiment' && ' [acp-experiment]' || '' }}
 
 on:
   workflow_dispatch:
@@ -41,9 +46,9 @@ on:
         type: string
         required: true
       kind:
-        description: Fixed profile (review and fix take a pull request number; fix only where fix.toml or midstream-fix.toml allows it)
+        description: Fixed profile (review and fix take a pull request number; fix only where fix.toml or midstream-fix.toml allows it; session takes its anchor issue)
         type: choice
-        options: [implement, triage, research, review, fix]
+        options: [implement, triage, research, review, fix, session]
         required: true
       head:
         description: "Review only: required exact lowercase 40-hex expected PR head"
@@ -289,7 +294,7 @@ jobs:
         id: pool
         timeout-minutes: 1
         env:
-          POOL: ${{ inputs.pool }}
+          POOL: ${{ inputs.pool || (inputs.kind == 'session' && 'claude' || '') }}
           EFFORT: ${{ inputs.effort }}
           KIND: ${{ inputs.kind }}
           # The wrapper's fallback without a pool, its default included.
@@ -333,7 +338,7 @@ jobs:
               jq -e --arg repo "${REPO,,}" 'map(ascii_downcase) | index($repo)' > /dev/null
           }
           case "$KIND" in
-            triage|research) allow=$dir/comment.toml ;;
+            triage|research|session) allow=$dir/comment.toml ;;
             *) allow=$dir/dispatch.toml; listed "$dir/midstream.toml" && allow=$dir/midstream.toml ;;
           esac
           fix=$dir/fix.toml
@@ -383,7 +388,7 @@ jobs:
       task: ${{ needs.profile.outputs.task }}
       repo: ${{ inputs.repo }}
       item: ${{ inputs.item }}
-      kind: ${{ inputs.kind }}
+      kind: ${{ inputs.kind == 'session' && 'research' || inputs.kind }}
       agent: ${{ needs.profile.outputs.agent }}
       model: ${{ needs.profile.outputs.model }}
       budget: ${{ needs.profile.outputs.budget || '500' }}
