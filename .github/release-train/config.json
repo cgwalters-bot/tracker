@@ -19,11 +19,15 @@
     "fork": "cgwalters-bot/actions-1",
     "files": [
       ".github/workflows/cgwalters-agentic-job.yml",
+      ".github/workflows/cgwalters-agent.yml",
       ".github/workflows/cgwalters-review.yml",
       ".github/workflows/secure-host.yml",
       "lint/tests/review_wrapper.rs",
       "README.md"
     ]
+  },
+  "secureHost": {
+    "fork": "cgwalters-bot/actions-1"
   },
   "callers": [
     {
