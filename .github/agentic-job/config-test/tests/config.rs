@@ -42,6 +42,95 @@ fn dispatch() -> String {
 }
 
 #[test]
+fn supervisor_previous_health_caller() {
+    let workflow = read("../workflows/supervisor.yml");
+    let step = |name: &str| {
+        workflow.split_once(&format!("      - name: {name}\n")).unwrap().1
+            .split("      - ").next().unwrap()
+    };
+    let script = |block: &str| {
+        block.split_once("        run: |\n").unwrap().1.lines()
+            .map(|line| line.strip_prefix("          ").unwrap_or(line))
+            .collect::<Vec<_>>().join("\n")
+    };
+    let install = "      - name: Install verified agent-board at the pinned revision\n";
+    assert_eq!(workflow.split("\n  agent:\n").next().unwrap().matches(install).count(), 1);
+    assert!(workflow.find(install).unwrap() < workflow.find("      - name: Previous health report\n").unwrap());
+    assert!(step("Install verified agent-board at the pinned revision").contains(
+        "GH_TOKEN: ${{ github.token }}\n        timeout-minutes: 10\n        run: just build-agent-board \"$AGENT_BOARD_REV\""));
+    let previous = step("Previous health report");
+    for required in [
+        "id: previous\n        continue-on-error: true\n        timeout-minutes: 2",
+        "GH_TOKEN: ${{ github.token }}",
+        "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}",
+    ] {
+        assert!(previous.contains(required), "{required}");
+    }
+    for forbidden in ["secrets.", "gh api", "gh run", "jq ", "for ", "mv "] {
+        assert!(!previous.contains(forbidden), "{forbidden}");
+    }
+    let due = step("Whether a pass is due");
+    assert!(due.contains("READ: ${{ steps.previous.outputs.read }}"));
+    for name in ["Read-only health snapshot", "Whether a check newly fails"] {
+        assert!(step(name).contains("--previous \"$RUNNER_TEMP/previous-health/health.json\""));
+    }
+
+    // Stub only the CLI transport, not artifact selection. A shell function
+    // captures argument boundaries without installing an executable fixture.
+    let temp = temp_path("supervisor-previous");
+    std::fs::create_dir(&temp).unwrap();
+    let output = temp.join("output");
+    let capture = temp.join("args");
+    let destination = temp.join("previous-health");
+    let stub = r#"board_cli() {
+      printf '%s\0' "$@" > "$CAPTURE"
+      if [ "$2" = previous ]; then
+        [ "$LOOKUP" != failed ] || return 1
+        if [ "$LOOKUP" = restored ]; then mkdir "$RUNNER_TEMP/previous-health"; fi
+        printf 'read=true\n'
+      fi
+    }
+    "#;
+    let run = |block: &str, lookup: &str, restored: bool| {
+        Command::new("bash")
+            .args(["--noprofile", "--norc", "-euo", "pipefail", "-c", &format!("{stub}{}",
+                script(block).replace("\"$RUNNER_TEMP/agent-board/bin/agent-board\"", "board_cli"))])
+            .env("RUNNER_TEMP", &temp).env("GITHUB_OUTPUT", &output)
+            .env("CAPTURE", &capture).env("GITHUB_REPOSITORY", "example/deployment")
+            .env("DEFAULT_BRANCH", "default-branch").env("GH_TOKEN", "")
+            .env("LOOKUP", lookup).env("READ", if restored { "true" } else { "" })
+            .env("EVENT", "schedule").env("PROMPT", "").output().unwrap()
+    };
+    let args = || std::fs::read_to_string(&capture).unwrap().strip_suffix('\0').unwrap()
+        .split('\0').map(str::to_owned).collect::<Vec<_>>();
+    for lookup in ["restored", "absent", "failed"] {
+        std::fs::write(&output, "").unwrap();
+        let result = run(previous, lookup, false);
+        assert_eq!(result.status.code(), Some(if lookup == "failed" { 1 } else { 0 }), "{result:?}");
+        assert!(result.stdout.is_empty());
+        assert_eq!(args(), vec!["supervise", "previous", "--repository", "example/deployment",
+            "--workflow", ".github/workflows/supervisor.yml", "--artifact", "supervisor-health",
+            "--branch", "default-branch", "--event", "schedule", "--event", "workflow_dispatch",
+            "--event", "issue_comment", "--destination", destination.to_str().unwrap()]);
+        let read = std::fs::read_to_string(&output).unwrap();
+        assert_eq!(read, if lookup == "failed" { "" } else { "read=true\n" });
+        assert_eq!(destination.exists(), lookup == "restored");
+        let result = run(due, lookup, !read.is_empty());
+        assert!(result.status.success(), "{result:?}");
+        let mut expected = vec!["supervise", "due", "--event", "schedule", "--prompt", ""];
+        let times = destination.join("times.json");
+        if !read.is_empty() {
+            expected.extend(["--previous", times.to_str().unwrap()]);
+        }
+        assert_eq!(args(), expected);
+        if destination.exists() {
+            std::fs::remove_dir(&destination).unwrap();
+        }
+    }
+    std::fs::remove_dir_all(temp).unwrap();
+}
+
+#[test]
 fn weekly_blog_passes_deployment_settings_and_partial_to_digest() {
     let config = json_file("../weekly-digest.json");
     let board = json_file("../poll/agent-board.json");
