@@ -208,6 +208,57 @@ A fork with that topic must be added to those lists before receiving dispatches.
 cgwalters-review skips drafts, so a midstream pull request gets no automatic
 review; `/review` still works.
 
+### Midstream promotion
+
+`.github/workflows/promote.yml` runs standalone `agent-board promote --config
+.github/pass.json --apply --max-writes 4` every fifteen minutes, serialized
+without cancelling an active run. It is **off unless `PROMOTE=enabled`** in
+this repository's Actions variables, including manual runs, and runs only on
+the default branch. This opt-in prevents deploying a new upstream writer
+before its publication policy has been reviewed. No variable was set here.
+The eight-minute invocation uses the bot token and the same verified binary
+pin as the pass. Its four-write cap admits at most one whole publication,
+including the create-only branch write needed for rebasing or sign-off.
+
+The config selects bcvk, bootc, composefs-rs and ostree and reads source-pinned
+records in `upstream-policy/` on tracker's default branch. Midstreams stay in
+`follow` where already present: the pinned validator permits midstream-owned
+forks there and ordinary merging remains disabled. `onApproval` lets the
+operator's current-head approval of a draft select it; `/promote` remains
+supported. `publish` permits the standalone writer, not the pass: the pass
+only reports approved candidates and their first hold.
+
+The pinned agent-board includes [#869](https://github.com/cgwalters-forge/agent-board/pull/869), implementing the operator's
+[10 November decisions](https://github.com/cgwalters-forge/tracker/issues/1464#issuecomment-6782560935)
+to rebase behind heads without another review when clean and add their sign-off
+at promotion, independently of DCO detection. Conflicts and unsupported rewrites
+still hold. The approved branch is never overwritten: publication uses a
+create-only `bot/promote/APPROVED_OID` branch when rewriting is needed. These
+semantics live in agent-board, not a tracker-side rewrite engine.
+
+`just test-config` checks caller plumbing offline; `just test-pass-config`
+uses the pinned binary's real validator. For a read-only live preview use
+`agent-board promote --config .github/pass.json` with `GH_TOKEN`. Policies
+added in a PR are not visible to that preview until merged. After merging,
+the controller enables `PROMOTE` as directed in
+[tracker#1464](https://github.com/cgwalters-forge/tracker/issues/1464#issuecomment-6836093025).
+Unset it to stop new runs; cancel an active run separately. No live publication
+or bot-fork staging verification was attempted here.
+
+Read-only preview on 12 November 2026, using pin `862ca823`: exit 0, no writes.
+The approved candidates were bcvk #13 (`behind_by=16`), bootc #44 (137) and
+#85/#97/#103/#106/#109 (53), composefs-rs #50/#51/#54/#59/#60/#66/#67 (32),
+and ostree #3 (61). Each reported `needs publication rebase`, not a demand
+for another approval. Representative exact output:
+
+```text
+hold promote cgwalters-forge/bcvk#13 head=ce6115da3b2dfccaae2c3fbeabbd320612400448 command=https://github.com/cgwalters-forge/bcvk/pull/13#pullrequestreview-5882092269 at=2026-11-12T21:12:25Z human-text=false push=2026-10-03T15:56:33Z: needs publication rebase (behind_by=16)
+```
+
+This is discovery and read-gate evidence, not proof that a clean rebase or
+publication will succeed: preview stops at the first hold and these policy
+records are not on the default branch yet.
+
 ### Paced-review cutover
 
 **Prepared, not activated (#1198/#1171; activation deferred in #1500).**

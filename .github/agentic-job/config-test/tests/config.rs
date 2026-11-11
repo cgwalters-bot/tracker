@@ -182,6 +182,97 @@ try {
 "#);
 }
 
+/// Offline caller contract only; publication/rewrite gates live in agent-board.
+#[test]
+fn promote_caller_settings_and_policy_records() {
+    let config = json_file("../pass.json");
+    let forks = json!({
+        "cgwalters-forge/bcvk": { "upstream": "bootc-dev/bcvk", "base": "main" },
+        "cgwalters-forge/bootc": { "upstream": "bootc-dev/bootc", "base": "main" },
+        "cgwalters-forge/composefs-rs": { "upstream": "composefs/composefs-rs", "base": "main" },
+        "cgwalters-forge/ostree": { "upstream": "ostreedev/ostree", "base": "main" },
+    });
+    assert_eq!(config["promote"], json!({
+        "onApproval": true, "publish": true, "forks": forks,
+        "signoff": { "name": "Colin Walters", "email": "walters@verbum.org" },
+        "policyRepository": "cgwalters-forge/tracker", "policyPath": "upstream-policy",
+    }));
+    for (repo, fork) in forks.as_object().unwrap() {
+        // Followed midstreams remain excluded from ordinary merging.
+        if config["follow"].as_array().unwrap().contains(&json!(repo)) {
+            assert_eq!(config["midstream"]["owner"], repo.split('/').next().unwrap());
+            assert!(config["pr"]["noMerge"].as_array().unwrap().contains(&json!(repo)));
+        }
+        let upstream = fork["upstream"].as_str().unwrap();
+        let record = read(&format!("../../upstream-policy/{upstream}.md"));
+        assert!(record.starts_with("---\nverdict: bot-ok\n"), "{upstream}");
+        let (header, body) = record.split_once("\n---\n").expect("policy frontmatter");
+        for key in ["ai-trailer", "dco", "sources", "checked", "rebase"] {
+            assert!(header.lines().any(|line| line.starts_with(&format!("{key}:"))), "{upstream}: {key}");
+        }
+        let dco = header.lines().find_map(|line| line.strip_prefix("dco: ")).unwrap();
+        assert!(matches!(dco.split_whitespace().next(), Some("yes" | "no")), "consumer requires a yes/no DCO prefix");
+        assert!(record.match_indices("sha: ").any(|(i, _)| {
+            record[i + 5..].chars().take(40).filter(|c| c.is_ascii_digit() || ('a'..='f').contains(c)).count() == 40
+        }), "{upstream}: source SHA");
+        assert!(body.starts_with("\n# "), "{upstream}: policy body");
+    }
+}
+
+#[test]
+fn promote_caller_is_bounded_and_explicitly_enabled() {
+    let workflow = read("../workflows/promote.yml");
+    for required in [
+        "cron: '17,32,47,2 * * * *'",
+        "  workflow_dispatch:\n\npermissions: {}",
+        "group: promote\n  cancel-in-progress: false",
+        "timeout-minutes: 20",
+        "persist-credentials: false",
+        "just build-agent-board \"$AGENT_BOARD_REV\"",
+    ] {
+        assert!(workflow.contains(required), "{required}");
+    }
+    for permission in ["contents", "issues", "pull-requests", "actions"] {
+        assert!(!workflow.contains(&format!("{permission}: write")), "{permission}");
+    }
+    let (setup, publication) = workflow.split_once("      - name: Promote approved drafts\n").unwrap();
+    assert!(!setup.contains("secrets."));
+    for required in [
+        "timeout-minutes: 8",
+        "GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}",
+        // Rebase/sign-off preparation adds a create-only branch write to the
+        // three publication/receipt writes; three would hold unsigned heads.
+        "promote --config .github/pass.json --apply --max-writes 4",
+    ] {
+        assert!(publication.contains(required), "{required}");
+    }
+    let pin = |text: &str| text.lines().find_map(|line| line.strip_prefix("  AGENT_BOARD_REV: ")).unwrap().to_owned();
+    let revision = pin(&workflow);
+    assert_eq!(revision.len(), 40);
+    assert!(revision.chars().all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)));
+    assert_eq!(revision, pin(&read("../workflows/poll.yml")));
+
+    // Evaluate the actual Actions expression, rather than a copied selector.
+    let guard = workflow.lines().find_map(|line| line.strip_prefix("    if: ${{ "))
+        .unwrap().strip_suffix(" }}").unwrap();
+    let script = r#"
+        const assert = require('node:assert/strict');
+        const admitted = new Function('vars', 'github', 'format', `return ${process.argv[1]}`);
+        const format = (template, branch) => template.replace('{0}', branch);
+        for (const event_name of ['schedule', 'workflow_dispatch']) {
+          for (const activation of [undefined, '', 'disabled', 'true', 'enabled']) {
+            for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
+              assert.equal(admitted({ PROMOTE: activation }, { event_name, ref,
+                event: { repository: { default_branch: 'main' } } }, format),
+                activation === 'enabled' && ref === 'refs/heads/main');
+            }
+          }
+        }
+    "#;
+    let output = Command::new("node").args(["-e", script, guard]).output().expect("evaluate promotion gate");
+    assert!(output.status.success(), "{output:?}");
+}
+
 #[test]
 fn supervisor_previous_health_caller() {
     let workflow = read("../workflows/supervisor.yml");
