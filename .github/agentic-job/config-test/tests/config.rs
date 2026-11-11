@@ -1223,6 +1223,38 @@ fn review_wrapper_uses_the_release_pin() {
     assert!(pinned, "review.yml does not pin {pin}");
 }
 
+// Caller-only deployment of agent-board's existing verified image stage.
+#[test]
+fn release_train_promotes_the_verified_secure_host_image() {
+    let train = json_file("../release-train/config.json");
+    assert_eq!(train["release"]["repository"], "cgwalters-forge/agentic-job");
+    assert_eq!(train["wrappers"]["repository"], "cgwalters-forge/actions");
+    assert_eq!(train["secureHost"], json!({"fork": "cgwalters-bot/actions-1"}));
+    assert_eq!(train["secureHost"]["fork"], train["wrappers"]["fork"]);
+    assert_eq!(train["wrappers"]["files"], json!([
+        ".github/workflows/cgwalters-agentic-job.yml",
+        ".github/workflows/cgwalters-agent.yml",
+        ".github/workflows/cgwalters-review.yml",
+        ".github/workflows/secure-host.yml",
+        "lint/tests/review_wrapper.rs",
+        "README.md"
+    ]));
+    let workflow = read("../workflows/release-train.yml");
+    for setting in [
+        "vars.RELEASE_TRAIN == 'dry-run' || vars.RELEASE_TRAIN == 'apply'",
+        "group: release-train\n  cancel-in-progress: false",
+        "timeout-minutes: 20",
+        "timeout-minutes: 3",
+        "command -v timeout >/dev/null || packages+=(coreutils)",
+        "command -v skopeo >/dev/null || packages+=(skopeo)",
+        "command -v gh >/dev/null || packages+=(gh)",
+        "gh attestation verify --help >/dev/null",
+    ] {
+        assert!(workflow.contains(setting), "{setting}");
+    }
+    assert!(in_order(&workflow, &["Provide secure-host verification tools", "Install verified agent-board", "name: One pass"]));
+}
+
 // The train reads the wrappers' pin from this repository's caller files and
 // stalls unless they hold exactly one `<wrappers>/.github/workflows/NAME.yml@`
 // commit (tracker#1369), so no other pin of the wrappers may be written there

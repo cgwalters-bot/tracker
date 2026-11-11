@@ -624,6 +624,29 @@ a version bump that was never released. `agent-board release-train --config
 .github/release-train/config.json` is a dry pass with the token in
 `GH_TOKEN`; its tests are agent-board's.
 
+The configured `secureHost` stage (#1253) stops unattested or wrong-source
+images from being promoted: after release it resolves the versioned image with
+`skopeo` and verifies the digest with `gh attestation verify` under the
+publisher's existing policy. It opens the image pin PR from
+`cgwalters-bot/actions-1`; only after that merges do the wrappers' secure-host
+references move to its immutable merge commit. `wrappers.files` includes
+`cgwalters-agent.yml`, which now owns the host invocation, as well as the
+dispatch/review wrappers, smoke workflow, wrapper tests and README. The
+serialized, bounded workflow provisions only missing verification tools and
+fails if installed `gh` lacks attestation verification; the existing
+`RELEASE_TRAIN` gate remains off unless explicitly configured.
+
+Bootstrap is the next release, not a backfill: leave the closed v0.6.9 train
+untouched. Coordinate image adoption with [actions#230](https://github.com/cgwalters-forge/actions/issues/230)
+and its existing image PRs, not a competing image bump (the original #180 is
+merged). A conflicting open PR or publication failure is a blocker, not a
+reason to replay the train, remove a hold or bypass credentials/attestation.
+Separately authorized hosted acceptance remains outstanding: prove the
+effective image matches the release, the actual image-installed host binary
+and sandbox binary versions match it, and handback check succeeds. A policy
+binary, overridden PATH, fixture test or version warning is not that proof
+and does not complete agent-board#636.
+
 ## The agent-board pin
 
 Every workflow that installs agent-board pins the same commit as

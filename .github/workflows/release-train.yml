@@ -38,6 +38,18 @@ jobs:
           just-version: 1.58.0
       - if: steps.just.outcome == 'failure'
         run: cargo install --locked --version 1.58.0 just && echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      # Verification refuses unattested or wrong-source images before promotion.
+      - name: Provide secure-host verification tools
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          packages=()
+          command -v timeout >/dev/null || packages+=(coreutils)
+          command -v skopeo >/dev/null || packages+=(skopeo)
+          command -v gh >/dev/null || packages+=(gh)
+          if ((${#packages[@]})); then sudo apt-get update -q && sudo apt-get install -yq "${packages[@]}"; fi
+          timeout --version >/dev/null && skopeo --version && gh --version
+          gh attestation verify --help >/dev/null
       - name: Install verified agent-board
         env:
           GH_TOKEN: ${{ github.token }}
