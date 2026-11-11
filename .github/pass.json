@@ -79,6 +79,19 @@
         "cgwalters-bot/praxis-credential-broker"
       ]}},
   "budget": {"weeklyUsd": 2000},
+  "promote": {
+    "onApproval": true,
+    "publish": true,
+    "forks": {
+      "cgwalters-forge/bcvk": {"upstream": "bootc-dev/bcvk", "base": "main"},
+      "cgwalters-forge/bootc": {"upstream": "bootc-dev/bootc", "base": "main"},
+      "cgwalters-forge/composefs-rs": {"upstream": "composefs/composefs-rs", "base": "main"},
+      "cgwalters-forge/ostree": {"upstream": "ostreedev/ostree", "base": "main"}
+    },
+    "signoff": {"name": "Colin Walters", "email": "walters@verbum.org"},
+    "policyRepository": "cgwalters-forge/tracker",
+    "policyPath": "upstream-policy"
+  },
   "pr": {"actionFirst": true, "staleDays": 0, "unstall": true, "ownSpaceOnly": true,
     "operatorPaths": [".github/agentic-job/dispatch.toml", ".github/agentic-job/midstream.toml", ".github/agentic-job/midstream-fix.toml", ".github/agentic-job/fix.toml", ".github/agentic-job/comment.toml", ".github/agentic-job/session.toml",
       ".github/pass.json#/triage", ".github/pass.json#/notifications", ".github/pass.json#/fixPlans", ".github/pass.json#/assignHolds", ".github/pass.json#/authored",
