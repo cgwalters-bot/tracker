@@ -7,8 +7,8 @@ run-name: pass${{ inputs.apply && ' (apply)' || '' }}
 
 # The clock is the `next` job: each applying pass starts the next one ten
 # minutes after its own start. GitHub drops most `*/10` scheduled runs, so
-# the schedule only restarts a broken chain; a pass keeps no state of its
-# own, so a late or dropped one costs nothing but time.
+# the schedule only restarts a broken chain. Its disposable response cache
+# comes only from the explicitly named preceding pass; bootstrap runs are cold.
 on:
   schedule:
     - cron: '*/10 * * * *'
@@ -18,6 +18,11 @@ on:
         description: Take the steps; otherwise only preview
         type: boolean
         default: false
+      previous_run_id:
+        description: Preceding applying poll run (empty starts cold)
+        type: string
+        required: false
+        default: ''
 
 permissions: {}
 # The agent-board commit the pass runs. It is given the bot's token, so it is
@@ -88,7 +93,34 @@ jobs:
           base=${base%/v1}
           jq --arg base "$base" 'if $base == "" then . else .usage.url = "\($base)/usage" end' \
             .github/pass.json > "$RUNNER_TEMP/pass.json"
+      # Threat: a forged cached body can steer scheduling even with a valid
+      # ETag. Accept only the named applying poll run after its pass job ends.
+      - name: Validate predecessor
+        id: predecessor
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: just pass-state validate
+      - name: Restore pass state
+        id: restore
+        if: steps.predecessor.outputs.run-id != ''
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.predecessor.outputs.run-id }}
+          name: pass-state
+          path: .state
+      - name: Start cold after an unreadable artifact
+        if: steps.restore.outcome == 'failure'
+        run: rm -rf .state
+      - name: Prepare state directory
+        run: mkdir -p .state
       - name: One pass
+        id: pass
         timeout-minutes: 18
         env:
           # The bot's token: it reads the organization's board and the
@@ -110,6 +142,28 @@ jobs:
             --fix-bounds .github/agentic-job/fix.toml \
             --fix-bounds .github/agentic-job/midstream-fix.toml \
             --max-dispatch 8 --max-writes 20 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
+      # Threat: raw state includes private usage/holds comments. Export only
+      # repository responses whose repository is currently readable as public.
+      - name: Prepare public pass state
+        id: state
+        if: >-
+          ${{ !cancelled() && (steps.pass.outcome == 'success' || steps.pass.outcome == 'failure') &&
+          ((github.event_name == 'schedule' && vars.PASS_APPLY == 'enabled') ||
+          (github.event_name == 'workflow_dispatch' && inputs.apply)) }}
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just pass-state export
+      - name: Upload pass state
+        if: ${{ !cancelled() && steps.state.outcome == 'success' }}
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pass-state
+          path: .state/pass.json
+          include-hidden-files: true
+          retention-days: 1
+          if-no-files-found: ignore
       # GitHub drops agent-board-pin.yml's hourly runs too, so the pass starts
       # it when agent-board's head is not the pin and has no pin PR yet (the
       # title is the one `just bump-agent-board` gives it); the pin workflow
@@ -226,7 +280,7 @@ jobs:
             train=(--train-workflow release-train.yml --train-stale-minutes 60)
           fi
           "$RUNNER_TEMP/agent-board/bin/agent-board" pass next --workflow poll.yml \
-            --branch "$DEFAULT_BRANCH" --input apply=true --apply-title 'pass (apply)' \
+            --branch "$DEFAULT_BRANCH" --input apply=true --input "previous_run_id=$GITHUB_RUN_ID" --apply-title 'pass (apply)' \
             --wait-minutes 10 "${supervisor[@]}" "${train[@]}"
 
   # Best-effort recovery when `next` fails or never runs, including a missing
@@ -284,4 +338,4 @@ jobs:
               (.event == "schedule" or (.event == "workflow_dispatch" and .display_title == "pass (apply)")) and
               ([created, .id] > [($me | created), $id])) | .id) // empty' <<< "$runs")
           if [[ -n $newer ]]; then echo "run $newer continues the chain; not starting another"; exit 0; fi
-          timeout 30s gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f apply=true
+          timeout 30s gh workflow run poll.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" -f apply=true -f "previous_run_id=$GITHUB_RUN_ID"
