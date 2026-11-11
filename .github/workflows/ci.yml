@@ -237,6 +237,9 @@ jobs:
       - run: just test
         env:
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+          # Resolves pass.json's organization entries, which reads only public
+          # repository lists; this job's token is read-only.
+          GH_TOKEN: ${{ github.token }}
       # Keep new scripts inline: deployment scripts and Justfile may only shrink.
       - name: Test review-corpus resume checksums
         shell: node {0}

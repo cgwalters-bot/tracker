@@ -7,7 +7,7 @@
 # dispatch posts one upstream. No pull request and no protected file.
 hosts = ["github.com"]
 # config-test/ keeps this to the cgwalters-forge names of dispatch.toml and midstream.toml.
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/atomic-linux-sandbox", "cgwalters-forge/forge-infra", "cgwalters-forge/cgwalters-forge.github.io"]
+repos = ["cgwalters-forge/.github", "cgwalters-forge/base-images", "cgwalters-forge/secure-host", "cgwalters-forge/workflow-compiler", "cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/atomic-linux-sandbox", "cgwalters-forge/forge-infra", "cgwalters-forge/cgwalters-forge.github.io"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576

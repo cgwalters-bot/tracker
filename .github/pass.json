@@ -4,6 +4,7 @@
   "dispatchRepo": "cgwalters-forge/tracker",
   "dispatchWorkflow": "dispatch.yml",
   "follow": [
+    {"org": "cgwalters-forge", "forks": false},
     "cgwalters-forge/agentic-job",
     "cgwalters-forge/agent-board",
     "cgwalters-forge/tracker",
@@ -25,6 +26,7 @@
     "cgwalters-bot/praxis-credential-broker"
   ],
   "workRepositories": [
+    {"org": "cgwalters-forge", "forks": false},
     "cgwalters-forge/tracker",
     "cgwalters-forge/agentic-job",
     "cgwalters-forge/agent-board",
@@ -55,7 +57,7 @@
   "requestShare": 60,
   "state": ".state/pass.json",
   "bodyPlans": true,
-  "triage": true, "sweep": {"weekday": "Monday", "hourUtc": 13}, "overlap": {"staleDraftHours": 4}, "triageFollowUpDays": 1, "assignHolds": true, "notifications": true, "fixPlans": true, "authored": 3, "reserveScheduling": true, "mix": {"fable":{"share":0.25,"when":["P0","review:deep","epic"]},"astra":{"share":0.25,"when":["P0","review:deep","epic"]}}, "operatorAsk": {"text":"For our own infrastructure, ask the operator only about big-picture architecture, plus posture: upstream posting, midstream promotion, credentials, broker policy, rulesets and bypasses, spending caps, security disclosure, and changes to which repositories agents may target (target bounds). For everything else, take the recommended option and record why. Mechanical follow-through (rebasing, re-running CI, fixing conflicts or refreshing a stale branch) is work, not a decision: plan it as an implement job; a rebase keeps existing Signed-off-by trailers and adds none. Only a real decision goes to the operator.","domains":["architecture","upstream","promotion","credentials","broker","ruleset","budget","security","bounds"],"harness":{"repositories":["cgwalters-forge/tracker","cgwalters-forge/agentic-job","cgwalters-forge/agent-board","cgwalters-forge/review","cgwalters-forge/actions","cgwalters-forge/agenthome","cgwalters-forge/misctool","cgwalters-forge/atomic-linux-sandbox"],"excludedLabels":["operator-action","decision","question","review-draft"],"foreignTargetLabelPrefix":"target:","replanText":"The board pass asks a triage run to plan this issue again: it is our own infrastructure, not an operator decision."}}, "midstream": {"owner": "cgwalters-forge", "topic": "bot-midstream"}, "triageClose": true, "replanAfterDays": 7, "idleReplan": false, "researchPlans": true,
+  "triage": true, "sweep": {"weekday": "Monday", "hourUtc": 13}, "overlap": {"staleDraftHours": 4}, "triageFollowUpDays": 1, "assignHolds": true, "notifications": true, "fixPlans": true, "authored": 3, "reserveScheduling": true, "mix": {"fable":{"share":0.25,"when":["P0","review:deep","epic"]},"astra":{"share":0.25,"when":["P0","review:deep","epic"]}}, "operatorAsk": {"text":"For our own infrastructure, ask the operator only about big-picture architecture, plus posture: upstream posting, midstream promotion, credentials, broker policy, rulesets and bypasses, spending caps, security disclosure, and changes to which repositories agents may target (target bounds). For everything else, take the recommended option and record why. Mechanical follow-through (rebasing, re-running CI, fixing conflicts or refreshing a stale branch) is work, not a decision: plan it as an implement job; a rebase keeps existing Signed-off-by trailers and adds none. Only a real decision goes to the operator.","domains":["architecture","upstream","promotion","credentials","broker","ruleset","budget","security","bounds"],"harness":{"repositories":[{"org": "cgwalters-forge", "forks": false},"cgwalters-forge/tracker","cgwalters-forge/agentic-job","cgwalters-forge/agent-board","cgwalters-forge/review","cgwalters-forge/actions","cgwalters-forge/agenthome","cgwalters-forge/misctool","cgwalters-forge/atomic-linux-sandbox"],"excludedLabels":["operator-action","decision","question","review-draft"],"foreignTargetLabelPrefix":"target:","replanText":"The board pass asks a triage run to plan this issue again: it is our own infrastructure, not an operator decision."}}, "midstream": {"owner": "cgwalters-forge", "topic": "bot-midstream"}, "triageClose": true, "replanAfterDays": 7, "idleReplan": false, "researchPlans": true,
   "revisit": {"perPass": 1, "afterDays": 14, "heldAfterDays": 7},
   "sessions": {"repositories": [{"org": "cgwalters-forge", "forks": false}], "activity": {"threshold": 5}, "idleDays": 7, "minHours": 12, "maxStarts": 1, "apply": true},
   "maintain": {"repos": {"sinceDays": 90, "min": 5, "max": 15, "include": ["ostreedev/ostree", "composefs/composefs", "composefs/composefs-rs", "bootc-dev/bootc", "coreos/rpm-ostree"], "exclude": ["bootc-dev/cgwalters-ci-sandbox", "bootc-dev/cgwalters-devspace-sandbox", "fullsend-ai/fullsend", "packit/ai-workflows"]}, "share": 0.2, "digest": {"repository": "cgwalters-forge/tracker", "issue": 965}, "hourUtc": 9},
@@ -67,6 +69,7 @@
   "holds": {"repository": "cgwalters-forge/bot-ops", "issue": 1, "needsYou": true, "passView": true, "approvalEvidence": true, "actNow": true, "today": true, "epicFocus": true,
     "proposals": {"repository": "cgwalters-forge/tracker", "label": "operator-action", "org": "cgwalters-forge",
       "repositories": [
+        {"org": "cgwalters-forge", "forks": false},
         "cgwalters-forge/tracker",
         "cgwalters-forge/agentic-job",
         "cgwalters-forge/agent-board",

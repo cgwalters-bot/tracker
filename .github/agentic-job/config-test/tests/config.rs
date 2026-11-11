@@ -1822,17 +1822,39 @@ fn the_pass_starts_work_only_where_dispatch_and_fix_runs_may_act_on_known_pools(
             .map(|s| s.as_str().unwrap_or_else(|| panic!("{what} has a non-string")).to_owned())
             .collect()
     };
+    // Public, non-fork, non-archived org inventory on 2026-11-13. Keep the
+    // bounds test offline without silently ignoring organization selectors;
+    // test-pass-config also resolves today's inventory through the pinned CLI.
+    let repositories = |v: &Value, what: &str| -> Vec<String> {
+        v.as_array().unwrap_or_else(|| panic!("{what} is not an array")).iter().flat_map(|source| {
+            if let Some(repo) = source.as_str() {
+                return vec![repo.to_owned()];
+            }
+            assert_eq!(*source, json!({"org": "cgwalters-forge", "forks": false}), "{what}: unsupported selector");
+            [
+                ".github", "actions", "agent-board", "agenthome", "agentic-job",
+                "atomic-linux-sandbox", "base-images", "cgwalters-forge.github.io",
+                "forge-infra", "misctool", "review", "secure-host", "tracker", "workflow-compiler",
+            ].map(|name| format!("cgwalters-forge/{name}")).to_vec()
+        }).collect()
+    };
     let scheduled = either(&["dispatch.toml", "midstream.toml"]);
-    for repo in names(&pass["workRepositories"], "workRepositories") {
-        assert!(scheduled.contains(&repo), "{repo} is scheduled but not in dispatch.toml or midstream.toml");
+    let work = repositories(&pass["workRepositories"], "workRepositories");
+    for repo in &work {
+        assert!(scheduled.contains(repo), "{repo} is scheduled but not in dispatch.toml or midstream.toml");
     }
     // An `owner/*` bound covers each of that owner's repositories.
     let followed = either(&["fix.toml", "midstream-fix.toml"]);
-    for repo in names(&pass["follow"], "follow") {
+    for repo in repositories(&pass["follow"], "follow") {
         let covered = followed
             .iter()
             .any(|r| *r == repo || r.strip_suffix("/*").is_some_and(|owner| repo.starts_with(&format!("{owner}/"))));
         assert!(covered, "{repo} is followed but not in fix.toml or midstream-fix.toml");
+    }
+    let session_bounds = repos("session.toml");
+    for repo in repositories(&pass["sessions"]["repositories"], "sessions.repositories") {
+        assert!(work.contains(&repo), "{repo} has sessions but is not a work repository");
+        assert!(session_bounds.contains(&repo), "{repo} has sessions but is not in session.toml");
     }
     let mut used: Vec<String> = pass["pools"].as_object().expect("pass.json's pools").keys().cloned().collect();
     for key in ["planPools", "triagePools"] {
