@@ -5,7 +5,7 @@
 set positional-arguments
 
 # Every test of the files under .github.
-test: test-runner-profiles test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+test: test-runner-profiles test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-pass-state test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
 
 # Execute the workflow's actual resolver, without credentials or forge traffic.
 test-runner-profiles:
@@ -1279,10 +1279,10 @@ test-poll-next:
     fs.mkdirSync(path.dirname(stub), { recursive: true });
     fs.writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o755 });
     const run = (env) => execFileSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
-      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, DEFAULT_BRANCH: 'main', SUPERVISOR: '', RELEASE_TRAIN: '', ...env },
+      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, DEFAULT_BRANCH: 'main', GITHUB_RUN_ID: '42', SUPERVISOR: '', RELEASE_TRAIN: '', ...env },
     }).toString().trimEnd().split('\n');
     const base = ['pass', 'next', '--workflow', 'poll.yml', '--branch', 'main', '--input', 'apply=true',
-      '--apply-title', 'pass (apply)', '--wait-minutes', '10'];
+      '--input', 'previous_run_id=42', '--apply-title', 'pass (apply)', '--wait-minutes', '10'];
     const supervisor = ['--supervisor-workflow', 'supervisor.yml', '--supervisor-stale-minutes', '30',
       '--supervisor-input', 'prompt=', '--supervisor-input', 'session=false'];
     const train = ['--train-workflow', 'release-train.yml', '--train-stale-minutes', '60'];
@@ -1354,7 +1354,7 @@ test-poll-next:
     `, { mode: 0o755 });
       fs.writeFileSync(path.join(sandbox, 'date'), '#!/bin/bash\nif [[ $1 == -d ]]; then printf "1000\\n"; else printf "%s\\n" "$NOW"; fi\n', { mode: 0o755 });
       fs.writeFileSync(path.join(sandbox, 'sleep'), '#!/bin/bash\nprintf "sleep %s\\n" "$*"\n', { mode: 0o755 });
-      const dispatch = 'workflow run poll.yml --repo owner/repo --ref main -f apply=true';
+      const dispatch = 'workflow run poll.yml --repo owner/repo --ref main -f apply=true -f previous_run_id=42';
       const me = { id: 42, created_at: '2026-11-02T17:51:00Z', head_branch: 'main', event: 'workflow_dispatch', display_title: 'pass (apply)', status: 'in_progress' };
       const rows = runs => JSON.stringify({ workflow_runs: runs });
       const log = 'Recovery dependencies: pass=<> next=<skipped>';
@@ -1411,6 +1411,233 @@ test-poll-next:
       fs.rmSync(sandbox, { recursive: true, force: true });
     }
     console.log('ok offline fallback guards, dependency fixtures, bounded wait/listing, newer-run ownership and visible API failures; not live GitHub proof');
+
+# Offline state provenance, public-only export and workflow plumbing.
+test-pass-state:
+    #!/usr/bin/env node
+    const assert = require('node:assert/strict');
+    const fs = require('node:fs');
+    const source = /^pass-state mode:\n((?:    .*\n|\n)+)/m.exec(fs.readFileSync('Justfile', 'utf8'))[1].replace(/^    /gm, '');
+    const functions = {};
+    new Function('require', 'process', 'exports', source.replace(/^#!.*\n/, ''))(require, { argv: ['node', 'recipe', 'test'] }, functions);
+    const { validate, publicState } = functions;
+    const env = { PREVIOUS_RUN_ID: '41', GITHUB_RUN_ID: '42', GITHUB_REPOSITORY: 'owner/tracker', DEFAULT_BRANCH: 'main' };
+    const run = { id: 41, workflow_id: 123, path: '.github/workflows/poll.yml',
+      repository: { full_name: env.GITHUB_REPOSITORY }, head_repository: { full_name: env.GITHUB_REPOSITORY },
+      head_branch: 'main', event: 'workflow_dispatch', display_title: 'pass (apply)' };
+    const jobs = { total_count: 2, jobs: [{ name: 'pass', status: 'completed', conclusion: 'success' },
+      { name: 'next', status: 'in_progress' }] };
+    function predecessor(change = {}, jobChange = {}, extra = {}) {
+      const calls = [];
+      const id = validate({ ...env, ...extra }, endpoint => {
+        calls.push(endpoint);
+        assert.ok(calls.length <= 3);
+        if (endpoint.endsWith('/workflows/poll.yml')) return { id: 123 };
+        if (endpoint.endsWith('/jobs?filter=latest&per_page=100')) return { ...jobs, ...jobChange };
+        assert.equal(endpoint, 'repos/owner/tracker/actions/runs/41');
+        return { ...run, ...change };
+      });
+      return { id, calls };
+    }
+    assert.equal(predecessor().id, '41');
+    assert.equal(predecessor({ event: 'schedule', display_title: 'pass' }).id, '41');
+    assert.equal(predecessor({}, { jobs: [{ ...jobs.jobs[0], conclusion: 'failure' }], total_count: 1 }).id, '41');
+    for (const change of [{ workflow_id: 124 }, { id: 40 }, { path: '.github/workflows/other.yml' },
+      { repository: { full_name: 'other/tracker' } }, { head_repository: { full_name: 'fork/tracker' } },
+      { head_branch: 'feature' }, { event: 'pull_request' }, { event: 'push' }, { display_title: 'pass' }]) {
+      assert.equal(predecessor(change).id, '', JSON.stringify(change));
+    }
+    for (const change of [{ total_count: 101 }, { jobs: [] }, { jobs: null },
+      { jobs: [jobs.jobs[0], jobs.jobs[0]] },
+      ...['in_progress', 'queued'].map(status => ({ total_count: 1, jobs: [{ ...jobs.jobs[0], status }] })),
+      ...['cancelled', 'skipped', null].map(conclusion => ({ total_count: 1, jobs: [{ ...jobs.jobs[0], conclusion }] }))]) {
+      assert.equal(predecessor({}, change).id, '', JSON.stringify(change));
+    }
+    for (const id of ['', undefined, '42', '0', '-1', '../41', '41;exit', '1'.repeat(21)]) {
+      assert.deepEqual(predecessor({}, {}, { PREVIOUS_RUN_ID: id }), { id: '', calls: [] });
+    }
+    const url = path => `https://api.github.com/${path}`;
+    const publicUrl = url('repos/owner/public/issues/1/comments');
+    const allowed = ['issues', 'issues?state=all&per_page=100&page=2', 'issues/1',
+      'pulls', 'pulls?state=open&per_page=100', 'pulls/1', 'issues/1/comments?per_page=100&page=2',
+      'issues/comments/2', 'labels', 'issues/1/labels']
+      .map(path => url(`repos/owner/public/${path}`));
+    const pendingUrl = url('repos/owner/public/pulls/1/reviews?per_page=100');
+    const unsafe = ['pulls/1/reviews/2', 'pulls/1/comments', 'pulls/comments/2', 'actions/runs',
+      'events', 'contents/file', 'issues/1/parent', 'issues/1/sub_issues', 'issues/1/reactions',
+      'issues/1/comments/2', 'issues/1/timeline/extra', 'issues/1/../reviews', 'issues%2f1',
+      'issues/1#fragment', 'issues/1/']
+      .map(path => url(`repos/owner/public/${path}`));
+    const entries = Object.fromEntries([publicUrl, url('repos/owner/private/issues/1/comments'),
+      url('repos/owner/unknown/issues'), url('repos/owner/mismatch/issues'), url('repos/owner/hidden/issues'),
+      ...allowed, ...unsafe, url('user/notifications'), 'https://other.example/repos/owner/public/issues']
+      .map(key => [key, { etag: 'fixture-validator', body: 'fixture response' }]));
+    entries[pendingUrl] = { etag: 'pending-validator', body: [{ state: 'PENDING', body: 'unpublished review', submitted_at: null }] };
+    const timelineUrl = url('repos/owner/public/issues/1/timeline?per_page=100');
+    entries[timelineUrl] = { etag: 'private-cross-reference', body: [{ event: 'cross-referenced',
+      source: { issue: { repository: { private: true }, body: 'private source issue' } } }] };
+    const calls = [];
+    const result = publicState({ schema: 'agent-board/poll-state/v1', interval_seconds: 300,
+      share_cursor: 'owner/private#1', authored_cursor: 'owner/private',
+      intake_waiting: { 'owner/private#2': '2026-11-11T00:00:00Z' },
+      intake_refused: ['owner/private#3/4'], lock_refused: { 'owner/private#5': '2026-11-11T00:00:00Z' },
+      maintain: { fixture: 'private metadata' }, future_field: 'private metadata',
+      responses: structuredClone(entries), pass_responses: structuredClone(entries) }, endpoint => {
+      calls.push(endpoint);
+      if (endpoint === 'repos/owner/unknown') throw new Error('unreadable');
+      return { full_name: endpoint === 'repos/owner/mismatch' ? 'other/repo' : endpoint.slice(6),
+        private: endpoint === 'repos/owner/private', visibility: endpoint === 'repos/owner/hidden' ? 'private' : 'public' };
+    });
+    assert.deepEqual(result.responses, Object.fromEntries([publicUrl, ...allowed].map(key => [key, entries[key]])));
+    assert.deepEqual(result.pass_responses, result.responses);
+    assert.ok(!Object.hasOwn(result.responses, pendingUrl), 'discard the whole pending review entry, including its validator');
+    assert.doesNotMatch(JSON.stringify(result), /unpublished review|pending-validator|private source issue|private-cross-reference|owner\/private|private metadata/);
+    assert.deepEqual(Object.keys(result).sort(), ['interval_seconds', 'pass_responses', 'responses', 'schema']);
+    assert.equal(result.interval_seconds, 300);
+    assert.equal(calls.length, 5, 'each repository checked once across both caches');
+    assert.throws(() => publicState({ responses: Object.fromEntries(Array.from({ length: 101 }, (_, n) =>
+      [url(`repos/owner/repo${n}/issues`), {}])) }, () => assert.fail('must check bound before requests')));
+    const poll = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
+    const config = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
+    assert.equal(config.topDown, true);
+    assert.equal(config.state, '.state/pass.json');
+    assert.match(poll, /previous_run_id:\n[^]*?type: string\n        required: false\n        default: ''/);
+    const restore = poll.split('      - name: Restore pass state\n')[1].split('      - name: One pass\n')[0];
+    assert.match(restore, /if: steps.predecessor.outputs.run-id != ''/);
+    assert.match(restore, /run-id: \$\{\{ steps.predecessor.outputs.run-id \}\}/);
+    assert.match(restore, /name: pass-state\n          path: .state/);
+    assert.match(restore, /continue-on-error: true/);
+    assert.match(restore, /if: steps.restore.outcome == 'failure'\n        run: rm -rf .state/);
+    const mkdir = /      - name: Prepare state directory\n        run: (.*)\n/.exec(restore)[1];
+    const { execFileSync } = require('node:child_process');
+    const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'pass-state-'));
+    try {
+      for (const brokenRestore of [false, true]) {
+        fs.rmSync(`${temp}/.state`, { recursive: true, force: true });
+        if (brokenRestore) {
+          fs.mkdirSync(`${temp}/.state`);
+          fs.writeFileSync(`${temp}/.state/partial`, 'unreadable artifact');
+          execFileSync('bash', ['-ec', 'rm -rf .state'], { cwd: temp });
+        }
+        execFileSync('bash', ['-ec', mkdir], { cwd: temp });
+        // The pinned CLI uses fs::write: it does not create parent directories.
+        const state = { schema: 'agent-board/poll-state/v1', interval_seconds: 300, responses: {}, pass_responses: {} };
+        fs.writeFileSync(`${temp}/.state/pass.json`, JSON.stringify(state));
+        const output = execFileSync(process.execPath, ['-e', source.replace(/^#!.*\n/, ''), 'recipe', 'export'],
+          { cwd: temp, encoding: 'utf8', env: { PATH: process.env.PATH } });
+        assert.equal(output.trim(), 'Prepared public response cache for the next pass');
+        assert.deepEqual(JSON.parse(fs.readFileSync(`${temp}/.state/pass.json`, 'utf8')), state);
+        assert.equal(fs.existsSync(`${temp}/.state/partial`), false);
+        // Malformed state must not be published, and no body reaches stdout.
+        fs.writeFileSync(`${temp}/.state/pass.json`, '{private fixture');
+        const cold = execFileSync(process.execPath, ['-e', source.replace(/^#!.*\n/, ''), 'recipe', 'export'],
+          { cwd: temp, encoding: 'utf8', env: { PATH: process.env.PATH } });
+        assert.equal(fs.existsSync(`${temp}/.state/pass.json`), false);
+        assert.doesNotMatch(cold, /private fixture/);
+      }
+    } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+    const publish = poll.split('      - name: Prepare public pass state\n')[1].split('      # GitHub drops')[0];
+    assert.match(publish, /github.event_name == 'schedule' && vars.PASS_APPLY == 'enabled'/);
+    assert.match(publish, /github.event_name == 'workflow_dispatch' && inputs.apply/);
+    assert.match(publish, /run: just pass-state export/);
+    assert.match(publish, /steps.state.outcome == 'success'/);
+    assert.match(publish, /name: pass-state\n          path: .state\/pass.json\n          include-hidden-files: true\n          retention-days: 1\n          if-no-files-found: ignore/);
+    assert.doesNotMatch(poll, /actions\/cache@/);
+    for (const action of ['download', 'upload']) assert.match(poll, new RegExp(`uses: actions/${action}-artifact@[0-9a-f]{40} # v`));
+    console.log('ok exact predecessor provenance, public-only response export and applying workflow handoff');
+
+# Disposable poll cache handoff. Never print response bodies or API diagnostics.
+pass-state mode:
+    #!/usr/bin/env node
+    const fs = require('node:fs');
+    const { execFileSync } = require('node:child_process');
+    const STATE = '.state/pass.json';
+    const MAX_BYTES = 32 * 1024 * 1024; // The pinned pass's state-file limit.
+    const MAX_REPOSITORIES = 100;
+    function api(endpoint, timeout = 20000) {
+      return JSON.parse(execFileSync('gh', ['api', endpoint], {
+        timeout, maxBuffer: MAX_BYTES, stdio: ['ignore', 'pipe', 'pipe'],
+      }));
+    }
+    function validate(env = process.env, get = api) {
+      const id = env.PREVIOUS_RUN_ID;
+      if (!id) return '';
+      // Input is data, never a URL/path or shell fragment. No latest-run search.
+      if (!/^[1-9][0-9]{0,19}$/.test(id) || id === env.GITHUB_RUN_ID) return '';
+      const root = `repos/${env.GITHUB_REPOSITORY}/actions`;
+      const run = get(`${root}/runs/${id}`);
+      const workflow = get(`${root}/workflows/poll.yml`);
+      if (String(run.id) !== id || run.workflow_id !== workflow.id ||
+          run.path !== '.github/workflows/poll.yml' ||
+          run.repository?.full_name !== env.GITHUB_REPOSITORY ||
+          run.head_repository?.full_name !== env.GITHUB_REPOSITORY ||
+          run.head_branch !== env.DEFAULT_BRANCH ||
+          !(run.event === 'schedule' ||
+            (run.event === 'workflow_dispatch' && run.display_title === 'pass (apply)'))) return '';
+      // The next job may still be running. Require the state-writing job, not
+      // the whole workflow, to have finished. Refuse truncated job listings.
+      const jobs = get(`${root}/runs/${id}/jobs?filter=latest&per_page=100`);
+      if (!Array.isArray(jobs.jobs) || jobs.total_count !== jobs.jobs.length ||
+          jobs.jobs.length > 100) return '';
+      const passes = jobs.jobs.filter(job => job.name === 'pass');
+      return passes.length === 1 && passes[0].status === 'completed' &&
+        ['success', 'failure'].includes(passes[0].conclusion) ? id : '';
+    }
+    function publicState(state, get = api) {
+      // Both caches contain PAT-authenticated bodies. A public repository alone
+      // is not enough: reviews can include the viewer's unpublished PENDING body.
+      // Allow only public issue/PR lists/details, issue comments and label lists.
+      // Timelines can embed private cross-references. Every other endpoint stays
+      // cold. Match the entire raw
+      // path, without URL normalization accepting extra/dot/encoded segments.
+      const repository = url => /^https:\/\/api\.github\.com\/repos\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/(?:issues(?:\/[1-9][0-9]*(?:\/(?:comments|labels))?|\/comments\/[1-9][0-9]*)?|pulls(?:\/[1-9][0-9]*)?|labels)(?:\?[^#\s]*)?$(?![\s\S])/
+        .exec(url)?.[1].toLowerCase();
+      const caches = ['responses', 'pass_responses'];
+      const repositories = new Set(caches.flatMap(key => Object.keys(state[key] || {}).map(repository).filter(Boolean)));
+      if (repositories.size > MAX_REPOSITORIES) throw new Error('too many repositories');
+      const publicRepos = new Set();
+      const deadline = Date.now() + 90000;
+      for (const repo of repositories) {
+        if (Date.now() >= deadline) break;
+        try {
+          const metadata = get(`repos/${repo}`, Math.min(10000, deadline - Date.now()));
+          if (metadata.full_name?.toLowerCase() === repo && metadata.private === false && metadata.visibility === 'public') {
+            publicRepos.add(repo);
+          }
+        } catch { /* Unreadable is not public. */ }
+      }
+      // Cursors/intake/maintenance metadata can also name private repositories.
+      // Publish only the response-cache envelope, not arbitrary state fields.
+      const exported = { schema: 'agent-board/poll-state/v1',
+        interval_seconds: Number.isSafeInteger(state.interval_seconds) ? state.interval_seconds : 300 };
+      for (const key of caches) {
+        // Drop entries whole: changing a body would invalidate its cached ETag.
+        exported[key] = Object.fromEntries(Object.entries(state[key] || {}).filter(([url]) => publicRepos.has(repository(url))));
+      }
+      return exported;
+    }
+    if (process.argv[2] === 'validate') {
+      let id = '';
+      try { id = validate(); } catch { /* Missing provenance starts cold. */ }
+      fs.appendFileSync(process.env.GITHUB_OUTPUT, `run-id=${id}\n`);
+      console.log(id ? `Validated predecessor ${id}` : 'No trusted predecessor; starting cold');
+    } else if (process.argv[2] === 'export') {
+      if (fs.existsSync(STATE)) {
+        try {
+          if (fs.statSync(STATE).size > MAX_BYTES) throw new Error('oversized state');
+          const state = publicState(JSON.parse(fs.readFileSync(STATE, 'utf8')));
+          fs.writeFileSync(STATE, JSON.stringify(state) + '\n');
+          console.log('Prepared public response cache for the next pass');
+        } catch {
+          fs.rmSync(STATE, { force: true });
+          console.log('Could not prepare public state; next pass starts cold');
+        }
+      }
+    } else if (process.argv[2] === 'test') {
+      Object.assign(exports, { validate, publicState });
+    } else {
+      throw new Error('expected validate or export');
+    }
 
 # supervisor.yml's folded concurrency group and health `if`, evaluated as
 # JavaScript on events: a run the gate skips gets a group of its own

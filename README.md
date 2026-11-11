@@ -100,6 +100,43 @@ is set by the repository variable `INFERENCE_URL` (or, if unset, the organizatio
 tailnet setting); without joining, the pass paces on the last published
 snapshot. Passes share one concurrency group and never overlap.
 
+Scheduling is top-down (`topDown: true`): P0 epic groups are considered before
+unrelated parent discovery spends the request budget. Applying passes hand their
+disposable `.state/pass.json` cache to the next pass as the one-day `pass-state`
+artifact. Both chain dispatches supply `previous_run_id`; restore validates that
+exact run's repository, workflow, default branch, applying invocation and finished
+`pass` job. No shared cache or latest-by-name lookup is used. Missing, unreadable
+or untrusted predecessors start cold, including schedule/bootstrap runs without
+an explicit predecessor. Previews never upload state.
+
+A forged cached body could steer scheduling despite a valid ETag, so only that
+trusted predecessor is accepted. Raw state can also include private usage/holds
+comments or unpublished reviews even in public repositories. Before uploading,
+the caller keeps both caches' entries only for public issue/PR lists and details,
+issue comment lists/details, and repository/issue label lists.
+Each repository must also be currently readable as public. Entries outside this
+allowlist are dropped whole, with their validators; repository visibility alone
+does not make a PAT-authenticated response public. Visibility checks cost one
+request per distinct allowlisted repository, capped at 100 repositories and
+90 seconds. Cache bodies are never printed; losing the whole artifact is safe.
+
+Reviews (including pending reviews), timelines (which can embed private
+cross-references), review comments, Actions runs/jobs/variables,
+repository contents, events, issue parent/sub-issue relations and every other
+endpoint remain uncached between passes, as do all private reads. Each requested
+page/detail on those paths starts with a full GET rather than a conditional GET
+that could return 304: for example, reading reviews on N PRs costs the sum of
+their review pages in full requests per pass. This does not add a round trip
+versus revalidation, but loses the authenticated 304 rate-limit saving and body
+transfer saving. Counts depend on the threads and pages visited; there is no
+fixed extra request count per pass. Existing within-pass caching and request
+bounds are unchanged.
+
+Only the schema, interval and filtered response maps are handed off. Cursor,
+intake and maintenance metadata can name private threads, so it is not exported;
+those scans restart each pass, costing their searches/listings again and possibly
+retrying refused writes. Live thread claims still prevent duplicate intake.
+
 A scheduled pass only previews unless the repository variable `PASS_APPLY`
 is `enabled`. When run manually, `gh workflow run poll.yml` previews and
 `-f apply=true` applies. While `PASS_APPLY` is `enabled`, each applying pass
