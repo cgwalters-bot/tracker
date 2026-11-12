@@ -2073,7 +2073,7 @@ maintain-shadow-config pass follow:
     jq -e --arg follow "$2" '
       ["reviewWorkflow", "fixPools", "toilFixPool", "conflictFixPool", "mergeAuthors", "rebaseRounds", "mergeQueue",
         "checkReruns", "unstall", "ownerBranches", "ownSpaceOnly", "foldRounds", "reviewPools",
-        "headOwners", "noMerge", "operatorPaths", "staleDays"] as $copied
+        "headOwners", "noMerge", "operatorPaths", "staleDays", "actionFirst"] as $copied
       | ["reviewDispatchRepositories", "draftReviewRepositories"] as $scoped
       | (.pr // {}) as $pr
       | ($pr | keys - $copied - $scoped) as $unknown

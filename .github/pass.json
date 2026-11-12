@@ -80,7 +80,7 @@
         "cgwalters-bot/praxis-credential-broker"
       ]}},
   "budget": {"weeklyUsd": 2000},
-  "pr": {"staleDays": 0, "unstall": true, "ownSpaceOnly": true,
+  "pr": {"actionFirst": true, "staleDays": 0, "unstall": true, "ownSpaceOnly": true,
     "operatorPaths": [".github/agentic-job/dispatch.toml", ".github/agentic-job/midstream.toml", ".github/agentic-job/midstream-fix.toml", ".github/agentic-job/fix.toml", ".github/agentic-job/comment.toml", ".github/agentic-job/session.toml",
       ".github/pass.json#/triage", ".github/pass.json#/notifications", ".github/pass.json#/fixPlans", ".github/pass.json#/assignHolds", ".github/pass.json#/authored",
       ".github/pass.json#/bodyPlans", ".github/pass.json#/idleReplan", ".github/pass.json#/researchPlans", ".github/pass.json#/triageClose", ".github/pass.json#/triageFollowUpDays",
