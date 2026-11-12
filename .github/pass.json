@@ -50,6 +50,7 @@
   "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true, "maxAppliesPerPass": 3, "heldPlanHours": 24},
   "wip": 8,
   "topDown": true,
+  "requestShare": 25,
   "scan": {"candidateRequests": 8, "candidates": 30, "reserve": true},
   "state": ".state/pass.json",
   "bodyPlans": true,
