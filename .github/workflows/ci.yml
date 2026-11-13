@@ -41,6 +41,205 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: just build-supervisor-agent-board
+      # Replay the incident's receiving contract, not today's moving wrapper.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cgwalters-forge/actions
+          ref: bac2da6d67101ab6ca520d9d63adc46da77e4513
+          path: _dispatch-actions
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: cgwalters-forge/agentic-job
+          ref: 427ce2295925654be9c35e91ca5cee91bbc2c9ea # supports own_author in the current bounds
+          path: _dispatch-policy
+          persist-credentials: false
+      - name: Install the pinned policy binary by verified source digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash _dispatch-policy/secure-host/binary.sh get --out "$RUNNER_TEMP/dispatch-policy-bin"
+          echo "$RUNNER_TEMP/dispatch-policy-bin" >> "$GITHUB_PATH"
+      # Offline real push resolver/policy replay against the immutable wrapper.
+      - name: Require offline receiving policy and wrapper replay
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const path = require('node:path');
+          const http = require('node:http');
+          const { spawn, spawnSync, execFileSync } = require('node:child_process');
+          const { test } = require('node:test');
+          const vm = require('node:vm');
+          const checkout = '_dispatch-actions';
+          const workflow = fs.readFileSync('.github/workflows/dispatch.yml', 'utf8');
+          const fixture = JSON.parse(fs.readFileSync('.github/agentic-job/testdata/dispatch-admission.json'));
+          let guards = fixture.wrapper;
+          test('guards match the actual immutable receiving wrapper', () => {
+            assert.equal(execFileSync('git', ['-C', checkout, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), fixture.wrapper.revision);
+            const wrapper = fs.readFileSync(path.join(checkout, fixture.wrapper.path), 'utf8');
+            guards = Object.fromEntries(['agent', 'apply'].map(job => {
+              const block = wrapper.split(`\n  ${job}:\n`)[1].split(/\n  [a-z][a-z-]*:\n/)[0];
+              assert.match(block, /needs: \[[^\]]*\bpolicy\b/);
+              const guard = /^    if: \$\{\{ (.*) \}\}$/m.exec(block)[1];
+              assert.equal(guard, fixture.wrapper[`${job}_if`]);
+              return [`${job}_if`, guard];
+            }));
+            assert.match(wrapper, /allow: \$\{\{ inputs.kind == 'fix' && inputs.fix-allow \|\| inputs.allow \}\}/);
+            assert.match(wrapper, /push-item: \$\{\{ inputs.kind == 'fix' && inputs.item \|\| '' \}\}/);
+          });
+          const step = name => new RegExp(`- name: ${name}[^]*?        run: \\|\n((?:          .*\n)+)`)
+            .exec(workflow)[1].replace(/^          /gm, '');
+          const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-admission-'));
+          // Never inherit real tokens, role bindings, API endpoints or proxy settings.
+          const env = { PATH: process.env.PATH, HOME: temp, GH_TOKEN: ['offline', 'fixture'].join('-') };
+          const cli = (args, extra = {}) => new Promise((resolve, reject) => {
+            const child = spawn('agentic-job', args, { env: { ...env, ...extra } });
+            let stdout = '', stderr = '';
+            const timer = setTimeout(() => child.kill('SIGKILL'), 10000);
+            child.stdout.on('data', data => { stdout += data; });
+            child.stderr.on('data', data => { stderr += data; });
+            child.on('error', error => { clearTimeout(timer); reject(error); });
+            child.on('close', status => { clearTimeout(timer); resolve({ status, stdout, stderr }); });
+          });
+          process.on('exit', () => fs.rmSync(temp, { recursive: true, force: true }));
+          function bounds(repo, kind = 'fix') {
+            const output = path.join(temp, 'output');
+            fs.writeFileSync(output, '');
+            const result = spawnSync('bash', ['-euo', 'pipefail', '-c', step('Resolve the bounds')], {
+              env: { ...env, KIND: kind, REPO: repo, GITHUB_OUTPUT: output }, encoding: 'utf8', timeout: 10000,
+            });
+            assert.equal(result.status, 0, result.stderr);
+            return Object.fromEntries(fs.readFileSync(output, 'utf8').trim().split('\n').map(line => line.split('=')));
+          }
+          function downstream(refused) {
+            // Guards read from the immutable wrapper above. Evaluate admission
+            // only, never run an agent, apply or dispatch.
+            const needs = { policy: { result: refused ? 'failure' : 'success', outputs: { admitted: refused ? '' : 'true' } } };
+            return Object.fromEntries(['agent', 'apply'].map(job => [job,
+              vm.runInNewContext(guards[`${job}_if`], { needs, always: () => true })]));
+          }
+          test('receiving bounds selection and forwarding', () => {
+            assert.match(workflow, /fix-allow: \$\{\{ needs.profile.outputs.fix-allow \}\}/);
+            assert.match(workflow, /allow: \$\{\{ needs.profile.outputs.allow \}\}/);
+            assert.match(workflow, /  run:\n    needs: profile\n/);
+            assert.match(workflow, /uses: cgwalters-forge\/actions\/\.github\/workflows\/cgwalters-agentic-job.yml@main/);
+            for (const [repo, kind, allow, fix] of [
+              ['cgwalters-forge/tracker', 'fix', 'dispatch.toml', 'fix.toml'],
+              ['cgwalters-forge/agentic-job', 'fix', 'dispatch.toml', 'fix.toml'],
+              ['cgwalters-forge/bootc', 'fix', 'midstream.toml', 'midstream-fix.toml'],
+              ['cgwalters-forge/tracker', 'research', 'comment.toml', 'fix.toml'],
+            ]) assert.deepEqual(bounds(repo, kind), { allow: `.github/agentic-job/${allow}`, 'fix-allow': `.github/agentic-job/${fix}` });
+          });
+          test('recorded receiving route: real resolver and policy refusal', async () => {
+            const installed = spawnSync('agentic-job', ['--version'], { env, encoding: 'utf8' });
+            assert.equal(installed.status, 0, 'agentic-job must be installed for policy replay');
+            console.log(installed.stdout.trim());
+            let pull;
+            const requests = [];
+            const server = http.createServer((req, res) => {
+              requests.push(`${req.method} ${req.url}`);
+              const repo = pull.base.repo.full_name;
+              const routes = {
+                [`/repos/${repo}/pulls/${pull.number}`]: pull,
+                [`/repos/${repo}/git/ref/heads/main`]: { object: { type: 'commit', sha: pull.base.sha } },
+              };
+              res.writeHead(req.method === 'GET' && Object.hasOwn(routes, req.url) ? 200 : 404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(routes[req.url] ?? {}));
+            });
+            await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+            const api = { GITHUB_API_URL: `http://127.0.0.1:${server.address().port}` };
+            async function receive(value) {
+              pull = value;
+              requests.length = 0;
+              const repo = pull.base.repo.full_name;
+              const selected = bounds(repo)['fix-allow'];
+              const resolved = await cli(['push', 'resolve', '--event', 'false', '--review', 'false', '--kind', 'branch',
+                '--item', String(pull.number), '--repo', repo, '--output-repo', repo], api);
+              if (resolved.status !== 0) return { ...resolved, stage: 'resolve', downstream: downstream(true) };
+              const outputs = Object.fromEntries(resolved.stdout.trim().split('\n').map(line => line.split('=')));
+              const policy = await cli(['policy', '--allow', selected, '--repo', repo, '--clone-url', `https://github.com/${repo}`,
+                '--base', outputs.branch, '--kind', 'branch', '--outputs', 'push_to_pull_request_branch,noop,missing_tool,missing_data',
+                '--max-outputs', '3', '--pull-request', String(pull.number), '--head', outputs.head,
+                '--pull-author', outputs.author, '--output-repo', repo], api);
+              return { ...policy, stage: 'policy', downstream: downstream(policy.status !== 0) };
+            }
+            try {
+              for (const recorded of fixture.pulls) {
+                // Open-state variants reconstruct the log's decision; these are not
+                // archived raw historical API responses. Preserve both excluded names.
+                for (let repeat = 0; repeat < 2; repeat++) {
+                  const result = await receive({ ...recorded, state: 'open' });
+                  assert.equal(result.stage, 'policy');
+                  assert.notEqual(result.status, 0);
+                  assert.ok(result.stderr.includes(fixture.refusals[recorded.number]), result.stderr);
+                  assert.deepEqual(result.downstream, { agent: false, apply: false });
+                  assert.equal(requests.length, 2, 'only PR and base-ref reads; no dispatch/write');
+                }
+                const closed = await receive(recorded);
+                assert.equal(closed.stage, 'resolve');
+                assert.notEqual(closed.status, 0);
+                assert.match(closed.stderr, /open pull request/);
+                assert.deepEqual(closed.downstream, { agent: false, apply: false });
+                assert.equal(requests.length, 1, 'closed/superseded stops before base lookup/policy');
+                // Synthetic controls, not an attempt to revive either closed target.
+                const botHead = { ...recorded, head: { ...recorded.head, ref: 'bot/offline-admission-control' } };
+                const stillClosed = await receive(botHead);
+                assert.notEqual(stillClosed.status, 0);
+                assert.equal(stillClosed.stage, 'resolve');
+                const allowed = await receive({ ...botHead, state: 'open' });
+                assert.equal(allowed.status, 0, allowed.stderr);
+                assert.deepEqual(allowed.downstream, { agent: true, apply: true });
+                assert.equal(JSON.parse(allowed.stdout).safe_outputs.push_to_pull_request_branch.target, String(recorded.number));
+              }
+              for (const run of fixture.runs) {
+                assert.equal(run.event, 'workflow_dispatch');
+                assert.equal(run.actor, 'cgwalters-bot');
+                assert.equal(run.agent, 'skipped');
+                assert.equal(run.apply, 'skipped');
+              }
+            } finally {
+              await new Promise(resolve => server.close(resolve));
+            }
+          });
+          test('public receipt is bounded metadata, never task or producer authorization', () => {
+            const job = workflow.split('\n  admission-receipt:\n')[1];
+            assert.match(job, /needs: \[profile, run\]/);
+            assert.match(job, /if: \$\{\{ always\(\) && inputs.kind != 'review' \}\}/);
+            assert.match(job, /timeout-minutes: 1\n    permissions: \{\}/);
+            assert.doesNotMatch(job, /secrets\.|inputs.task|toJSON|uses:/);
+            assert.doesNotMatch(job.split('    steps:\n')[1], /\$\{\{[^}]*inputs\./, 'no raw input interpolation in step env or script');
+            const event = path.join(temp, 'event.json');
+            for (const [result, kind, selected] of [
+              ['success', 'fix', '.github/agentic-job/fix.toml'], ['failure', 'fix', '.github/agentic-job/fix.toml'],
+              ['cancelled', 'research', '.github/agentic-job/comment.toml'], ['skipped', 'fix', ''],
+            ]) {
+              const repo = 'x'.repeat(256) + 'must-not-appear';
+              fs.writeFileSync(event, JSON.stringify({ inputs: { kind, repo, item: '1050\n::error::not a command',
+                task: 'not public', producer: 'not authorization' }, unrelated: 'not public' }));
+              const got = spawnSync('bash', ['-euo', 'pipefail', '-c', step('Record dispatch admission outcome')], {
+                env: { PATH: process.env.PATH, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1', GITHUB_EVENT_NAME: 'workflow_dispatch',
+                  GITHUB_ACTOR: 'bot', GITHUB_TRIGGERING_ACTOR: 'rerunner', GITHUB_EVENT_PATH: event,
+                  ALLOW: '.github/agentic-job/comment.toml', PROFILE_RESULT: result === 'skipped' ? 'failure' : 'success',
+                  ...(result === 'skipped' ? { ALLOW: '' } : { FIX_ALLOW: '.github/agentic-job/fix.toml' }), WRAPPER_RESULT: result },
+                encoding: 'utf8', timeout: 10000,
+              });
+              assert.equal(got.status, 0, got.stderr);
+              assert.equal(got.stdout.trim().split('\n').length, 1, 'JSON escapes control characters');
+              const receipt = JSON.parse(got.stdout);
+              assert.equal(receipt.wrapper_result, result);
+              assert.equal(receipt.selected_bounds, selected);
+              assert.equal(receipt.repo, repo.slice(0, 256));
+              assert.equal(receipt.item, '1050\n::error::not a command');
+              assert.equal(receipt.actor, 'bot');
+              assert.equal(receipt.triggering_actor, 'rerunner');
+              assert.equal(receipt.event, 'workflow_dispatch');
+              assert.equal(receipt.profile_result, result === 'skipped' ? 'failure' : 'success');
+              assert.ok(Object.values(receipt).every(value => value.length <= 256));
+              assert.doesNotMatch(got.stdout + got.stderr, /not public|not authorization|must-not-appear/);
+            }
+          });
       - run: just test
         env:
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
