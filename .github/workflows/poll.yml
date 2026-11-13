@@ -143,7 +143,7 @@ jobs:
           "$AGENT_BOARD" pass --config "$RUNNER_TEMP/pass.json" ${APPLY:+"$APPLY"} \
             --fix-bounds .github/agentic-job/fix.toml \
             --fix-bounds .github/agentic-job/midstream-fix.toml \
-            --max-dispatch 8 --max-writes 20 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
+            --max-dispatch 20 --max-writes 60 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
       # Threat: raw state includes private usage/holds comments. Export only
       # repository responses whose repository is currently readable as public.
       - name: Prepare public pass state
