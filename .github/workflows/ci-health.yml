@@ -1,0 +1,275 @@
+# Public read-only observations; no checkout of observed projects.
+name: ci-health
+on:
+  schedule:
+    - cron: '43 6 * * *'
+  workflow_dispatch:
+    inputs:
+      preview:
+        description: Render artifacts without updating the status comment
+        type: boolean
+        default: true
+
+permissions: {}
+concurrency:
+  group: ci-health
+  cancel-in-progress: false
+env:
+  # Read-only collector pin; do not move the write-capable pass with it.
+  CI_HEALTH_REV: 223fc372d321abfc643929faa4e8218b2422f30d
+
+jobs:
+  collect:
+    if: ${{ github.repository == 'cgwalters-forge/tracker' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    outputs:
+      raw-artifact-url: ${{ steps.raw.outputs.artifact-url }}
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+        with:
+          just-version: 1.58.0
+      - name: Install verified agent-board
+        timeout-minutes: 10
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: just build-agent-board "$CI_HEALTH_REV"
+      - name: Collect once
+        timeout-minutes: 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+          AGENT_BOARD_REV: ${{ env.CI_HEALTH_REV }}
+        shell: node {0}
+        run: |
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const { createHash } = require('node:crypto');
+          const hash = b => createHash('sha256').update(b).digest('hex');
+          const config = fs.readFileSync('.github/ci-health/config.json');
+          const raw = execFileSync(process.env.RUNNER_TEMP + '/agent-board/bin/agent-board',
+            ['ci-health', '--config', '.github/ci-health/config.json', '--format', 'json'], { timeout: 180000, maxBuffer: 4 * 1024 * 1024 });
+          JSON.parse(raw);
+          const base = process.env.RUNNER_TEMP + '/ci-health';
+          fs.mkdirSync(base, { recursive: true });
+          fs.writeFileSync(base + '/report.json', raw);
+          fs.writeFileSync(base + '/provenance.json', JSON.stringify({repository: process.env.GITHUB_REPOSITORY,
+            ref: process.env.GITHUB_REF, source_revision: process.env.GITHUB_SHA, collector_revision: process.env.AGENT_BOARD_REV,
+            run_id: process.env.GITHUB_RUN_ID, run_attempt: process.env.GITHUB_RUN_ATTEMPT,
+            config_sha256: hash(config), report_sha256: hash(raw)}) + '\n');
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        id: raw
+        with:
+          name: ci-health-raw-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-health/*.json
+          if-no-files-found: error
+          retention-days: 35
+
+  report:
+    needs: collect
+    if: ${{ github.repository == 'cgwalters-forge/tracker' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      # No checkout or artifact-supplied executable code in this token job.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ci-health-raw-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-health
+      - name: Validate, render saved JSON, and update owned status
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          PREVIEW: ${{ github.event_name != 'schedule' && inputs.preview != false }}
+          RAW_ARTIFACT_URL: ${{ needs.collect.outputs.raw-artifact-url }}
+        with:
+          script: |
+            const fs = require('node:fs');
+            const crypto = require('node:crypto');
+            const assert = require('node:assert/strict');
+            const repo = 'cgwalters-forge/tracker', issue = 1229;
+            const marker = '<!-- tracker-ci-health:1229:v1 -->';
+            const owner = 'github-actions[bot]';
+            const rev = '223fc372d321abfc643929faa4e8218b2422f30d';
+            const base = process.env.RUNNER_TEMP + '/ci-health/';
+            const hash = bytes => crypto.createHash('sha256').update(bytes).digest('hex');
+            const check = (yes, why) => assert.ok(yes, why);
+            const text = (value, max = 2000) => {
+              check(typeof value === 'string' && value.length <= max, 'invalid/oversized text');
+              return value;
+            };
+            // Logs, names and API warnings are data: suppress HTML, Markdown,
+            // mentions, controls and marker injection, not just angle brackets.
+            const escape = value => text(value).replace(/[&<>"'`*_\[\]()!#|@\\~\r\n\x00-\x1f\x7f]/g,
+              c => `&#${c.charCodeAt(0)};`);
+            const load = (name, limit) => {
+              const path = base + name, st = fs.lstatSync(path);
+              check(st.isFile() && st.size <= limit, 'missing/nonregular/oversized ' + name);
+              return fs.readFileSync(path);
+            };
+            try {
+              check(context.repo.owner + '/' + context.repo.repo === repo, 'wrong repository');
+              check(context.ref === 'refs/heads/' + context.payload.repository.default_branch, 'wrong ref');
+              check(['schedule', 'workflow_dispatch'].includes(context.eventName), 'wrong event');
+              const getConfig = async path => {
+                const result = await github.rest.repos.getContent({...context.repo, path, ref: context.sha});
+                check(result.data.type === 'file' && result.data.encoding === 'base64', 'config unavailable');
+                const bytes = Buffer.from(result.data.content, 'base64');
+                check(bytes.length <= 1024 * 1024, 'config too large');
+                return bytes;
+              };
+              const configBytes = await getConfig('.github/ci-health/config.json');
+              const config = JSON.parse(configBytes);
+              const policy = JSON.parse(await getConfig('.github/ci-health/publication.json'));
+              check(Object.keys(policy).join() === 'publish' && typeof policy.publish === 'boolean', 'invalid policy');
+              check(config.targets.length > 0 && config.targets.length <= 20 && Object.keys(config.index).length <= 100, 'config bounds');
+              const raw = load('report.json', 4 * 1024 * 1024);
+              const provenance = JSON.parse(load('provenance.json', 4096));
+              check(provenance.repository === repo && provenance.ref === context.ref &&
+                provenance.source_revision === context.sha && provenance.collector_revision === rev &&
+                provenance.run_id === String(context.runId) && provenance.run_attempt === process.env.GITHUB_RUN_ATTEMPT &&
+                provenance.config_sha256 === hash(configBytes) && provenance.report_sha256 === hash(raw), 'provenance mismatch');
+              const r = JSON.parse(raw);
+              check(r.schema === 'agent-board/ci-health/v1' && typeof r.complete === 'boolean', 'wrong report schema');
+              const until = Date.parse(r.until), since = Date.parse(r.since);
+              check(Number.isFinite(until) && Number.isFinite(since) && until - since === 30 * 86400000 &&
+                until % 86400000 === 0 && until <= Date.now() && Date.now() - until < 2 * 86400000, 'invalid/stale window');
+              check(r.bounds.api_operations === 500 && r.bounds.collection_seconds === 120 &&
+                r.bounds.pages_per_listing === 10 && r.bounds.log_bytes === 1048576 &&
+                r.bounds.aggregate_decoded_bytes === 33554432 && Number.isSafeInteger(r.decoded_bytes) &&
+                r.decoded_bytes >= 0 && r.decoded_bytes <= 40 * 1024 * 1024, 'invalid collector bounds');
+              check(Array.isArray(r.targets) && r.targets.length === config.targets.length &&
+                Array.isArray(r.groups) && r.groups.length <= 500, 'invalid target/group counts');
+              const warnings = [], rows = [];
+              const integer = n => check(Number.isSafeInteger(n) && n >= 0, 'invalid nonnegative integer');
+              const rate = (n, d) => d ? `${(100 * n / d).toFixed(1)}% (${n}/${d})` : 'no data (0/0)';
+              for (const [i, t] of r.targets.entries()) {
+                assert.deepStrictEqual(t.target, config.targets[i], 'target mismatch');
+                check(typeof t.complete === 'boolean' && typeof t.listing_complete === 'boolean' &&
+                  Array.isArray(t.warnings) && t.warnings.length <= 2000, 'invalid coverage');
+                check(!t.complete || (t.listing_complete && t.warnings.length === 0), 'inconsistent completeness');
+                const label = t.target.repository + ' / ' + t.target.workflow;
+                if (!t.complete || !t.listing_complete) warnings.push(label + ': INCOMPLETE');
+                for (const w of t.warnings) warnings.push(label + ': ' + text(w));
+                for (const pop of ['default_push', 'pull_request']) {
+                  const p = t.populations[pop];
+                  for (const k of ['runs', 'attempts', 'expected_attempts', 'success', 'failed', 'cancelled', 'skipped',
+                    'in_progress', 'other', 'first_attempt_success', 'first_attempt_failed', 'first_attempt_denominator', 'denominator']) integer(p[k]);
+                  check(p.denominator === p.success + p.failed && p.first_attempt_denominator === p.first_attempt_success + p.first_attempt_failed &&
+                    p.attempts === p.denominator + p.cancelled + p.skipped + p.in_progress + p.other &&
+                    p.attempts <= p.expected_attempts && p.first_attempt_denominator <= p.runs &&
+                    p.first_attempt_success <= p.success && p.first_attempt_failed <= p.failed &&
+                    (!t.complete || p.attempts === p.expected_attempts), 'inconsistent counts');
+                  for (const [field, n, d] of [['pass_rate', p.success, p.denominator],
+                    ['first_attempt_pass_rate', p.first_attempt_success, p.first_attempt_denominator]]) {
+                    check(d === 0 ? p[field] === null : typeof p[field] === 'number' && Math.abs(p[field] - n / d) < 1e-12, 'invalid rate');
+                  }
+                  if (p.runs === 0) warnings.push(label + ' / ' + pop + ': NO DATA');
+                  rows.push(`| ${escape(label)} | ${pop} | ${p.runs} | ${p.attempts}/${p.expected_attempts} | ${rate(p.first_attempt_success, p.first_attempt_denominator)} | ${rate(p.success, p.denominator)} | ${p.cancelled}/${p.skipped}/${p.in_progress}/${p.other} |`);
+                }
+              }
+              check(r.complete === r.targets.every(t => t.complete), 'inconsistent report completeness');
+              const seen = new Set(), groupLines = [];
+              for (const g of r.groups) {
+                const o = g.observation;
+                check(/^[a-f0-9]{64}$/.test(o.signature) && !seen.has(o.signature), 'invalid/duplicate signature');
+                seen.add(o.signature);
+                check(config.targets.some(t => t.repository === o.repository), 'group outside scope');
+                check(Array.isArray(o.run_ids) && o.run_ids.length > 0 && o.run_ids.length <= 1000 &&
+                  new Set(o.run_ids).size === o.run_ids.length, 'invalid run IDs');
+                o.run_ids.forEach(integer); integer(o.occurrences);
+                check(o.occurrences >= o.run_ids.length && Date.parse(o.first_seen) >= since && Date.parse(o.first_seen) < until, 'invalid observation');
+                assert.deepStrictEqual(g.classification, config.index[o.signature] ?? null, 'unreviewed classification');
+                check(g.class === (config.index[o.signature]?.class ?? 'unknown'), 'unreviewed class');
+                check(Array.isArray(o.samples) && o.samples.length <= 3, 'invalid samples');
+                for (const s of o.samples) {
+                  integer(s.run_id); integer(s.attempt); integer(s.job_id);
+                  check(o.run_ids.includes(s.run_id) && s.url === `https://github.com/${o.repository}/actions/runs/${s.run_id}`, 'unsafe evidence URL');
+                }
+                const entry = config.index[o.signature];
+                const findings = [];
+                if (o.run_ids.length >= 2 && !entry?.issue) findings.push('recurring_without_issue');
+                if (entry?.class === 'flake' && !entry.explained_at && until - Date.parse(entry.first_seen) > 7 * 86400000) findings.push('flake_unexplained_over_seven_days');
+                check(JSON.stringify(findings) === JSON.stringify(g.findings), 'invalid findings');
+                const mapping = entry ? ` Owner ${escape(entry.owner)}; fix ${escape(entry.fix_status)}; issue ${entry.issue ? escape(entry.issue) : 'none'}.` : ' No reviewed mapping.';
+                groupLines.push({priority: findings.length, line: `- ${escape(o.repository)} / ${escape(o.job)} / ${escape(o.test)}: ${escape(g.class)}; ${o.run_ids.length} runs, ${o.occurrences} occurrences; ${findings.join(', ') || 'no finding'}.${mapping} Signature ${o.signature}. Error: ${escape(text(o.first_error, 1000))}. ` +
+                  o.samples.map(s => `[run ${s.run_id}, attempt ${s.attempt}](${s.url})`).join(' ')});
+              }
+              const absent = Object.entries(config.index).filter(([sig, e]) => !seen.has(sig) && e.class === 'flake' &&
+                !e.explained_at && until - Date.parse(e.first_seen) > 7 * 86400000)
+                .map(([sig, e]) => `- ${sig}: overdue absent signature; owner ${escape(e.owner)}, fix ${escape(e.fix_status)}. Absence does NOT prove recovery.`);
+              const runURL = `https://github.com/${repo}/actions/runs/${context.runId}`;
+              const artifactURL = process.env.RAW_ARTIFACT_URL;
+              check(typeof artifactURL === 'string' && artifactURL.startsWith(runURL + '/artifacts/') &&
+                /^[0-9]+$/.test(artifactURL.slice((runURL + '/artifacts/').length)), 'unsafe artifact URL');
+              // Findings sort first on the bounded status surface; unknown
+              // groups still remain in full in the dated artifact.
+              groupLines.sort((a, b) => b.priority - a.priority || a.line.localeCompare(b.line));
+              const lines = groupLines.map(g => g.line);
+              const header = `${marker}\n## Rolling CI health: ${r.until.slice(0, 10)}\n\n` +
+                `**${r.complete ? 'Collector complete for configured targets only' : 'WARNING: INCOMPLETE OBSERVATIONS'}; not a healthy-CI verdict.**\n\n` +
+                `**Scope incomplete:** fixed 20-target baseline; additional workflows need an explicit scope decision. Index mappings pending #1223. See [coverage](https://github.com/${repo}/blob/${context.sha}/docs/ci-health.md).\n\n` +
+                `[Run and dated JSON/Markdown](${runURL}#artifacts) · [Source JSON artifact](${artifactURL}) · source/config ${context.sha} · collector ${rev}\n\n` +
+                `Window [${r.since}, ${r.until}); attempts observed at collection time, not a historical snapshot.\n\n`;
+              const warningText = warnings.length ? warnings.map(w => '- **WARNING:** ' + escape(w)).join('\n') : 'No collector warnings.';
+              const table = '\n\n| Target | Population | Runs | Observed/expected attempts | First-attempt pass rate | Observed attempt pass rate | Cancel/skip/active/other |\n|---|---|---:|---:|---|---|---|\n' + rows.join('\n');
+              const footer = '\n\nAggregate attempt rates are NOT eventual run-level rates. Empty populations are not passes. Unknowns remain unknown; staged is not deployed. No issues, retries, quarantine, repair dispatch or upstream writes.\n';
+              const full = header + warningText + table + '\n\n### Failure groups\n' + (lines.join('\n') || 'No observed groups; this is not evidence of recovery.') +
+                '\n\n### Overdue index entries absent from this report\n' + (absent.join('\n') || 'None (index mappings may still be pending).') + footer;
+              check(Buffer.byteLength(full) <= 4 * 1024 * 1024, 'rendered report too large');
+              fs.writeFileSync(base + r.until.slice(0, 10) + '.json', raw);
+              fs.writeFileSync(base + r.until.slice(0, 10) + '.md', full);
+              // Keep the stable surface bounded. Full warnings/groups remain in
+              // the artifact; explicitly disclose every presentation truncation.
+              let body = header + warnings.slice(0, 12).map(w => '- **WARNING:** ' + escape(w)).join('\n') +
+                (warnings.length > 12 ? `\n**WARNING: ${warnings.length - 12} more warnings; see artifact.**` : '') + table +
+                '\n\n### Findings and groups\n' + lines.slice(0, 12).join('\n') +
+                (groupLines.length > 12 ? `\n**Presentation truncated: ${groupLines.length - 12} more groups; see artifact.**` : '') +
+                '\n\n### Absent overdue entries\n' + (absent.join('\n') || 'None; mappings pending.') + footer;
+              check(Buffer.byteLength(body) < 60000, 'comment too large');
+              await core.summary.addRaw(body).write();
+              // Threat: unapproved coverage or a manual rehearsal overwriting
+              // the daily status. One local policy, off by default; preview
+              // cannot override it. No repository variable or secret changes.
+              if (!policy.publish || process.env.PREVIEW !== 'false') {
+                core.info('Preview only; status comment unchanged.');
+                return;
+              }
+              const target = await github.rest.issues.get({...context.repo, issue_number: issue});
+              check(target.data.number === issue && !target.data.pull_request && target.data.repository_url === `https://api.github.com/repos/${repo}`, 'wrong issue');
+              const matches = [];
+              // Bounded listing: refuse ambiguity/truncation rather than append.
+              for (let page = 1; page <= 10; page++) {
+                const {data} = await github.rest.issues.listComments({...context.repo, issue_number: issue, per_page: 100, page});
+                for (const c of data) if ((c.body ?? '').includes(marker)) {
+                  check(c.user.login === owner && c.user.type === 'Bot' && c.body.startsWith(marker + '\n') &&
+                    c.issue_url === `https://api.github.com/repos/${repo}/issues/${issue}`, 'foreign marker ownership');
+                  matches.push(c);
+                }
+                if (data.length < 100) break;
+                check(page < 10, 'comment history truncated');
+              }
+              check(matches.length <= 1, 'duplicate owned marker');
+              if (matches.length) {
+                if (matches[0].body !== body) await github.rest.issues.updateComment({...context.repo, comment_id: matches[0].id, body});
+              } else await github.rest.issues.createComment({...context.repo, issue_number: issue, body});
+            } catch (error) {
+              await core.summary.addRaw('**CI HEALTH REPORT REFUSED / MISSING: no status published.** See failed validation step.').write();
+              throw error;
+            }
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-health-dated-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/ci-health/2*.json
+            ${{ runner.temp }}/ci-health/2*.md
+          if-no-files-found: error
+          retention-days: 35
