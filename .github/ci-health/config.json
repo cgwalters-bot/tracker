@@ -1,0 +1,25 @@
+{
+  "targets": [
+    {"repository": "bootc-dev/bootc", "workflow": "ci.yml"},
+    {"repository": "composefs/composefs-rs", "workflow": "ci.yml"},
+    {"repository": "bootc-dev/bcvk", "workflow": "main.yml"},
+    {"repository": "bootc-dev/bcvk", "workflow": "main-c10s.yml"},
+    {"repository": "coreos/rpm-ostree", "workflow": "ci.yaml"},
+    {"repository": "ostreedev/ostree", "workflow": "tests.yml"},
+    {"repository": "ostreedev/ostree", "workflow": "rust.yml"},
+    {"repository": "ostreedev/ostree", "workflow": "bootc.yaml"},
+    {"repository": "composefs/composefs", "workflow": "test.yaml"},
+    {"repository": "composefs/composefs", "workflow": "builds.yaml"},
+    {"repository": "composefs/composefs", "workflow": "ci-bootc.yml"},
+    {"repository": "cgwalters-forge/agent-board", "workflow": "ci.yml"},
+    {"repository": "cgwalters-forge/agentic-job", "workflow": "ci.yml"},
+    {"repository": "cgwalters-forge/tracker", "workflow": "ci.yml"},
+    {"repository": "cgwalters-forge/actions", "workflow": "ci.yml"},
+    {"repository": "cgwalters-forge/review", "workflow": "ci.yml"},
+    {"repository": "cgwalters-forge/agenthome", "workflow": "ci.yml"},
+    {"repository": "cgwalters-forge/misctool", "workflow": "ci.yml"},
+    {"repository": "cgwalters-forge/atomic-linux-sandbox", "workflow": "build.yml"},
+    {"repository": "cgwalters-bot/praxis-credential-broker", "workflow": "ci.yml"}
+  ],
+  "index": {}
+}

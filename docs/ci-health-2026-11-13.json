@@ -1,0 +1,105 @@
+{
+  "schema": "agent-board/ci-health/v1",
+  "since": "2026-10-14T00:00:00.000Z",
+  "until": "2026-11-13T00:00:00.000Z",
+  "complete": false,
+  "bounds": {"api_operations":500,"collection_seconds":120,"pages_per_listing":10,"log_bytes":1048576,"aggregate_decoded_bytes":33554432},
+  "decoded_bytes": 24754647,
+  "targets": [
+    {"target":{"repository":"bootc-dev/bootc","workflow":"ci.yml"},"complete":false,"listing_complete":false,
+      "warnings":["history unavailable/incomplete: target byte allocation exhausted","enrichment unavailable/incomplete: target byte allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":27,"attempts":27,"expected_attempts":27,"success":24,"failed":2,"cancelled":1,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":2,"first_attempt_success":24,"first_attempt_denominator":26,"first_attempt_pass_rate":0.9230769230769231,"denominator":26,"pass_rate":0.9230769230769231},
+        "pull_request":{"runs":73,"attempts":73,"expected_attempts":82,"success":32,"failed":28,"cancelled":13,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":27,"first_attempt_success":26,"first_attempt_denominator":53,"first_attempt_pass_rate":0.49056603773584906,"denominator":60,"pass_rate":0.5333333333333333}}},
+    {"target":{"repository":"composefs/composefs-rs","workflow":"ci.yml"},"complete":false,"listing_complete":true,
+      "warnings":["run 39274907145 attempt 1: GET repos/composefs/composefs-rs/actions/jobs/118140825190/logs: body unreadable or over 259663 bytes","enrichment unavailable/incomplete: target time allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":18,"attempts":18,"expected_attempts":18,"success":13,"failed":4,"cancelled":0,"skipped":0,"in_progress":1,"other":0,"first_attempt_failed":4,"first_attempt_success":13,"first_attempt_denominator":17,"first_attempt_pass_rate":0.7647058823529411,"denominator":17,"pass_rate":0.7647058823529411},
+        "pull_request":{"runs":63,"attempts":63,"expected_attempts":72,"success":36,"failed":21,"cancelled":6,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":19,"first_attempt_success":31,"first_attempt_denominator":50,"first_attempt_pass_rate":0.62,"denominator":57,"pass_rate":0.631578947368421}}},
+    {"target":{"repository":"bootc-dev/bcvk","workflow":"main.yml"},"complete":true,"listing_complete":true,"warnings":[],
+      "populations":{
+        "default_push":{"runs":11,"attempts":11,"expected_attempts":11,"success":9,"failed":0,"cancelled":2,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":9,"first_attempt_denominator":9,"first_attempt_pass_rate":1,"denominator":9,"pass_rate":1},
+        "pull_request":{"runs":18,"attempts":18,"expected_attempts":18,"success":18,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":18,"first_attempt_denominator":18,"first_attempt_pass_rate":1,"denominator":18,"pass_rate":1}}},
+    {"target":{"repository":"bootc-dev/bcvk","workflow":"main-c10s.yml"},"complete":false,"listing_complete":true,"warnings":["no eligible history observed"],
+      "populations":{
+        "default_push":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null},
+        "pull_request":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null}}},
+    {"target":{"repository":"coreos/rpm-ostree","workflow":"ci.yaml"},"complete":false,"listing_complete":true,
+      "warnings":["run 38745218524 attempt 1: no meaningful first error in log","run 41149980909 attempt 1: failed attempt has no jobs","enrichment unavailable/incomplete: target time allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":5,"attempts":5,"expected_attempts":5,"success":4,"failed":1,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":1,"first_attempt_success":4,"first_attempt_denominator":5,"first_attempt_pass_rate":0.8,"denominator":5,"pass_rate":0.8},
+        "pull_request":{"runs":27,"attempts":28,"expected_attempts":34,"success":12,"failed":16,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":12,"first_attempt_success":11,"first_attempt_denominator":23,"first_attempt_pass_rate":0.4782608695652174,"denominator":28,"pass_rate":0.42857142857142855}}},
+    {"target":{"repository":"ostreedev/ostree","workflow":"tests.yml"},"complete":false,"listing_complete":true,
+      "warnings":["run 38730541304 attempt 1: no meaningful first error in log","run 38995162341 attempt 1: target time allocation exhausted","enrichment unavailable/incomplete: target time allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":20,"attempts":20,"expected_attempts":20,"success":4,"failed":16,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":16,"first_attempt_success":4,"first_attempt_denominator":20,"first_attempt_pass_rate":0.2,"denominator":20,"pass_rate":0.2},
+        "pull_request":{"runs":54,"attempts":54,"expected_attempts":56,"success":7,"failed":47,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":45,"first_attempt_success":7,"first_attempt_denominator":52,"first_attempt_pass_rate":0.1346153846153846,"denominator":54,"pass_rate":0.12962962962962962}}},
+    {"target":{"repository":"ostreedev/ostree","workflow":"rust.yml"},"complete":false,"listing_complete":true,
+      "warnings":["run 40216233289 attempt 1: failed attempt has no jobs","run 42301080759 attempt 1: GET repos/ostreedev/ostree/actions/jobs/128178733981/logs: body unreadable or over 736906 bytes"],
+      "populations":{
+        "default_push":{"runs":20,"attempts":20,"expected_attempts":20,"success":20,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":20,"first_attempt_denominator":20,"first_attempt_pass_rate":1,"denominator":20,"pass_rate":1},
+        "pull_request":{"runs":54,"attempts":55,"expected_attempts":55,"success":53,"failed":2,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":2,"first_attempt_success":52,"first_attempt_denominator":54,"first_attempt_pass_rate":0.9629629629629629,"denominator":55,"pass_rate":0.9636363636363636}}},
+    {"target":{"repository":"ostreedev/ostree","workflow":"bootc.yaml"},"complete":false,"listing_complete":true,
+      "warnings":["run 38626180501 attempt 1: GET repos/ostreedev/ostree/actions/jobs/116065802708/logs: body unreadable or over 749863 bytes","run 38753869194 attempt 1: target time allocation exhausted","enrichment unavailable/incomplete: target time allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":20,"attempts":20,"expected_attempts":20,"success":10,"failed":7,"cancelled":3,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":7,"first_attempt_success":10,"first_attempt_denominator":17,"first_attempt_pass_rate":0.5882352941176471,"denominator":17,"pass_rate":0.5882352941176471},
+        "pull_request":{"runs":54,"attempts":54,"expected_attempts":55,"success":30,"failed":11,"cancelled":13,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":11,"first_attempt_success":29,"first_attempt_denominator":40,"first_attempt_pass_rate":0.725,"denominator":41,"pass_rate":0.7317073170731707}}},
+    {"target":{"repository":"composefs/composefs","workflow":"test.yaml"},"complete":true,"listing_complete":true,"warnings":[],
+      "populations":{
+        "default_push":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null},
+        "pull_request":{"runs":2,"attempts":2,"expected_attempts":2,"success":2,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":2,"first_attempt_denominator":2,"first_attempt_pass_rate":1,"denominator":2,"pass_rate":1}}},
+    {"target":{"repository":"composefs/composefs","workflow":"builds.yaml"},"complete":false,"listing_complete":true,"warnings":["no eligible history observed"],
+      "populations":{
+        "default_push":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null},
+        "pull_request":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null}}},
+    {"target":{"repository":"composefs/composefs","workflow":"ci-bootc.yml"},"complete":true,"listing_complete":true,"warnings":[],
+      "populations":{
+        "default_push":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null},
+        "pull_request":{"runs":2,"attempts":2,"expected_attempts":2,"success":2,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":2,"first_attempt_denominator":2,"first_attempt_pass_rate":1,"denominator":2,"pass_rate":1}}},
+    {"target":{"repository":"cgwalters-forge/agent-board","workflow":"ci.yml"},"complete":false,"listing_complete":false,
+      "warnings":["history unavailable/incomplete: target byte allocation exhausted","enrichment unavailable/incomplete: target byte allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":24,"attempts":24,"expected_attempts":24,"success":24,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":24,"first_attempt_denominator":24,"first_attempt_pass_rate":1,"denominator":24,"pass_rate":1},
+        "pull_request":{"runs":48,"attempts":48,"expected_attempts":52,"success":38,"failed":9,"cancelled":1,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":5,"first_attempt_success":38,"first_attempt_denominator":43,"first_attempt_pass_rate":0.8837209302325582,"denominator":47,"pass_rate":0.8085106382978723}}},
+    {"target":{"repository":"cgwalters-forge/agentic-job","workflow":"ci.yml"},"complete":false,"listing_complete":false,
+      "warnings":["history unavailable/incomplete: target byte allocation exhausted","enrichment unavailable/incomplete: target byte allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":7,"attempts":7,"expected_attempts":7,"success":0,"failed":7,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":7,"first_attempt_success":0,"first_attempt_denominator":7,"first_attempt_pass_rate":0,"denominator":7,"pass_rate":0},
+        "pull_request":{"runs":71,"attempts":71,"expected_attempts":72,"success":0,"failed":71,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":70,"first_attempt_success":0,"first_attempt_denominator":70,"first_attempt_pass_rate":0,"denominator":71,"pass_rate":0}}},
+    {"target":{"repository":"cgwalters-forge/tracker","workflow":"ci.yml"},"complete":false,"listing_complete":false,
+      "warnings":["history unavailable/incomplete: target byte allocation exhausted","enrichment unavailable/incomplete: target byte allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null},
+        "pull_request":{"runs":51,"attempts":51,"expected_attempts":54,"success":42,"failed":8,"cancelled":0,"skipped":0,"in_progress":1,"other":0,"first_attempt_failed":5,"first_attempt_success":42,"first_attempt_denominator":47,"first_attempt_pass_rate":0.8936170212765957,"denominator":50,"pass_rate":0.84}}},
+    {"target":{"repository":"cgwalters-forge/actions","workflow":"ci.yml"},"complete":false,"listing_complete":false,
+      "warnings":["history unavailable/incomplete: target byte allocation exhausted","enrichment unavailable/incomplete: target byte allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":17,"attempts":17,"expected_attempts":17,"success":12,"failed":5,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":5,"first_attempt_success":12,"first_attempt_denominator":17,"first_attempt_pass_rate":0.7058823529411765,"denominator":17,"pass_rate":0.7058823529411765},
+        "pull_request":{"runs":83,"attempts":83,"expected_attempts":87,"success":60,"failed":23,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":19,"first_attempt_success":60,"first_attempt_denominator":79,"first_attempt_pass_rate":0.759493670886076,"denominator":83,"pass_rate":0.7228915662650602}}},
+    {"target":{"repository":"cgwalters-forge/review","workflow":"ci.yml"},"complete":false,"listing_complete":false,"warnings":["history unavailable/incomplete: target byte allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":36,"attempts":36,"expected_attempts":36,"success":36,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":36,"first_attempt_denominator":36,"first_attempt_pass_rate":1,"denominator":36,"pass_rate":1},
+        "pull_request":{"runs":64,"attempts":64,"expected_attempts":64,"success":64,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":64,"first_attempt_denominator":64,"first_attempt_pass_rate":1,"denominator":64,"pass_rate":1}}},
+    {"target":{"repository":"cgwalters-forge/agenthome","workflow":"ci.yml"},"complete":false,"listing_complete":true,"warnings":["no eligible history observed"],
+      "populations":{
+        "default_push":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null},
+        "pull_request":{"runs":0,"attempts":0,"expected_attempts":0,"success":0,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":0,"first_attempt_denominator":0,"first_attempt_pass_rate":null,"denominator":0,"pass_rate":null}}},
+    {"target":{"repository":"cgwalters-forge/misctool","workflow":"ci.yml"},"complete":true,"listing_complete":true,"warnings":[],
+      "populations":{
+        "default_push":{"runs":7,"attempts":7,"expected_attempts":7,"success":6,"failed":0,"cancelled":1,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":6,"first_attempt_denominator":6,"first_attempt_pass_rate":1,"denominator":6,"pass_rate":1},
+        "pull_request":{"runs":14,"attempts":14,"expected_attempts":14,"success":14,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":14,"first_attempt_denominator":14,"first_attempt_pass_rate":1,"denominator":14,"pass_rate":1}}},
+    {"target":{"repository":"cgwalters-forge/atomic-linux-sandbox","workflow":"build.yml"},"complete":false,"listing_complete":true,
+      "warnings":["run 39514942911 attempt 1: no meaningful first error in log","run 39515018473 attempt 1: no meaningful first error in log","run 39515020681 attempt 1: target time allocation exhausted","enrichment unavailable/incomplete: target time allocation exhausted"],
+      "populations":{
+        "default_push":{"runs":13,"attempts":13,"expected_attempts":13,"success":4,"failed":3,"cancelled":6,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":3,"first_attempt_success":4,"first_attempt_denominator":7,"first_attempt_pass_rate":0.5714285714285714,"denominator":7,"pass_rate":0.5714285714285714},
+        "pull_request":{"runs":36,"attempts":36,"expected_attempts":36,"success":13,"failed":17,"cancelled":6,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":17,"first_attempt_success":13,"first_attempt_denominator":30,"first_attempt_pass_rate":0.43333333333333335,"denominator":30,"pass_rate":0.43333333333333335}}},
+    {"target":{"repository":"cgwalters-bot/praxis-credential-broker","workflow":"ci.yml"},"complete":false,"listing_complete":true,"warnings":["run 40933097263 attempt 1: no meaningful first error in log"],
+      "populations":{
+        "default_push":{"runs":11,"attempts":11,"expected_attempts":11,"success":11,"failed":0,"cancelled":0,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":0,"first_attempt_success":11,"first_attempt_denominator":11,"first_attempt_pass_rate":1,"denominator":11,"pass_rate":1},
+        "pull_request":{"runs":25,"attempts":25,"expected_attempts":25,"success":21,"failed":2,"cancelled":2,"skipped":0,"in_progress":0,"other":0,"first_attempt_failed":2,"first_attempt_success":21,"first_attempt_denominator":23,"first_attempt_pass_rate":0.9130434782608695,"denominator":23,"pass_rate":0.9130434782608695}}}
+  ],
+  "groups": [
+    {"observation":{"signature":"87bd3546e0a215c44182e5420bdda245a1ec8b734095956b1449aad2761b54d5","repository":"ostreedev/ostree","job":"unit-tests (stream10)","test":"","first_error":"error: Recipe `unitcontainer-build` failed on line 37 with exit code 139","occurrences":1,"run_ids":[38753869194],"first_seen":"2026-10-15T14:43:01Z","samples":[{"run_id":38753869194,"attempt":1,"job_id":116487023063,"url":"https://github.com/ostreedev/ostree/actions/runs/38753869194"}]},"classification":null,"class":"unknown","findings":[]},
+    {"observation":{"signature":"be994c97a59cb4175b1373f7e8dbb161368f8676b4a55d9db0b99175fc52d720","repository":"cgwalters-bot/praxis-credential-broker","job":"ci","test":"usage::tests::spend_rolls_off_an_hour_at_a_time_after_a_week","first_error":"thread 'usage::tests::spend_rolls_off_an_hour_at_a_time_after_a_week' (3024) panicked at crates/praxis-gateway/src/usage.rs:904:9:","occurrences":1,"run_ids":[40105671795],"first_seen":"2026-10-24T15:09:17Z","samples":[{"run_id":40105671795,"attempt":1,"job_id":120906731394,"url":"https://github.com/cgwalters-bot/praxis-credential-broker/actions/runs/40105671795"}]},"classification":null,"class":"unknown","findings":[]}
+  ]
+}

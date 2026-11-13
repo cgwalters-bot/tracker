@@ -44,6 +44,200 @@ jobs:
       - run: just test
         env:
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+      # Exercise the trusted renderer/publisher with no tokens or API calls.
+      # Keep new scripts inline: deployment scripts and Justfile may only shrink.
+      - name: Test CI-health saved reports and publication
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const vm = require('node:vm');
+          const { createHash } = require('node:crypto');
+          const { test } = require('node:test');
+          const workflow = fs.readFileSync('.github/workflows/ci-health.yml', 'utf8');
+          const source = /          script: \|\n([\s\S]+?)\n      - uses: actions\/upload-artifact/.exec(workflow)[1].replace(/^            /gm, '');
+          const config = JSON.parse(fs.readFileSync('.github/ci-health/config.json'));
+          const hash = b => createHash('sha256').update(b).digest('hex');
+          const sha = 'a'.repeat(40), rev = '223fc372d321abfc643929faa4e8218b2422f30d';
+          const now = Date.UTC(2026, 10, 5, 12), until = Date.UTC(2026, 10, 5);
+          const iso = t => new Date(t).toISOString();
+          const empty = () => ({ runs: 0, attempts: 0, expected_attempts: 0, success: 0, failed: 0, cancelled: 0,
+            skipped: 0, in_progress: 0, other: 0, first_attempt_success: 0, first_attempt_failed: 0,
+            first_attempt_denominator: 0, first_attempt_pass_rate: null, denominator: 0, pass_rate: null });
+          const report = () => ({schema: 'agent-board/ci-health/v1', since: iso(until - 30 * 86400000), until: iso(until),
+            complete: false, bounds: {api_operations: 500, collection_seconds: 120, pages_per_listing: 10, log_bytes: 1048576, aggregate_decoded_bytes: 33554432}, decoded_bytes: 0,
+            targets: config.targets.map(target => ({target, complete: false, listing_complete: false,
+              warnings: ['history unavailable/incomplete: auth / truncation / logs'], populations: {default_push: empty(), pull_request: empty()}})), groups: []});
+          const signature = 'b'.repeat(64);
+          const entry = days => ({class: 'flake', evidence: ['https://github.com/bootc-dev/bootc/actions/runs/123456789'], owner: 'reviewed-owner',
+            issue: null, fix_status: 'staged', first_seen: iso(until - days * 86400000), explained_at: null, explanation: null});
+          const group = () => ({observation: {signature, repository: 'bootc-dev/bootc', job: 'job', test: '', first_error: 'error: <script>@cgwalters **x** <!-- tracker-ci-health:1229:v1 -->',
+            occurrences: 2, run_ids: [123456789, 234567890], first_seen: iso(until - 86400000),
+            samples: [{run_id: 123456789, attempt: 1, job_id: 555555555, url: 'https://github.com/bootc-dev/bootc/actions/runs/123456789'}]},
+            classification: null, class: 'unknown', findings: ['recurring_without_issue']});
+          async function run(options = {}) {
+            const r = options.report ?? report(), cfg = structuredClone(config);
+            if (options.targets) cfg.targets = options.targets;
+            cfg.index = options.index ?? {};
+            const configBytes = Buffer.from(JSON.stringify(cfg)), raw = Buffer.from(JSON.stringify(r));
+            const manifest = {repository: 'cgwalters-forge/tracker', ref: 'refs/heads/main', source_revision: sha,
+              collector_revision: rev, run_id: '42', run_attempt: '1', config_sha256: hash(configBytes), report_sha256: hash(raw), ...options.manifest};
+            const files = new Map([['report.json', raw], ['provenance.json', Buffer.from(JSON.stringify(manifest))]]);
+            const calls = [], summaries = [], comments = options.comments ?? [];
+            const api = name => async args => { calls.push({name, args}); return {data: {}}; };
+            const context = {repo: {owner: 'cgwalters-forge', repo: 'tracker'}, ref: options.ref ?? 'refs/heads/main', sha, runId: 42,
+              eventName: 'workflow_dispatch', payload: {repository: {default_branch: 'main'}}};
+            const github = {rest: {repos: {getContent: async args => ({data: {type: 'file', encoding: 'base64', content:
+              (args.path.endsWith('publication.json') ? Buffer.from(JSON.stringify({publish: options.publish ?? false})) : configBytes).toString('base64')}})}, issues: {
+                get: async () => ({data: {number: 1229, repository_url: 'https://api.github.com/repos/cgwalters-forge/tracker'}}),
+                listComments: async args => ({data: options.fullPages ? Array(100).fill({body: ''}) : args.page === 1 ? comments : []}),
+                createComment: api('create'), updateComment: api('update')}}};
+            const fakeFS = {lstatSync: path => { const name = path.split('/').pop(); if (options.missing === name || !files.has(name)) throw Error('missing report');
+                return {isFile: () => true, size: options.oversize ? 5 * 1024 * 1024 : files.get(name).length}; },
+              readFileSync: path => files.get(path.split('/').pop()), writeFileSync: (path, data) => files.set(path.split('/').pop(), data)};
+            class Clock extends Date { static now() { return options.now ?? now; } }
+            const sandbox = {Buffer, Date: Clock, console, process: {env: {RUNNER_TEMP: '/tmp', GITHUB_RUN_ATTEMPT: '1', PREVIEW: options.preview === false ? 'false' : 'true',
+              RAW_ARTIFACT_URL: 'https://github.com/cgwalters-forge/tracker/actions/runs/42/artifacts/123'}},
+              context, github, core: {info() {}, summary: {addRaw(text) {summaries.push(text); return this;}, async write() {}}},
+              require: name => name === 'node:fs' ? fakeFS : require(name)};
+            let error;
+            try { await vm.runInNewContext('(async () => {\n' + source + '\n})()', sandbox); } catch (e) { error = e; }
+            return {error, calls, files, summaries};
+          }
+          const owned = body => ({id: 9, body, user: {login: 'github-actions[bot]', type: 'Bot'}, issue_url: 'https://api.github.com/repos/cgwalters-forge/tracker/issues/1229'});
+          test('collector step invokes once and binds saved bytes to run and config', () => {
+            const collect = /        shell: node \{0\}\n        run: \|\n([\s\S]+?)\n      - uses: actions\/upload-artifact/.exec(workflow)[1].replace(/^          /gm, '');
+            const configBytes = fs.readFileSync('.github/ci-health/config.json');
+            const raw = Buffer.from(JSON.stringify(report())), files = new Map(), calls = [];
+            const env = {RUNNER_TEMP: '/tmp', GITHUB_REPOSITORY: 'cgwalters-forge/tracker', GITHUB_REF: 'refs/heads/main',
+              GITHUB_SHA: sha, AGENT_BOARD_REV: rev, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '2'};
+            vm.runInNewContext(collect, {process: {env}, require: name => {
+              if (name === 'node:fs') return {readFileSync: path => {
+                assert.equal(path, '.github/ci-health/config.json'); return configBytes;
+              }, mkdirSync() {}, writeFileSync: (path, data) => files.set(path, data)};
+              if (name === 'node:child_process') return {execFileSync: (command, args, options) => {
+                calls.push(command);
+                assert.deepEqual(Array.from(args), ['ci-health', '--config', '.github/ci-health/config.json', '--format', 'json']);
+                assert.equal(options.timeout, 180000); assert.equal(options.maxBuffer, 4 * 1024 * 1024);
+                return raw;
+              }};
+              return require(name);
+            }});
+            assert.deepEqual(calls, ['/tmp/agent-board/bin/agent-board']);
+            assert.equal(files.get('/tmp/ci-health/report.json'), raw);
+            assert.deepEqual(JSON.parse(files.get('/tmp/ci-health/provenance.json')), {repository: env.GITHUB_REPOSITORY,
+              ref: env.GITHUB_REF, source_revision: sha, collector_revision: rev, run_id: '42', run_attempt: '2',
+              config_sha256: hash(configBytes), report_sha256: hash(raw)});
+          });
+          test('explicit bounded scope, default-off policy, serialized default-branch jobs and installer', () => {
+            assert.equal(config.targets.length, 20);
+            assert.equal(new Set(config.targets.map(t => t.repository)).size, 15);
+            assert.equal(new Set(config.targets.map(t => JSON.stringify(t))).size, 20);
+            assert.equal(JSON.parse(fs.readFileSync('.github/ci-health/publication.json')).publish, false);
+            assert.match(workflow, /cron: '43 6 \* \* \*'/);
+            assert.match(workflow, /group: ci-health\n  cancel-in-progress: false/);
+            assert.equal((workflow.match(/github.ref == format/g) ?? []).length, 2);
+            assert.match(workflow, /just build-agent-board "\$CI_HEALTH_REV"/);
+            assert.match(workflow, new RegExp('  CI_HEALTH_REV: ' + rev + '\\n'));
+            assert.match(workflow, /AGENT_BOARD_REV: \$\{\{ env.CI_HEALTH_REV \}\}/);
+            assert.equal((workflow.match(/retention-days: 35/g) ?? []).length, 2);
+            assert.doesNotMatch(workflow.split('\n  report:')[1], /uses: actions\/checkout|^\s+run:/m);
+          });
+          test('preview and default-off do not write; empty/incomplete populations stay visible', async () => {
+            for (const options of [{}, {publish: true}, {preview: false}]) {
+              const result = await run(options);
+              assert.ifError(result.error); assert.equal(result.calls.length, 0);
+              const md = result.files.get('2026-11-05.md');
+              assert.match(md, /INCOMPLETE OBSERVATIONS/); assert.match(md, /auth \/ truncation \/ logs/);
+              assert.match(md, /no data \(0\/0\)/); assert.match(md, /NOT eventual run-level/);
+            }
+          });
+          test('stable marker creates once, updates once, identical rerun does not append', async () => {
+            const first = await run({publish: true, preview: false}); assert.ifError(first.error);
+            assert.deepEqual(first.calls.map(c => c.name), ['create']);
+            const body = first.calls[0].args.body;
+            const same = await run({publish: true, preview: false, comments: [owned(body)]}); assert.ifError(same.error);
+            assert.equal(same.calls.length, 0);
+            const updated = await run({publish: true, preview: false, comments: [owned('<!-- tracker-ci-health:1229:v1 -->\nold')]});
+            assert.ifError(updated.error); assert.deepEqual(updated.calls.map(c => c.name), ['update']);
+            assert.equal(updated.calls[0].args.comment_id, 9);
+          });
+          test('wrong ref, missing/oversized report, wrong schema/targets/provenance/rates refuse writes', async () => {
+            const badSchema = report(); badSchema.schema = 'other';
+            const badTarget = report(); badTarget.targets.pop();
+            const badRate = report(); badRate.targets[0].populations.default_push.pass_rate = 1;
+            for (const options of [{ref: 'refs/heads/topic'}, {missing: 'report.json'}, {missing: 'provenance.json'}, {oversize: true},
+              {manifest: {source_revision: 'f'.repeat(40)}}, {manifest: {collector_revision: sha}}, {report: badSchema}, {report: badTarget}, {report: badRate}]) {
+              const got = await run({...options, publish: true, preview: false});
+              assert.ok(got.error, JSON.stringify(options)); assert.equal(got.calls.length, 0);
+              assert.match(got.summaries.join(), /REPORT REFUSED/);
+            }
+          });
+          test('foreign/duplicate markers and capped comment history refuse publication', async () => {
+            const c = owned('<!-- tracker-ci-health:1229:v1 -->\nold');
+            for (const options of [{comments: [{...c, user: {login: 'outsider', type: 'User'}}]}, {comments: [c, c]},
+              {comments: [{...c, issue_url: 'https://api.github.com/repos/other/repo/issues/1229'}]}, {fullPages: true}]) {
+              const got = await run({...options, publish: true, preview: false}); assert.ok(got.error); assert.equal(got.calls.length, 0);
+            }
+          });
+          test('untrusted excerpts are escaped, recurrence retained, sample links constrained', async () => {
+            const r = report(); r.groups = [group()];
+            const got = await run({report: r}); assert.ifError(got.error);
+            const md = got.files.get('2026-11-05.md');
+            assert.match(md, /recurring_without_issue/); assert.match(md, /&#60;script&#62;&#64;cgwalters/);
+            assert.doesNotMatch(md, /<script>|@cgwalters|\*\*x\*\*/);
+            r.groups[0].observation.samples[0].url = 'https://evil.example/';
+            assert.ok((await run({report: r})).error);
+          });
+          test('nonzero saved fixture separates populations, first try, reruns and excluded conclusions', async () => {
+            // Push: success; failure then success on rerun; cancellation.
+            // PR: first success; two first failures (one rerun success); skip,
+            // active, neutral; one expected attempt could not be read.
+            const fixture = JSON.parse(fs.readFileSync('.github/ci-health/test-report.json'));
+            const targets = fixture.targets.map(t => t.target);
+            const got = await run({report: fixture, targets}); assert.ifError(got.error);
+            const md = got.files.get('2026-11-05.md');
+            assert.match(md, /default_push \| 3 \| 4\/4 \| 50\.0% \(1\/2\) \| 66\.7% \(2\/3\) \| 1\/0\/0\/0/);
+            assert.match(md, /pull_request \| 6 \| 7\/8 \| 33\.3% \(1\/3\) \| 50\.0% \(2\/4\) \| 0\/1\/1\/1/);
+            assert.match(md, /INCOMPLETE OBSERVATIONS/); assert.match(md, /log unavailable; partial failure evidence/);
+            assert.match(md, /2 runs, 2 occurrences; recurring_without_issue/);
+            assert.match(md, /run 123456789, attempt 1/); assert.match(md, /NOT eventual run-level/);
+            for (const mutate of [
+              r => { r.targets[0].populations.default_push.pass_rate = 0.5; },
+              r => { r.targets[0].populations.pull_request.first_attempt_pass_rate = 0.5; },
+              r => { r.targets[0].populations.default_push.success = 3; },
+              r => { r.targets[0].populations.pull_request.expected_attempts = 6; },
+              r => { r.targets[0].populations.default_push.first_attempt_success = 3; },
+            ]) {
+              const r = structuredClone(fixture); mutate(r);
+              const bad = await run({report: r, targets, publish: true, preview: false});
+              assert.ok(bad.error); assert.equal(bad.calls.length, 0);
+            }
+          });
+          test('strict seven-day boundary; absent overdue signatures audited, never called recovered', async () => {
+            for (const [days, overdue] of [[7, false], [7 + 1 / 86400, true]]) {
+              const e = entry(days), r = report(), g = group();
+              g.classification = e; g.class = 'flake';
+              if (overdue) g.findings.push('flake_unexplained_over_seven_days');
+              r.groups = [g];
+              const got = await run({report: r, index: {[signature]: e}}); assert.ifError(got.error);
+              assert.equal(got.files.get('2026-11-05.md').includes('flake_unexplained_over_seven_days'), overdue);
+              const absent = await run({index: {[signature]: e}}); assert.ifError(absent.error);
+              assert.equal(absent.files.get('2026-11-05.md').includes('Absence does NOT prove recovery'), overdue);
+            }
+          });
+          test('saved live JSON renders offline without another collection', async () => {
+            const r = JSON.parse(fs.readFileSync(process.env.CI_HEALTH_SAMPLE ?? 'docs/ci-health-2026-11-13.json'));
+            // Replay at collection time, not the canned fixture's fixed date. The
+            // production freshness gate still rejects this sample two days later.
+            const collectedAt = Date.parse(r.until) + 12 * 3600000;
+            const got = await run({report: r, now: collectedAt});
+            assert.ifError(got.error); assert.equal(got.calls.length, 0);
+            assert.ok(got.files.has(r.until.slice(0, 10) + '.md'));
+            const stale = await run({report: r, now: Date.parse(r.until) + 2 * 86400000});
+            assert.match(stale.error?.message ?? '', /invalid\/stale window/);
+            assert.equal(stale.calls.length, 0);
+          });
 
   # actionlint, zizmor and the runner-label policy shared by the forge
   # repositories, at the versions its `just check` recipe pins on the
