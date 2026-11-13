@@ -624,16 +624,26 @@ fn check_secondary_batch(policy: &Value) {
         let next = patch(&format!("src/tool{n}.rs"));
         many_files.push_str(&next[next.find("diff --git").unwrap()..]);
     }
-    for (name, items, secondary_patch, accepted) in [
-        ("two PRs", vec![primary.clone(), secondary.clone()], patch("src/tool.rs"), true),
-        ("two PRs plus ancillary", vec![primary.clone(), secondary.clone(), ancillary.clone()], patch("src/tool.rs"), true),
-        ("four outputs", vec![primary.clone(), secondary.clone(), ancillary, json!({"type": "missing_data", "reason": "Test."})], patch("src/tool.rs"), false),
-        ("two primary", vec![primary.clone(), primary.clone(), secondary.clone()], patch("src/tool.rs"), false),
-        ("two secondary", vec![primary.clone(), secondary.clone(), secondary.clone()], patch("src/tool.rs"), false),
-        ("secondary protected", vec![primary.clone(), secondary.clone()], patch("AGENTS.md"), false),
-        ("secondary workflows", vec![primary.clone(), secondary.clone()], patch(".github/workflows/test.yml"), false),
-        ("secondary bytes", vec![primary.clone(), secondary.clone()], patch("src/tool.rs") + &"x".repeat(65536), false),
-        ("secondary files", vec![primary, secondary], many_files, false),
+    // A well-formed patch whose only fault is its size.
+    let oversized = patch("src/tool.rs").replace("+test\n", &format!("+{}\n", "x".repeat(65536)));
+    let mut foreign = secondary.clone();
+    foreign["repo"] = json!("cgwalters-forge/bootc");
+    let mut other_run = secondary.clone();
+    other_run["branch"] = json!("misctool/agent-run-8");
+    // Each refusal names its reason, so a case cannot pass on an unrelated one.
+    // Both create_pull_request limits share one combined-count message.
+    for (name, items, secondary_patch, refusal) in [
+        ("secondary foreign repo", vec![primary.clone(), foreign], patch("src/tool.rs"), Some("with repo \"cgwalters-forge/bootc\", which is not the policy's")),
+        ("secondary other run", vec![primary.clone(), other_run], patch("src/tool.rs"), Some("which is not the run's branch under \"misctool/\"")),
+        ("two PRs", vec![primary.clone(), secondary.clone()], patch("src/tool.rs"), None),
+        ("two PRs plus ancillary", vec![primary.clone(), secondary.clone(), ancillary.clone()], patch("src/tool.rs"), None),
+        ("four outputs", vec![primary.clone(), secondary.clone(), ancillary, json!({"type": "missing_data", "reason": "Test."})], patch("src/tool.rs"), Some("4 outputs, over max_outputs 3")),
+        ("two primary", vec![primary.clone(), primary.clone(), secondary.clone()], patch("src/tool.rs"), Some("Too many items of type 'create_pull_request'")),
+        ("two secondary", vec![primary.clone(), secondary.clone(), secondary.clone()], patch("src/tool.rs"), Some("Too many items of type 'create_pull_request'")),
+        ("secondary protected", vec![primary.clone(), secondary.clone()], patch("AGENTS.md"), Some("protected files: AGENTS.md")),
+        ("secondary workflows", vec![primary.clone(), secondary.clone()], patch(".github/workflows/test.yml"), Some("\".github/workflows/test.yml\": protected path")),
+        ("secondary bytes", vec![primary.clone(), secondary.clone()], oversized, Some("bytes, over 65536")),
+        ("secondary files", vec![primary, secondary], many_files, Some("touches 11 files, over 10")),
     ] {
         std::fs::write(out.join("aw-cgwalters-forge-misctool-misctool-agent-run-7.patch"), secondary_patch).unwrap();
         std::fs::write(out.join("outputs.jsonl"), items.iter().map(|item| format!("{item}\n")).collect::<String>()).unwrap();
@@ -641,7 +651,12 @@ fn check_secondary_batch(policy: &Value) {
         let result = if collect.status.success() {
             agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap(), "--run-id", "7"])
         } else { collect };
-        assert_eq!(result.status.success(), accepted, "{name}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        let context = format!("{name}: {stderr}\n{}", String::from_utf8_lossy(&result.stdout));
+        assert_eq!(result.status.success(), refusal.is_none(), "{context}");
+        if let Some(reason) = refusal {
+            assert!(stderr.contains(reason), "expected {reason:?}: {context}");
+        }
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
