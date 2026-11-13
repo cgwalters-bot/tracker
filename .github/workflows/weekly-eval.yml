@@ -66,7 +66,8 @@ jobs:
       max-parallel: 1
       matrix:
         repo: [cgwalters-forge/agentic-job, cgwalters-forge/agent-board]
-    uses: ./.github/workflows/weekly-comparison.yml
+    # Pinned actionlint 1.7.12 does not accept $/ workflow calls; ./ uses this reviewed commit.
+    uses: ./.github/workflows/weekly-comparison.yml # zizmor: ignore[self-repository]
     permissions:
       contents: read
       actions: read

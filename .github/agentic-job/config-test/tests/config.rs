@@ -41,6 +41,147 @@ fn dispatch() -> String {
     read("../workflows/dispatch.yml")
 }
 
+// Keep the offline probes in the config-test crate rather than growing the
+// deployment Justfile. Node evaluates the caller's actual guard expressions.
+fn weekly_comparison_probe(script: &str) {
+    let output = Command::new("node")
+        .args(["-e", script])
+        .current_dir(here().join("../.."))
+        .output()
+        .expect("running weekly comparison probe");
+    assert!(output.status.success(), "{}\n{}",
+        String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+}
+
+#[test]
+fn weekly_comparison_routing() {
+    weekly_comparison_probe(r#"
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const trigger = fs.readFileSync('.github/workflows/weekly-eval.yml', 'utf8');
+const workflow = fs.readFileSync('.github/workflows/weekly-comparison.yml', 'utf8');
+const brief = fs.readFileSync('.github/agentic-job/weekly-comparison.md', 'utf8');
+const guards = [...trigger.matchAll(/    if: \$\{\{ (.*) \}\}/g)].map(m => m[1]);
+assert.equal(guards.length, 2);
+const route = guards.map(g => new Function('vars', 'github', 'format', `return ${g}`));
+const format = (s, branch) => s.replace('{0}', branch);
+for (const event_name of ['schedule', 'workflow_dispatch']) {
+  for (const value of [undefined, '', 'true', 'disabled', 'enabled']) {
+    for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
+      const github = { event_name, ref, event: { repository: { default_branch: 'main' } } };
+      const admitted = route.map(f => f({ WEEKLY_EVAL_DOCS: value }, github, format));
+      assert.deepEqual(admitted, [ref === 'refs/heads/main' && value !== 'enabled',
+        ref === 'refs/heads/main' && value === 'enabled']);
+    }
+  }
+}
+assert.match(trigger, /max-parallel: 1\n      matrix:\n        repo: \[cgwalters-forge\/agentic-job, cgwalters-forge\/agent-board\]/);
+assert.match(trigger, /uses: \.\/\.github\/workflows\/weekly-comparison.yml/);
+assert.match(workflow, /group: weekly-comparison-\$\{\{ inputs.repo \}\}\n  cancel-in-progress: false/);
+assert.match(workflow, /task: \$\{\{ needs.brief.outputs.task \}\}/);
+assert.match(workflow, /repo: \$\{\{ inputs.repo \}\}\n      output-repo: \$\{\{ inputs.repo \}\}/);
+assert.match(workflow, /fs.readFileSync\(".github\/agentic-job\/weekly-comparison.md", "utf8"\)/);
+assert.match(workflow, /agent-skills: true/);
+assert.match(workflow, /max-requests: '150'\n      timeout: '45'/);
+assert.match(workflow, /outputs: create_pull_request,noop,missing_tool,missing_data\n      max-outputs: '1'/);
+assert.match(workflow, /notify: none/);
+assert.match(workflow, /artifact-prefix: weekly-\$\{\{ inputs.repo ==/);
+assert.doesNotMatch(workflow.split('\n  apply:\n')[0], /secrets\./);
+assert.match(workflow.split('\n  apply:\n')[1], /SAFE_OUTPUTS_PAT: \$\{\{ secrets.SAFE_OUTPUTS_PAT \}\}/);
+assert.match(workflow, /apply-environment: agent-apply/);
+const pins = [...workflow.matchAll(/uses: cgwalters-forge\/agentic-job\/.*@([a-f0-9]{40})/g)].map(m => m[1]);
+assert.deepEqual(pins, Array(6).fill('3f9f6425119b97bb3620a38fe0adc8e79be7dc8e'));
+const parsed = spawnSync('python3', ['-c', 'import json,tomllib; print(json.dumps(tomllib.load(open(".github/agentic-job/weekly-comparison.toml","rb"))))'], { encoding: 'utf8' });
+assert.equal(parsed.status, 0, parsed.stderr);
+assert.deepEqual(JSON.parse(parsed.stdout), { hosts: ['github.com'],
+  repos: ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board'], bases: ['main'],
+  max_outputs: 1, max_patch_bytes: 65536, max_patch_files: 2,
+  github: { outputs: { create_pull_request: { max: 1 }, noop: { max: 1 },
+    missing_tool: { max: 1 }, missing_data: { max: 1 } } } });
+for (const text of ['one draft pull request', 'one commit', 'full commit SHA', 'immutable upstream source',
+  'native queue', 'MCP integrations', 'measurement versus board, pass and review', 'open comparison PR',
+  'return noop', 'No long report comment', 'without closing it', 'Do not change code']) assert.ok(brief.includes(text), text);
+"#);
+}
+
+#[test]
+#[ignore = "manual owning-layer probe; requires the workflow-pinned agentic-job on PATH"]
+fn weekly_comparison_policy() {
+    weekly_comparison_probe(r#"
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'weekly-policy-'));
+const cli = args => spawnSync('agentic-job', args, { encoding: 'utf8' });
+const compile = (repo, outputs = 'create_pull_request,noop,missing_tool,missing_data') => cli([
+  'policy', '--allow', '.github/agentic-job/weekly-comparison.toml', '--repo', repo,
+  '--clone-url', `https://github.com/${repo}`, '--base', 'main', '--kind', 'branch',
+  '--outputs', outputs, '--max-outputs', '1']);
+try {
+  for (const repo of ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board']) {
+    const compiled = compile(repo);
+    assert.equal(compiled.status, 0, compiled.stderr);
+  }
+  for (const repo of ['cgwalters-forge/tracker', 'other/repo']) assert.notEqual(compile(repo).status, 0);
+  for (const output of ['add_comment', 'create_issue', 'push_to_pull_request_branch', 'dispatch_workflow']) {
+    assert.notEqual(compile('cgwalters-forge/agentic-job', output).status, 0, output);
+  }
+  const policy = path.join(temp, 'policy.json');
+  fs.writeFileSync(policy, compile('cgwalters-forge/agentic-job').stdout);
+  const outputs = path.join(temp, 'outputs');
+  fs.mkdirSync(outputs);
+  const collected = path.join(temp, 'collected.json');
+  for (const [requests, allowed] of [
+    [[{ type: 'noop', message: 'No supported documentation delta.' }], true],
+    [[{ type: 'noop', message: 'One' }, { type: 'noop', message: 'Two' }], false],
+    [[{ type: 'add_comment', body: 'Not permitted', item_number: 519 }], false],
+  ]) {
+    fs.writeFileSync(path.join(outputs, 'outputs.jsonl'), requests.map(r => JSON.stringify(r)).join('\n') + '\n');
+    const result = cli(['collect', '--policy', policy, '--outputs', outputs, '--collected', collected]);
+    const checked = result.status === 0 ? cli(['check', '--policy', policy, '--outputs', outputs, '--collected', collected]) : result;
+    assert.equal(checked.status === 0, allowed, checked.stdout + checked.stderr);
+  }
+  // Exercise real mail patches through collect/check, not just request types.
+  const base = '1'.repeat(40);
+  const branch = 'weekly-comparison-fixture';
+  const report = path.join(temp, 'report.json');
+  const patch = (files, content = 'Source-backed comparison.') =>
+    `From ${'2'.repeat(40)} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: ${base}\n` +
+    'From: Fixture <fixture@example.test>\nDate: Tue, 3 Nov 2026 00:00:00 +0000\nSubject: [PATCH] docs: Refresh comparison\n\n---\n\n' +
+    files.map(file => `diff --git a/${file} b/${file}\nnew file mode 100644\n` +
+      `--- /dev/null\n+++ b/${file}\n@@ -0,0 +1 @@\n+${content}\n`).join('');
+  for (const repo of ['cgwalters-forge/agentic-job', 'cgwalters-forge/agent-board']) {
+    fs.writeFileSync(policy, compile(repo).stdout);
+    fs.writeFileSync(path.join(outputs, 'base.json'), JSON.stringify({ repo, ref: 'main', commit: base }));
+    fs.writeFileSync(path.join(outputs, 'outputs.jsonl'), JSON.stringify({ type: 'create_pull_request',
+      title: 'docs: Refresh comparison', body: 'Keep the comparison current.', branch }) + '\n');
+    for (const [name, files, content, allowed] of [
+      ['comparison page', ['docs/background-ghaw.md'], undefined, true],
+      ['page and index', ['docs/background-ghaw.md', 'docs/index.md'], undefined, true],
+      ['too many files', ['docs/a.md', 'docs/b.md', 'docs/c.md'], undefined, false],
+      ['too many bytes', ['docs/background-ghaw.md'], 'x'.repeat(65536), false],
+      ['protected workflow', ['.github/workflows/weekly.yml'], undefined, false],
+    ]) {
+      fs.writeFileSync(path.join(outputs, `aw-${branch}.patch`), patch(files, content));
+      const collectedResult = cli(['collect', '--policy', policy, '--outputs', outputs, '--collected', collected]);
+      assert.equal(collectedResult.status, 0, collectedResult.stdout + collectedResult.stderr);
+      const checked = cli(['check', '--policy', policy, '--outputs', outputs, '--collected', collected, '--report', report]);
+      assert.equal(checked.status === 0, allowed, `${repo} ${name}: ${checked.stdout}${checked.stderr}`);
+      const verdict = JSON.parse(fs.readFileSync(report, 'utf8'));
+      assert.equal(verdict.ok, allowed);
+      if (allowed) assert.deepEqual(verdict.patch.files, files);
+      else assert.ok(verdict.errors.length > 0, name);
+      console.log(`ok ${repo} ${name}: ${allowed ? 'accepted' : 'refused'}`);
+    }
+  }
+} finally {
+  fs.rmSync(temp, { recursive: true, force: true });
+}
+"#);
+}
+
 #[test]
 fn supervisor_previous_health_caller() {
     let workflow = read("../workflows/supervisor.yml");
