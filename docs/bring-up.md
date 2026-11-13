@@ -111,9 +111,38 @@ otherwise apply fails with "owns ... and has no fork of it to push to"
 (#517). So a `cgwalters-bot/*` repository is a dispatch or fix target only
 once that file is there, and a test in `.github/agentic-job/config-test/tests/config.rs`
 keeps the list of such repositories. `cgwalters-bot/praxis-credential-broker`
-is the one so far (praxis-credential-broker#37): the poll does not follow
-it, so its pull requests are reviewed and merged by hand, and its
-deployment stays in the operator's private infrastructure.
+is the one so far (praxis-credential-broker#37). It is in the pass's `follow`
+and `workRepositories`, but `pr.noMerge` disables new automatic merge/queue
+admissions. Its deployment stays in the operator's private infrastructure.
+
+### Broker review prerequisites (#1237)
+
+This is a partial tracker safeguard, not an enabled broker review loop.
+`just test-config` requires every work repository to be followed and preserves
+the broker's `noMerge` guard; there is no local exemption field. Any future
+exemption needs an explicit consumer-supported contract and tests.
+
+Read-only checks on 13 November 2026 found only `ci.yml` and
+`container-images.yml` in the broker's default-branch workflow directory.
+By comparison, [agent-board's base-owned review caller](https://github.com/cgwalters-forge/agent-board/blob/main/.github/workflows/review.yml)
+handles PR events and `/review` with a pinned reusable wrapper, without running
+head code in the privileged caller. The broker needs an equivalent reviewed
+caller and its trusted review policy before following can yield reviews.
+
+The [producer's poll contract](https://github.com/cgwalters-forge/agent-board/blob/main/docs/poll.md#one-pass)
+binds automated verdicts to public bot-fork provenance. Owner-branch apply
+permission alone does not establish same-repository-head review provenance or
+automatic fix eligibility. Verify that supported path in the producer and
+broker before claiming review/fix coverage; do not loosen provenance here.
+
+The broker's active [ruleset 24017893](https://github.com/cgwalters-bot/praxis-credential-broker/rules/24017893)
+still required zero approving reviews and did not dismiss stale approvals at
+that check. Operator-owned prerequisites are at least one required approving
+review, stale-approval dismissal, and confirmation of the intended review
+identity, wrapper/broker admission and token/App permissions. Those permissions
+and admission were not verified. No ruleset, credential, admission or scheduling
+setting was changed. Keep `noMerge` until these prerequisites are verified;
+following alone is not approval protection and cannot complete #1237.
 
 The standing
 instructions for each kind are separate from the brief: `dispatch.yml` puts

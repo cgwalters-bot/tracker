@@ -1811,6 +1811,49 @@ fn release_train_callers_hold_one_wrappers_pin() {
     assert_eq!(pins.len(), 1, "the caller files pin the wrappers at {pins:?}");
 }
 
+// Work dispatched outside follow can finish without subsequent PR handling.
+// No exemption is needed by this config; adding one needs consumer support.
+fn unfollowed_work_repositories(pass: &Value) -> Vec<String> {
+    let names = |key: &str| -> BTreeSet<String> {
+        pass[key]
+            .as_array()
+            .unwrap_or_else(|| panic!("{key} is not an array"))
+            .iter()
+            .map(|repo| repo.as_str().expect("a repository name").to_ascii_lowercase())
+            .collect()
+    };
+    names("workRepositories").difference(&names("follow")).cloned().collect()
+}
+
+#[test]
+fn the_pass_follows_every_work_repository() {
+    let pass = json_file("../pass.json");
+    assert_eq!(unfollowed_work_repositories(&pass), Vec::<String>::new(), "work repositories must be followed");
+
+    for repo in ["cgwalters-bot/praxis-credential-broker", "cgwalters-forge/agent-board"] {
+        let mut missing = pass.clone();
+        missing["follow"].as_array_mut().unwrap().retain(|entry| entry != repo);
+        assert_eq!(unfollowed_work_repositories(&missing), vec![repo], "must detect removing {repo} from follow");
+    }
+
+    let mut mixed_case = pass.clone();
+    for repo in mixed_case["follow"].as_array_mut().unwrap() {
+        *repo = json!(repo.as_str().unwrap().to_ascii_uppercase());
+    }
+    assert!(unfollowed_work_repositories(&mixed_case).is_empty());
+}
+
+#[test]
+fn the_broker_stays_followed_without_automatic_merging() {
+    let pass = json_file("../pass.json");
+    let repo = json!("cgwalters-bot/praxis-credential-broker");
+    // Following does not establish review provenance or approval protection
+    // for this credential gateway. Keep the merge hold until those are ready.
+    for list in [&pass["follow"], &pass["workRepositories"], &pass["pr"]["noMerge"]] {
+        assert!(list.as_array().expect("repository list").contains(&repo));
+    }
+}
+
 #[test]
 fn the_pass_starts_work_only_where_dispatch_and_fix_runs_may_act_on_known_pools() {
     let pass = json_file("../pass.json");

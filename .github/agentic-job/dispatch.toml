@@ -3,8 +3,8 @@
 # The midstream forks composefs-rs and bootc (epic #160) and bcvk are not
 # listed here: their bounds are midstream.toml, which dispatch.yml picks for them,
 # so that every pull request there stays a draft (#336).
-# The bot-owned praxis-credential-broker is a target the poll does not
-# follow either (docs/bring-up.md).
+# The bot-owned praxis-credential-broker is followed, but pr.noMerge keeps
+# automatic merging disabled pending review prerequisites (docs/bring-up.md).
 # The organization site cgwalters-forge/cgwalters-forge.github.io is a target
 # for the weekly notes post (weekly-blog.yml). The poll follows it, but it has
 # no review workflow yet, so only the operator's approval merges its posts.
