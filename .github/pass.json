@@ -48,7 +48,7 @@
   },
   "board": {"owner": "cgwalters-forge", "project": 1},
   "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true, "maxAppliesPerPass": 3, "heldPlanHours": 24},
-  "wip": 25,
+  "wip": 60,
   "topDown": true,
   "requestShare": 60,
   "state": ".state/pass.json",

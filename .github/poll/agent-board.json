@@ -37,11 +37,11 @@
   "schedule": {
     "owner": "cgwalters-forge",
     "project": 1,
-    "wip": 8,
+    "wip": 40,
     "batch": 2,
     "triage": 4,
     "triagePool": "openai",
-    "fill": 8,
+    "fill": 20,
     "operatorRetryPools": ["tier-1"],
     "priorityField": "Priority",
     "repositories": [
