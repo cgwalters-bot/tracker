@@ -723,3 +723,20 @@ research uncertainty does not require an execution hold or another hygiene loop.
 New feedback-isolated evaluation remains separate #1224 work; production
 integration remains #1228. No new feedback, historical review run, prompt tuning
 or execution of reviewed code is part of this closeout.
+
+### Draft publication checkpoint reconciliation
+
+At the 2026-11-08 inspection, #1436 was already published as a draft, so its
+publication-unavailable checkpoint was stale. That observation is historical,
+not a requirement to keep completed documentation in draft indefinitely.
+
+Continuation check on 2026-11-13: [#1436](https://github.com/cgwalters-forge/tracker/pull/1436)
+merged at 01:19:18Z as `5c19809064463fda24421a318aff341750c9320d`.
+Its latest `VERDICT: APPROVE` reviewed head
+`9183d0bf972f2b5f82b0386079690658836ba4fc` and reported no actionable findings;
+that automated review is not human adjudication. This research-disposition
+follow-up is #1460, not an update to #1436's branch. Its bounded documentation
+work is complete and can be reviewed without answering the human questions
+above. Keep #1227 open for those questions; do not carry them as an unfinished
+publication checkpoint. No publication setup, settings or credentials change,
+repeat audit, new #1224 evaluation or #1228 integration is needed here.
