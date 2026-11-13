@@ -2805,6 +2805,52 @@ fn release_train_callers_hold_one_wrappers_pin() {
     assert_eq!(pins.len(), 1, "the caller files pin the wrappers at {pins:?}");
 }
 
+// Work dispatched outside follow can finish without subsequent PR handling.
+// No exemption is needed by this config; adding one needs consumer support.
+// Every string entry is in REPOS (checked below), so REPOS covers them all.
+fn unfollowed_work_repositories(pass: &Value) -> Vec<&'static str> {
+    REPOS
+        .iter()
+        .filter(|repo| covers(&pass["workRepositories"], repo, false) && !covers(&pass["follow"], repo, false))
+        .map(|repo| repo.name)
+        .collect()
+}
+
+#[test]
+fn the_pass_follows_every_work_repository() {
+    let pass = json_file("../pass.json");
+    assert_eq!(unfollowed_work_repositories(&pass), Vec::<&str>::new(), "work repositories must be followed");
+
+    let broker = "cgwalters-bot/praxis-credential-broker";
+    let mut missing = pass.clone();
+    missing["follow"].as_array_mut().unwrap().retain(|entry| entry != broker);
+    assert_eq!(unfollowed_work_repositories(&missing), vec![broker], "must detect removing {broker} from follow");
+
+    let mut no_org = pass.clone();
+    no_org["follow"].as_array_mut().unwrap().retain(Value::is_string);
+    assert!(unfollowed_work_repositories(&no_org).contains(&"cgwalters-forge/agent-board"), "must detect removing the organization rule from follow");
+
+    let mut mixed_case = pass.clone();
+    for entry in mixed_case["follow"].as_array_mut().unwrap() {
+        match entry {
+            Value::String(name) => *name = name.to_ascii_uppercase(),
+            rule => rule["org"] = json!(rule["org"].as_str().unwrap().to_ascii_uppercase()),
+        }
+    }
+    assert!(unfollowed_work_repositories(&mixed_case).is_empty());
+}
+
+#[test]
+fn the_broker_stays_followed_without_automatic_merging() {
+    let pass = json_file("../pass.json");
+    let repo = json!("cgwalters-bot/praxis-credential-broker");
+    // Following does not establish review provenance or approval protection
+    // for this credential gateway. Keep the merge hold until those are ready.
+    for list in [&pass["follow"], &pass["workRepositories"], &pass["pr"]["noMerge"]] {
+        assert!(list.as_array().expect("repository list").contains(&repo));
+    }
+}
+
 #[test]
 fn the_pass_starts_work_only_where_dispatch_and_fix_runs_may_act_on_known_pools() {
     let pass = json_file("../pass.json");
