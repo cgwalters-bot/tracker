@@ -220,7 +220,7 @@ fn promote_caller_settings_and_policy_records() {
 }
 
 #[test]
-fn promote_caller_is_bounded_and_explicitly_enabled() {
+fn promote_caller_is_bounded_to_the_default_branch() {
     let workflow = read("../workflows/promote.yml");
     for required in [
         "cron: '17,32,47,2 * * * *'",
@@ -264,7 +264,7 @@ fn promote_caller_is_bounded_and_explicitly_enabled() {
             for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
               assert.equal(admitted({ PROMOTE: activation }, { event_name, ref,
                 event: { repository: { default_branch: 'main' } } }, format),
-                activation === 'enabled' && ref === 'refs/heads/main');
+                ref === 'refs/heads/main');
             }
           }
         }
