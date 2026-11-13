@@ -442,6 +442,36 @@ acceptance blocker. Roll back by unsetting `MISCTOOL_SECONDARY`; cancel or
 inspect outstanding runs separately, and inspect a pushed orphan branch
 before retrying a failed publication.
 
+### Midstream default-branch sync
+
+`midstream-sync.yml` runs hourly and on manual dispatch, only when the repository
+variable `MIDSTREAM_SYNC` is `enabled` (unset is off), on tracker's default branch.
+It uses `CGWALTERS_BOT_PAT` in `agent-apply` to fast-forward forks discovered from
+the live org census: custom property `origin=fork`, topic `bot-midstream`, and a
+GitHub `parent`. There is no sync allowlist. Each fork's default branch tracks its
+parent's default branch, even when their branch names differ. The summary lists
+every selected fork as equal, fast-forwarded, or not synced with a reason; any
+refusal fails the job while allowing the remaining forks to be checked.
+
+To prevent losing fork-only commits or racing pushes, the only write is a ref
+update with `force=false`; the workflow never merges, resets, or bypasses rules.
+It checks equality against the observed upstream commit after each update.
+Discovery completes before writes, with at most ten 100-row pages per org list,
+100 forks, 650 requests (enough for two full censuses and six per fork), twenty seconds per request and six minutes total API
+time inside a ten-minute job. A truncated or failed census fails without writes.
+Upstream movement after observation is picked up next run. No live sync has been
+performed as part of this implementation.
+
+Both midstream caller bounds set `[github.outputs] own-branch-repos` to
+`["cgwalters-forge/*"]`, trusting org CI for own-branch pushes without committing
+`accept-owner-branches` files to upstream-tracking defaults. Repository admission,
+branch bounds, draft policy and protected files remain unchanged. This requires
+agentic-job#3404, which dispatch's non-review policy/check/apply pin (v0.6.14)
+includes. The one-time removal of fork-only default-branch commits and any job-specific ruleset bypass require a
+separate operator decision on #1581; neither is implemented or authorized here.
+Open midstream PRs continue through ordinary fix rounds, without special rebases.
+`just test-config` executes the workflow offline with a fixture API transport.
+
 ### Paced-review cutover
 
 **Prepared, not activated (#1198/#1171; activation deferred in #1500).**
