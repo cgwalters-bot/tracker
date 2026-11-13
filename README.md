@@ -308,14 +308,20 @@ replacement; that proposal is now obsolete, superseded by merged #2641.
 names #1282, which merged at 22:42:18. Neither lifecycle resolves attribution.
 Do not retry/reopen either old target or revive #2978 to clear these refusals.
 
-`just test-dispatch-admission` executes the receiving bounds step and receipt
-offline. With agentic-job installed it also replays sanitized PR responses
-through the real resolver and policy; `just test-dispatch-policy` requires that
-binary rather than skipping. Open incident variants are reconstructed from
+The ci test job's receiving replay step, inline in `ci.yml` because the
+Justfile may only shrink, executes the receiving bounds step and receipt
+offline and replays sanitized PR responses through the real resolver and
+policy, against a read-only actions checkout at the fixture revision. It
+installs agentic-job `427ce2295925654be9c35e91ca5cee91bbc2c9ea`
+using its pinned source's attestation/checksum verifier and runs this mandatory replay
+against the current bounds. The historical wrapper's v0.6.10 cannot parse the
+current `own_author` bound; this is not a replay of its binary. Open incident
+variants are reconstructed from
 the policy logs, not claimed as archived raw API responses; closed responses
 are field-projected API recordings. Synthetic `bot/**` controls show an open
 allowed branch can compile a policy but cannot revive a closed target. The
-downstream assertions evaluate the recorded immutable wrapper's literal guards,
+downstream assertions evaluate guards read from that immutable wrapper, checking
+them against the recording along with its fix-bounds/target forwarding. This is
 not live Actions execution or a scheduler model. The production non-review
 wrapper still follows main; these recordings do not attest future revisions.
 
@@ -323,8 +329,10 @@ Because attribution remains missing, the receiving workflow now emits one
 `tracker-dispatch-admission/v1` JSON log receipt after profile/wrapper completion,
 even on failure: run/attempt, event, actor/triggering actor, kind, target,
 selected bounds and profile/wrapper results. Each field is capped at 256
-characters and JSON-escaped; no task, event dump, credentials or producer claim
-is included. Empty bounds mean profile did not supply them. Wrapper failure
+characters and JSON-escaped; inputs are read from the event file, not step env
+bindings that Actions would log before truncation. No task, event dump,
+credentials or producer claim is included. Empty bounds mean profile did not
+supply them. Wrapper failure
 alone is not a policy-refusal diagnosis: read its policy log. This is passive
 evidence, not a new admission control or opt-in, and cannot recover an absent
 producer receipt. Follow-up requires the initiating command or workflow's own

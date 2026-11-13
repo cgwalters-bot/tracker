@@ -427,12 +427,6 @@ jobs:
     steps:
       - name: Record dispatch admission outcome
         env:
-          EVENT: ${{ github.event_name }}
-          ACTOR: ${{ github.actor }}
-          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
-          KIND: ${{ inputs.kind }}
-          REPO: ${{ inputs.repo }}
-          ITEM: ${{ inputs.item }}
           ALLOW: ${{ needs.profile.outputs.allow }}
           FIX_ALLOW: ${{ needs.profile.outputs.fix-allow }}
           PROFILE_RESULT: ${{ needs.profile.result }}
@@ -440,7 +434,12 @@ jobs:
         run: |
           node -e '
           const e = process.env;
+          // Read inputs from the event file: step env values are logged raw by
+          // Actions before this script can bound or escape them. Never dump it.
+          const inputs = JSON.parse(require("node:fs").readFileSync(e.GITHUB_EVENT_PATH, "utf8")).inputs || {};
+          const metadata = { ...e, EVENT: e.GITHUB_EVENT_NAME, ACTOR: e.GITHUB_ACTOR,
+            TRIGGERING_ACTOR: e.GITHUB_TRIGGERING_ACTOR, KIND: inputs.kind, REPO: inputs.repo, ITEM: inputs.item };
           const keys = ["GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "EVENT", "ACTOR", "TRIGGERING_ACTOR", "KIND", "REPO", "ITEM", "ALLOW", "FIX_ALLOW", "PROFILE_RESULT", "WRAPPER_RESULT"];
-          const receipt = Object.fromEntries(keys.map(k => [k.toLowerCase(), (e[k] || "").slice(0, 256)]));
-          console.log(JSON.stringify({ schema: "tracker-dispatch-admission/v1", ...receipt, selected_bounds: e.KIND === "fix" ? receipt.fix_allow : receipt.allow }));
+          const receipt = Object.fromEntries(keys.map(k => [k.toLowerCase(), String(metadata[k] || "").slice(0, 256)]));
+          console.log(JSON.stringify({ schema: "tracker-dispatch-admission/v1", ...receipt, selected_bounds: receipt.kind === "fix" ? receipt.fix_allow : receipt.allow }));
           '
