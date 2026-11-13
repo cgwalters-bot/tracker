@@ -2,9 +2,10 @@
 
 > This text is LLM generated.
 
-This is tracker#1326's caller preparation for
+This records tracker#1326's caller preparation and tracker#1614's evidence for
 [agent-board#650](https://github.com/cgwalters-forge/agent-board/issues/650), not
-activation. The contract is agent-board's
+activation, under [tracker#939](https://github.com/cgwalters-forge/tracker/issues/939).
+The contract is agent-board's
 [docs/dispatch.md at #653's merge](https://github.com/cgwalters-forge/agent-board/blob/77869b56bcfa02c2d03c79af365b2ad51c96de06/docs/dispatch.md#heavy-model-caller-contract).
 On 5 November 2026 the open tracker PR inventory had no overlapping heavy caller
 change; #1103 was already merged. tracker#1198 remains the separate ordinary-wrapper
@@ -83,34 +84,114 @@ to obtain source/dependencies/images, not for fixture execution or inference.
 
 ## Activation blockers owned by #650
 
-Keep production `.github/agentic-job/pools.json` unchanged, including astra/fable.
-Before a **separately reviewed** `openai.heavy.model = praxis/gpt-6-astra` edit:
+### Evidence checked on 13 November 2026
 
-1. Deploy this caller contract and verify its effective-pool/model/budget outputs.
-   Confirm the current wrapper's immutable transitive agentic-job version writes
-   the selected actual model to `summary.json`; the offline cost reader fixture
-   proves how a supplied summary is priced, not what a live runner writes.
-2. Identify deployed review UI and any out-of-tree pools readers; rerun the exact
-   parser fixtures at those versions. Resolve incompatible/unknown consumers
-   **before** admitting the shared heavy key. Do not blindly advance pins.
-3. For routed heavy jobs, separately prepare
-   `bootc-dev/cgwalters-devspace-sandbox/.github/workflows/agent.yml` and its pool
-   resolver for the same `effort` contract. Its inspected default-branch workflow
-   has no effort input and selects only `.model`; no open PR supplies this work.
-   Tracker cannot edit it here. Native
-   Forgejo heavy remains refused by board. Neither path is claimed activated.
-4. Verify the broker's actual deployed price table recognizes the selected model
-   (not the ordinary pool model), with independently checked token-price math in
-   trailing-seven-day `spend.runs` and the pool's unchanged grant/holds. Test missing
-   price stays unpriced/no-reading and holds; weekly-limit refusal, pacing and
-   single-slot accounting must still hold. Pinned board fixtures are evidence of
-   consumption/refusal, **not broker weekly-price production evidence**. Broker
-   source/deployment revision and real pricing are unverified blockers here.
-5. Coordinate #1198 separately: retain review.yml's reviewed pin, base-owned
-   configuration and credential-free review execution. Do not enable review
-   scheduling or send heavy through review's independent model mapping.
+This updates the historical offline inventory above using the
+[8 November triage](https://github.com/cgwalters-forge/agent-board/issues/650#issuecomment-6719079210).
+That triage is context, not a runtime attestation. **The model is recorded, but
+the astra pool's usage reading and seven-day spend could not be verified with
+this run's access. Production pools.json therefore stays unchanged**, including
+astra and fable; no `openai.heavy` key is added.
+
+1. **Caller and summary writer: source and live artifact confirmed.**
+   [tracker#1334](https://github.com/cgwalters-forge/tracker/pull/1334) merged the
+   dormant caller. At the inspected tracker commit
+   [`08de6a4c`](https://github.com/cgwalters-forge/tracker/blob/08de6a4c9c6cf9eee975e1f91fc10648d0c184f2/.github/workflows/dispatch.yml#L62-L67),
+   `effort` is still empty by default; the
+   [resolver](https://github.com/cgwalters-forge/tracker/blob/08de6a4c9c6cf9eee975e1f91fc10648d0c184f2/.github/workflows/dispatch.yml#L299-L312)
+   passes it to the pinned board binary. The ordinary
+   [wrapper at `428fc617`](https://github.com/cgwalters-forge/actions/blob/428fc617f985f8c5c4aabaf22afdbf2dfc744010/.github/workflows/cgwalters-agentic-job.yml#L512)
+   now pins agentic-job `427ce2295925654be9c35e91ca5cee91bbc2c9ea`, not the older
+   v0.6.11 pin in the offline inventory. Its
+   [summary writer](https://github.com/cgwalters-forge/agentic-job/blob/427ce2295925654be9c35e91ca5cee91bbc2c9ea/crates/agentic-job/src/run/summary.rs#L455-L457)
+   writes `digest.model.clone().or_else(|| measured.model.clone())`: the
+   agent-reported session model, falling back to the requested model. This is
+   not independent provider verification.
+
+   The successful astra-pool
+   [run 43524496794](https://github.com/cgwalters-forge/tracker/actions/runs/43524496794)
+   (13 November, tracker#596) references those same wrapper/runtime SHAs in its
+   [run metadata](https://api.github.com/repos/cgwalters-forge/tracker/actions/runs/43524496794).
+   Its `dispatch-triage-agent-run`
+   [artifact 14084328794](https://github.com/cgwalters-forge/tracker/actions/runs/43524496794/artifacts/14084328794)
+   contains `summary.json` with `model: praxis/gpt-6-astra`, `aic_budget: 500`,
+   `tokens_source: praxis`, and finished broker usage with 22 requests and
+   `unmetered: 0`. Thus the current pinned runner actually records the selected
+   model for an ordinary astra run; explicit/inherited **heavy** runs are still
+   untested.
+
+2. **Review UI: deployed commit identified and parser checked.**
+   [Deployment 7778346699](https://api.github.com/repos/cgwalters-forge/review/deployments/7778346699)
+   names `dcd3607737cd96f00f2fa241e212b7b9192b173e` for `github-pages`; its
+   [statuses](https://api.github.com/repos/cgwalters-forge/review/deployments/7778346699/statuses)
+   record success at 22:49:51Z, with the
+   [deployment job](https://github.com/cgwalters-forge/review/actions/runs/43522301086/job/132219666675)
+   and the review UI URL. The legacy Pages builds endpoint returned HTTP 404;
+   the successful deployment record supplies the commit instead.
+   `just test-heavy-review /tmp/opencode/review` passed at that same SHA (also
+   review main when inspected): the actual `parseBudget` accepts the heavy
+   fixture and preserves the $300 Mistral allowance. The probe's generic
+   “deployed UI revision remains unverified” output does not inspect deployments;
+   the separate record above identifies this deployment. No UI pin was advanced.
+   The earlier consumer inventory remains source evidence, not an exhaustive
+   attestation of unknown out-of-tree readers.
+
+3. **Hosted only; routed heavy is out of scope, not a prerequisite.**
+   bootc-dev's
+   [`agent.yml` at `cd62032d`](https://github.com/bootc-dev/cgwalters-devspace-sandbox/blob/cd62032dbd948ca9fd5b9286ee0c0db74720b963/.github/workflows/agent.yml)
+   has no `effort` dispatch input and resolves only the ordinary model. Sending
+   that unknown input is refused by GitHub, not silently downgraded. Heavy here
+   is limited to tracker's hosted dispatch, not devspace, native Forgejo,
+   session/supervisor defaults or review. No external workflow/config change is
+   proposed or required for this hosted-only scope.
+
+4. **Pricing: metered run cost present; required pool accounting still missing.**
+   The same astra artifact reports 66,855 input, 930,176 cache-read and 3,381
+   output tokens. Its `cost` is USD 1.7436, `basis: list`, `source: metered`,
+   `prices: 2026-10-29`, `partial: false`, `estimated: false`, with model entries
+   `gpt-6-astra: 1.7433` and `gpt-6-luna: 0.0002`. This is positive evidence of
+   metered cost for the astra run, not proof of the broker's deployed weekly
+   price table or the board's astra pool reading. Rounded model costs and mixed
+   model totals alone cannot independently establish token-price math.
+
+   The review source
+   [locates usage in bot-ops#1](https://github.com/cgwalters-forge/review/blob/dcd3607737cd96f00f2fa241e212b7b9192b173e/src/github/config.ts#L170-L176).
+   `gh api repos/cgwalters-forge/bot-ops/issues/1/comments` returned HTTP 404
+   with this run's token. The public
+   [pass 43525295623](https://github.com/cgwalters-forge/tracker/actions/runs/43525295623)
+   log's `One pass` output at 23:25:04Z reports only claude/openai usage and links
+   the [usage comment](https://github.com/cgwalters-forge/bot-ops/issues/1#issuecomment-5951584283);
+   its artifact listing contains only `pass-state`, not a spend snapshot.
+   **Exact remaining gap:** a readable recent astra usage reading and
+   trailing-seven-day `spend.runs` with actual-model price/rates, token-price
+   math, unchanged grant/holds and single-slot identity. Missing-price
+   unpriced/no-reading refusal and weekly-limit/pacing behavior remain required;
+   offline fixtures do not establish production accounting. Do not change
+   broker policy or infer pricing coverage merely from the astra pool name.
+
+5. **Review isolation unchanged.** #1198 remains separate. Keep review.yml's
+   reviewed pin, base-owned mapping and credential-free execution; no review
+   scheduling or heavy review dispatch is enabled by this work.
+
+### Before #650 closes
+
+After the accounting gap is resolved, a separately reviewed change may add only
+`openai.heavy = {"model":"praxis/gpt-6-astra"}` and run
+`just test-dispatch-pool` and `just test`, reporting actual results. The former
+recipe is absent at the inspected tracker commit (resolution moved to the pinned
+board binary); do not claim it passed or advance pins to manufacture a result.
+
+Then one explicit `pool=openai, effort=heavy` hosted run and one inherited
+`effort=heavy` hosted run (ordinary `AGENT`/`AGENT_MODEL` uniquely matching openai)
+must show selection of `praxis/gpt-6-astra` in resolver output and `summary.json`,
+unchanged pool/slot identity and grant/holds, and priced actual-model usage in
+the seven-day spend with checked token math. Explicit agent/budget must stay
+openai's; inherited agent/budget fallbacks must remain unchanged. Board's
+`docs/job-plans.md` must also stop telling callers to omit effort before
+[agent-board#650](https://github.com/cgwalters-forge/agent-board/issues/650) closes.
+These runs were not dispatched here. This is evidence, **not activation**, and
+heavy is not one of tracker#939's five gates.
 
 No live dispatch, broker policy, credentials, rulesets, external repository files
-or settings were changed. No end-to-end activation claim is made. Rollback of
-future heavy activation is to stop heavy plans and remove the heavy opt-in/key;
-ordinary pool models and current callers remain unchanged.
+or settings were changed. Rollback of future heavy activation is to stop heavy
+plans and remove the heavy opt-in/key; ordinary models and callers stay unchanged.
