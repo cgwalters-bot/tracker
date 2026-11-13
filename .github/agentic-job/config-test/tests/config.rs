@@ -672,6 +672,75 @@ fn path_of(name: &str) -> String {
 }
 
 #[test]
+fn dispatch_forwards_optional_issue_repository_without_redirecting_work() {
+    let workflow = dispatch();
+    let input = workflow.split_once("      issue_repo:\n").unwrap().1.split_once("      item:\n").unwrap().0;
+    assert!(input.contains("        type: string\n        default: ''\n"));
+    assert!(!input.contains("required: true"));
+    let run = workflow.split_once("\n  run:\n").unwrap().1.split_once("\n  # Threat:").unwrap().0;
+    // Keep this dispatch-only pin separate from the review release train's
+    // literal wrapper references, which it scans and rewrites in this file.
+    let wrapper = "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml";
+    assert!(has_line(run, &format!("    uses: {wrapper}@428fc617f985f8c5c4aabaf22afdbf2dfc744010")));
+    for line in [
+        "      repo: ${{ inputs.repo }}",
+        "      item: ${{ inputs.item }}",
+        "      item-repo: ${{ inputs.issue_repo }}",
+        "      allow: ${{ needs.profile.outputs.allow }}",
+        "      fix-allow: ${{ needs.profile.outputs.fix-allow }}",
+    ] {
+        assert!(has_line(run, line), "{line}");
+    }
+    // The producer uses the target in the title for WIP/routing accounting,
+    // even when the issue number belongs to a separate source repository.
+    let title = workflow.lines().find(|line| line.starts_with("run-name:")).unwrap();
+    assert!(title.starts_with("run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}"));
+    assert!(!title.contains("issue_repo"));
+    for source in ["", "cgwalters-forge/tracker"] {
+        let selected = run_step(&step_script("Resolve the bounds"), &[
+            ("KIND", "implement"), ("REPO", "cgwalters-forge/agent-board"), ("ISSUE_REPO", source),
+        ]).unwrap();
+        assert_eq!(selected, "allow=.github/agentic-job/dispatch.toml\nfix-allow=.github/agentic-job/fix.toml\n");
+    }
+}
+
+#[test]
+fn agentic_job_policy_checks_plain_and_staged_issue_repositories() {
+    if !agentic_job_installed() {
+        return;
+    }
+    let compile = |source: &str| {
+        let bounds = path_of("dispatch.toml");
+        let mut args = vec![
+            "policy", "--allow", &bounds, "--repo", "cgwalters-forge/agent-board",
+            "--clone-url", "https://github.com/cgwalters-forge/agent-board", "--base", "main",
+            "--kind", "branch", "--outputs", "create_pull_request,noop,missing_tool,missing_data",
+            "--max-outputs", "3", "--output-repo", "cgwalters-forge/agent-board",
+        ];
+        if !source.is_empty() {
+            args.extend(["--item-repo", source]);
+        }
+        agentic_job(&args)
+    };
+    for source in ["", "cgwalters-forge/tracker"] {
+        let result = compile(source);
+        assert!(result.status.success(), "{source}: {}", String::from_utf8_lossy(&result.stderr));
+        let policy: Value = serde_json::from_slice(&result.stdout).unwrap();
+        assert_eq!(policy["repo"], "cgwalters-forge/agent-board");
+        assert_eq!(policy["clone_url"], "https://github.com/cgwalters-forge/agent-board");
+        assert_eq!(policy["base"], "main");
+        assert_eq!(policy["safe_outputs"]["create_pull_request"]["ready_when_complete"], true);
+    }
+    // Neither another owner nor an unlisted repository in our owner gains
+    // issue/reporting authority merely by being named in a dispatch input.
+    for source in ["other/tracker", "cgwalters-forge/not-admitted", "cgwalters-forge/tracker/extra"] {
+        let result = compile(source);
+        assert!(!result.status.success(), "{source}");
+        assert!(result.stdout.is_empty(), "refusal releases no policy");
+    }
+}
+
+#[test]
 fn acp_experiment_is_hosted_and_a_child_agent_and_hosted_has_none() {
     let hosted = read("hosted.toml");
     let experiment = read("acp-experiment.toml");
@@ -1609,7 +1678,7 @@ fn is_commit(rev: &str) -> bool {
 }
 
 #[test]
-fn workflows_follow_our_own_repositories_at_main_review_excepted_and_pin_the_rest() {
+fn workflows_follow_our_own_repositories_at_main_dispatch_and_review_excepted_and_pin_the_rest() {
     let dispatch_repo = json_file("../poll/agent-board.json")["dispatchRepo"].as_str().expect("dispatchRepo").to_owned();
     let owner = format!("{}/", dispatch_repo.split('/').next().unwrap_or_default());
     let dir = here().join("../workflows");
@@ -1638,12 +1707,10 @@ fn workflows_follow_our_own_repositories_at_main_review_excepted_and_pin_the_res
             // Compared in parts: this file is one the release train moves the
             // review pin in (.github/release-train/config.json), and it
             // stalls on a second, unversioned `actions/...yml@<commit>`.
-            let ordinary_review = file == "dispatch.yml"
+            let dispatch_wrapper = file == "dispatch.yml"
                 && uses.split_once('@')
-                    == Some((
-                        "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml",
-                        "ba6c56925e63551fd4373fbeb23456a2f4a316da",
-                    ));
+                    .is_some_and(|(path, pin)| path == "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml"
+                        && matches!(pin, "ba6c56925e63551fd4373fbeb23456a2f4a316da" | "428fc617f985f8c5c4aabaf22afdbf2dfc744010"));
             // These callers compose the harness directly: policy/check/apply and the
             // actions must run at one immutable source revision. Its workflow
             // test checks that all six pins agree.
@@ -1653,7 +1720,7 @@ fn workflows_follow_our_own_repositories_at_main_review_excepted_and_pin_the_res
             if file == "weekly-eval.yml" && uses == "./.github/workflows/weekly-comparison.yml" {
                 continue;
             }
-            let ok = match uses.starts_with(&owner) && file != "review.yml" && !ordinary_review && !composed_piece {
+            let ok = match uses.starts_with(&owner) && file != "review.yml" && !dispatch_wrapper && !composed_piece {
                 true => is_ref(uses, |rev| rev == "main"),
                 false => is_ref(uses, is_commit),
             };

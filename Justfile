@@ -1106,13 +1106,13 @@ test-review-caller:
     assert.deepEqual(withBlock.trim().split('\n').map(line => line.trim().split(':')[0]), ['kind', 'repo', 'item', 'head', 'pool', 'task']);
     for (const key of ['repo', 'item', 'head', 'pool']) assert.ok(withBlock.includes(`${key}: ${expression(`inputs.${key}`)}`));
     assert.doesNotMatch(review.replace(/^ *#.*$/gm, ''), /secrets:|inherit|SAFE_OUTPUTS_PAT|INFERENCE_API_KEY|AGENT_MODEL|pools\.json|needs\.profile/);
-    assert.match(job('run'), /cgwalters-agentic-job.yml@main/);
+    assert.match(job('run'), /cgwalters-agentic-job.yml@428fc617f985f8c5c4aabaf22afdbf2dfc744010/);
     assert.match(job('run'), /SAFE_OUTPUTS_PAT: \$\{\{ secrets.CGWALTERS_BOT_PAT \}\}/);
     assert.match(dispatch, /      head:\n[^]*?        type: string\n        default: ''/);
     const gateJob = job('review-gate');
     assert.match(gateJob, /timeout-minutes: 1/);
     assert.ok(gateJob.includes(`ACTIVATION: ${expression('vars.REVIEW_DISPATCH')}`));
-    for (const key of ['head', 'effort', 'config']) assert.ok(gateJob.includes(`${key.toUpperCase()}: ${expression(`inputs.${key}`)}`));
+    for (const key of ['head', 'effort', 'config', 'issue_repo']) assert.ok(gateJob.includes(`${key.toUpperCase()}: ${expression(`inputs.${key}`)}`));
     const gateScript = /run: \|\n([^]*)/.exec(gateJob)[1].replace(/^          /gm, '');
     const head = 'a'.repeat(40);
     const checkGate = extra => spawnSync('bash', ['-euo', 'pipefail', '-c', gateScript], { encoding: 'utf8',
@@ -1126,8 +1126,7 @@ test-review-caller:
       assert.equal(checkGate({ HEAD: bad }).status, 1, bad);
     }
     assert.equal(checkGate({}).status, 0);
-    assert.equal(checkGate({ EFFORT: 'heavy' }).status, 1);
-    assert.equal(checkGate({ CONFIG: 'acp-experiment' }).status, 1);
+    for (const extra of [{ EFFORT: 'heavy' }, { CONFIG: 'acp-experiment' }, { ISSUE_REPO: 'cgwalters-forge/agent-board' }]) assert.equal(checkGate(extra).status, 1, JSON.stringify(extra));
     // Evaluate actual Actions expressions: exact producer title and exclusive routes.
     const evaluate = (source, inputs) => runInNewContext(source, { inputs, format: (s, ...args) => s.replace(/\{(\d+)\}/g, (_, n) => args[n]) });
     const title = inputs => /^run-name: (.*)$/m.exec(dispatch)[1].replace(/\$\{\{ (.*?) \}\}/g, (_, source) => evaluate(source, inputs));

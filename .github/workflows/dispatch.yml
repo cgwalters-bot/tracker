@@ -22,7 +22,7 @@
 # `profile` job puts it before the task, so a dispatch carries only what is
 # particular to its item. The wrapper adds its own line on top, which says
 # what the kind may hand back.
-# Non-review calls follow main (#544). Review is a separate immutable call:
+# Non-review calls pin actions#250 for item-repo forwarding. Review is a separate immutable call:
 # its wrapper owns REVIEW_POOLS, base policy/config and checked submission.
 name: dispatch
 run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.kind == 'review' && format(' {0} ({1})', inputs.head, inputs.pool) || (inputs.pool && format(' ({0})', inputs.pool) || '') }}${{ inputs.kind != 'review' && inputs.config == 'acp-experiment' && ' [acp-experiment]' || '' }}
@@ -38,8 +38,12 @@ on:
         description: Public target repository, OWNER/NAME, allowed by the bounds
         type: string
         required: true
+      issue_repo:
+        description: "Optional public source issue repository, OWNER/NAME, allowed by the selected bounds; empty uses repo. Not for review or fix"
+        type: string
+        default: ''
       item:
-        description: Positive issue number in the target repository (a pull request's for review and fix)
+        description: Positive issue number in issue_repo or repo (a pull request's in repo for review and fix)
         type: string
         required: true
       kind:
@@ -204,11 +208,14 @@ jobs:
           HEAD: ${{ inputs.head }}
           EFFORT: ${{ inputs.effort }}
           CONFIG: ${{ inputs.config }}
+          ISSUE_REPO: ${{ inputs.issue_repo }}
         run: |
           node -e '
           if (process.env.ACTIVATION !== "enabled") throw Error("ordinary reviews are disabled");
           if (!/^[0-9a-f]{40}$/.test(process.env.HEAD) || process.env.HEAD.length !== 40) throw Error("review requires exact expected head");
           if (process.env.EFFORT || process.env.CONFIG !== "hosted") throw Error("review configuration belongs to REVIEW_POOLS");
+          // Prevent foreign issue context from being silently attributed to the reviewed PR.
+          if (process.env.ISSUE_REPO) throw Error("issue_repo is not for review or fix");
           '
 
   review:
@@ -378,7 +385,7 @@ jobs:
   run:
     needs: profile
     if: ${{ inputs.kind != 'review' }}
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@428fc617f985f8c5c4aabaf22afdbf2dfc744010
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:
@@ -391,6 +398,10 @@ jobs:
       task: ${{ needs.profile.outputs.task }}
       repo: ${{ inputs.repo }}
       item: ${{ inputs.item }}
+      # Threat: a source issue must not redirect checkout/PR output or admit an
+      # arbitrary owner. Policy checks item-repo against the selected bounds;
+      # the wrapper uses it only for issue context, reporting and closing links.
+      item-repo: ${{ inputs.issue_repo }}
       kind: ${{ inputs.kind }}
       agent: ${{ needs.profile.outputs.agent }}
       model: ${{ needs.profile.outputs.model }}
