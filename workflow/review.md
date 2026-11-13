@@ -39,6 +39,32 @@ regressions and missing coverage; cite files and lines for actionable findings.
 State the exact admitted head SHA in the findings so a stale review cannot be
 mistaken for a review of a newer push.
 
+## Ergonomics
+
+These are operational checks requested by the operator, not preferences mined from the review corpus.
+For a change to a CLI, its output or its configuration, try the command as a
+newcomer would, using the README's invocation and `--help`, not knowledge of
+the implementation. Check that:
+
+- default output is short and says what happened and why;
+- required flags are minimal and have sensible defaults;
+- errors say what to do next;
+- `--json` exists for machines;
+- no new setting is needed to get the documented behavior;
+- the README shows the one-line invocation.
+
+Untrusted commands can write data or contact real services, even when called
+preview. Keep trials inside the existing review sandbox and permissions, with
+local disposable inputs and bounded time and output; do not supply credentials,
+enable apply, or change caller settings. Run only the affected command paths,
+not a test suite. If a trial cannot run safely or needs unavailable access,
+say exactly what was not tried and why. Report the commands, observed results
+and confusing or missing behavior under `Tried`; do not claim an unrun check
+passed. Use the trusted task's severity rules for findings, normally important
+or nit unless the concrete impact meets the blocker definition below.
+
+## Output
+
 Return exactly one safe output: add_comment on the triggering pull request,
 or noop if no useful review can be made. Set only type and body on add_comment;
 do not set item_number or other routing fields: the workflow fixes the target.
