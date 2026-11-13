@@ -16,6 +16,103 @@ const SKILLED_AGENTS: [&str; 2] = ["claude", "opencode"];
 
 const KINDS: [&str; 6] = ["implement", "fix", "triage", "research", "session", "review"];
 
+// Run the shipped workflow code with only the API transport replaced.
+#[test]
+fn midstream_sync_only_fast_forwards_and_reports_every_refusal() {
+    let workflow = read("../workflows/midstream-sync.yml");
+    assert!(workflow.contains("cron: '19 * * * *'"));
+    assert!(workflow.contains("  workflow_dispatch:\n"));
+    assert!(workflow.contains("vars.MIDSTREAM_SYNC == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)"));
+    assert!(workflow.contains("permissions: {}"));
+    assert!(workflow.contains("cancel-in-progress: false"));
+    assert!(workflow.contains("timeout-minutes: 10"));
+    assert!(workflow.contains("environment: agent-apply"));
+    let script = workflow.split_once("        run: |\n").unwrap().1.lines()
+        .map(|line| line.strip_prefix("          ").unwrap_or(line))
+        .collect::<Vec<_>>().join("\n");
+    let harness = r#"
+const assert = require('node:assert/strict');
+const vm = require('node:vm');
+const script = require('node:fs').readFileSync(0, 'utf8');
+const old = 'a'.repeat(40), target = 'b'.repeat(40);
+function run(mode) {
+  let writes = [], calls = 0, summary = '', state = old;
+  const process = { env: { GITHUB_STEP_SUMMARY: 'summary' }, exitCode: 0 };
+  const names = mode === 'multiple' ? ['blocked', 'ok'] : ['ok'];
+  const rows = names.map(name => ({ full_name: `cgwalters-forge/${name}`, topics: ['bot-midstream'] }));
+  rows.push({ full_name: 'cgwalters-forge/not-midstream', topics: [] });
+  rows.push({ full_name: 'cgwalters-forge/not-fork', topics: ['bot-midstream'] });
+  const api = (command, args, options) => {
+    calls++;
+    assert.equal(command, 'gh');
+    assert.deepEqual(Array.from(args.slice(0, 3)), ['api', '--hostname', 'github.com']);
+    assert.ok(options.timeout > 0 && options.timeout <= 20000);
+    assert.equal(options.maxBuffer, 8 * 1024 * 1024);
+    const path = args[3];
+    let result;
+    if (path.startsWith('orgs/cgwalters-forge/properties/values?')) {
+      if (mode === 'census-fail') throw Error('unavailable');
+      result = [...names, 'not-midstream'].map(name => ({ repository_full_name: `cgwalters-forge/${name}`,
+        properties: [{ property_name: 'origin', value: 'fork' }] }));
+      if (mode === 'pages' && path.endsWith('page=1')) result = Array(100).fill({ properties: [] });
+      if (mode === 'overflow') result = Array(100).fill({ properties: [] });
+    } else if (path.startsWith('orgs/cgwalters-forge/repos?')) {
+      if (mode === 'repos-fail') throw Error('unavailable');
+      result = mode === 'fork-overflow' ? Array(101).fill(rows[0]) : rows;
+    }
+    else if (path === 'repos/upstream/project') result = { default_branch: 'trunk' };
+    else if (path === 'repos/upstream/project/git/ref/heads/trunk') result = { object: { sha: target } };
+    else if (/^repos\/cgwalters-forge\/[^/]+$/.test(path)) {
+      result = { full_name: path.slice(6), fork: true, topics: ['bot-midstream'], custom_properties: { origin: 'fork' },
+        default_branch: 'forge/main', parent: { full_name: 'upstream/project' } };
+      if (mode === 'missing-parent') delete result.parent;
+      if (mode === 'archived') result.archived = true;
+      if (mode === 'changed-metadata') result.custom_properties.origin = 'native';
+    } else if (path.includes('/git/refs/heads/forge/main')) {
+      const body = JSON.parse(options.input);
+      assert.deepEqual(body, { sha: target, force: false });
+      assert.deepEqual(Array.from(args.slice(4)), ['--method', 'PATCH', '--input', '-']);
+      writes.push(path);
+      if (['diverged', 'protected', 'multiple'].includes(mode) && (mode !== 'multiple' || path.includes('/blocked/'))) {
+        const error = Error('refused'); error.stderr = 'HTTP 422'; throw error;
+      }
+      state = mode === 'race' ? old : target;
+      result = { object: { sha: state } };
+    } else if (path.includes('/git/ref/heads/forge/main')) result = { object: { sha: mode === 'equal' ? target : state } };
+    else throw Error(`unexpected endpoint: ${path}`);
+    return JSON.stringify(result);
+  };
+  vm.runInNewContext(script, { require(name) {
+    if (name === 'node:child_process') return { execFileSync: api };
+    if (name === 'node:fs') return { appendFileSync(path, text) { summary += text; } };
+    throw Error(name);
+  }, process, console: { log() {} } });
+  return { writes, calls, summary, status: process.exitCode };
+}
+for (const mode of ['normal', 'pages', 'equal']) {
+  const result = run(mode);
+  assert.equal(result.status, 0, result.summary);
+  assert.equal(result.writes.length, mode === 'equal' ? 0 : 1);
+  assert.ok(result.summary.includes(target));
+}
+for (const mode of ['diverged', 'protected', 'race', 'missing-parent', 'archived', 'changed-metadata', 'census-fail', 'repos-fail', 'fork-overflow', 'overflow', 'multiple']) {
+  const result = run(mode);
+  assert.equal(result.status, 1, mode);
+  if (['census-fail', 'repos-fail', 'fork-overflow', 'overflow', 'missing-parent', 'archived', 'changed-metadata'].includes(mode)) assert.equal(result.writes.length, 0);
+  if (mode === 'multiple') {
+    assert.ok(result.summary.includes('cgwalters-forge/blocked: NOT SYNCED'));
+    assert.ok(result.summary.includes('cgwalters-forge/ok: fast-forwarded'));
+  }
+  if (mode === 'overflow') assert.equal(result.calls, 10);
+}
+"#;
+    let mut child = Command::new("node").args(["-e", harness])
+        .stdin(std::process::Stdio::piped()).spawn().expect("node installed");
+    use std::io::Write;
+    child.stdin.take().unwrap().write_all(script.as_bytes()).unwrap();
+    assert!(child.wait().unwrap().success());
+}
+
 /// `.github/agentic-job`, which the files are named relative to.
 fn here() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
@@ -1068,7 +1165,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     let uncommented = |text: &str| drop_lines(text, |l| l.starts_with('#'));
     let head = |name: &str| drop_lines(before_table(&read(name)), |l| l.starts_with('#') || l.starts_with("repos = "));
     let entries = |name: &str| -> String {
-        drop_lines(&outputs(name), |l| l.starts_with('#') || l == "\n")
+        drop_lines(&outputs(name), |l| l.starts_with('#') || l == "\n" || l.starts_with("own-branch-repos = "))
             .split_inclusive('\n')
             .map(|l| {
                 let (line, end) = l.split_at(l.trim_end_matches('\n').len());
@@ -1083,6 +1180,8 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
         assert!(!text.contains("ready_when_complete"), "{midstream}");
+        assert!(text.contains("own-branch-repos = [\"cgwalters-forge/*\"]"), "{midstream}");
+        assert!(!read(base).contains("own-branch-repos"), "{base} must not inherit midstream CI trust");
         assert_eq!(
             (head(midstream), entries(midstream), repos(midstream)),
             (head(base), entries(base), repos("midstream.toml")),

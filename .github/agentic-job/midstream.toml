@@ -22,6 +22,9 @@ max_patch_files = 50
 protected = [".github/agentic-job/runner-profiles.json"]
 
 [github.outputs]
+# Caller-owned opt-in avoids fork-only config commits on upstream-tracking main.
+# Org CI is trusted only within the unchanged repository/branch admission below.
+own-branch-repos = ["cgwalters-forge/*"]
 create_pull_request = { max = 1 }
 add_comment = { max = 1 }
 noop = { max = 1 }

@@ -13,6 +13,8 @@ max_patch_files = 50
 protected = [".github/agentic-job/runner-profiles.json"]
 
 [github.outputs]
+# Same caller-owned CI trust decision as midstream.toml, not a default-ref bypass.
+own-branch-repos = ["cgwalters-forge/*"]
 # The branches and replacement as fix.toml's, whose comment says what each
 # glob is for and how apply bounds the head repository: `bot/**` holds the
 # staged pull requests within these forks (#710). `own_author` as fix.toml's.

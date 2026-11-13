@@ -1,0 +1,113 @@
+name: midstream-sync
+
+on:
+  schedule:
+    - cron: '19 * * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: midstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    # Threat: an unreviewed branch must not run code with the cross-repo PAT.
+    # Unset is off; activation is an operator setting, not a dispatch input.
+    if: ${{ vars.MIDSTREAM_SYNC == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    environment: agent-apply
+    steps:
+      - name: Fast-forward midstream default branches
+        shell: node {0}
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+        run: |
+          const { execFileSync } = require('node:child_process');
+          const { appendFileSync } = require('node:fs');
+          const org = 'cgwalters-forge';
+          const deadline = Date.now() + 360000;
+          let requests = 0;
+          function api(path, body) {
+            // Bound stalled requests and oversized org censuses, without retries.
+            const remaining = deadline - Date.now();
+            if (++requests > 650 || remaining <= 0) throw new Error('request/deadline budget exhausted');
+            const args = ['api', '--hostname', 'github.com', path];
+            if (body) args.push('--method', 'PATCH', '--input', '-');
+            try {
+              return JSON.parse(execFileSync('gh', args, {
+                input: body ? JSON.stringify(body) : undefined, encoding: 'utf8',
+                timeout: Math.min(20000, remaining), maxBuffer: 8 * 1024 * 1024,
+                stdio: ['pipe', 'pipe', 'pipe'],
+              }));
+            } catch (error) {
+              // No raw response bodies in the public summary; gh's HTTP code suffices.
+              const status = /HTTP (\d{3})/.exec(String(error.stderr ?? ''))?.[1];
+              throw new Error(status ? `GitHub HTTP ${status}` : 'API request failed or timed out');
+            }
+          }
+          function list(path) {
+            const all = [];
+            for (let page = 1; page <= 10; page++) {
+              const rows = api(`${path}?per_page=100&page=${page}`);
+              if (!Array.isArray(rows)) throw new Error('invalid census response');
+              all.push(...rows);
+              if (rows.length < 100) return all;
+            }
+            throw new Error('org census pagination limit exceeded');
+          }
+          const repoName = value => typeof value === 'string' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(value);
+          const sha = value => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
+          const branchPath = branch => {
+            if (typeof branch !== 'string' || !branch) throw new Error('missing default branch');
+            return branch.split('/').map(encodeURIComponent).join('/');
+          };
+          const results = [];
+          let failed = false;
+          try {
+            // Complete discovery before any write. No allowlist or cached membership.
+            const properties = list(`orgs/${org}/properties/values`);
+            const forks = new Set(properties.filter(row => row.properties?.some(
+              p => p.property_name === 'origin' && p.value === 'fork')).map(row => row.repository_full_name));
+            const candidates = list(`orgs/${org}/repos`).filter(repo =>
+              forks.has(repo.full_name) && repo.topics?.includes('bot-midstream'));
+            if (candidates.length > 100) throw new Error('fork limit exceeded (100)');
+            for (const candidate of candidates) {
+              const name = candidate.full_name;
+              try {
+                if (!repoName(name) || name.split('/')[0] !== org) throw new Error('invalid fork identity');
+                const fork = api(`repos/${name}`);
+                if (fork.full_name !== name || !fork.fork || !fork.topics?.includes('bot-midstream') ||
+                    fork.custom_properties?.origin !== 'fork') throw new Error('fork metadata changed or missing');
+                if (fork.archived || fork.disabled) throw new Error('fork is archived or disabled');
+                const parent = fork.parent?.full_name;
+                if (!repoName(parent)) throw new Error('missing GitHub parent');
+                const upstream = api(`repos/${parent}`);
+                const target = api(`repos/${parent}/git/ref/heads/${branchPath(upstream.default_branch)}`).object?.sha;
+                if (!sha(target)) throw new Error('invalid upstream commit');
+                const path = `repos/${name}/git/refs/heads/${branchPath(fork.default_branch)}`;
+                const current = api(path.replace('/git/refs/', '/git/ref/')).object?.sha;
+                if (!sha(current)) throw new Error('invalid fork commit');
+                if (current !== target) {
+                  // The server checks ancestry against the live ref, including races.
+                  // Never merge, force, or change a ruleset to make this succeed.
+                  api(path, { sha: target, force: false });
+                }
+                const actual = api(path.replace('/git/refs/', '/git/ref/')).object?.sha;
+                if (actual !== target) throw new Error('fork moved during sync; does not match observed upstream');
+                results.push(`${name}: ${current === target ? 'already equal' : 'fast-forwarded'} to ${target}`);
+              } catch (error) {
+                failed = true;
+                results.push(`${name}: NOT SYNCED — ${error.message} (divergence, protection or API refusal; inspect this fork)`);
+              }
+            }
+          } catch (error) {
+            failed = true;
+            results.push(`Census incomplete; no sync started: ${error.message}`);
+          }
+          const text = `Midstream sync (observed upstream default-branch commits)\n${results.join('\n') || 'No midstream forks found.'}\n`;
+          console.log(text);
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, '```text\n' + text + '```\n');
+          if (failed) process.exitCode = 1;
