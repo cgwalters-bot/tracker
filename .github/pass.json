@@ -78,7 +78,6 @@
         "cgwalters-forge/atomic-linux-sandbox",
         "cgwalters-bot/praxis-credential-broker"
       ]}},
-  "budget": {"weeklyUsd": 2000},
   "promote": {
     "onApproval": true,
     "publish": true,
