@@ -1380,7 +1380,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
             })
             .collect()
     };
-    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"]);
+    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows"]);
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
         assert!(!text.contains("ready_when_complete"), "{midstream}");
@@ -1408,7 +1408,7 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     let step = step_script("Resolve the bounds");
     // bootc-dev/bootc is upstream, no midstream; neither is a name that only contains one.
     for (repos, allow, fix) in [
-        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows"][..], "midstream.toml", "midstream-fix.toml"),
+        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows"][..], "midstream.toml", "midstream-fix.toml"),
         (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge", "bootc-dev/gh-agentic-workflows", "cgwalters-forge/gh-agentic-workflows-x"][..], "dispatch.toml", "fix.toml"),
     ] {
         for repo in repos {

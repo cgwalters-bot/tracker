@@ -16,6 +16,7 @@
     "cgwalters-forge/composefs-rs",
     "cgwalters-forge/bcvk",
     "cgwalters-forge/rpm-ostree",
+    "cgwalters-forge/anaconda",
     "cgwalters-forge/gh-agentic-workflows",
     "cgwalters-forge/atomic-linux-sandbox",
     "bootc-dev/bootc",
@@ -35,6 +36,7 @@
     "cgwalters-forge/bootc",
     "cgwalters-forge/bcvk",
     "cgwalters-forge/rpm-ostree",
+    "cgwalters-forge/anaconda",
     "cgwalters-forge/gh-agentic-workflows",
     "cgwalters-forge/atomic-linux-sandbox",
     "cgwalters-bot/praxis-credential-broker"
@@ -76,6 +78,7 @@
         "cgwalters-forge/bootc",
         "cgwalters-forge/bcvk",
         "cgwalters-forge/rpm-ostree",
+        "cgwalters-forge/anaconda",
         "cgwalters-forge/atomic-linux-sandbox",
         "cgwalters-bot/praxis-credential-broker"
       ]}},
@@ -100,7 +103,7 @@
       ".github/pass.json#/pr/unstall", ".github/pass.json#/pr/staleDays", ".github/pass.json#/pr/checkReruns", ".github/pass.json#/pr/rebaseRounds", ".github/pass.json#/pr/foldRounds", ".github/pass.json#/holds/passView",
       ".github/pass.json#/holds/approvalEvidence", ".github/pass.json#/holds/actNow", ".github/pass.json#/holds/today",
       ".github/poll/agent-board.json", ".github/supervisor/config.json"],
-"noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/gh-agentic-workflows", "cgwalters-bot/praxis-credential-broker"],
+"noMerge": ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows", "cgwalters-bot/praxis-credential-broker"],
     "reviewWorkflow": "review.yml",
     "checkReruns": true,
     "ownerBranches": true,
