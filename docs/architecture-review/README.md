@@ -11,7 +11,10 @@ all accessible feedback and adds independent agent scoring, not human review.
 The [supplemental static audit](evaluation.md#supplemental-static-audit--2026-11-07)
 separately covers the remaining eight unmatched findings: new 8/8 targeted,
 cumulative 11/11 unmatched audited, including three unresolved results. Original
-scores and the prior three audits remain historical evidence. Pilot research
+scores and the prior three audits remain historical evidence. A
+[provisional agent-only disposition](evaluation.md#provisional-agent-only-research-disposition--2026-11-13)
+records the scoring rationale and remaining evidence limits, not human acceptance.
+Pilot research
 disposition/adjudication stays in #1227; a separate #1224 child owns new
 feedback-isolated evaluation, and #1228 owns integration. Keep #1227 open.
 This does not change any production prompt, workflow, permission, merge rule,

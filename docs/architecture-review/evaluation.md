@@ -315,7 +315,8 @@ inside #1227. The separately dated audit below completes coverage of the remaini
 eight unmatched findings, without changing the historical scoring above. It does
 not cure prompt-author contamination, nonrandom two-project selection, omitted
 code or absent composefs coverage. Do not tune on these candidates and call a
-rerun held out. Leave #1227 open pending research disposition, not agent consensus.
+rerun held out. Leave #1227 open for research disposition; the provisional
+agent-only closeout below does not constitute human acceptance.
 
 ## Supplemental static audit — 2026-11-07
 
@@ -659,3 +660,66 @@ That check is not installed in the Justfile or run by the three modes below.
 | `just test-architecture-review fixtures` | Exit 0, 9/9 tests | 0.05 |
 | `just test-architecture-review e2e` | Exit 0, 10/10 tests; canned API only | 0.10 |
 | `git diff --check` | Exit 0 | 0.00 |
+
+## Provisional agent-only research disposition — 2026-11-13
+
+The bounded unmatched-finding audit is complete: **8/8** newly targeted and
+**11/11** cumulative, with **5 supported, 3 unsupported and 3 unresolved**
+mechanisms. This closes the unaudited-evidence gap, not the effectiveness gap.
+The following dispositions apply the existing rubric to the frozen evidence;
+they neither replace the original scoring nor answer for cgwalters.
+
+**Root boundaries:** retain one parser-ownership root and one O3664 ownership
+root despite their alternative remedies. Split source retention from importer
+reuse because each can fail independently. This avoids awarding multiple catches
+for one cause or hiding distinct missed questions in a combined root. The human
+question remains whether those boundaries reflect the intended concerns.
+
+**Exclusions:** retain typed clap conversion, the test-local skip-marker question
+and test consolidation outside the design denominator; count neither empty review
+bodies nor acknowledgements as additional concerns. Their recorded local scope
+does not establish an architectural mechanism. A human may correct their
+classification, but absence of a matching finding alone is not a reason to
+promote them into design misses.
+
+**Installer-context scorability:** retain the missed B2588 isolation-placement
+concern as scorable. The packet's podstorage.rs:137–140 explicitly identifies
+to-existing-root as a bypass, sufficient to raise a tentative placement concern.
+The absent install.rs limits proof and remedy, not the ability to ask that
+question. Whether this is sufficient input for the recall denominator remains
+an explicit human-adjudication question; the supplemental same-revision reads
+do not retroactively expand the reviewer packet.
+
+**Match credit:** retain strict same-root credit: **0/3 scorable concerns** and
+**1/3 questions** matched. B2588 Q1 identifies the propagation tradeoff, not a
+caught defect or validated long-lived-service impact. B2603 Q4 concerns target
+mutation, not source retention or importer reuse; shared ref/GC vocabulary earns
+no additional credit. Human adjudication may revise match or partial-overlap
+judgments; this audit supplies no new historical reviewer output.
+
+**Impact and severity:** retain mechanism-level classifications only. Static
+support for a policy-label distinction, immediate ref mutation or conditional
+generator abort does not prove an exploit, permanent leak or common boot failure.
+Likewise, the unsupported mechanisms are narrowed to the inspected context, not
+universal safety claims. Remedies and severity remain unvalidated. The outstanding
+human question is which conditional impacts warrant different qualifications,
+not whether five supported mechanisms can be reported as five confirmed defects.
+
+The three unresolved results are bounded evidence limitations, not omitted work
+or automatically false findings. B2603 Q3 lacks an external consumer contract;
+the inspected GC and soft-reboot consumers do not prove the broad compatibility
+claim. B2588 Q2 has a clarified static call path but no BASE/HEAD mount-topology
+execution to establish test discrimination. B2588 Q3 lacks a stale-bind recovery
+fixture and operational contract to establish legacy-state impact. None justifies
+an implementation fix on this evidence. Their detailed sections retain the
+specific evidence needed to decide them without replacing candidates or claiming
+runtime reproduction.
+
+Disposition: preserve this as a contaminated development pilot with complete
+bounded unmatched-audit coverage and provisional agent scoring, **not** human
+approval, operator acceptance or effectiveness evidence. Keep #1227 open for
+research disposition and the explicit adjudication questions above. Ordinary
+research uncertainty does not require an execution hold or another hygiene loop.
+New feedback-isolated evaluation remains separate #1224 work; production
+integration remains #1228. No new feedback, historical review run, prompt tuning
+or execution of reviewed code is part of this closeout.
