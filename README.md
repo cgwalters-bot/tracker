@@ -847,9 +847,10 @@ back rather than repeating the run-side comparison. This tracker patch does
 not edit either project or close #972/#519. Before activation, verify the
 pinned v0.6.11 composition (the same as retro), tailnet/broker reachability and
 fork publication with an operator-started smoke run. No variable was changed
-and no live run was started here. `just test-weekly-comparison` checks the
-offline caller contract; `just test-weekly-comparison-policy` exercises the
-installed policy/collector/check commands without inference or forge writes.
+and no live run was started here. `just test-config` checks the offline caller
+contract. With the workflow-pinned `agentic-job` on PATH,
+`cargo test --locked --manifest-path .github/agentic-job/config-test/Cargo.toml weekly_comparison_policy -- --ignored`
+exercises its policy/collector/check commands without inference or forge writes.
 
 The separate [monthly review refresh](.github/workflows/monthly-review-refresh.yml)
 runs on the first of the month at 08:00 UTC, or manually, with the same fixed
