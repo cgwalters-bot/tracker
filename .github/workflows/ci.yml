@@ -491,7 +491,7 @@ jobs:
           BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: |
           added=$(git diff --no-renames --diff-filter=A --name-only "$BASE" HEAD |
-            grep -vE '^\.github/workflows/[^/]+\.ya?ml$|\.(json|toml|md)$|^\.github/agentic-job/config-test/(tests/config\.rs|Cargo\.lock)$' || true)
+            grep -vE '^\.github/workflows/[^/]+\.ya?ml$|\.(json|toml|md)$|^(LICENSE(-[A-Z]+)?|COPYING)$|^\.github/agentic-job/config-test/(tests/config\.rs|Cargo\.lock)$' || true)
           if [ -n "$added" ]; then
             awk '{ print "::error::adds a script file: " $0 }' <<< "$added"
             exit 1
