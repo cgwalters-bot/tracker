@@ -93,6 +93,16 @@ pull request for review and fix; `OWNER/REPO` must be listed in
 `.github/agentic-job/dispatch.toml` (`fix.toml` for a fix), or, for a
 midstream fork, in `midstream.toml` and `midstream-fix.toml` instead.
 
+For a staged implement issue, add `-f issue_repo=cgwalters-forge/tracker`:
+`N` then names the issue there, while `repo` remains the checkout and PR
+target. Empty or omitted `issue_repo` keeps the same-repository behavior.
+The caller forwards it as agentic-job's `item-repo` for task context,
+hand-back comments and qualified closing links. The selected target bounds
+must admit both repositories; this does not expand any repository list or
+midstream permissions. Review and fix do not accept a separate issue repository.
+Run titles keep `KIND TARGET#N` for the pass's target/WIP accounting, not as
+an issue lookup identity.
+
 Runs push as `cgwalters-bot`, and apply pushes a branch to a repository
 that account owns only if the repository's default branch has
 `.github/agentic-job/accept-owner-branches` naming it
