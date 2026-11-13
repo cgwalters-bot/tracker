@@ -26,7 +26,7 @@
   "toilFixPool": "openai",
   "rebaseRounds": 2,
   "mergeQueue": { "tries": 3 },
-  "pace": { "repository": "cgwalters-forge/bot-ops", "issue": 1, "bot": "cgwalters-bot", "marginPercent": 5 },
+  "pace": { "repository": "cgwalters-forge/bot-ops", "issue": 1, "bot": "cgwalters-bot", "marginPercent": 5, "overrides": [{"pool": "openai", "mode": "speed", "factor": 5, "until": "2026-11-19T14:55:00Z", "reason": "operator: use openai quota before its weekly reset"}] },
   "review": {
     "targets": ["ostreedev/*", "bootc-dev/*", "containers/*", "coreos/*"],
     "checkbox": "Send the newest draft as cgwalters-bot"
