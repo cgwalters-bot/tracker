@@ -386,6 +386,69 @@ jobs:
               }
             });
 
+            test('CLI binds a complete ledger to the frozen sampler output only when requested', () => {
+              const { createHash } = require('node:crypto');
+              const splitter = readFileSync('docs/review-corpus.md', 'utf8').split('```js split-corpus\n')[1].split('\n```')[0];
+              const sampleInventory = new Function('require', splitter + '\nreturn sampleInventory;')(require);
+              const input = ledger();
+              input.prs = Array.from({ length: 30 }, (_, i) => ({ ...structuredClone(input.prs[i % 2]),
+                url: `https://github.com/example/project/pull/${i + 1}` }));
+              const inventory = { schema: 'review-checklist.holdout-metadata.v1', prs: input.prs.map(pr => ({
+                url: pr.url, first_feedback: '2026-06-01T00:00:00Z', inline_comments: 1,
+                inline_languages: Object.fromEntries(['Rust', 'C', 'shell', 'Go', 'Python', 'docs', 'other']
+                  .map(language => [language, Number(language === pr.language)])),
+              })) };
+              const sample = sampleInventory(Buffer.from(JSON.stringify(inventory)), { seed: 'frozen', allocation: { Rust: 15, C: 15 } });
+              const file = join(temp, 'paired-ledger.json');
+              const frozen = join(temp, 'sample.json');
+              const run = (value, bytes = JSON.stringify(sample)) => {
+                writeFileSync(file, JSON.stringify(value));
+                writeFileSync(frozen, bytes);
+                return spawnSync(process.execPath, [modulePath, file, '--sample', frozen], { encoding: 'utf8' });
+              };
+              // Order and repository spelling are not changes of PR identity.
+              input.prs.reverse();
+              input.prs[0].url = input.prs[0].url.replace('example/project', 'EXAMPLE/Project');
+              const ok = run(input);
+              assert.equal(ok.status, 0, ok.stderr);
+              const result = JSON.parse(ok.stdout);
+              assert.deepEqual(result.sample_check, { schema: sample.schema, prs: 30,
+                sha256: createHash('sha256').update(JSON.stringify(sample)).digest('hex') });
+              delete result.sample_check;
+              assert.deepEqual(result, score(input));
+              for (const mutate of [
+                x => x.prs.pop(),
+                x => { x.prs[0].url = 'https://github.com/example/project/pull/999'; },
+                x => { x.prs[0].language = 'Go'; },
+              ]) {
+                const changed = structuredClone(input); mutate(changed);
+                const bad = run(changed);
+                assert.equal(bad.status, 1);
+                assert.equal(bad.stdout, '');
+                assert.match(bad.stderr, /frozen sample/);
+              }
+              for (const mutate of [
+                x => { x.schema = 'unknown'; }, x => x.prs.pop(),
+                x => { x.prs[0] = null; }, x => { x.prs[0].language = 'unknown'; },
+                x => { x.prs[0].url = 'not-a-PR'; },
+                x => { x.prs[0] = { ...x.prs[1], url: x.prs[1].url.replace('example', 'EXAMPLE') }; },
+              ]) {
+                const changed = structuredClone(sample); mutate(changed);
+                const bad = run(input, JSON.stringify(changed));
+                assert.equal(bad.status, 1);
+                assert.equal(bad.stdout, '');
+              }
+              for (const bytes of [Buffer.from([0xff]), '{"feedback":broken', ' '.repeat(65537)]) {
+                const bad = run(input, bytes);
+                assert.equal(bad.status, 1);
+                assert.equal(bad.stdout, '');
+                assert.doesNotMatch(bad.stderr, /feedback/);
+              }
+              const ordinary = spawnSync(process.execPath, [modulePath, file], { encoding: 'utf8' });
+              assert.equal(ordinary.status, 0, ordinary.stderr);
+              assert.equal(Object.hasOwn(JSON.parse(ordinary.stdout), 'sample_check'), false);
+            });
+
             test('CLI rejects malformed UTF-8 instead of inventing matching archive IDs', () => {
               const file = join(temp, 'encoding.json');
               const run = content => {

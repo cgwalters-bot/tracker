@@ -299,6 +299,9 @@ PR URL]`, then by URL. This is deterministic sampling, not a claim of statistica
 representativeness. Insufficient coverage fails rather than borrowing slots or
 shrinking the sample. Metadata cannot establish style/nit eligibility; record
 later exclusions without substituting favorable PRs or claiming a complete run.
+When scoring the completed paired evaluation, pass this archived output to
+[`score.mjs adjudications.json --sample sample.json`](review-checklist/evaluation-scoring.md#cross-checking-the-frozen-sample)
+to check that no selected PR or frozen stratum was silently changed or omitted.
 
 Threat: hand-picking candidates after opening feedback contaminates the held-out
 comparison. This mechanism uses only fixed metadata, emits only URLs/strata and

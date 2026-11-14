@@ -125,6 +125,34 @@ IDs are listed for follow-up against the archive. `sample_size` and
 held-out evaluation. Publish the archived evidence and limitations with any eventual
 evaluation report, not just this summary.
 
+### Cross-checking the frozen sample
+
+A ledger can accidentally omit a difficult PR, substitute another, or change its
+language stratum while still reporting 30 entries. To catch that, explicitly pass
+the archived [candidate sampler](../review-corpus.md#freezing-a-text-free-evaluation-sample)
+output when scoring the completed evaluation:
+
+```sh
+node score.mjs adjudications.json --sample sample.json
+```
+
+This optional check requires the exact 30 PR identities and language strata in
+`review-checklist.sample.v1`. Order and owner/repository letter case may differ;
+duplicates, missing/extra PRs and changed strata fail without printing a score.
+The sample read is limited to 64 KiB and must be valid UTF-8 JSON. The result adds
+`sample_check` with the schema, PR count and SHA-256 of the exact supplied bytes;
+archive that digest with the score. The existing one-argument invocation remains
+useful for partial accounting and adds no `sample_check` assertion. No workflow
+enables this option for real evaluations.
+
+This checks membership and strata, not the sampler's seed, allocation or inventory
+provenance, historical commits, eligibility decisions or review isolation. Compare
+the digest with the archive frozen before review; a replacement sample that agrees
+with a replacement ledger is not detectable here. Later eligibility exclusions
+must be reported separately, not hidden by changing the frozen sample to make this
+check pass. An incomplete ledger can still be scored without this option, but must
+not be presented as a completed paired evaluation.
+
 The additive `prs` output keeps one row per PR in ledger order, with its submitted
 URL (`pr`), frozen `language` stratum and separate `baseline` and `checklist`
 counts. These use the same fields as the totals, including `prs: 1`. Summing rows
@@ -159,6 +187,7 @@ no workflow runs it on a real ledger.
 ```javascript
 import { openSync, readSync, closeSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { createHash } from 'node:crypto';
 
 const MAX_BYTES = 1024 * 1024;
 const PASSES = ['baseline', 'checklist'];
@@ -270,28 +299,58 @@ export function score(input) {
   return result;
 }
 
-export function main(args) {
-  if (args.length === 1 && args[0] === '--help') {
-    console.log('Usage: node score.mjs LEDGER.json\nPrint JSON counts for manually adjudicated baseline/checklist findings; no inference or network.');
-    return;
-  }
-  requireThat(args.length === 1 && !args[0].startsWith('-'), 'usage: node score.mjs LEDGER.json (see --help)');
+function readJson(filename, limit, label) {
   // Bound the read itself, not just the parsed result or a racy stat size.
-  const fd = openSync(args[0], 'r');
-  const buffer = Buffer.alloc(MAX_BYTES + 1);
+  const fd = openSync(filename, 'r');
+  const buffer = Buffer.alloc(limit + 1);
   let size = 0;
   try {
     let n;
     while (size < buffer.length && (n = readSync(fd, buffer, size, buffer.length - size, null)) > 0) size += n;
   } finally { closeSync(fd); }
-  requireThat(size <= MAX_BYTES, 'ledger exceeds 1 MiB; split the evaluation rather than truncating it');
+  requireThat(size <= limit, `${label} exceeds ${limit} bytes; recover a bounded archive, never truncate it`);
   let decoded;
   try { decoded = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer.subarray(0, size)); }
-  catch { throw new Error('invalid ledger UTF-8; recover the original ledger from its archive'); }
+  catch { throw new Error(`invalid ${label} UTF-8; recover the original from its archive`); }
   let input;
   try { input = JSON.parse(decoded); }
-  catch { throw new Error('invalid ledger JSON; see evaluation-scoring.md'); }
-  console.log(JSON.stringify(score(input), null, 2));
+  catch { throw new Error(`invalid ${label} JSON; see evaluation-scoring.md`); }
+  return { input, bytes: buffer.subarray(0, size) };
+}
+
+function checkSample(ledger, sample) {
+  requireThat(sample?.schema === 'review-checklist.sample.v1'
+    && Array.isArray(sample.prs) && sample.prs.length === 30, 'expected a frozen sample of 30 PRs');
+  const expected = new Map();
+  for (const pr of sample.prs) {
+    requireThat(text(pr?.url) && /^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9][0-9]*$/.test(pr.url)
+      && LANGUAGES.includes(pr.language), 'invalid frozen sample PR or language stratum');
+    const url = pr.url.toLowerCase();
+    requireThat(!expected.has(url), 'duplicate frozen sample PR');
+    expected.set(url, pr.language);
+  }
+  // score() has already validated the ledger's identities and uniqueness.
+  requireThat(ledger.prs.length === expected.size
+    && ledger.prs.every(pr => expected.get(pr.url.toLowerCase()) === pr.language),
+  'ledger differs from frozen sample; restore missing reviews or report exclusions separately');
+}
+
+export function main(args) {
+  if (args.length === 1 && args[0] === '--help') {
+    console.log('Usage: node score.mjs LEDGER.json [--sample SAMPLE.json]\nPrint JSON counts for manually adjudicated baseline/checklist findings; no inference or network.\n--sample checks all 30 frozen PR identities and strata and records the sample digest.');
+    return;
+  }
+  requireThat((args.length === 1 || (args.length === 3 && args[1] === '--sample' && !args[2].startsWith('-')))
+    && !args[0].startsWith('-'), 'usage: node score.mjs LEDGER.json [--sample SAMPLE.json] (see --help)');
+  const { input } = readJson(args[0], MAX_BYTES, 'ledger');
+  const result = score(input);
+  if (args.length === 3) {
+    const { input: sample, bytes } = readJson(args[2], 64 * 1024, 'frozen sample');
+    checkSample(input, sample);
+    result.sample_check = { schema: sample.schema, prs: sample.prs.length,
+      sha256: createHash('sha256').update(bytes).digest('hex') };
+  }
+  console.log(JSON.stringify(result, null, 2));
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
