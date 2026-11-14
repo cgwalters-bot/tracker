@@ -417,31 +417,59 @@ to retrigger or clear reservations to force duplicate starts.
 
 ### Draft-review buckets
 
-**Blocked, not proposed (5 November 2026, #1324).** agent-board's
+**Blocked, not proposed (14 November 2026, #1324).** agent-board's
 [draft buckets](https://github.com/cgwalters-forge/agent-board/blob/d742eb8052aec70d8d4ecf1da98bec9b645ae40f/docs/pass.md#midstream-draft-buckets-opt-in-producer-slice-of-648)
 label the bot's drafts on the four midstream forks `review:quick` or
 `review:deep`. The threat they guard against is a forged, stale or merely
-small draft passing as reviewed. The producer is ready: `AGENT_BOARD_REV`
-`d742eb8052aec70d8d4ecf1da98bec9b645ae40f` contains agent-board#680 (`9841aab`)
-and the architecture-finding veto after it. The only newer agent-board commit,
-`957cb93`, does not touch drafts, so the pin stays. The rest of the chain is
-missing, so `.github/pass.json` sets none of `pr.draftReviewRepositories`,
+small draft passing as reviewed. The current producer pin, `AGENT_BOARD_REV`
+`6a9747a2889c98b134d6c308595068791b60e521`, descends from the previously
+audited `d742eb8052aec70d8d4ecf1da98bec9b645ae40f`, which contains
+agent-board#680 (`9841aab`) and the architecture-finding veto. No producer
+pin change is needed here. The wrapper/caller chain is still missing, so
+`.github/pass.json` sets none of `pr.draftReviewRepositories`,
 `pr.reviewDispatchRepositories` or `pr.reviewPools`. `just test-review-caller`
 keeps all three unset and checks the shape the coordinated change must take:
 
-* Callers: bootc `3ff5943` and composefs-rs `c8f8eb7` (branch `forge`), and bcvk
-  `b2d1cc9` and rpm-ostree `911dd73` (`main`), have no `dispatch.yml`,
+* Callers: fresh, non-truncated recursive trees for
+  [bootc](https://github.com/cgwalters-forge/bootc/tree/3ff59436aa70ea4b3561fd99ac463aaa44ad53ac)
+  and [composefs-rs](https://github.com/cgwalters-forge/composefs-rs/tree/c8f8eb7384bdea4aa40018f446ed3bc0fbf05ba9)
+  (branch `forge`), and
+  [bcvk](https://github.com/cgwalters-forge/bcvk/tree/b2d1cc90055d0c846d649bf5519b79650aabe0a9)
+  and [rpm-ostree](https://github.com/cgwalters-forge/rpm-ostree/tree/911dd734bdc9d35eae33a074a613e436e7b400ee)
+  (`main`), still have no `dispatch.yml`,
   `review.yml`, `workflow/review.toml` or `workflow/review-command.toml`, so
   they have no `agent-board-review-result-v1` writer job. bootc's and bcvk's gh-aw
   `review.md` reviews do not write one either. The open prerequisites are
   bootc#99, composefs-rs#69, bcvk#24 and rpm-ostree#13.
-* Wrapper: actions `9589edab2953e53fb244ec058011efe5e714c6ec` (actions#198 closed
-  actions#174) binds a review to its expected head and pool. It still refuses
-  draft pull requests and has no result-writer job, so ordinary dispatched
-  reviews can't produce draft evidence. actions#201 only documents the
-  prerequisite.
-* Consumer: review `b04aa1d` does not read the needs-you `review_buckets`
-  extension, so it would show every draft as unknown.
+* Wrapper: actions
+  [`f7bf70fd8d6f21a5e38f9690c306514ab4c294e2`](https://github.com/cgwalters-forge/actions/blob/f7bf70fd8d6f21a5e38f9690c306514ab4c294e2/.github/workflows/cgwalters-agentic-job.yml)
+  still rejects drafts in admission and publication and exposes no
+  `agent-board-review-result-v1` writer. Its
+  [prerequisite](https://github.com/cgwalters-forge/actions/blob/f7bf70fd8d6f21a5e38f9690c306514ab4c294e2/README.md#draft-classifier-reviews-blocked-on-reusable-helper-wiring)
+  is now reusable policy/check classifier-mode and trusted snapshot transport
+  in **agentic-job**, not the classifier binary (already in its pinned
+  `be1191213b722ad9ca085028140e44c4e6f4f43d`). Then actions#200 must wire
+  coherent helper pins, explicit draft admission and checked result writing
+  before the four caller migrations. An ordinary APPROVE cannot substitute
+  for classifier evidence.
+* Consumer: the older parser-absence finding is superseded. review
+  [`b85eb8e607a0ceeb354f1a6f3e23cdf518d8ecaf`](https://github.com/cgwalters-forge/review/blob/b85eb8e607a0ceeb354f1a6f3e23cdf518d8ecaf/src/github/holds.ts#L277-L286)
+  parses bounded `review_buckets` with quick/deep, assessed head, reason,
+  summary and CI fields, attaching them only to non-carried items from complete
+  sources. This is source-level evidence, not an end-to-end compatibility or
+  current-head UI attestation.
+
+Verification is deliberately split: `just test-review-caller` checks the
+local default-off gate, proposed exact allowlists and rollback, and preserves
+`follow`, `noMerge` and the private holds destination even while disabled.
+It does **not** exercise classifier admission, forged/stale/incomplete writer
+provenance, current-head invalidation, size fallback or consumer rendering.
+Those owning-layer regressions and shared projection fixtures remain rollout
+gates, not passing checks in this audit. No controller preview or live review
+was run: the deployed four-caller contract needed for a meaningful rollout
+preview is absent. Source reads do not attest deployed variables, credentials
+or private publication. No live controller, credential or permission changes
+are part of this update.
 
 Once all three exist, propose `pr.draftReviewRepositories` and
 `pr.reviewDispatchRepositories` for exactly those four repositories, plus
