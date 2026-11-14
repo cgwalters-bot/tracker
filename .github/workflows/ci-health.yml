@@ -154,6 +154,7 @@ jobs:
                 Array.isArray(r.groups) && r.groups.length <= 500, 'invalid target/group counts');
               const warnings = [], rows = [];
               const integer = n => check(Number.isSafeInteger(n) && n >= 0, 'invalid nonnegative integer');
+              const positiveInteger = n => check(Number.isSafeInteger(n) && n > 0, 'invalid positive evidence integer');
               const rate = (n, d) => d ? `${(100 * n / d).toFixed(1)}% (${n}/${d})` : 'no data (0/0)';
               for (const [i, t] of r.targets.entries()) {
                 assert.deepStrictEqual(t.target, config.targets[i], 'target mismatch');
@@ -207,7 +208,7 @@ jobs:
                 check(config.targets.some(t => t.repository === o.repository), 'group outside scope');
                 check(Array.isArray(o.run_ids) && o.run_ids.length > 0 && o.run_ids.length <= 1000 &&
                   new Set(o.run_ids).size === o.run_ids.length, 'invalid run IDs');
-                o.run_ids.forEach(integer); integer(o.occurrences);
+                o.run_ids.forEach(positiveInteger); integer(o.occurrences);
                 // A normalized invalid date can place a failure inside the
                 // window. The collector preserves GitHub's created_at, which
                 // uses seconds; also accept the millisecond UTC report form.
@@ -219,7 +220,10 @@ jobs:
                 check(g.class === (config.index[o.signature]?.class ?? 'unknown'), 'unreviewed class');
                 check(Array.isArray(o.samples) && o.samples.length <= 3, 'invalid samples');
                 for (const s of o.samples) {
-                  integer(s.run_id); integer(s.attempt); integer(s.job_id);
+                  // Zero IDs/attempts create impossible evidence links; attempts
+                  // beyond 100 cannot come from the pinned bounded collector.
+                  positiveInteger(s.run_id); positiveInteger(s.attempt); positiveInteger(s.job_id);
+                  check(s.attempt <= 100, 'evidence attempt exceeds collector bound');
                   check(o.run_ids.includes(s.run_id) && s.url === `https://github.com/${o.repository}/actions/runs/${s.run_id}`, 'unsafe evidence URL');
                 }
                 const entry = config.index[o.signature];

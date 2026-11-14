@@ -178,6 +178,17 @@ and other conclusions remain separate. Empty denominators mean no data, never
 100%. The last 30 complete UTC days use original run creation time; reruns are
 observed at collection time, including attempts after the window.
 
+Failure-evidence run and job IDs must be positive safe integers, and sample
+attempt numbers must be in `1..100`, matching the pinned collector's attempt cap.
+Zero IDs or attempt zero could otherwise produce impossible links presented as
+evidence; attempts above the cap cannot have been collected by this version.
+The validator refuses these before dated artifacts or status publication, rather
+than repairing or dropping samples. This is a structural check, not proof that a
+job exists or failed: no extra API lookup, option or publication activation is
+added. Regression tests cover invalid numeric types, zero/negative/fractional and
+unsafe values, and both attempt boundaries. Live acceptance and evidence-backed
+signature mappings remain separate work under #1229/#1223.
+
 The saved-report validator also bounds terminal attempts outside the first-try
 denominator by `expected_attempts - runs`. Otherwise two single-attempt runs,
 one pass and one failure, could claim a 100% first-try rate by omitting the first
