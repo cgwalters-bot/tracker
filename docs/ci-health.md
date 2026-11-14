@@ -192,8 +192,21 @@ remains off. Regression fixtures exercise omitted successes and failures, the
 combined rerun bound, exact boundaries and incomplete attempt history.
 
 Report/target completeness, auth/no-data/log/history warnings and presentation
-truncation appear prominently even on collector exit zero. The complete warning
-list and groups are in dated artifacts, retained for 35 days, with config/source
+truncation appear prominently even on collector exit zero. Warnings can exceed
+the status preview, so each population row also carries **target
+coverage**: `INCOMPLETE listing`, `INCOMPLETE attempts/logs` (listing finished but
+enrichment did not), or `Complete`. Listing incompleteness takes precedence; it
+does not imply attempts or logs are complete. These are the collector's existing
+target-level flags, shared by both populations, not separate population-level
+coverage claims. A partial 100% rate therefore retains its caveat even when earlier
+targets fill the warning preview. `Complete` means only this configured target;
+an empty denominator still reads `no data`, never a passing or healthy verdict.
+The same column appears in the dated Markdown, job summary and status comment;
+JSON, collection budgets and default-off publication are unchanged. Offline
+regressions exercise all three states in both populations, with truncated warnings
+and empty complete targets, in preview and opted-in publication fixtures.
+
+The complete warning list and groups are in dated artifacts, retained for 35 days, with config/source
 revision, collector revision and run links. Fixed collector budgets remain 500
 operations, 120 seconds before operations, ten 100-item listing pages, 1 MiB per
 log and 32 MiB aggregate decoded data; individual requests can overrun the
