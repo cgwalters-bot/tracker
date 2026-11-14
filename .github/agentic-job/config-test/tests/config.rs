@@ -54,6 +54,105 @@ fn weekly_comparison_probe(script: &str) {
 }
 
 #[test]
+fn review_corpus_publication() {
+    weekly_comparison_probe(r#"
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const workflow = fs.readFileSync('.github/workflows/review-corpus.yml', 'utf8');
+const section = workflow.split('      - name: Publish\n')[1].split('      # A stop')[0];
+const script = section.split('        run: |\n')[1].replace(/^          /gm, '');
+const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'corpus-publish-'));
+const sha = 'a'.repeat(40), tag = 'review-corpus-20261114-000000';
+const runURL = 'https://github.com/example/tracker/actions/runs/42';
+const marker = `<!-- review-corpus-run: ${runURL} -->`;
+const names = ['review-corpus.jsonl.zst', 'review-corpus-state.json', 'status.json', 'SHA256SUMS'];
+const own = { id: 7, tag_name: tag, draft: true, target_commitish: sha, body: `Notes\n${marker}\n`,
+  upload_url: 'https://uploads.github.com/repos/example/tracker/releases/7/assets{?name,label}', assets: [] };
+try {
+  fs.mkdirSync(`${temp}/dist`);
+  for (const name of names) fs.writeFileSync(`${temp}/dist/${name}`, `fixture ${name}`);
+  fs.writeFileSync(`${temp}/notes.md`, own.body);
+  fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}
+const fs = require('node:fs'), assert = require('node:assert/strict');
+const args = process.argv.slice(2), url = args[1];
+const method = args.includes('--method') ? args[args.indexOf('--method') + 1] : 'GET';
+fs.appendFileSync('calls', JSON.stringify([method, url]) + '\\n');
+if (process.env.FAIL === method + ' ' + url) process.exit(1);
+let state = JSON.parse(fs.readFileSync('state'));
+const save = () => fs.writeFileSync('state', JSON.stringify(state));
+const out = value => process.stdout.write(JSON.stringify(value));
+assert.equal(args[0], 'api');
+assert.equal(url.includes('per_page=100'), method === 'GET');
+if (url.endsWith('/releases?per_page=100')) {
+  assert.ok(args.includes('--paginate') && args.includes('--slurp'));
+  out([[{tag_name:'unrelated'}], state]);
+} else if (url.endsWith('/releases') && method === 'POST') {
+  // GitHub accepts creation even with an existing pending tag.
+  const release = JSON.parse(fs.readFileSync(args[args.indexOf('--input') + 1]));
+  const id = 8;
+  Object.assign(release, { id, assets: [], upload_url: 'https://uploads.github.com/repos/example/tracker/releases/' + id + '/assets{?name,label}' });
+  state.push(release); save(); out(release);
+} else if (url.includes('/assets?per_page')) {
+  out([state.find(r => url.includes('/' + r.id + '/')).assets]);
+} else if (method === 'DELETE') {
+  for (const r of state) r.assets = r.assets.filter(a => !url.endsWith('/' + a.id));
+  save();
+} else if (method === 'POST' && url.includes('/assets?name=')) {
+  const r = state.find(r => url.includes('/' + r.id + '/'));
+  const name = url.split('?name=')[1];
+  assert.ok(!r.assets.some(a => a.name === name));
+  assert.ok(args.includes('Content-Type: application/octet-stream'));
+  r.assets.push({ id: 1 + Math.max(100, ...r.assets.map(a => a.id)), name, data: fs.readFileSync(args[args.indexOf('--input') + 1], 'utf8') }); save();
+} else if (method === 'PATCH') {
+  const r = state.find(r => url.endsWith('/' + r.id));
+  assert.ok(args.includes('draft=false') && args.includes('make_latest=false'));
+  r.draft = false; save();
+} else throw Error('unexpected call ' + args);
+`, { mode: 0o755 });
+  const run = (releases, fail = '') => {
+    fs.writeFileSync(`${temp}/state`, JSON.stringify(releases)); fs.writeFileSync(`${temp}/calls`, '');
+    const got = spawnSync('bash', ['-euo', 'pipefail', '-c', script], { cwd: temp, encoding: 'utf8', timeout: 10000,
+      env: { ...process.env, PATH: `${temp}:${process.env.PATH}`, RELEASE_PREFIX: 'review-corpus-', STAMP: '20261114-000000',
+        GITHUB_REPOSITORY: 'example/tracker', GITHUB_SHA: sha, RUN: runURL, FAIL: fail } });
+    assert.equal(got.error, undefined);
+    return { status: got.status, stderr: got.stderr, state: JSON.parse(fs.readFileSync(`${temp}/state`)),
+      calls: fs.readFileSync(`${temp}/calls`, 'utf8').trim().split('\n').map(JSON.parse) };
+  };
+  const complete = got => {
+    assert.equal(got.status, 0, got.stderr); assert.equal(got.state.length, 1);
+    const r = got.state[0]; assert.equal(r.draft, false);
+    assert.deepEqual(r.assets.map(a => a.name), names);
+    for (const a of r.assets) assert.equal(a.data, `fixture ${a.name}`);
+    assert.deepEqual(got.calls.at(-1), ['PATCH', `repos/example/tracker/releases/${r.id}`]);
+  };
+  complete(run([]));
+  const partial = { ...own, assets: [{ id: 90, name: names[0], data: 'partial' }] };
+  const resumed = run([partial]); complete(resumed);
+  assert.ok(!resumed.calls.some(([m, u]) => m === 'POST' && u.endsWith('/releases')), 'never create alongside a draft');
+  for (const releases of [[{ ...own, draft: false }], [{ ...own, draft: 'true' }],
+    [{ ...own, target_commitish: 'main' }], [{ ...own, target_commitish: 'b'.repeat(40) }],
+    [{ ...own, body: '' }], [{ ...own, body: marker.replace('/42', '/43') }], [own, { ...own, id: 9 }]]) {
+    const got = run(releases); assert.notEqual(got.status, 0);
+    assert.ok(got.calls.every(([m]) => m === 'GET'), 'foreign/ambiguous releases must not be mutated');
+  }
+  for (const fail of ['GET repos/example/tracker/releases?per_page=100', 'POST repos/example/tracker/releases',
+    'GET repos/example/tracker/releases/7/assets?per_page=100', 'DELETE repos/example/tracker/releases/assets/90',
+    `POST https://uploads.github.com/repos/example/tracker/releases/7/assets?name=${names[1]}`,
+    'PATCH repos/example/tracker/releases/7']) {
+    const got = run(fail === 'POST repos/example/tracker/releases' ? [] : [partial], fail);
+    assert.notEqual(got.status, 0, fail);
+    assert.deepEqual(got.calls.at(-1).join(' '), fail);
+    assert.ok(got.state.every(r => r.draft));
+    complete(run(got.state)); // Interrupted mutations remain repairable.
+  }
+  assert.match(workflow, /printf '\\n<!-- review-corpus-run: %s -->\\n' "\$RUN"/);
+  assert.match(section, /RUN: \$\{\{ github.server_url \}\}\/\$\{\{ github.repository \}\}\/actions\/runs\/\$\{\{ github.run_id \}\}/);
+} finally { fs.rmSync(temp, { recursive: true, force: true }); }
+"#);
+}
+
+#[test]
 fn weekly_comparison_routing() {
     weekly_comparison_probe(r#"
 const assert = require('node:assert/strict');

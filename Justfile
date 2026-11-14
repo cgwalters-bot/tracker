@@ -448,7 +448,7 @@ test-review-corpus:
       assert(!fs.existsSync(`${temp}/asked`), 'disabled reserve must not query GitHub');
       assert.deepEqual(runCollect({ LEFT: '1500', EXIT: '3' }), { status: 3, output: '', signals: '' });
       const publish = /- name: Publish\n([\s\S]*?)(?=      - name:)/.exec(workflow)[1];
-      assert.match(publish, /gh release create[^]*--draft[^]*dist\/status\.json[^]*gh release edit[^]*--draft=false/);
+      assert.match(publish, /draft:true[^]*status\.json[^]*gh api "\$api\/\$id" --method PATCH -F draft=false/);
       // Stub only gh's transport; run the documentation's real jq filters and loop.
       fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}
     const { execFileSync } = require('node:child_process');

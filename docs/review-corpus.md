@@ -84,7 +84,7 @@ the time limit or an error, also publishes what it has. It records that it
 stopped early in the notes and `status.json`, and the run fails. Dispatch it again
 (or wait for the schedule) to resume. The collector runs with a job token that cannot write.
 The publishing job's token can write the repository's contents, but the job
-runs only `gh release` commands on its own new release.
+runs only release API operations on its own snapshot.
 
 An API error or a non-integer quota response also stops collection, using the
 same bounded termination, but fails the collection step rather than reporting
@@ -97,10 +97,23 @@ altogether. `just test-review-corpus` exercises these paths offline, including
 a collector that ignores SIGTERM; it does not run a live backfill.
 
 If an upload is interrupted, the run leaves an unpublished draft release.
-The next run ignores drafts and resumes from the last published release, so
-nothing is lost but that run's work; delete the draft by hand. The
-`review-corpus` artifact the run kept for seven days lets the failed publish
-job be re-run instead.
+Re-run the failed **publish job**, within the `review-corpus` artifact's seven-day
+retention, to replace all four assets from that same artifact and publish it.
+Publication first searches all release pages for the tag, refusing multiple
+matches before creating or repairing anything. Recovery requires a draft whose
+target commit and exact run marker in the notes match this run. The selected or
+newly created release ID is retained for asset replacement and publication,
+rather than resolving the tag again. This prevents a tag collision from replacing another run's
+assets; it is not protection against a malicious release writer. A published
+release, a foreign draft or a failed lookup/upload stops recovery without
+publishing. Old drafts without the marker require manual inspection and cleanup.
+The existing opt-in and fifteen-minute publish-job bound are unchanged;
+`just test-config` tests recovery and refusals offline, including interrupted
+asset replacement and a server that accepts duplicate draft creation.
+
+A new collection run ignores drafts and resumes from the last published release,
+so nothing is lost but the interrupted run's work; delete abandoned drafts by
+hand. Recovery does not overwrite an immutable snapshot or restart collection.
 
 To move to a newer misctool, change `MISCTOOL_VERSION` in the workflow and the
 schema link above.
