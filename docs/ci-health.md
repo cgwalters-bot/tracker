@@ -305,17 +305,25 @@ consistent with 35-day retention, not proof they will remain available indefinit
 The hosted report covers the same October 14–November 13 window but is a separate
 sample from the local one above. **It remains incomplete.** In particular, bcvk
 `main-c10s.yml` returned HTTP 404 with the job token: its empty populations are
-unavailable history, unlike the local sample's completed empty listing. That
-response alone cannot distinguish missing workflow from access failure. Other
-targets retain byte/time/log warnings, and C composefs `builds.yaml` and agenthome
+unavailable history, unlike the local sample's completed empty listing. A
+read-only follow-up on November 14 resolved it as a missing workflow, not an
+access failure: `bootc-dev/bcvk` is public with default branch `main`; with a
+separate read-only token, `main.yml` is active while
+`repos/bootc-dev/bcvk/actions/workflows/main-c10s.yml` returns 404, no `main`
+commit has touched `.github/workflows/main-c10s.yml`, and no run since October 14
+has that path. The local sample's "completed empty listing" for this target was
+therefore a missing workflow reported as complete. The configured target is
+stale; dropping it changes the reviewed 20-target scope and config hash, so it is
+left for scope review rather than changed here. Other targets retain
+byte/time/log warnings, and C composefs `builds.yaml` and agenthome
 `ci.yml` have no eligible history. Successful jobs do not establish full source
 access, healthy CI, supported signature mappings or eventual run-level outcomes.
 
 The saved hosted JSON was replayed through the existing config/renderer/publication
 regression suite, including stale-window refusal, without another live collection.
-Still missing: a hosted **manual** `preview: true` run, resolution of the bcvk
-job-token 404, reviewed scope/index acceptance, and owned-comment create/update
-evidence. This patch-only handback cannot start a hosted job; the controller must
+Still missing: a hosted **manual** `preview: true` run, reviewed scope/index
+acceptance (including the stale bcvk `main-c10s.yml` target), and owned-comment
+create/update evidence. This patch-only handback cannot start a hosted job; the controller must
 dispatch `ci-health.yml` on the default branch with `preview: true` and retain its
 run/artifacts. No credential or variable change is requested. Keep publication
 off and #1229 open; neither the earlier 404 deployment gap nor first-target
