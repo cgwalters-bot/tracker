@@ -288,6 +288,126 @@ jobs:
             fs.rmSync(temp, { recursive: true, force: true });
           }
           console.log('ok review-corpus resume checksums (offline)');
+      # Offline synthetic holdout tests of the splitter kept in docs/review-corpus.md.
+      # Keep new scripts inline: deployment scripts and Justfile may only shrink.
+      - name: Test review-corpus holdout split
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const { createHash } = require('node:crypto');
+          const { execFileSync, spawnSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const path = require('node:path');
+          const test = require('node:test');
+          const docs = fs.readFileSync('docs/review-corpus.md', 'utf8');
+          const runner = /```sh\nnode -e '([^']+)' -- review-corpus-YYYYMMDD-HHMMSS /.exec(docs)[1];
+          const { partition, splitSnapshot } = new Function('require',
+            docs.split('```js split-corpus\n')[1].split('\n```')[0] + '\nreturn { partition, splitSnapshot };')(require);
+          const record = (id, pr, date, extra = {}) => ({ schema_version: 1, kind: 'review-comment',
+            repository: 'example/project', pr_number: pr, comment_id: id, created_at: date,
+            body: 'synthetic feedback', ...extra });
+          const before = '2026-05-31T23:59:59Z';
+          const cutoff = '2026-06-01T00:00:00Z';
+          const encode = records => Buffer.from(records.map(r => JSON.stringify(r)).join('\n') + '\n');
+
+          test('whole PRs split by earliest creation across all kinds, not order or update time', () => {
+            const rows = [record(1, 1, cutoff), record(2, 2, cutoff, { body: 'HELDOUT_DO_NOT_EXPOSE' }),
+              record(3, 1, before, { kind: 'pr-comment', updated_at: cutoff, repository: 'Example/Project' }),
+              record(4, 3, '2026-06-02T00:00:00Z', { kind: 'review-body' }),
+              record(5, 3, before, { kind: 'review-body' }),
+              record(6, 1, cutoff, { repository: 'other/project' })];
+            for (const input of [rows, [...rows].reverse()]) {
+              const split = partition(encode(input));
+              assert.deepEqual(split.counts, { records: 6, training_records: 4, heldout_records: 2, training_prs: 2, heldout_prs: 2 });
+              assert.equal(split.holdout, 'https://github.com/example/project/pull/2\nhttps://github.com/other/project/pull/1\n');
+              assert.doesNotMatch(split.training, /HELDOUT_DO_NOT_EXPOSE/);
+              assert.deepEqual(JSON.parse('[' + split.training.trim().split('\n').join(',') + ']').map(r => r.comment_id).sort(), [1, 3, 4, 5]);
+            }
+          });
+
+          test('empty partitions are explicit, malformed metadata is never silently dropped', () => {
+            assert.equal(partition(encode([record(1, 1, cutoff)])).training, '');
+            assert.equal(partition(encode([record(1, 1, before)])).holdout, '');
+            for (const extra of [{ schema_version: 2 }, { kind: 'unknown' }, { repository: '../bad/path' },
+              { pr_number: 0 }, { comment_id: Number.MAX_SAFE_INTEGER + 1 }, { body: null },
+              { created_at: '2026-02-30T00:00:00Z' }, { created_at: 'not-a-date' },
+              { created_at: '2026-06-01' }]) {
+              assert.throws(() => partition(encode([record(1, 1, before, extra)])), /invalid metadata/);
+            }
+            for (const value of [null, [], 1]) assert.throws(() => partition(encode([value])), /invalid metadata/);
+            assert.throws(() => partition(encode([record(1, 1, before), record(1, 2, cutoff)])), /duplicate identity/);
+            assert.throws(() => partition(Buffer.from('')), /expected 1..250000/);
+            assert.throws(() => partition(Buffer.from('{"body":"DO_NOT_ECHO"')), /invalid JSON at record 1$/);
+            assert.throws(() => partition(Buffer.alloc(128 * 1024 * 1024 + 1)), /exceeds 128 MiB/);
+            assert.throws(() => partition(Buffer.from('\n'.repeat(250002))), /expected 1..250000/);
+            assert.throws(() => partition(Buffer.from([0xff])), /encoded data/);
+          });
+
+          test('verified complete snapshot produces isolated files; failed preparation publishes nothing', () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'review-split-test-'));
+            const snapshot = path.join(root, 'snapshot');
+            const output = path.join(root, 'output');
+            const tag = 'review-corpus-20261114-000000';
+            const status = { complete: true, stopped_for_quota: false, login: 'cgwalters',
+              window: { since: '2020-11-01', until: null }, collector_version: 'v0.1.0',
+              run_url: 'https://github.com/cgwalters-forge/tracker/actions/runs/1' };
+            const names = ['review-corpus.jsonl.zst', 'review-corpus-state.json', 'status.json'];
+            const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+            const checksums = () => fs.writeFileSync(path.join(snapshot, 'SHA256SUMS'),
+              [...names].reverse().map(name => `${hash(fs.readFileSync(path.join(snapshot, name)))}  ${name}\n`).join(''));
+            const reset = (metadata = status, corpus = encode([record(1, 1, before), record(2, 2, cutoff, { body: 'HELDOUT_DO_NOT_EXPOSE' })])) => {
+              fs.rmSync(output, { recursive: true, force: true });
+              fs.mkdirSync(snapshot, { recursive: true });
+              fs.writeFileSync(path.join(snapshot, names[0]), execFileSync('zstd', ['-c'], { input: corpus }));
+              fs.writeFileSync(path.join(snapshot, names[1]), '{}');
+              fs.writeFileSync(path.join(snapshot, names[2]), JSON.stringify(metadata));
+              checksums();
+            };
+            const refuses = pattern => {
+              assert.throws(() => splitSnapshot(tag, snapshot, output), pattern);
+              assert.equal(fs.existsSync(output), false);
+              assert.deepEqual(fs.readdirSync(root), ['snapshot']);
+            };
+            try {
+              const help = spawnSync(process.execPath, ['-e', runner, '--', '--help'], { encoding: 'utf8' });
+              assert.equal(help.status, 0, help.stderr);
+              assert.match(help.stdout, /Usage: TAG SNAPSHOT NEW_OUTPUT/);
+              reset();
+              // The documented command, not just the functions it defines.
+              const cli = spawnSync(process.execPath, ['-e', runner, '--', tag, snapshot, output], { encoding: 'utf8' });
+              assert.equal(cli.status, 0, cli.stderr);
+              assert.equal(JSON.parse(cli.stdout).heldout_prs, 1);
+              assert.doesNotMatch(cli.stdout + cli.stderr, /HELDOUT_DO_NOT_EXPOSE/);
+              assert.deepEqual(fs.readdirSync(output), ['holdout.txt', 'provenance.json', 'training.jsonl']);
+              for (const name of fs.readdirSync(output)) assert.doesNotMatch(fs.readFileSync(path.join(output, name), 'utf8'), /HELDOUT_DO_NOT_EXPOSE/);
+              const provenance = JSON.parse(fs.readFileSync(path.join(output, 'provenance.json')));
+              assert.equal(provenance.cutoff, cutoff);
+              assert.equal(provenance.training_sha256, hash(fs.readFileSync(path.join(output, 'training.jsonl'))));
+              assert.equal(provenance.holdout_sha256, hash(fs.readFileSync(path.join(output, 'holdout.txt'))));
+              for (const name of names) assert.equal(provenance.snapshot_sha256[name], hash(fs.readFileSync(path.join(snapshot, name))));
+              assert.throws(() => splitSnapshot(tag, snapshot, output), /output already exists/);
+              for (const change of [{ complete: false }, { complete: 'true' }, { stopped_for_quota: true },
+                { login: 'someone-else' }, { window: { since: '2026-01-01', until: null } }, { run_url: 'https://example.com' }]) {
+                reset({ ...status, ...change });
+                refuses(/snapshot must be complete/);
+              }
+              for (const name of names) {
+                reset();
+                fs.appendFileSync(path.join(snapshot, name), 'damaged');
+                refuses(/checksum/);
+              }
+              reset();
+              fs.writeFileSync(path.join(snapshot, 'SHA256SUMS'), '');
+              refuses(/checksum/);
+              reset(status, Buffer.from('{"body":"DO_NOT_ECHO"'));
+              refuses(/invalid JSON at record 1$/);
+              reset();
+              fs.writeFileSync(path.join(snapshot, names[0]), 'not zstd');
+              checksums();
+              refuses(/decompression failed/);
+            } finally { fs.rmSync(root, { recursive: true, force: true }); }
+          });
       # Exercise the trusted renderer/publisher with no tokens or API calls.
       # Keep new scripts inline: deployment scripts and Justfile may only shrink.
       - name: Test CI-health saved reports and publication
