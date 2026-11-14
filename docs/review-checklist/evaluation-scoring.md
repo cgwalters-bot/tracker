@@ -18,6 +18,11 @@ The CI test job runs synthetic offline tests of the block below. Invalid input e
 nonzero without printing a partial score. To avoid unbounded local input reads,
 the CLI accepts at most 1 MiB, 30 PRs and 1,000 comments/findings per PR/pass.
 These are fixed limits, not production controls or new caller settings.
+The ledger must be valid UTF-8 JSON. Malformed byte sequences are rejected before
+parsing: replacing them with U+FFFD could change archive IDs or make a corrupted
+comment ID match a finding. Valid Unicode (including a literal U+FFFD) is kept
+unchanged. An encoding error prints no score or ledger contents; recover the
+original UTF-8 ledger from its archive rather than scoring a repaired guess.
 
 ## Before scoring
 
@@ -277,8 +282,11 @@ export function main(args) {
     while (size < buffer.length && (n = readSync(fd, buffer, size, buffer.length - size, null)) > 0) size += n;
   } finally { closeSync(fd); }
   requireThat(size <= MAX_BYTES, 'ledger exceeds 1 MiB; split the evaluation rather than truncating it');
+  let decoded;
+  try { decoded = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buffer.subarray(0, size)); }
+  catch { throw new Error('invalid ledger UTF-8; recover the original ledger from its archive'); }
   let input;
-  try { input = JSON.parse(buffer.subarray(0, size).toString('utf8')); }
+  try { input = JSON.parse(decoded); }
   catch { throw new Error('invalid ledger JSON; see evaluation-scoring.md'); }
   console.log(JSON.stringify(score(input), null, 2));
 }

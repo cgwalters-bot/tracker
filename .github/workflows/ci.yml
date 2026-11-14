@@ -386,6 +386,33 @@ jobs:
               }
             });
 
+            test('CLI rejects malformed UTF-8 instead of inventing matching archive IDs', () => {
+              const file = join(temp, 'encoding.json');
+              const run = content => {
+                writeFileSync(file, content);
+                return spawnSync(process.execPath, [modulePath, file], { encoding: 'utf8' });
+              };
+              const input = ledger();
+              input.prs[1].comments = ['comment-\uFFFD'];
+              input.prs[1].baseline = [{ id: 'unicode-\u00e9-\ud83d\ude80', matches: ['comment-\uFFFD'], reason: 'same concern' }];
+              const valid = JSON.stringify(input);
+              const ok = run(valid);
+              assert.equal(ok.status, 0, ok.stderr);
+              assert.deepEqual(JSON.parse(ok.stdout), score(input), 'valid Unicode, including U+FFFD, is preserved');
+              const marker = Buffer.from('comment-\uFFFD');
+              const bytes = Buffer.from(valid);
+              const offset = bytes.indexOf(marker) + Buffer.byteLength('comment-');
+              // Corrupt only the comment ID, leaving the match's literal U+FFFD intact.
+              // Lossy decoding would falsely report that the baseline caught it.
+              for (const invalid of [[0xff], [0x80], [0xc0, 0xaf], [0xe2, 0x82], [0xed, 0xa0, 0x80]]) {
+                const bad = run(Buffer.concat([bytes.subarray(0, offset), Buffer.from(invalid), bytes.subarray(offset + 3)]));
+                assert.equal(bad.status, 1, `invalid UTF-8 ${invalid}`);
+                assert.equal(bad.stdout, '');
+                assert.match(bad.stderr, /invalid ledger UTF-8/);
+                assert.doesNotMatch(bad.stderr, /comment-|same concern/);
+              }
+            });
+
             test('CLI emits JSON only on success and bounds input without leaking malformed contents', () => {
               const dir = mkdtempSync(join(tmpdir(), 'checklist-score-'));
               const file = join(dir, 'ledger.json');
