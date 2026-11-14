@@ -394,13 +394,22 @@ can still pass the two-day freshness check after today's run has published;
 workflow serialization alone does not stop that overwrite. Before updating, the
 publisher reads the canonical date from the existing owned heading and refuses
 an older incoming window. An absent or invalid heading also refuses, requiring
-manual repair rather than guessing its age. Same-window updates remain allowed
-to refresh observed attempts, and identical content remains a no-op. This orders
-window dates, not collection times within a day. The check reuses the bounded
+manual repair rather than guessing its age. The header also records the trusted
+`GITHUB_RUN_NUMBER` in `tracker-ci-health-run`. GitHub increments this number for
+each new run of this workflow and preserves it on reruns. An older run cannot
+replace a newer run's status, even within the same window: otherwise a delayed
+rerun using older source/config could roll back that day's report. Same-run
+refreshes and newer runs remain allowed when their window does not regress;
+identical content remains a no-op. This orders workflow runs, not observation
+times or attempts within one run. Missing or malformed run markers refuse
+publication and require manual repair, including legacy status comments; no
+automatic adoption or reset is performed. Publication is still disabled, so
+review this migration before activation. The check reuses the bounded
 comment listing, adds no requests or option, and leaves publication off. Preview
 still renders older fresh windows without consulting the status; refused writes
 retain their validated dated artifacts. Offline regression tests cover advancing,
-same-day and regressing windows, malformed dates, and preview/default-off paths.
+same-day and regressing windows, delayed older runs, malformed dates/run numbers,
+legacy comments, and preview/default-off paths.
 Hosted create/update acceptance remains with #1229 and the evidence in #1618.
 
 Valid warning and failure text can expand during escaping and UTF-8 encoding;

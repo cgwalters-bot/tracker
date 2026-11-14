@@ -913,7 +913,7 @@ jobs:
                 files.set(path.split('/').pop(), data);
               }};
             class Clock extends Date { static now() { return options.now ?? now; } }
-            const sandbox = {Buffer, Date: Clock, console, process: {env: {RUNNER_TEMP: '/tmp', GITHUB_RUN_ATTEMPT: '1', PREVIEW: options.preview === false ? 'false' : 'true',
+            const sandbox = {Buffer, Date: Clock, console, process: {env: {RUNNER_TEMP: '/tmp', GITHUB_RUN_NUMBER: options.runNumber ?? '10', GITHUB_RUN_ATTEMPT: '1', PREVIEW: options.preview === false ? 'false' : 'true',
               RAW_ARTIFACT_URL: 'https://github.com/cgwalters-forge/tracker/actions/runs/42/artifacts/123'}},
               context, github, core: {info() {}, setOutput(name, value) {outputs[name] = value;},
                 summary: {addRaw(text) {summaries.push(text); return this;}, async write() {
@@ -1361,6 +1361,36 @@ jobs:
               assert.equal(bad.calls.length, 0); assert.equal(bad.outputs['dated-ready'], 'true');
             }
           });
+          test('older workflow runs cannot overwrite same-day status on a delayed rerun', async () => {
+            const first = await run({publish: true, preview: false}); assert.ifError(first.error);
+            const comments = [owned(first.calls[0].args.body)];
+            const stale = await run({publish: true, preview: false, runNumber: '9', comments});
+            assert.match(stale.error?.message ?? '', /newer status run/);
+            assert.equal(stale.calls.length, 0);
+            assert.equal(stale.outputs['dated-ready'], 'true');
+            for (const runNumber of ['10', '11']) {
+              const fresh = await run({publish: true, preview: false, runNumber, comments});
+              assert.ifError(fresh.error);
+              assert.deepEqual(fresh.calls.map(c => c.name), runNumber === '10' ? [] : ['update']);
+            }
+            for (const options of [{publish: false, preview: false}, {publish: true, preview: true}]) {
+              const preview = await run({...options, runNumber: '9', comments});
+              assert.ifError(preview.error); assert.equal(preview.calls.length, 0);
+            }
+            for (const value of ['', '0', '-1', '01', '1.5', '9007199254740992']) {
+              const malformed = await run({publish: true, preview: false, runNumber: value});
+              assert.match(malformed.error?.message ?? '', /invalid publication run number/);
+              assert.equal(malformed.calls.length, 0);
+            }
+            for (const replacement of ['', '<!-- tracker-ci-health-run:0 -->', '<!-- tracker-ci-health-run:01 -->']) {
+              const body = comments[0].body.replace('<!-- tracker-ci-health-run:10 -->', replacement);
+              const legacy = await run({publish: true, preview: false, comments: [owned(body)]});
+              assert.match(legacy.error?.message ?? '', /invalid owned status run/);
+              assert.equal(legacy.calls.length, 0);
+              assert.equal(legacy.outputs['dated-ready'], 'true');
+            }
+          });
+
           test('dated upload survives publication failure but never admits invalid or partial reports', async () => {
             assert.match(workflow, /name: Validate, render saved JSON, and update owned status\n        id: render/);
             const upload = workflow.slice(workflow.lastIndexOf('      - uses: actions/upload-artifact'));
