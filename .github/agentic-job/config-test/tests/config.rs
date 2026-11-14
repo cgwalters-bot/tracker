@@ -67,11 +67,16 @@ const sha = 'a'.repeat(40), tag = 'review-corpus-20261114-000000';
 const runURL = 'https://github.com/example/tracker/actions/runs/42';
 const marker = `<!-- review-corpus-run: ${runURL} -->`;
 const names = ['review-corpus.jsonl.zst', 'review-corpus-state.json', 'status.json', 'SHA256SUMS'];
+const payloads = Object.fromEntries(names.slice(0, 3).map(name => [name, `fixture ${name}`]));
+const checksums = names.slice(0, 3).map(name => require('node:crypto').createHash('sha256')
+  .update(payloads[name]).digest('hex') + '  ' + name);
+payloads.SHA256SUMS = checksums.join('\n') + '\n';
 const own = { id: 7, tag_name: tag, draft: true, target_commitish: sha, body: `Notes\n${marker}\n`,
   upload_url: 'https://uploads.github.com/repos/example/tracker/releases/7/assets{?name,label}', assets: [] };
 try {
   fs.mkdirSync(`${temp}/dist`);
-  for (const name of names) fs.writeFileSync(`${temp}/dist/${name}`, `fixture ${name}`);
+  const restore = () => { for (const name of names) fs.writeFileSync(`${temp}/dist/${name}`, payloads[name]); };
+  restore();
   fs.writeFileSync(`${temp}/notes.md`, own.body);
   fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}
 const fs = require('node:fs'), assert = require('node:assert/strict');
@@ -117,17 +122,36 @@ if (url.endsWith('/releases?per_page=100')) {
         GITHUB_REPOSITORY: 'example/tracker', GITHUB_SHA: sha, RUN: runURL, FAIL: fail } });
     assert.equal(got.error, undefined);
     return { status: got.status, stderr: got.stderr, state: JSON.parse(fs.readFileSync(`${temp}/state`)),
-      calls: fs.readFileSync(`${temp}/calls`, 'utf8').trim().split('\n').map(JSON.parse) };
+      calls: fs.readFileSync(`${temp}/calls`, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse) };
   };
   const complete = got => {
     assert.equal(got.status, 0, got.stderr); assert.equal(got.state.length, 1);
     const r = got.state[0]; assert.equal(r.draft, false);
     assert.deepEqual(r.assets.map(a => a.name), names);
-    for (const a of r.assets) assert.equal(a.data, `fixture ${a.name}`);
+    for (const a of r.assets) assert.equal(a.data, fs.readFileSync(`${temp}/dist/${a.name}`, 'utf8'));
     assert.deepEqual(got.calls.at(-1), ['PATCH', `repos/example/tracker/releases/${r.id}`]);
   };
   complete(run([]));
   const partial = { ...own, assets: [{ id: 90, name: names[0], data: 'partial' }] };
+  const invalid = [
+    ...names.map(name => [ `missing ${name}`, () => fs.rmSync(`${temp}/dist/${name}`) ]),
+    ...names.slice(0, 3).map(name => [ `damaged ${name}`, () => fs.appendFileSync(`${temp}/dist/${name}`, 'damage') ]),
+    ...checksums.map((_, i) => [ `missing checksum ${i}`, () => fs.writeFileSync(`${temp}/dist/SHA256SUMS`, checksums.filter((_, j) => i !== j).join('\n') + '\n') ]),
+    ['duplicate checksum', () => fs.appendFileSync(`${temp}/dist/SHA256SUMS`, checksums[0] + '\n')],
+    ['extra path', () => fs.appendFileSync(`${temp}/dist/SHA256SUMS`, checksums[0].replace(names[0], '../outside') + '\n')],
+    ['empty manifest', () => fs.writeFileSync(`${temp}/dist/SHA256SUMS`, '')],
+  ];
+  for (const [label, damage] of invalid) for (const releases of [[], [partial]]) {
+    restore(); damage();
+    const got = run(releases);
+    assert.notEqual(got.status, 0, label);
+    assert.deepEqual(got.calls, [], `${label}: no release API calls before verification`);
+    assert.deepEqual(got.state, releases, `${label}: existing draft remains intact`);
+  }
+  restore();
+  fs.writeFileSync(`${temp}/dist/SHA256SUMS`, [...checksums].reverse().join('\n') + '\n');
+  complete(run([])); // Manifest order is not significant.
+  restore();
   const resumed = run([partial]); complete(resumed);
   assert.ok(!resumed.calls.some(([m, u]) => m === 'POST' && u.endsWith('/releases')), 'never create alongside a draft');
   for (const releases of [[{ ...own, draft: false }], [{ ...own, draft: 'true' }],

@@ -119,6 +119,17 @@ The existing opt-in and fifteen-minute publish-job bound are unchanged;
 `just test-config` tests recovery and refusals offline, including interrupted
 asset replacement and a server that accepts duplicate draft creation.
 
+Before any release API call, publication recomputes checksums for all three data
+assets in the downloaded artifact and compares the entire manifest, ignoring
+entry order. Missing or damaged files and missing, duplicate or extra checksum
+entries stop publication before creating a release or deleting a draft's assets.
+This prevents a damaged artifact from becoming an immutable snapshot; it does not
+authenticate a publisher able to replace both bytes and checksums. No paths from
+the manifest are opened. Restore the verified collection artifact before retrying,
+rather than regenerating checksums for damaged bytes. `just test-config` covers
+these refusals for both first publication and draft recovery, without API access.
+This uses the existing opt-in and fifteen-minute job bound, not a new setting.
+
 A new collection run ignores drafts and resumes from the last published release,
 so nothing is lost but the interrupted run's work; delete abandoned drafts by
 hand. Recovery does not overwrite an immutable snapshot or restart collection.

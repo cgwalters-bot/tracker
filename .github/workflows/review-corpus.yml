@@ -217,6 +217,13 @@ jobs:
         # repair only its own draft: otherwise a tag collision could replace
         # another run's assets. Never change an already published snapshot.
         run: |
+          # Damaged/incomplete artifacts must not become immutable snapshots or
+          # replace a recoverable draft's assets. Check exact coverage before any
+          # API call; never open paths supplied by the downloaded manifest.
+          (cd dist && sha256sum review-corpus.jsonl.zst review-corpus-state.json status.json) > actual-checksums
+          LC_ALL=C sort dist/SHA256SUMS > expected-checksums
+          LC_ALL=C sort actual-checksums > sorted-checksums
+          diff -q expected-checksums sorted-checksums || { echo '::error::Corpus artifact checksum mismatch; restore the verified collection artifact before retrying publication.' >&2; exit 1; }
           tag=$RELEASE_PREFIX$STAMP
           api="repos/$GITHUB_REPOSITORY/releases"
           # Creating a draft does not reject duplicate pending tags. Inspect all
