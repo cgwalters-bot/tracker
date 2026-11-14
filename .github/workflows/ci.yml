@@ -366,6 +366,31 @@ jobs:
               assert.match(got.summaries.join(), /REPORT REFUSED/);
             }
           });
+          test('impossible run/attempt populations refuse before rendering or publication', async () => {
+            for (const population of ['default_push', 'pull_request']) {
+              for (const [runs, attempts, expected] of [[0, 1, 1], [2, 1, 2], [1, 1, 101], [501, 501, 501]]) {
+                const r = report(), populations = r.targets[0].populations;
+                Object.assign(populations[population], {runs, attempts, expected_attempts: expected,
+                  success: attempts, denominator: attempts, pass_rate: 1});
+                // Each population can fit separately while their shared listing exceeds its cap.
+                if (runs === 501) Object.assign(populations[population === 'default_push' ? 'pull_request' : 'default_push'],
+                  {runs: 500, attempts: 500, expected_attempts: 500, skipped: 500});
+                const got = await run({report: r, publish: true, preview: false});
+                assert.ok(got.error, `${population}: ${runs}/${attempts}/${expected}`);
+                assert.equal(got.calls.length, 0);
+                assert.equal(got.files.has('2026-11-05.md'), false);
+                assert.match(got.summaries.join(), /REPORT REFUSED/);
+              }
+            }
+          });
+          test('listing and attempt caps accept their boundary with incomplete enrichment', async () => {
+            const r = report(), p = r.targets[0].populations;
+            for (const population of Object.values(p)) Object.assign(population,
+              {runs: 500, attempts: 500, expected_attempts: 50000, skipped: 500});
+            const got = await run({report: r, publish: true, preview: false});
+            assert.ifError(got.error); assert.deepEqual(got.calls.map(c => c.name), ['create']);
+            assert.match(got.files.get('2026-11-05.md'), /500\/50000/);
+          });
           test('foreign/duplicate markers and capped comment history refuse publication', async () => {
             const c = owned('<!-- tracker-ci-health:1229:v1 -->\nold');
             for (const options of [{comments: [{...c, user: {login: 'outsider', type: 'User'}}]}, {comments: [c, c]},
