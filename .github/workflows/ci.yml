@@ -392,6 +392,8 @@ jobs:
                 {repository: 'composefs/composefs-rs', workflow: 'bootc-revdep.yml'}]);
             assert.deepEqual(config.targets.filter(t => t.repository === 'bootc-dev/bcvk'),
               [{repository: 'bootc-dev/bcvk', workflow: 'main.yml'}]);
+            assert.deepEqual(config.targets.filter(t => t.repository === 'cgwalters-forge/agenthome'),
+              [{repository: 'cgwalters-forge/agenthome', workflow: 'check.yml'}]);
             assert.equal(JSON.parse(fs.readFileSync('.github/ci-health/publication.json')).publish, false);
             assert.match(workflow, /cron: '43 6 \* \* \*'/);
             assert.match(workflow, /group: ci-health\n  cancel-in-progress: false/);
@@ -431,6 +433,29 @@ jobs:
             assert.match(md, /failed run has no jobs/);
             assert.match(md, /No observed groups; this is not evidence of recovery/);
             assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
+          });
+          test('agenthome current checks replace retired CI without reinterpreting old reports', async () => {
+            const r = report();
+            const target = r.targets.find(t => t.target.repository === 'cgwalters-forge/agenthome');
+            // Synthetic populations: exercise both events, not a live census.
+            target.populations.default_push = {...empty(), runs: 1, attempts: 1, expected_attempts: 1,
+              failed: 1, first_attempt_failed: 1, denominator: 1, first_attempt_denominator: 1,
+              pass_rate: 0, first_attempt_pass_rate: 0};
+            target.populations.pull_request = {...empty(), runs: 1, attempts: 1, expected_attempts: 1,
+              success: 1, first_attempt_success: 1, denominator: 1, first_attempt_denominator: 1,
+              pass_rate: 1, first_attempt_pass_rate: 1};
+            const got = await run({report: r});
+            assert.ifError(got.error); assert.equal(got.calls.length, 0);
+            const md = got.files.get('2026-11-05.md');
+            assert.match(md, /agenthome \/ check.yml \| default_push \| 1 \| 1\/1 \| 0\.0%/);
+            assert.match(md, /agenthome \/ check.yml \| pull_request \| 1 \| 1\/1 \| 100\.0%/);
+            assert.match(md, /INCOMPLETE OBSERVATIONS/);
+            const old = structuredClone(r);
+            old.targets.find(t => t.target.repository === 'cgwalters-forge/agenthome').target.workflow = 'ci.yml';
+            const refused = await run({report: old, publish: true, preview: false});
+            assert.match(refused.error?.message ?? '', /target mismatch/);
+            assert.equal(refused.calls.length, 0);
+            assert.equal(refused.outputs['dated-ready'], undefined);
           });
           test('warning length bound applies before adding the target label', async () => {
             for (const warning of ['x'.repeat(2000), '@<&\n'.repeat(500), '界'.repeat(2000)]) {
@@ -755,7 +780,8 @@ jobs:
             const targets = r.targets.map(t => t.target);
             const historical = targets.some(t => t.repository === 'bootc-dev/bcvk' && t.workflow === 'main-c10s.yml');
             if (historical) {
-              const expected = config.targets.filter(t => t.workflow !== 'bootc-revdep.yml');
+              const expected = config.targets.filter(t => t.workflow !== 'bootc-revdep.yml')
+                .map(t => t.repository === 'cgwalters-forge/agenthome' ? {...t, workflow: 'ci.yml'} : t);
               expected.splice(3, 0, {repository: 'bootc-dev/bcvk', workflow: 'main-c10s.yml'});
               assert.deepEqual(targets, expected);
               const refused = await run({report: r, now: Date.parse(r.until) + 12 * 3600000});

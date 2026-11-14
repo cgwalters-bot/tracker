@@ -16,7 +16,7 @@
     {"repository": "cgwalters-forge/tracker", "workflow": "ci.yml"},
     {"repository": "cgwalters-forge/actions", "workflow": "ci.yml"},
     {"repository": "cgwalters-forge/review", "workflow": "ci.yml"},
-    {"repository": "cgwalters-forge/agenthome", "workflow": "ci.yml"},
+    {"repository": "cgwalters-forge/agenthome", "workflow": "check.yml"},
     {"repository": "cgwalters-forge/misctool", "workflow": "ci.yml"},
     {"repository": "cgwalters-forge/atomic-linux-sandbox", "workflow": "build.yml"},
     {"repository": "cgwalters-bot/praxis-credential-broker", "workflow": "ci.yml"}

@@ -54,7 +54,7 @@ redirects to the canonical `bootc-dev/bcvk`, which is configured explicitly.
 | cgwalters-forge/tracker | ci.yml | none of the routine dispatch/operations workflows are build/test populations |
 | cgwalters-forge/actions | ci.yml | workflows-check.yml, example-plain-ci.yml |
 | cgwalters-forge/review | ci.yml | pages.yml |
-| cgwalters-forge/agenthome | ci.yml | check.yml |
+| cgwalters-forge/agenthome | check.yml | none (ci.yml is retired) |
 | cgwalters-forge/misctool | ci.yml | release.yml |
 | cgwalters-forge/atomic-linux-sandbox | build.yml | composefs.yml |
 | cgwalters-bot/praxis-credential-broker | ci.yml | container-images.yml |
@@ -136,6 +136,29 @@ stay fixed. Returning from 19 to 20 targets reduces each target's enrichment
 share; coverage may remain incomplete. A fresh hosted preview of this exact
 configuration, signature mappings and repeated fix evidence remain with #1229
 and #1223. No collector invocation, hosted dispatch or status write ran here.
+
+### Agenthome target correction (14 November 2026)
+
+Replace retired `cgwalters-forge/agenthome / ci.yml` with `check.yml` in the
+same slot. At [`ce75a39`](https://github.com/cgwalters-forge/agenthome/tree/ce75a397b285ee000d4046bae405e0ecb6bb08d6/.github/workflows),
+`ci.yml` is absent (contents API 404), though Actions still lists it as active.
+Its runs endpoint returned only three PR runs, all on October 13, outside the
+retained sample's window. Registration alone did not establish current coverage.
+The [current check workflow](https://github.com/cgwalters-forge/agenthome/blob/ce75a397b285ee000d4046bae405e0ecb6bb08d6/.github/workflows/check.yml)
+triggers on `push` and `pull_request` and runs `just check` and pinned-tool smoke
+checks. Read-only runs API evidence includes failed main push
+[43560910313](https://github.com/cgwalters-forge/agenthome/actions/runs/43560910313),
+successful main push [43555939068](https://github.com/cgwalters-forge/agenthome/actions/runs/43555939068)
+and successful PR [43555284546](https://github.com/cgwalters-forge/agenthome/actions/runs/43555284546).
+These establish eligible populations, not the failure's cause or a 30-day census.
+
+The 20-target/15-repository scope, collector budgets and default-off publication
+policy are unchanged; no new control or workflow discovery is added. Offline
+tests cover both populations under the corrected label and reject a report with
+the retired target before rendering or publication. The November 13 JSON remains
+unchanged historical evidence, replayed with its original targets. A fresh hosted
+preview and evidence-backed signature mappings remain acceptance work under
+#1229/#1223; no hosted dispatch, collection or status write ran for this correction.
 
 Other excluded workflows are review/label/merge bots, Copilot/dynamic workflows,
 dispatch/apply/session/reconcile operations, upgrade/scheduled-release jobs,
