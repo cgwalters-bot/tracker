@@ -152,11 +152,13 @@ jobs:
                 r.decoded_bytes >= 0 && r.decoded_bytes <= 40 * 1024 * 1024, 'invalid collector bounds');
               check(Array.isArray(r.targets) && r.targets.length === config.targets.length &&
                 Array.isArray(r.groups) && r.groups.length <= 500, 'invalid target/group counts');
-              const warnings = [], rows = [];
+              const warningTargets = [], rows = [];
               const integer = n => check(Number.isSafeInteger(n) && n >= 0, 'invalid nonnegative integer');
               const positiveInteger = n => check(Number.isSafeInteger(n) && n > 0, 'invalid positive evidence integer');
               const rate = (n, d) => d ? `${(100 * n / d).toFixed(1)}% (${n}/${d})` : 'no data (0/0)';
               for (const [i, t] of r.targets.entries()) {
+                const warnings = [];
+                warningTargets.push(warnings);
                 assert.deepStrictEqual(t.target, config.targets[i], 'target mismatch');
                 check(typeof t.complete === 'boolean' && typeof t.listing_complete === 'boolean' &&
                   Array.isArray(t.warnings) && t.warnings.length <= 2000, 'invalid coverage');
@@ -169,8 +171,8 @@ jobs:
                 // Validate and escape each input before composing it: a valid
                 // 2,000-character warning plus its label exceeds one input's cap.
                 const warningLabel = escape(label);
-                if (!t.complete || !t.listing_complete) warnings.push(warningLabel + ': INCOMPLETE');
                 for (const w of t.warnings) warnings.push(warningLabel + ': ' + escape(w));
+                if (!t.complete || !t.listing_complete) warnings.push(warningLabel + ': INCOMPLETE');
                 for (const pop of ['default_push', 'pull_request']) {
                   const p = t.populations[pop];
                   for (const k of ['runs', 'attempts', 'expected_attempts', 'success', 'failed', 'cancelled', 'skipped',
@@ -200,6 +202,16 @@ jobs:
                 check(t.populations.default_push.runs + t.populations.pull_request.runs <= 1000, 'run listing exceeds bound');
               }
               check(r.complete === r.targets.every(t => t.complete), 'inconsistent report completeness');
+              const warnings = warningTargets.flat();
+              // One noisy target must not consume every warning preview slot.
+              // Round-robin in configured target order, diagnostics before each
+              // target's generic coverage notices. The full artifact keeps all.
+              const warningPreview = [];
+              for (let i = 0; warningPreview.length < 12; i++) {
+                const round = warningTargets.flatMap(w => i < w.length ? [w[i]] : []);
+                if (!round.length) break;
+                warningPreview.push(...round);
+              }
               const seen = new Set(), groupLines = [];
               for (const g of r.groups) {
                 const o = g.observation;
@@ -266,7 +278,7 @@ jobs:
               // otherwise prevent any status update. Bound each detail section
               // in bytes, keeping whole entries and disclosing every omission.
               // The full dated artifact above retains all entries.
-              const section = (entries, limit, empty) => {
+              const section = (entries, limit, empty, total = entries.length) => {
                 const byteLimit = 12000, noticeReserve = 100;
                 let result = '', count = 0;
                 for (const line of entries.slice(0, limit)) {
@@ -274,10 +286,10 @@ jobs:
                   if (Buffer.byteLength(next) > byteLimit - noticeReserve) break;
                   result = next; count++;
                 }
-                return result + (count < entries.length ?
-                  `\n**Presentation truncated: ${entries.length - count} more entries; see artifact.**` : (result ? '' : empty));
+                return result + (count < total ?
+                  `\n**Presentation truncated: ${total - count} more entries; see artifact.**` : (result ? '' : empty));
               };
-              const body = header + '### Warnings\n' + section(warnings.map(w => '- **WARNING:** ' + w), 12, 'No collector warnings.') + table +
+              const body = header + '### Warnings\n' + section(warningPreview.map(w => '- **WARNING:** ' + w), 12, 'No collector warnings.', warnings.length) + table +
                 '\n\n### Findings and groups\n' + section(lines, 12, 'No observed groups; this is not evidence of recovery.') +
                 '\n\n### Absent overdue entries\n' + section(absent, 100, 'None; mappings pending.') + footer;
               check(Buffer.byteLength(body) < 60000, 'comment too large');
