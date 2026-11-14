@@ -101,7 +101,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          limit=$(gh api rate_limit --jq .resources.core.limit)
+          limit=$(timeout --kill-after=5s 10s gh api rate_limit --jq .resources.core.limit)
           if ! (( RATE_LIMIT_RESERVE < limit )); then
             echo "::error::RATE_LIMIT_RESERVE $RATE_LIMIT_RESERVE is not below the job token's core limit of $limit"
             exit 1
@@ -125,8 +125,8 @@ jobs:
           should_stop() {
             quota=stopped; stop_status=0
             (( RATE_LIMIT_RESERVE == 0 )) && return 1
-            # An unknown quota must not let collection drain the shared token.
-            if ! left=$(gh api rate_limit --jq .resources.core.remaining) || [[ ! $left =~ ^[0-9]{1,10}$ ]]; then
+            # A hung quota read must not leave collection draining the shared token.
+            if ! left=$(timeout --kill-after=5s 10s gh api rate_limit --jq .resources.core.remaining) || [[ ! $left =~ ^[0-9]{1,10}$ ]]; then
               quota=unknown; stop_status=1
               return 0
             fi

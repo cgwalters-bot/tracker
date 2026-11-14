@@ -401,8 +401,9 @@ test-review-corpus:
       }
       // Stub quota reads: FIRST before collector startup, LEFT thereafter.
       const collect = /- name: Collect\n[\s\S]*?run: \|\n([\s\S]*?)(?=      - name:)/.exec(workflow)[1].replace(/^          /gm, '');
-      const stubs = `${temp}/stubs`;
-      fs.mkdirSync(stubs);
+      const stubs = fs.mkdtempSync(`${temp}/stubs-`);
+      // Exercise real timeout/kill behavior with shorter fixture-only deadlines.
+      fs.writeFileSync(`${stubs}/timeout`, `#!/bin/sh\n[ "$1 $2" = '--kill-after=5s 10s' ] || exit 2\nshift 2\nexec /usr/bin/timeout --kill-after=0.1s 0.5s "$@"\n`, { mode: 0o755 });
       fs.writeFileSync(`${stubs}/cgwalters-forge-misctool`, `#!${process.execPath}
     const fs = require('node:fs');
     process.on('SIGTERM', () => { fs.appendFileSync('signals', 'SIGTERM\\n'); if (!process.env.STUBBORN) process.exit(0); });
@@ -410,9 +411,9 @@ test-review-corpus:
     if (process.env.EXIT) setTimeout(() => process.exit(+process.env.EXIT), 200); else setInterval(() => {}, 1000);
     `, { mode: 0o755 });
       fs.writeFileSync(`${stubs}/gh`, `#!/bin/sh
-    case "$*" in *limit) echo "\${LIMIT-5000}"; exit;; esac
-    if [ -f asked ]; then until [ -f ready ]; do /bin/sleep 0.01; done; else : > asked; LEFT=\${FIRST-$LEFT}; fi
-    [ "$LEFT" = api-error ] && exit 1
+    case "$*" in *limit) LEFT=\${LIMIT-5000};;
+    *) if [ -f asked ]; then until [ -f ready ]; do /bin/sleep 0.01; done; else : > asked; LEFT=\${FIRST-$LEFT}; fi;; esac
+    case "$LEFT" in hung) trap '' TERM; exec /bin/sleep 60;; api-error) exit 1;; esac
     [ -n "$LEFT" ] && echo "$LEFT"
     `, { mode: 0o755 });
       fs.writeFileSync(`${stubs}/sleep`, '#!/bin/sh\nexec /bin/sleep 0.05\n', { mode: 0o755 });
@@ -430,14 +431,13 @@ test-review-corpus:
       assert.deepEqual(runCollect({ LEFT: '1499' }), { status: 0, output: 'quota=stopped\n', signals: '' });
       assert(!fs.existsSync(`${temp}/ready`), 'below the reserve must not start collection');
       const check = /- name: Check the quota reserve\n[\s\S]*?run: \|\n([\s\S]*?)(?=      - name:)/.exec(workflow)[1].replace(/^          /gm, '');
-      const checkReserve = (limit, reserve = '1500') => spawnSync('bash', ['-eo', 'pipefail', '-c', check], { cwd: temp,
+      const checkReserve = (limit, reserve = '1500') => spawnSync('bash', ['-eo', 'pipefail', '-c', check], { cwd: temp, timeout: 10000,
         env: { ...env, PATH: `${stubs}:${process.env.PATH}`, RATE_LIMIT_RESERVE: reserve, LIMIT: limit } }).status;
-      for (const [limit, status] of [['5000', 0], ['1500', 1], ['1000', 1], ['', 1]])
-        assert.equal(checkReserve(limit), status, `limit ${limit}`);
+      for (const [limit, status] of [['5000', 0], ['1500', 1], ['1000', 1], ['', 1], ['hung', 128 + 9 /* SIGKILL */]]) assert.equal(checkReserve(limit), status, `limit ${limit}`);
       const reserve = /^  RATE_LIMIT_RESERVE: (\d+)$/m.exec(workflow)[1];
       assert.equal(checkReserve('1000', reserve), 0, 'configured reserve fits the job token');
       assert(+reserve > 0);
-      for (const left of ['', 'null', 'api-error', '-1', '1.5', '1500\n1500', '18446744073709556616']) {
+      for (const left of ['', 'null', 'api-error', 'hung', '-1', '1.5', '1500\n1500', '18446744073709556616']) {
         assert.deepEqual(runCollect({ LEFT: left }), { status: 1, output: 'quota=unknown\n', signals: '' });
         assert(!fs.existsSync(`${temp}/ready`), 'unknown quota must not start collection');
         for (const stubborn of ['', '1']) assert.deepEqual(runCollect({ FIRST: '5000', LEFT: left, STUBBORN: stubborn }),

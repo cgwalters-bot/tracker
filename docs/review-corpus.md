@@ -92,6 +92,14 @@ an ordinary quota stop. Otherwise an unavailable quota endpoint could let the
 collector drain the token shared with review and dispatch. Retained output can
 still be published as incomplete (`complete: false`, `stopped_for_quota: false`);
 if the first run has no corpus/state yet, packing fails and nothing is published.
+Each quota read, including the preflight limit check, has a ten-second deadline
+and is killed after five more seconds if it ignores termination. Without this
+bound, a stalled read could leave the collector spending the shared quota until
+the five-hour collection step expires. A timed-out monitoring read follows the
+same unknown-quota failure path and bounded collector shutdown; a timed-out
+preflight check fails before collection. These are fixed bounds, not a new
+setting; collection remains off unless `REVIEW_CORPUS=enabled`.
+
 Retry after quota reads recover. Setting the reserve to 0 skips quota reads
 altogether. `just test-review-corpus` exercises these paths offline, including
 a collector that ignores SIGTERM; it does not run a live backfill.
