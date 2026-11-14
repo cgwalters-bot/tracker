@@ -286,7 +286,13 @@ jobs:
                 `Populations with no observed runs: default_push ${emptyPopulations('default_push')}/${targetCount}; ` +
                 `pull_request ${emptyPopulations('pull_request')}/${targetCount}.\n` +
                 'No observed runs can mean unavailable history, not inactivity or passing CI.\n\n';
+              // A delayed rerun retains its workflow run number, even when it
+              // collects on the same day as a newer run with newer source/config.
+              const runNumber = process.env.GITHUB_RUN_NUMBER;
+              check(/^[1-9][0-9]*$/.test(runNumber ?? '') && Number.isSafeInteger(Number(runNumber)),
+                'invalid publication run number');
               const header = `${marker}\n## Rolling CI health: ${r.until.slice(0, 10)}\n\n` +
+                `<!-- tracker-ci-health-run:${runNumber} -->\n\n` +
                 `**${r.complete ? 'Collector complete for configured targets only' : 'WARNING: INCOMPLETE OBSERVATIONS'}; not a healthy-CI verdict.**\n\n` +
                 `**Scope incomplete:** fixed ${config.targets.length}-target baseline; additional workflows need an explicit scope decision. Index mappings pending #1223. See [coverage](https://github.com/${repo}/blob/${context.sha}/docs/ci-health.md).\n\n` +
                 `[Run and dated JSON/Markdown](${runURL}#artifacts) · [Source JSON artifact](${artifactURL}) · source/config ${context.sha} · collector ${rev}\n\n` +
@@ -352,6 +358,11 @@ jobs:
                 check(Number.isFinite(previous) && new Date(previous).toISOString().slice(0, 10) === date,
                   'invalid owned status window');
                 check(previous <= until, 'refusing to replace newer status window');
+                // Window ordering alone allows an older run to roll back the
+                // same day's status. Reuse the bounded owned-comment read.
+                const previousRun = /^<!-- tracker-ci-health-run:([1-9][0-9]*) -->$/m.exec(matches[0].body)?.[1];
+                check(previousRun !== undefined && Number.isSafeInteger(Number(previousRun)), 'invalid owned status run');
+                check(Number(previousRun) <= Number(runNumber), 'refusing to replace newer status run');
                 if (matches[0].body !== body) await github.rest.issues.updateComment({...context.repo, comment_id: matches[0].id, body});
               } else await github.rest.issues.createComment({...context.repo, issue_number: issue, body});
             } catch (error) {
