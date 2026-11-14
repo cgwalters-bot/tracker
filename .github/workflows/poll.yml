@@ -10,7 +10,8 @@ run-name: pass${{ inputs.apply && ' (apply)' || '' }}
 # fails or GitHub never creates it. GitHub drops most `*/10` scheduled runs
 # (hours apart on 2026-11-08), so the schedule restarts a broken chain only
 # eventually, not within one interval. Its disposable response cache
-# comes only from the explicitly named preceding pass; bootstrap runs are cold.
+# comes from a validated applying predecessor; bootstrap runs discover one.
+# Living status stays disabled until replay records have independent durability.
 on:
   schedule:
     - cron: '*/10 * * * *'
@@ -21,7 +22,7 @@ on:
         type: boolean
         default: false
       previous_run_id:
-        description: Preceding applying poll run (empty starts cold)
+        description: Preceding applying poll run (empty discovers a trusted predecessor)
         type: string
         required: false
         default: ''
@@ -96,7 +97,7 @@ jobs:
           jq --arg base "$base" 'if $base == "" then . else .usage.url = "\($base)/usage" end' \
             .github/pass.json > "$RUNNER_TEMP/pass.json"
       # Threat: a forged cached body can steer scheduling even with a valid
-      # ETag. Accept only the named applying poll run after its pass job ends.
+      # ETag. Validate the named or discovered applying run after its pass job ends.
       - name: Validate predecessor
         id: predecessor
         timeout-minutes: 2
@@ -144,8 +145,8 @@ jobs:
             --fix-bounds .github/agentic-job/fix.toml \
             --fix-bounds .github/agentic-job/midstream-fix.toml \
             --max-dispatch 20 --max-writes 60 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
-      # Threat: raw state includes private usage/holds comments. Export only
-      # repository responses whose repository is currently readable as public.
+      # Threat: raw state includes private usage/holds comments and status records.
+      # Export only allowed responses and ledger entries in public repositories.
       - name: Prepare public pass state
         id: state
         if: >-
@@ -162,7 +163,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pass-state
-          path: .state/pass.json
+          path: |
+            .state/public/pass.json
+            .state/public/living-status.json
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: ignore
