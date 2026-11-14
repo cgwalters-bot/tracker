@@ -484,9 +484,36 @@ jobs:
             const body = first.calls[0].args.body;
             const same = await run({publish: true, preview: false, comments: [owned(body)]}); assert.ifError(same.error);
             assert.equal(same.calls.length, 0);
-            const updated = await run({publish: true, preview: false, comments: [owned('<!-- tracker-ci-health:1229:v1 -->\nold')]});
+            const updated = await run({publish: true, preview: false, comments: [owned(body + '\nprevious details')]});
             assert.ifError(updated.error); assert.deepEqual(updated.calls.map(c => c.name), ['update']);
             assert.equal(updated.calls[0].args.comment_id, 9);
+          });
+          test('publication never replaces a newer window, but same-day refresh remains allowed', async () => {
+            const first = await run({publish: true, preview: false}); assert.ifError(first.error);
+            const body = first.calls[0].args.body;
+            const tomorrow = report();
+            tomorrow.until = iso(until + 86400000); tomorrow.since = iso(until - 29 * 86400000);
+            const later = await run({report: tomorrow, now: now + 86400000, publish: true, preview: false, comments: [owned(body)]});
+            assert.ifError(later.error); assert.deepEqual(later.calls.map(c => c.name), ['update']);
+            const comments = [owned(later.calls[0].args.body)];
+            // Yesterday still passes the two-day freshness check. Serialization
+            // alone does not prevent its delayed rerun from replacing today.
+            const stale = await run({now: now + 86400000, publish: true, preview: false, comments});
+            assert.match(stale.error?.message ?? '', /newer status window/);
+            assert.equal(stale.calls.length, 0);
+            assert.equal(stale.outputs['dated-ready'], 'true');
+            assert.deepEqual(JSON.parse(stale.files.get('2026-11-05.json')), report());
+            for (const options of [{publish: false, preview: false}, {publish: true, preview: true}]) {
+              const preview = await run({...options, now: now + 86400000, comments});
+              assert.ifError(preview.error); assert.equal(preview.calls.length, 0);
+            }
+            for (const heading of ['old', '## Rolling CI health: 2026-02-30',
+              '## Rolling CI health: 2026-11-5', '## Rolling CI health: 2026-11-05 extra']) {
+              const bad = await run({publish: true, preview: false,
+                comments: [owned('<!-- tracker-ci-health:1229:v1 -->\n' + heading + '\n\nold details')]});
+              assert.match(bad.error?.message ?? '', /invalid owned status window/);
+              assert.equal(bad.calls.length, 0); assert.equal(bad.outputs['dated-ready'], 'true');
+            }
           });
           test('dated upload survives publication failure but never admits invalid or partial reports', async () => {
             assert.match(workflow, /name: Validate, render saved JSON, and update owned status\n        id: render/);
@@ -497,7 +524,7 @@ jobs:
             // an explicit status function prevents Actions' implicit success() gate.
             const admitted = new Function('cancelled', 'steps', `return ${guard.replace('outputs.dated-ready', "outputs['dated-ready']")}`);
             for (const options of [{}, {summaryFailure: true}, {apiFailure: true},
-              {apiFailure: true, comments: [owned('<!-- tracker-ci-health:1229:v1 -->\nold')]},
+              {apiFailure: true, comments: [owned('<!-- tracker-ci-health:1229:v1 -->\n## Rolling CI health: 2026-11-05\n\nold')]},
               {fullPages: true}, {manifest: {source_revision: 'f'.repeat(40)}},
               {writeFailure: '2026-11-05.json'}, {writeFailure: '2026-11-05.md'}]) {
               const got = await run({...options, publish: true, preview: false});

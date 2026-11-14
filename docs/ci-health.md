@@ -273,6 +273,20 @@ content is a no-op. Manual preview renders the same dated JSON/Markdown and job
 summary without a write. Changing the GitHub Actions token identity would
 require a reviewed ownership migration, not automatic adoption of old comments.
 
+The owned status window must never move backwards. A delayed rerun from yesterday
+can still pass the two-day freshness check after today's run has published;
+workflow serialization alone does not stop that overwrite. Before updating, the
+publisher reads the canonical date from the existing owned heading and refuses
+an older incoming window. An absent or invalid heading also refuses, requiring
+manual repair rather than guessing its age. Same-window updates remain allowed
+to refresh observed attempts, and identical content remains a no-op. This orders
+window dates, not collection times within a day. The check reuses the bounded
+comment listing, adds no requests or option, and leaves publication off. Preview
+still renders older fresh windows without consulting the status; refused writes
+retain their validated dated artifacts. Offline regression tests cover advancing,
+same-day and regressing windows, malformed dates, and preview/default-off paths.
+Hosted create/update acceptance remains with #1229 and the evidence in #1618.
+
 Valid warning and failure text can expand during escaping and UTF-8 encoding;
 a count-only preview limit could therefore refuse the entire status as too large.
 The status and job summary now keep each of their three detail sections within
