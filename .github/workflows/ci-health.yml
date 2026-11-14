@@ -179,6 +179,11 @@ jobs:
                     p.attempts <= p.expected_attempts && p.first_attempt_denominator <= p.runs &&
                     p.first_attempt_success <= p.success && p.first_attempt_failed <= p.failed &&
                     (!t.complete || p.attempts === p.expected_attempts), 'inconsistent counts');
+                  // Omitted first failures can inflate the first-try pass rate.
+                  // Every terminal observation not counted as a first try must
+                  // fit among the expected attempts beyond one per listed run.
+                  check(p.denominator - p.first_attempt_denominator <= p.expected_attempts - p.runs,
+                    'terminal attempts exceed rerun budget');
                   for (const [field, n, d] of [['pass_rate', p.success, p.denominator],
                     ['first_attempt_pass_rate', p.first_attempt_success, p.first_attempt_denominator]]) {
                     check(d === 0 ? p[field] === null : typeof p[field] === 'number' && Math.abs(p[field] - n / d) < 1e-12, 'invalid rate');

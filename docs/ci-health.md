@@ -178,6 +178,19 @@ and other conclusions remain separate. Empty denominators mean no data, never
 100%. The last 30 complete UTC days use original run creation time; reruns are
 observed at collection time, including attempts after the window.
 
+The saved-report validator also bounds terminal attempts outside the first-try
+denominator by `expected_attempts - runs`. Otherwise two single-attempt runs,
+one pass and one failure, could claim a 100% first-try rate by omitting the first
+failure while retaining internally consistent totals. This check follows the
+[pinned collector's counting contract](https://github.com/cgwalters-forge/agent-board/blob/223fc372d321abfc643929faa4e8218b2422f30d/crates/board-forge/src/ci_health.rs):
+each listed run contributes one first attempt and its remaining expected attempts
+are reruns. It applies separately to push and PR populations before dated writes
+or publication. Missing first-attempt history remains valid when the rerun budget
+allows it; cancelled/skipped/active/other outcomes need not enter either terminal
+denominator. No new option, collector request or activation is added; publication
+remains off. Regression fixtures exercise omitted successes and failures, the
+combined rerun bound, exact boundaries and incomplete attempt history.
+
 Report/target completeness, auth/no-data/log/history warnings and presentation
 truncation appear prominently even on collector exit zero. The complete warning
 list and groups are in dated artifacts, retained for 35 days, with config/source

@@ -651,6 +651,37 @@ jobs:
               }
             }
           });
+          test('terminal attempts beyond first tries must fit the rerun budget', async () => {
+            for (const population of ['default_push', 'pull_request']) {
+              // Omitted first failures can falsely advertise 100% first-try success.
+              // Each tuple is runs, observed successes/failures, first successes/failures, expected attempts.
+              for (const [runs, success, failed, firstSuccess, firstFailed, expected, accepted] of [
+                [2, 1, 1, 1, 0, 2, false],
+                [2, 1, 1, 0, 1, 2, false],
+                [2, 2, 2, 1, 0, 4, false],
+                [2, 1, 1, 1, 1, 2, true],
+                [2, 2, 2, 1, 1, 4, true],
+                [1, 1, 0, 0, 0, 2, true], // Latest success; first attempt unavailable.
+                [1, 0, 1, 0, 0, 2, true], // Latest failure; first attempt unavailable.
+              ]) {
+                const r = report(), denominator = success + failed, first = firstSuccess + firstFailed;
+                Object.assign(r.targets[0].populations[population], {runs, attempts: denominator,
+                  expected_attempts: expected, success, failed, denominator, pass_rate: success / denominator,
+                  first_attempt_success: firstSuccess, first_attempt_failed: firstFailed,
+                  first_attempt_denominator: first, first_attempt_pass_rate: first ? firstSuccess / first : null});
+                const got = await run({report: r, publish: true, preview: false});
+                if (accepted) {
+                  assert.ifError(got.error);
+                  assert.deepEqual(got.calls.map(c => c.name), ['create']);
+                } else {
+                  assert.match(got.error?.message ?? '', /terminal attempts exceed rerun budget/);
+                  assert.equal(got.files.size, 2);
+                  assert.deepEqual(got.outputs, {});
+                  assert.equal(got.calls.length, 0);
+                }
+              }
+            }
+          });
           test('listing and attempt caps accept their boundary with incomplete enrichment', async () => {
             const r = report(), p = r.targets[0].populations;
             for (const population of Object.values(p)) Object.assign(population,
