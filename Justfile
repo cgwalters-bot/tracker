@@ -2219,8 +2219,8 @@ select-agent-board rev branch='main':
     [[ $rev == latest || $rev =~ ^[0-9a-f]{40}$ ]] || { echo 'expected pinned revision' >&2; exit 1; }
     branch=$(jq -rn --arg b "$branch" '$b | @uri')
     runs=$(timeout 20 gh api "repos/$repo/actions/workflows/ci.yml/runs?branch=$branch&event=push&status=success&per_page=100&head_sha=${rev/latest/}")
-    commits=$(if [[ $rev == latest ]]; then timeout 20 gh api "repos/$repo/commits?sha=$branch&per_page=100"; else jq -nc --arg sha "$rev" '[{sha:$sha}]'; fi)
-    candidates=$(jq -c --arg branch "$2" --argjson commits "$commits" '[ $commits[].sha as $sha | .workflow_runs[] | select(.head_sha == $sha and .head_branch == $branch and .event == "push" and .status == "completed" and .conclusion == "success" and .path == ".github/workflows/ci.yml") | {sha:$sha, run:.id} ]' <<< "$runs")
+    commits=$(if [[ $rev == latest ]]; then timeout 20 gh api "repos/$repo/commits?sha=$branch&per_page=100" | jq -c '[.[].sha]'; else jq -nc --arg sha "$rev" '[$sha]'; fi)
+    candidates=$(jq -c --arg branch "$2" --argjson commits "$commits" '[ $commits[] as $sha | .workflow_runs[] | select(.head_sha == $sha and .head_branch == $branch and .event == "push" and .status == "completed" and .conclusion == "success" and .path == ".github/workflows/ci.yml") | {sha:$sha, run:.id} ]' <<< "$runs")
     listings=0
     while read -r candidate; do
       (( listings += 1 )); [[ $listings -le 30 ]] || { echo 'agent-board artifact discovery exceeded 30 runs' >&2; exit 1; }
