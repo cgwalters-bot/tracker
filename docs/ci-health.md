@@ -213,6 +213,13 @@ the upload-ready output, or a status write. The existing 30-day, midnight and
 freshness checks still apply. Offline tests cover both endpoints, normalized
 invalid dates, valid boundaries and replay of the retained collector sample.
 
+The noncanonical-date fixtures require parseable input, not epoch equality with
+UTC midnight: Node parses slash-form dates in the local timezone. This keeps the
+offline check usable outside UTC without weakening the renderer's exact-format
+refusal. Run the same command below with `TZ=UTC`, `TZ=America/New_York` or
+`TZ=Asia/Kolkata` to check UTC, DST-observing and fractional-offset environments;
+each must reject the same alternate spellings before writing dated files.
+
 Impossible populations could otherwise publish passing attempts for zero runs.
 The publisher enforces the pinned collector's existing limits: every listed run
 has at least its latest attempt observed, expected attempts are at most 100 per
