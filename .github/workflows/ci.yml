@@ -507,14 +507,66 @@ jobs:
           const test = require('node:test');
           const docs = fs.readFileSync('docs/review-corpus.md', 'utf8');
           const runner = /```sh\nnode -e '([^']+)' -- review-corpus-YYYYMMDD-HHMMSS /.exec(docs)[1];
-          const { partition, splitSnapshot } = new Function('require',
-            docs.split('```js split-corpus\n')[1].split('\n```')[0] + '\nreturn { partition, splitSnapshot };')(require);
+          const { partition, splitSnapshot, sampleInventory } = new Function('require',
+            docs.split('```js split-corpus\n')[1].split('\n```')[0] + '\nreturn { partition, splitSnapshot, sampleInventory };')(require);
           const record = (id, pr, date, extra = {}) => ({ schema_version: 1, kind: 'review-comment',
             repository: 'example/project', pr_number: pr, comment_id: id, created_at: date,
             body: 'synthetic feedback', ...extra });
           const before = '2026-05-31T23:59:59Z';
           const cutoff = '2026-06-01T00:00:00Z';
           const encode = records => Buffer.from(records.map(r => JSON.stringify(r)).join('\n') + '\n');
+
+          test('sampling freezes 30 stratified candidates without feedback or order dependence', () => {
+            const rows = Array.from({ length: 80 }, (_, i) => record(i + 1, i + 1, cutoff,
+              { language: i < 40 ? 'Rust' : 'C', body: 'HELDOUT_DO_NOT_EXPOSE' }));
+            const inventory = JSON.parse(partition(encode(rows)).metadata);
+            const bytes = value => Buffer.from(JSON.stringify(value));
+            const plan = { seed: 'frozen-example', allocation: { Rust: 15, C: 15 } };
+            const result = sampleInventory(bytes(inventory), plan);
+            assert.equal(result.prs.length, 30);
+            assert.equal(new Set(result.prs.map(pr => pr.url)).size, 30);
+            assert.equal(result.available.Rust, 40);
+            assert.equal(result.available.C, 40);
+            assert.equal(result.prs.filter(pr => pr.language === 'Rust').length, 15);
+            assert.equal(result.inventory_sha256, createHash('sha256').update(bytes(inventory)).digest('hex'));
+            assert.doesNotMatch(JSON.stringify(result), /HELDOUT_DO_NOT_EXPOSE|first_feedback|inline_languages/);
+            assert.deepEqual(sampleInventory(bytes({ ...inventory, prs: [...inventory.prs].reverse() }), plan).prs, result.prs);
+            assert.deepEqual(sampleInventory(bytes(inventory), { ...plan, allocation: { C: 15, Rust: 15 } }), result);
+            assert.notDeepEqual(sampleInventory(bytes(inventory), { ...plan, seed: 'another-seed' }).prs, result.prs);
+            // Inventory is URL-sorted, so select the stratum rather than relying on row positions.
+            const rust = inventory.prs.filter(pr => pr.inline_languages.Rust);
+            const ranked = rust.map(pr => ({ url: pr.url,
+              rank: createHash('sha256').update(JSON.stringify([plan.seed, pr.url])).digest('hex') }))
+              .sort((a, b) => a.rank.localeCompare(b.rank)).slice(0, 15).map(pr => pr.url);
+            assert.deepEqual(result.prs.filter(pr => pr.language === 'Rust').map(pr => pr.url), ranked);
+            const mixed = structuredClone(inventory);
+            mixed.prs.forEach(pr => { pr.inline_languages.Rust = 1; pr.inline_languages.C = 1; pr.inline_comments = 2; });
+            assert.equal(sampleInventory(bytes(mixed), { ...plan, allocation: { Rust: 30 } }).available.Rust, 80);
+            mixed.prs[0].inline_languages.Rust = 0;
+            mixed.prs[0].inline_languages.C = 0;
+            mixed.prs[0].inline_comments = 0;
+            assert.equal(sampleInventory(bytes(mixed), { ...plan, allocation: { Rust: 30 } }).available.Rust, 79);
+            for (const mutate of [
+              x => { x.prs.push({ ...x.prs[0], url: x.prs[0].url.replace('example', 'Example') }); },
+              x => { x.prs[0].body = 'HELDOUT_DO_NOT_EXPOSE'; },
+              x => { x.prs[0].inline_comments = 2; },
+              x => { x.prs[0].inline_languages.Rust = -1; },
+              x => { x.prs[0].first_feedback = before; },
+              x => { x.prs[0].first_feedback = '2026-06-31T00:00:00Z'; },
+            ]) { const bad = structuredClone(inventory); mutate(bad); assert.throws(() => sampleInventory(bytes(bad), plan)); }
+            for (const allocation of [{ Rust: 29 }, { Rust: 31 }, { Rust: 15.5, C: 14.5 }, { invented: 30 }, { Go: 30 }])
+              assert.throws(() => sampleInventory(bytes(inventory), { ...plan, allocation }));
+            assert.throws(() => sampleInventory(Buffer.from([0xff]), plan), /UTF-8/);
+            const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'sample-cli-'));
+            try {
+              fs.writeFileSync(path.join(temp, 'inventory.json'), bytes(inventory));
+              fs.writeFileSync(path.join(temp, 'plan.json'), JSON.stringify(plan));
+              const run = () => spawnSync('node', ['-e', runner, '--', '--sample', path.join(temp, 'inventory.json'), path.join(temp, 'plan.json')], { encoding: 'utf8' });
+              const ok = run(); assert.equal(ok.status, 0, ok.stderr); assert.deepEqual(JSON.parse(ok.stdout), result);
+              fs.writeFileSync(path.join(temp, 'plan.json'), JSON.stringify({ ...plan, allocation: { Go: 30 } }));
+              const bad = run(); assert.equal(bad.status, 1); assert.equal(bad.stdout, ''); assert.match(bad.stderr, /insufficient candidates/);
+            } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+          });
 
           test('whole PRs split by earliest creation across all kinds, not order or update time', () => {
             const rows = [record(1, 1, cutoff), record(2, 2, cutoff, { body: 'HELDOUT_DO_NOT_EXPOSE' }),
