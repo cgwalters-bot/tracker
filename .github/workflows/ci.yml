@@ -596,6 +596,41 @@ jobs:
             }
           });
 
+          test('failure evidence requires positive IDs and bounded attempts', async () => {
+            for (const field of ['run_ids', 'run_id', 'job_id', 'attempt']) {
+              const values = [0, -1, 1.5, '1', null, Number.MAX_SAFE_INTEGER + 1];
+              if (field === 'attempt') values.push(101);
+              for (const value of values) {
+                const r = report(); r.groups = [group()];
+                const o = r.groups[0].observation;
+                if (field === 'run_ids') o.run_ids[1] = value;
+                else {
+                  o.samples[0][field] = value;
+                  if (field === 'run_id') {
+                    o.run_ids[0] = value;
+                    o.samples[0].url = `https://github.com/bootc-dev/bootc/actions/runs/${value}`;
+                  }
+                }
+                const result = await run({report: r, publish: true, preview: false});
+                assert.ok(result.error, `${field}=${value} must refuse`);
+                assert.equal(result.calls.length, 0);
+                assert.equal(result.outputs['dated-ready'], undefined);
+                assert.deepEqual([...result.files.keys()], ['report.json', 'provenance.json']);
+              }
+            }
+            for (const attempt of [1, 100]) {
+              const r = report(); r.groups = [group()];
+              const o = r.groups[0].observation;
+              o.run_ids[0] = 1;
+              Object.assign(o.samples[0], {run_id: 1, job_id: 1, attempt,
+                url: 'https://github.com/bootc-dev/bootc/actions/runs/1'});
+              const result = await run({report: r, publish: true, preview: false});
+              assert.equal(result.error, undefined);
+              assert.equal(result.calls.length, 1);
+              assert.equal(result.outputs['dated-ready'], 'true');
+            }
+          });
+
           test('collector step invokes once and binds saved bytes to run and config', () => {
             const collect = /        shell: node \{0\}\n        run: \|\n([\s\S]+?)\n      - uses: actions\/upload-artifact/.exec(workflow)[1].replace(/^          /gm, '');
             const configBytes = fs.readFileSync('.github/ci-health/config.json');
