@@ -115,26 +115,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          low() {
-            left=$(gh api rate_limit --jq .resources.core.remaining) || return 1
-            [[ $left =~ ^[0-9]+$ ]] && (( left < RATE_LIMIT_RESERVE ))
+          should_stop() {
+            quota=stopped; stop_status=0
+            (( RATE_LIMIT_RESERVE == 0 )) && return 1
+            # An unknown quota must not let collection drain the shared token.
+            if ! left=$(gh api rate_limit --jq .resources.core.remaining) || [[ ! $left =~ ^[0-9]{1,10}$ ]]; then
+              quota=unknown; stop_status=1
+              return 0
+            fi
+            (( 10#$left < RATE_LIMIT_RESERVE ))
           }
           stopped() {
-            echo "::notice::Stopped collecting: $left core API requests left, below the reserve of $RATE_LIMIT_RESERVE"
-            echo quota=stopped >> "$GITHUB_OUTPUT"
+            if [[ $quota == unknown ]]; then
+              echo '::error::Stopped collecting: cannot read the core API quota; retry after GitHub quota reads recover.'
+            else
+              echo "::notice::Stopped collecting: $left core API requests left, below the reserve of $RATE_LIMIT_RESERVE"
+            fi
+            echo "quota=$quota" >> "$GITHUB_OUTPUT"
           }
-          if low; then stopped; exit 0; fi
+          if should_stop; then stopped; exit "$stop_status"; fi
           cgwalters-forge-misctool review-corpus collect --login "$LOGIN" --since "$SINCE" \
             --out review-corpus.jsonl --state review-corpus-state.json &
           collector=$!
           while sleep 60 && kill -0 "$collector" 2>/dev/null; do
-            low || continue
+            should_stop || continue
             kill -TERM "$collector" 2>/dev/null || break
             stopped
             for _ in {1..30}; do kill -0 "$collector" 2>/dev/null || break; sleep 1; done
             kill -KILL "$collector" 2>/dev/null || true
             wait "$collector" || true
-            exit 0
+            exit "$stop_status"
           done
           wait "$collector"
       - name: Pack
