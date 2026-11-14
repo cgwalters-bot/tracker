@@ -182,6 +182,18 @@ evidence text, subject to the existing status truncation limits. Publication
 remains off by default; this does not complete #1223's classification inventory
 or #1229's hosted acceptance.
 
+The saved-report validator bounds each group's distinct run count by the sum of
+observed push and PR runs across that repository's configured workflows. This
+prevents impossible recurrence from outranking real failures while allowing a
+cross-workflow group to exceed one workflow listing's 1,000-run cap. Runs from
+other repositories cannot supply the bound. Groups may overlap, so their counts
+are not summed against the population. This is only a consistency bound: the
+report has no complete run-ID ledger to prove membership or job provenance.
+Incomplete collection still supplies a bound on what was actually observed, not
+all runs that might exist. Tests cover empty populations, both populations and
+multiple workflows, the exact bound and refusal before dated writes/publication.
+No new option or API request is added; publication remains off by default.
+
 Each population displays distinct runs, observed/expected attempts, first-attempt
 passes/denominator (run-level first try) and observed attempt passes/denominator.
 The latter is **not an eventual run-level rate**. Cancellations, skips, active

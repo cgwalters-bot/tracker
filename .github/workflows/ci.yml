@@ -673,6 +673,13 @@ jobs:
             targets: config.targets.map(target => ({target, complete: false, listing_complete: false,
               warnings: ['history unavailable/incomplete: auth / truncation / logs'], populations: {default_push: empty(), pull_request: empty()}})), groups: []});
           const signature = 'b'.repeat(64);
+          const observedReport = () => {
+            const r = report();
+            Object.assign(r.targets[0].populations.default_push, {runs: 2, attempts: 2, expected_attempts: 2,
+              failed: 2, denominator: 2, pass_rate: 0, first_attempt_failed: 2,
+              first_attempt_denominator: 2, first_attempt_pass_rate: 0});
+            return r;
+          };
           const entry = days => ({class: 'flake', evidence: ['https://github.com/bootc-dev/bootc/actions/runs/123456789'], owner: 'reviewed-owner',
             issue: null, fix_status: 'staged', first_seen: iso(until - days * 86400000), explained_at: null, explanation: null});
           const group = () => ({observation: {signature, repository: 'bootc-dev/bootc', job: 'job', test: '', first_error: 'error: <script>@cgwalters **x** <!-- tracker-ci-health:1229:v1 -->',
@@ -719,6 +726,41 @@ jobs:
             return {error, calls, files, summaries, outputs};
           }
           const owned = body => ({id: 9, body, user: {login: 'github-actions[bot]', type: 'Bot'}, issue_url: 'https://api.github.com/repos/cgwalters-forge/tracker/issues/1229'});
+          test('group recurrence is bounded by repository runs across workflows and populations', async () => {
+            for (const publish of [false, true]) for (const [counts, runs, accepted] of [
+              [[0, 0, 0, 0], 2, false], [[1, 0, 0, 0], 2, false],
+              [[1, 1, 0, 0], 2, true], [[1, 0, 0, 1], 2, true],
+              [[500, 500, 500, 500], 2000, true], [[500, 500, 500, 500], 2001, false],
+            ]) {
+              const r = report();
+              const repo = 'composefs/composefs-rs';
+              const populations = r.targets.filter(t => t.target.repository === repo)
+                .flatMap(t => Object.values(t.populations));
+              assert.equal(populations.length, 4);
+              populations.forEach((p, i) => Object.assign(p, {runs: counts[i], attempts: counts[i],
+                expected_attempts: counts[i], failed: counts[i], denominator: counts[i],
+                pass_rate: counts[i] ? 0 : null, first_attempt_failed: counts[i],
+                first_attempt_denominator: counts[i], first_attempt_pass_rate: counts[i] ? 0 : null}));
+              // Unrelated repositories cannot lend runs to this signature.
+              Object.assign(r.targets[0].populations.default_push,
+                {runs: 1000, attempts: 1000, expected_attempts: 1000, skipped: 1000});
+              const g = group();
+              Object.assign(g.observation, {repository: repo, occurrences: runs,
+                run_ids: Array.from({length: runs}, (_, i) => i + 1), samples: []});
+              r.groups = [g];
+              const got = await run({report: r, publish, preview: false});
+              if (accepted) {
+                assert.ifError(got.error);
+                assert.equal(got.calls.length, publish ? 1 : 0);
+                assert.match(got.files.get('2026-11-05.md'), new RegExp(`${runs} runs, ${runs} occurrences`));
+              } else {
+                assert.match(got.error?.message ?? '', /invalid run IDs/);
+                assert.equal(got.calls.length, 0);
+                assert.deepEqual(got.outputs, {});
+                assert.deepEqual([...got.files.keys()], ['report.json', 'provenance.json']);
+              }
+            }
+          });
           test('warning preview shares slots across targets before repeating a target', async () => {
             for (const publish of [false, true]) {
               const r = report();
@@ -744,7 +786,7 @@ jobs:
 
           test('failure evidence links preserve attempts, jobs and window observation time', async () => {
             for (const publish of [false, true]) for (const sampleCount of [0, 1, 3]) {
-              const r = report(); r.groups = [group()];
+              const r = observedReport(); r.groups = [group()];
               const o = r.groups[0].observation;
               // A rerun must not link to whichever attempt is latest now.
               o.samples = Array.from({length: sampleCount}, (_, i) => ({
@@ -811,7 +853,7 @@ jobs:
               ['2026-03-02T00:00:00Z', true], ['2026-03-02T01:00:00.000+01:00', false],
               ['2026-03-02', false], ['not a date', false], [null, false],
             ]) {
-              const r = report(); r.since = iso(start); r.until = iso(end);
+              const r = observedReport(); r.since = iso(start); r.until = iso(end);
               r.groups = [group()]; r.groups[0].observation.first_seen = firstSeen;
               const result = await run({report: r, now: end + 3600000, publish: true, preview: false});
               if (valid) {
@@ -832,7 +874,7 @@ jobs:
               const values = [0, -1, 1.5, '1', null, Number.MAX_SAFE_INTEGER + 1];
               if (field === 'attempt') values.push(101);
               for (const value of values) {
-                const r = report(); r.groups = [group()];
+                const r = observedReport(); r.groups = [group()];
                 const o = r.groups[0].observation;
                 if (field === 'run_ids') o.run_ids[1] = value;
                 else {
@@ -850,7 +892,7 @@ jobs:
               }
             }
             for (const attempt of [1, 100]) {
-              const r = report(); r.groups = [group()];
+              const r = observedReport(); r.groups = [group()];
               const o = r.groups[0].observation;
               o.run_ids[0] = 1;
               Object.assign(o.samples[0], {run_id: 1, job_id: 1, attempt,
@@ -1228,7 +1270,7 @@ jobs:
             }
           });
           test('untrusted excerpts are escaped, recurrence retained, sample links constrained', async () => {
-            const r = report(); r.groups = [group()];
+            const r = observedReport(); r.groups = [group()];
             const got = await run({report: r}); assert.ifError(got.error);
             const md = got.files.get('2026-11-05.md');
             assert.match(md, /recurring_without_issue/); assert.match(md, /&#60;script&#62;&#64;cgwalters/);
@@ -1263,7 +1305,7 @@ jobs:
           });
           test('large escaped and UTF-8 sections stay bounded without losing the full artifact', async () => {
             for (const value of ['&'.repeat(1800), '界'.repeat(1800)]) {
-              const r = report(), index = {};
+              const r = observedReport(), index = {};
               r.targets[0].warnings = Array(12).fill(value);
               r.groups = Array.from({length: 13}, (_, i) => {
                 const g = group();
@@ -1283,7 +1325,7 @@ jobs:
                 assert.equal((full.match(/overdue absent signature/g) ?? []).length, 100);
                 assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
                 for (const [heading, total, pattern] of [
-                  ['Warnings', 4 * config.targets.length + 11, /^- \*\*WARNING:\*\*/gm],
+                  ['Warnings', 4 * config.targets.length + 10, /^- \*\*WARNING:\*\*/gm],
                   ['Findings and groups', 13, /^- bootc-dev\/bootc/gm],
                   ['Absent overdue entries', 100, /overdue absent signature/g],
                 ]) {
@@ -1300,7 +1342,7 @@ jobs:
           });
           test('whole-entry truncation retains priority and discloses a first entry too large to fit', async () => {
             for (const oversized of [false, true]) {
-              const r = report();
+              const r = observedReport();
               r.groups = Array.from({length: 13}, (_, i) => {
                 const g = group(); g.observation.signature = hash(String(i));
                 // Put the only recurring finding last in input order.
@@ -1363,7 +1405,7 @@ jobs:
           });
           test('strict seven-day boundary; absent overdue signatures audited, never called recovered', async () => {
             for (const [days, overdue] of [[7, false], [7 + 1 / 86400, true]]) {
-              const e = entry(days), r = report(), g = group();
+              const e = entry(days), r = observedReport(), g = group();
               g.classification = e; g.class = 'flake';
               if (overdue) g.findings.push('flake_unexplained_over_seven_days');
               r.groups = [g];
