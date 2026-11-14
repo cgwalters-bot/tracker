@@ -457,25 +457,25 @@ test-review-corpus:
     if (process.env.FAIL === args[1]) process.exit(1);
     const row = rows.find(r => r.tagName === args[2]);
     const value = args[1] === 'list' ? rows.filter(r => !r.draft) : row;
-    if (args[1] === 'download') process.stdout.write(JSON.stringify(row.status));
+    if (args[1] === 'download') process.stdout.write(process.env.RAW_STATUS ?? JSON.stringify(row.status));
     else process.stdout.write(execFileSync('jq', ['-r', args[args.indexOf('--jq') + 1]], { input: JSON.stringify(value) }));
     `, { mode: 0o755 });
-      const tag = n => `review-corpus-20261105-00000${n}`;
-      const release = (n, status, draft = false) => ({ tagName: tag(n), draft, status,
+      const fixtures = JSON.parse(fs.readFileSync('.github/review-corpus-selector-cases.json', 'utf8'));
+      const tag = n => n === 0 ? 'review-corpus' : `review-corpus-20261105-00000${n}`;
+      const release = (n, status, draft = false) => ({ tagName: tag(n), draft,
+        status: status === undefined ? undefined : { ...fixtures.metadata, ...status },
         assets: status === undefined ? [] : [{ name: 'status.json' }] });
-      const rows = [release(2, { complete: true }), release(5, { complete: false }),
-        release(1), release(6, { complete: true }, true), release(4, { complete: 'true' }),
-        release(3, {}), { tagName: 'review-corpus', assets: [] }];
-      const selectionEnv = { PATH: `${temp}:${process.env.PATH}`, RELEASES: JSON.stringify(rows) };
-      assert.equal(shell(selector, selectionEnv), `${tag(2)}\n`);
-      assert.equal(shell(selector, { ...selectionEnv, RELEASES: JSON.stringify(rows.filter(r => r.tagName !== tag(2))) }), '');
-      assert.equal(shell(selector, { ...selectionEnv, RELEASES: '[]' }), '');
-      for (const failure of ['list', 'view', 'download']) {
-        const got = spawnSync('bash', ['-euo', 'pipefail', '-c', selector], {
-          cwd: temp, env: { ...env, ...selectionEnv, FAIL: failure }, encoding: 'utf8',
-        });
-        assert.equal(got.status, 1, failure);
-        assert.equal(got.stdout, '', failure);
+      // A broken newer marker must not silently select the valid older release.
+      const cases = [...fixtures.cases,
+        ...fixtures.invalid_statuses.map(status => ({ releases: [[3, status], [2, { complete: true }]], invalid: true }))];
+      for (const scenario of cases) {
+        const { releases = fixtures.cases[0].releases, raw, fail, selected, invalid } = scenario;
+        const got = spawnSync('bash', ['-euo', 'pipefail', '-c', selector], { cwd: temp, encoding: 'utf8',
+          env: { ...env, PATH: `${temp}:${process.env.PATH}`, RELEASES: JSON.stringify(releases.map(r => release(...r))),
+            RAW_STATUS: raw, FAIL: fail } });
+        assert.equal(got.status, invalid || fail ? 1 : 0, JSON.stringify(scenario));
+        assert.equal(got.stdout, selected === undefined ? '' : `${tag(selected)}\n`, JSON.stringify(scenario));
+        if (invalid && raw !== '{') assert.match(got.stderr, /invalid review corpus status/, JSON.stringify(scenario));
       }
     } finally {
       fs.rmSync(temp, { recursive: true, force: true });

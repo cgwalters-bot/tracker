@@ -125,6 +125,14 @@ no marker. API and download errors stop the command rather than silently
 selecting an older snapshot. No match prints nothing; do not download with
 an empty tag. Resume still uses the newest release, even if incomplete.
 
+A `complete: true` marker alone can misidentify another operator's corpus or a
+quota-stopped backfill as mining input. The selector therefore validates marked
+snapshots against this corpus's login, window and run provenance before accepting
+them. Malformed or contradictory metadata stops selection rather than hiding a
+broken release by falling back. Missing markers are still skipped; the historical
+absence of `stopped_for_quota` is allowed. This is a manual, read-only check, not
+activation of mining or a claim that GitHub's search results are exhaustive.
+
 ```sh
 tags=$(gh release list --repo cgwalters-forge/tracker --exclude-drafts --limit 1000 --json tagName \
   --jq '[.[].tagName | select(test("^review-corpus-[0-9]{8}-[0-9]{6}$"))] | sort | reverse | .[]') || exit 1
@@ -132,7 +140,15 @@ for tag in $tags; do
   marked=$(gh release view "$tag" --repo cgwalters-forge/tracker --json assets --jq 'any(.assets[]; .name == "status.json")') || exit 1
   [ "$marked" = true ] || continue
   status=$(gh release download "$tag" --repo cgwalters-forge/tracker --pattern status.json --output -) || exit 1
-  complete=$(printf '%s' "$status" | jq -r '.complete == true') || exit 1
+  complete=$(printf '%s' "$status" | jq -rs '
+    (if length == 1 then .[0] else error("invalid review corpus status") end) |
+    if type == "object" and (.complete | type) == "boolean"
+      and .login == "cgwalters" and .window == {since: "2020-11-01", until: null}
+      and (.collector_version | type == "string" and length > 0)
+      and (.run_url | type == "string" and test("^https://github[.]com/cgwalters-forge/tracker/actions/runs/[1-9][0-9]*\\z"))
+      and ((has("stopped_for_quota") | not) or (.stopped_for_quota | type) == "boolean")
+      and (.complete != true or .stopped_for_quota != true)
+    then .complete else error("invalid review corpus status") end') || exit 1
   if [ "$complete" = true ]; then printf '%s\n' "$tag"; break; fi
 done
 ```
@@ -140,6 +156,9 @@ done
 Use the printed tag in the download command above. Download `status.json`
 too to retain its provenance and verify it with `SHA256SUMS`. The marker
 does not change the existing newest-release interface or historical assets.
+The selector validates metadata, not asset bytes or the cited run's authenticity;
+the subsequent checksum verification remains required. `just test-review-corpus`
+runs this exact selector against offline release fixtures, including refusals.
 
 The checksum check only catches a corrupt download. To pin a version, record its
 tag and the corpus checksum from `SHA256SUMS` or the release notes, then
