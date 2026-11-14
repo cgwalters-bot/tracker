@@ -170,15 +170,28 @@ jobs:
       # it when agent-board's head is not the pin and has no pin PR yet (the
       # title is the one `just bump-agent-board` gives it); the pin workflow
       # checks CI and stays idempotent, and its schedule is the fallback.
+      # Threat: these two in-org reads do not need the long-lived bot writer
+      # credential. Opt in only after the org's tracker-poll-reads policy lands;
+      # an enabled exchange failure must not fall back to the PAT.
+      - name: Mint the poll read token
+        id: poll-read-token
+        if: ${{ !cancelled() && vars.AGENT_BOARD_PIN == 'enabled' && vars.POLL_READ_STS_DOMAIN != '' }}
+        timeout-minutes: 1
+        uses: octo-sts/action@f603d3be9d8dd9871a265776e625a27b00effe05 # v1.1.1
+        with:
+          domain: ${{ vars.POLL_READ_STS_DOMAIN }}
+          scope: cgwalters-forge
+          identity: tracker-poll-reads
       - name: Start the agent-board pin bump
-        if: ${{ !cancelled() && vars.AGENT_BOARD_PIN == 'enabled' }}
+        if: ${{ !cancelled() && vars.AGENT_BOARD_PIN == 'enabled' && (vars.POLL_READ_STS_DOMAIN == '' || steps.poll-read-token.outcome == 'success') }}
         timeout-minutes: 2
         env:
-          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          GH_TOKEN: ${{ vars.POLL_READ_STS_DOMAIN == '' && secrets.CGWALTERS_BOT_PAT || steps.poll-read-token.outputs.token }}
           DISPATCH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         shell: bash
         run: |
+          [[ -n $GH_TOKEN ]] || { echo '::error::missing poll read token'; exit 1; }
           source=$(jq -er .source .github/poll/agent-board.json)
           branch=$(jq -er .branch .github/poll/agent-board.json)
           bot=$(jq -er .bot .github/poll/agent-board.json)

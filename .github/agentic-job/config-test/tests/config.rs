@@ -601,6 +601,98 @@ fn agent_board_installs_share_the_verified_ci_artifact_path() {
 }
 
 #[test]
+fn poll_read_sts_is_opt_in_and_does_not_change_the_pass_writer() {
+    let script = r#"
+        const assert = require('node:assert/strict');
+        const fs = require('node:fs');
+        const vm = require('node:vm');
+        const { spawnSync } = require('node:child_process');
+        const workflow = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
+        const mint = workflow.split('      - name: Mint the poll read token\n')[1].split('      - name:')[0];
+        const read = workflow.split('      - name: Start the agent-board pin bump\n')[1].split('      - name:')[0];
+        const expression = (block, key) => new RegExp(`${key}: \\$\\{\\{ (.*) \\}\\}`).exec(block)[1];
+        const evaluate = (source, vars, outcome, token, cancelled = false) => vm.runInNewContext(
+          source.replaceAll('steps.poll-read-token', 'steps["poll-read-token"]'), {
+            vars, cancelled: () => cancelled,
+            secrets: { CGWALTERS_BOT_PAT: 'legacy-writer' },
+            steps: { 'poll-read-token': { outcome, outputs: { token } } },
+          });
+        assert.match(mint, /timeout-minutes: 1/);
+        assert.match(mint, /uses: octo-sts\/action@f603d3be9d8dd9871a265776e625a27b00effe05/);
+        assert.match(mint, /domain: \$\{\{ vars.POLL_READ_STS_DOMAIN \}\}/);
+        assert.match(mint, /scope: cgwalters-forge\n          identity: tracker-poll-reads/);
+        assert.doesNotMatch(mint, /continue-on-error|secrets\./);
+        assert.match(read, /timeout-minutes: 2/);
+        const mintGate = expression(mint, 'if');
+        const readGate = expression(read, 'if');
+        const credential = expression(read, 'GH_TOKEN');
+        for (const domain of ['', 'sts.example.test']) {
+          for (const pin of ['', 'enabled', 'disabled']) {
+            const vars = { POLL_READ_STS_DOMAIN: domain, AGENT_BOARD_PIN: pin };
+            for (const outcome of ['success', 'failure', 'cancelled', 'skipped', '']) {
+              assert.equal(evaluate(mintGate, vars, outcome, ''), pin === 'enabled' && domain !== '');
+              assert.equal(evaluate(readGate, vars, outcome, ''), pin === 'enabled' && (!domain || outcome === 'success'));
+              for (const gate of [mintGate, readGate]) assert.equal(evaluate(gate, vars, outcome, '', true), false);
+              for (const token of ['', 'scoped-reader']) assert.equal(evaluate(credential, vars, outcome, token),
+                domain ? token : 'legacy-writer', 'enabled STS never falls back to the PAT, even for an empty output');
+            }
+          }
+        }
+        const pass = workflow.split('      - name: One pass\n')[1].split('      # Threat:')[0];
+        assert.match(pass, /GH_TOKEN: \$\{\{ secrets.CGWALTERS_BOT_PAT \}\}/);
+        assert.match(pass, /DISPATCH_TOKEN: \$\{\{ github.token \}\}/);
+        assert.equal((workflow.match(/steps.poll-read-token.outputs.token/g) || []).length, 1);
+        // Run the actual read step: no token must stop before even reading config.
+        const shell = /        run: \|\n([^]*)/.exec(read)[1].replace(/^          /gm, '');
+        const result = spawnSync('bash', ['-euo', 'pipefail', '-c', shell], {
+          cwd: require('node:os').tmpdir(), encoding: 'utf8', timeout: 5000,
+          env: { PATH: process.env.PATH, GH_TOKEN: '' },
+        });
+        assert.equal(result.status, 1, result.stderr);
+        assert.match(result.stdout, /missing poll read token/);
+        assert.equal(result.stderr, '');
+        const path = require('node:path');
+        const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'poll-read-sts-'));
+        try {
+          fs.mkdirSync(path.join(temp, '.github/poll'), { recursive: true });
+          fs.copyFileSync('.github/poll/agent-board.json', path.join(temp, '.github/poll/agent-board.json'));
+          fs.writeFileSync(path.join(temp, 'gh'), `#!${process.execPath}
+        const fs = require('node:fs');
+        const args = process.argv.slice(2);
+        const operation = args.slice(0, args[0] === 'api' ? 1 : 2).join(' ');
+        fs.appendFileSync(process.env.CALLS, JSON.stringify({ operation, token: process.env.GH_TOKEN }) + '\\n');
+        if (operation === process.env.FAIL) process.exit(1);
+        if (operation === 'api') console.log('a'.repeat(40));
+        else if (!['pr list', 'workflow run'].includes(operation)) process.exit(2);
+        `, { mode: 0o755 });
+          const calls = path.join(temp, 'calls');
+          for (const domain of ['', 'sts.example.test']) for (const fail of ['', 'api', 'pr list']) {
+            fs.writeFileSync(calls, '');
+            const token = evaluate(credential, { POLL_READ_STS_DOMAIN: domain }, 'success', 'scoped-reader');
+            const got = spawnSync('bash', ['-euo', 'pipefail', '-c', shell], {
+              cwd: temp, encoding: 'utf8', timeout: 5000,
+              env: { PATH: `${temp}:${process.env.PATH}`, GH_TOKEN: token, DISPATCH_TOKEN: 'job-dispatch',
+                DEFAULT_BRANCH: 'main', GITHUB_REPOSITORY: 'cgwalters-forge/tracker',
+                AGENT_BOARD_REV: 'b'.repeat(40), CALLS: calls, FAIL: fail },
+            });
+            assert.equal(got.status, fail ? 1 : 0, got.stderr);
+            const expected = [{ operation: 'api', token }];
+            if (fail !== 'api') expected.push({ operation: 'pr list', token });
+            if (!fail) expected.push({ operation: 'workflow run', token: 'job-dispatch' });
+            assert.deepEqual(fs.readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse), expected);
+          }
+        } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+        console.log('ok opt-in poll read STS, fail-closed selection, unchanged pass writer and dispatch');
+    "#;
+    let output = Command::new("node")
+        .args(["-e", script])
+        .current_dir(here().join("../.."))
+        .output()
+        .expect("evaluate poll read STS wiring");
+    assert!(output.status.success(), "{output:?}");
+}
+
+#[test]
 fn promote_caller_is_bounded_to_the_default_branch() {
     let workflow = read("../workflows/promote.yml");
     for required in [
