@@ -169,6 +169,15 @@ bounds/window and classification checks precede publication. Logs/names/warnings
 are escaped for HTML, Markdown and mentions; sample links must be exact Actions
 run URLs of configured repositories. Unknown provenance refuses publication.
 
+Window endpoints must round-trip through the pinned collector's UTC timestamp
+form (`YYYY-MM-DDT00:00:00.000Z`) before rendering or writing dated files.
+JavaScript's date parser alone accepts alternate spellings and even normalizes
+February 30 to March 2; these could mislabel the observation window or break
+the filename/upload contract. Such inputs refuse before either dated write,
+the upload-ready output, or a status write. The existing 30-day, midnight and
+freshness checks still apply. Offline tests cover both endpoints, normalized
+invalid dates, valid boundaries and replay of the retained collector sample.
+
 Impossible populations could otherwise publish passing attempts for zero runs.
 The publisher enforces the pinned collector's existing limits: every listed run
 has at least its latest attempt observed, expected attempts are at most 100 per

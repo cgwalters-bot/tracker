@@ -141,7 +141,10 @@ jobs:
               const r = JSON.parse(raw);
               check(r.schema === 'agent-board/ci-health/v1' && typeof r.complete === 'boolean', 'wrong report schema');
               const until = Date.parse(r.until), since = Date.parse(r.since);
+              // Date.parse accepts normalized invalid dates and alternate text.
+              // Require the collector's UTC form before using it in labels/paths.
               check(Number.isFinite(until) && Number.isFinite(since) && until - since === 30 * 86400000 &&
+                r.until === new Date(until).toISOString() && r.since === new Date(since).toISOString() &&
                 until % 86400000 === 0 && until <= Date.now() && Date.now() - until < 2 * 86400000, 'invalid/stale window');
               check(r.bounds.api_operations === 500 && r.bounds.collection_seconds === 120 &&
                 r.bounds.pages_per_listing === 10 && r.bounds.log_bytes === 1048576 &&

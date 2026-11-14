@@ -552,6 +552,38 @@ jobs:
               assert.match(got.summaries.join(), /REPORT REFUSED/);
             }
           });
+          test('window timestamps must be canonical before naming artifacts or publishing', async () => {
+            for (const field of ['since', 'until']) {
+              const original = report()[field];
+              for (const value of [original.slice(0, 10), original.slice(0, 10).replaceAll('-', '/'), original.replace('T', ' '),
+                original.replace('Z', '+00:00'), original.replace('.000Z', 'Z')]) {
+                const r = report(); r[field] = value;
+                assert.equal(Date.parse(value), Date.parse(original));
+                const result = await run({report: r, publish: true, preview: false});
+                assert.match(result.error?.message ?? '', /invalid\/stale window/, `${field}: ${value}`);
+                assert.equal(result.files.size, 2);
+                assert.deepEqual(result.outputs, {});
+                assert.equal(result.calls.length, 0);
+              }
+            }
+            // Date.parse normalizes February 30 to March 2 instead of refusing it.
+            for (const field of ['since', 'until']) {
+              const r = report();
+              const normalized = Date.UTC(2026, 2, 2);
+              const end = field === 'until' ? normalized : normalized + 30 * 86400000;
+              r.since = iso(end - 30 * 86400000); r.until = iso(end);
+              const valid = await run({report: r, now: end + 3600000});
+              assert.ifError(valid.error);
+              assert.ok(valid.files.has(r.until.slice(0, 10) + '.md'));
+              r[field] = '2026-02-30T00:00:00.000Z';
+              const result = await run({report: r, now: end + 3600000, publish: true, preview: false});
+              assert.match(result.error?.message ?? '', /invalid\/stale window/);
+              assert.equal(result.files.size, 2);
+              assert.deepEqual(result.outputs, {});
+              assert.equal(result.calls.length, 0);
+            }
+          });
+
           test('impossible run/attempt populations refuse before rendering or publication', async () => {
             for (const population of ['default_push', 'pull_request']) {
               for (const [runs, attempts, expected] of [[0, 1, 1], [2, 1, 2], [1, 1, 101], [501, 501, 501]]) {
