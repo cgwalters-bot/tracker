@@ -196,7 +196,7 @@ jobs:
                     check(d === 0 ? p[field] === null : typeof p[field] === 'number' && Math.abs(p[field] - n / d) < 1e-12, 'invalid rate');
                   }
                   if (p.runs === 0) warnings.push(warningLabel + ' / ' + pop + ': NO DATA');
-                  rows.push(`| ${escape(label)} | ${pop} | ${coverage} | ${p.runs} | ${p.attempts}/${p.expected_attempts} | ${rate(p.first_attempt_success, p.first_attempt_denominator)} | ${rate(p.success, p.denominator)} | ${p.cancelled}/${p.skipped}/${p.in_progress}/${p.other} |`);
+                  rows.push(`| ${escape(label)} | ${pop} | ${coverage} | ${p.runs} | ${p.attempts}/${p.expected_attempts} | ${rate(p.first_attempt_success, p.first_attempt_denominator)} | ${rate(p.success, p.denominator)} | ${p.cancelled}/${p.skipped}/${p.in_progress}/${p.other} | ${p.first_attempt_failed}/${p.failed} |`);
                 }
                 // Both populations share one listing: ten pages of 100 runs.
                 check(t.populations.default_push.runs + t.populations.pull_request.runs <= 1000, 'run listing exceeds bound');
@@ -280,7 +280,8 @@ jobs:
                 `[Run and dated JSON/Markdown](${runURL}#artifacts) · [Source JSON artifact](${artifactURL}) · source/config ${context.sha} · collector ${rev}\n\n` +
                 `Window [${r.since}, ${r.until}); attempts observed at collection time, not a historical snapshot.\n\n` + totals;
               const warningText = warnings.length ? warnings.map(w => '- **WARNING:** ' + w).join('\n') : 'No collector warnings.';
-              const table = '\n\n| Target | Population | Target coverage | Runs | Observed/expected attempts | First-attempt pass rate | Observed attempt pass rate | Cancel/skip/active/other |\n|---|---|---|---:|---:|---|---|---|\n' + rows.join('\n');
+              const table = '\n\n| Target | Population | Target coverage | Runs | Observed/expected attempts | First-attempt pass rate | Observed attempt pass rate | Cancel/skip/active/other | Failed attempts (first/all observed) |\n|---|---|---|---:|---:|---|---|---|---|\n' + rows.join('\n') +
+                '\n\nFailed attempts include failures without a signature; first attempts are a subset of all observed attempts, not an additional count.';
               const footer = '\n\nAggregate attempt rates are NOT eventual run-level rates. Empty populations are not passes. Unknowns remain unknown; staged is not deployed. No issues, retries, quarantine, repair dispatch or upstream writes.\n';
               const full = header + warningText + table + '\n\n### Failure groups\n' + (lines.join('\n') || 'No observed groups; this is not evidence of recovery.') +
                 '\n\n### Overdue index entries absent from this report\n' + (absent.join('\n') || 'None (index mappings may still be pending).') + footer;

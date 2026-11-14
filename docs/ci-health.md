@@ -214,6 +214,18 @@ and other conclusions remain separate. Empty denominators mean no data, never
 100%. The last 30 complete UTC days use original run creation time; reruns are
 observed at collection time, including attempts after the window.
 
+Each population row also shows **failed attempts (first/all observed)**, including
+pre-job failures and failures whose logs could not yield a signature. Zero observed
+groups must not hide these failures or make readers derive their counts from pass
+rates. The first count is a subset of the second, not an additional count; repeated
+failed attempts are not distinct failing runs. Counts reflect only observed history,
+with coverage and observed/expected attempts beside them. Cancellations, skips,
+active and other outcomes are not failures. The dated Markdown, summary and optional
+status share these counts without changing JSON, collection or publication policy.
+Offline regression coverage includes no signatures, reruns, incomplete history,
+nonterminal/excluded outcomes and preview/publication parity. No new option or
+control is added; publication remains off and #1229 acceptance remains outstanding.
+
 Failure-evidence run and job IDs must be positive safe integers, and sample
 attempt numbers must be in `1..100`, matching the pinned collector's attempt cap.
 Zero IDs or attempt zero could otherwise produce impossible links presented as

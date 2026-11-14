@@ -841,6 +841,31 @@ jobs:
             return {error, calls, files, summaries, outputs};
           }
           const owned = body => ({id: 9, body, user: {login: 'github-actions[bot]', type: 'Bot'}, issue_url: 'https://api.github.com/repos/cgwalters-forge/tracker/issues/1229'});
+          test('failure counts survive missing signatures and distinguish first tries from reruns', async () => {
+            const r = report(), target = r.targets[0];
+            target.populations.default_push = {...empty(), runs: 2, attempts: 4, expected_attempts: 4,
+              success: 1, failed: 3, denominator: 4, pass_rate: 0.25,
+              first_attempt_failed: 2, first_attempt_denominator: 2, first_attempt_pass_rate: 0};
+            target.populations.pull_request = {...empty(), runs: 4, attempts: 4, expected_attempts: 5,
+              cancelled: 1, skipped: 1, in_progress: 1, other: 1};
+            for (const options of [{}, {publish: true}, {publish: true, preview: false}]) {
+              const got = await run({report: r, ...options});
+              assert.ifError(got.error);
+              assert.equal(got.calls.length, options.preview === false ? 1 : 0);
+              for (const text of [got.files.get('2026-11-05.md'), got.summaries[0], ...got.calls.map(c => c.args.body)]) {
+                assert.match(text, /\| Failed attempts \(first\/all observed\) \|/);
+                const rows = text.split('\n').filter(line => line.startsWith('| bootc-dev/bootc / ci.yml |'));
+                assert.equal(rows.length, 2);
+                assert.ok(rows[0].endsWith('| 0/0/0/0 | 2/3 |'), rows[0]);
+                assert.ok(rows[1].endsWith('| 1/1/1/1 | 0/0 |'), rows[1]);
+                assert.match(text, /0 observed groups; 0 unclassified/);
+                assert.match(text, /Failed attempts include failures without a signature; first attempts are a subset of all observed attempts, not an additional count\./);
+                assert.match(text, /INCOMPLETE listing/);
+              }
+              assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
+            }
+          });
+
           test('finding totals include truncated groups and distinguish absent overdue index entries', async () => {
             const r = observedReport(), index = {};
             for (let i = 0; i < 15; i++) {
