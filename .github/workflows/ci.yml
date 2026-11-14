@@ -406,6 +406,27 @@ jobs:
               assert.match(md, /no data \(0\/0\)/); assert.match(md, /NOT eventual run-level/);
             }
           });
+          test('warning length bound applies before adding the target label', async () => {
+            for (const warning of ['x'.repeat(2000), '@<&\n'.repeat(500), '界'.repeat(2000)]) {
+              for (const publish of [false, true]) {
+                const r = report(); r.targets[0].warnings = [warning];
+                const got = await run({report: r, publish, preview: false});
+                assert.ifError(got.error);
+                assert.equal(got.outputs['dated-ready'], 'true');
+                assert.equal(got.calls.length, publish ? 1 : 0);
+                const escaped = warning.replace(/[@<&\n]/g, c => `&#${c.charCodeAt(0)};`);
+                assert.ok(got.files.get('2026-11-05.md').includes(escaped));
+                assert.ok(!got.files.get('2026-11-05.md').includes('&#38;#'));
+                assert.ok(Buffer.byteLength(got.summaries[0]) < 60000);
+                assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
+              }
+            }
+            const r = report(); r.targets[0].warnings = ['x'.repeat(2001)];
+            const refused = await run({report: r, publish: true, preview: false});
+            assert.match(refused.error.message, /invalid\/oversized text/);
+            assert.equal(refused.outputs['dated-ready'], undefined);
+            assert.equal(refused.calls.length, 0);
+          });
           test('stable marker creates once, updates once, identical rerun does not append', async () => {
             const first = await run({publish: true, preview: false}); assert.ifError(first.error);
             assert.deepEqual(first.calls.map(c => c.name), ['create']);

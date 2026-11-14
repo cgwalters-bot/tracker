@@ -158,8 +158,11 @@ jobs:
                   Array.isArray(t.warnings) && t.warnings.length <= 2000, 'invalid coverage');
                 check(!t.complete || (t.listing_complete && t.warnings.length === 0), 'inconsistent completeness');
                 const label = t.target.repository + ' / ' + t.target.workflow;
-                if (!t.complete || !t.listing_complete) warnings.push(label + ': INCOMPLETE');
-                for (const w of t.warnings) warnings.push(label + ': ' + text(w));
+                // Validate and escape each input before composing it: a valid
+                // 2,000-character warning plus its label exceeds one input's cap.
+                const warningLabel = escape(label);
+                if (!t.complete || !t.listing_complete) warnings.push(warningLabel + ': INCOMPLETE');
+                for (const w of t.warnings) warnings.push(warningLabel + ': ' + escape(w));
                 for (const pop of ['default_push', 'pull_request']) {
                   const p = t.populations[pop];
                   for (const k of ['runs', 'attempts', 'expected_attempts', 'success', 'failed', 'cancelled', 'skipped',
@@ -177,7 +180,7 @@ jobs:
                     ['first_attempt_pass_rate', p.first_attempt_success, p.first_attempt_denominator]]) {
                     check(d === 0 ? p[field] === null : typeof p[field] === 'number' && Math.abs(p[field] - n / d) < 1e-12, 'invalid rate');
                   }
-                  if (p.runs === 0) warnings.push(label + ' / ' + pop + ': NO DATA');
+                  if (p.runs === 0) warnings.push(warningLabel + ' / ' + pop + ': NO DATA');
                   rows.push(`| ${escape(label)} | ${pop} | ${p.runs} | ${p.attempts}/${p.expected_attempts} | ${rate(p.first_attempt_success, p.first_attempt_denominator)} | ${rate(p.success, p.denominator)} | ${p.cancelled}/${p.skipped}/${p.in_progress}/${p.other} |`);
                 }
                 // Both populations share one listing: ten pages of 100 runs.
@@ -226,7 +229,7 @@ jobs:
                 `**Scope incomplete:** fixed 20-target baseline; additional workflows need an explicit scope decision. Index mappings pending #1223. See [coverage](https://github.com/${repo}/blob/${context.sha}/docs/ci-health.md).\n\n` +
                 `[Run and dated JSON/Markdown](${runURL}#artifacts) · [Source JSON artifact](${artifactURL}) · source/config ${context.sha} · collector ${rev}\n\n` +
                 `Window [${r.since}, ${r.until}); attempts observed at collection time, not a historical snapshot.\n\n`;
-              const warningText = warnings.length ? warnings.map(w => '- **WARNING:** ' + escape(w)).join('\n') : 'No collector warnings.';
+              const warningText = warnings.length ? warnings.map(w => '- **WARNING:** ' + w).join('\n') : 'No collector warnings.';
               const table = '\n\n| Target | Population | Runs | Observed/expected attempts | First-attempt pass rate | Observed attempt pass rate | Cancel/skip/active/other |\n|---|---|---:|---:|---|---|---|\n' + rows.join('\n');
               const footer = '\n\nAggregate attempt rates are NOT eventual run-level rates. Empty populations are not passes. Unknowns remain unknown; staged is not deployed. No issues, retries, quarantine, repair dispatch or upstream writes.\n';
               const full = header + warningText + table + '\n\n### Failure groups\n' + (lines.join('\n') || 'No observed groups; this is not evidence of recovery.') +
@@ -250,7 +253,7 @@ jobs:
                 return result + (count < entries.length ?
                   `\n**Presentation truncated: ${entries.length - count} more entries; see artifact.**` : (result ? '' : empty));
               };
-              const body = header + '### Warnings\n' + section(warnings.map(w => '- **WARNING:** ' + escape(w)), 12, 'No collector warnings.') + table +
+              const body = header + '### Warnings\n' + section(warnings.map(w => '- **WARNING:** ' + w), 12, 'No collector warnings.') + table +
                 '\n\n### Findings and groups\n' + section(lines, 12, 'No observed groups; this is not evidence of recovery.') +
                 '\n\n### Absent overdue entries\n' + section(absent, 100, 'None; mappings pending.') + footer;
               check(Buffer.byteLength(body) < 60000, 'comment too large');
