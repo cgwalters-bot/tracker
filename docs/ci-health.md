@@ -182,6 +182,34 @@ reports, and cancellation does not force an upload. The original raw artifact
 remains separate. Offline regressions inject summary/API and file-write failures
 and check the upload condition; no live publication acceptance is implied.
 
+### Manual artifact-retention rehearsal
+
+`.github/workflows/ci-health-rehearsal.yml` isolates the remaining Actions-runner
+semantics check from collection and issue publication. To avoid accidental red
+runs, it has no schedule and its sole `confirm` input defaults to false. An
+authorized controller can dispatch it on the default branch after merge:
+
+```sh
+gh workflow run ci-health-rehearsal.yml --repo cgwalters-forge/tracker --ref main -f confirm=true
+```
+
+Three fixed fixture jobs fail deliberately: before writing, after only the JSON
+write, and after both dated writes and the ready output. They use the production
+upload condition and pinned artifact actions. Only the ready pair should upload.
+The dependent `verify` job checks this attempt's job/step conclusions and artifact
+names, then downloads and compares both files byte-for-byte. It makes two bounded
+listing requests, refuses truncated listings, and has only Actions read access.
+Each job is capped at five minutes; the single fixture artifact expires in one
+day. There is no checkout, collector, issue API, secret, or publication opt-in.
+
+**Expected result: the workflow is red, all three fixture jobs are failed, and
+`verify` is green.** A green workflow or a skipped/failed verifier is not acceptance.
+Retain the run URL, attempt, source SHA and verifier log as evidence; rerunning
+uses attempt-qualified artifacts. This tests runner output retention and upload
+behavior, not real renderer validation or a live issue write. Offline tests check
+the fixture failure paths and parity with production. No hosted rehearsal was
+dispatched in this implementation; controller execution remains outstanding.
+
 The `Test CI-health saved reports and publication` step in `ci.yml` executes the actual inline script with canned API and file
 seams, including dry-run/update, hostile excerpts, wrong refs, report/provenance
 refusal, no data, incomplete history and seven-day/absent-signature boundaries.
