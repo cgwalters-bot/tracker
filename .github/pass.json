@@ -49,7 +49,7 @@
     "opus": {"input": 4.0, "cached_input": 0.20, "output": 20.0}
   },
   "board": {"owner": "cgwalters-forge", "project": 1},
-  "epics": {"repository": "cgwalters-forge/tracker", "inWorkRepositories": true, "maxAppliesPerPass": 3, "heldPlanHours": 24},
+  "epics": {"focus": "cgwalters-forge/tracker#1671", "repository": "cgwalters-forge/tracker", "inWorkRepositories": true, "maxAppliesPerPass": 3, "heldPlanHours": 24},
   "wip": 60,
   "topDown": true,
   "requestShare": 60,
