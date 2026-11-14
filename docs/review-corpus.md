@@ -100,6 +100,13 @@ same unknown-quota failure path and bounded collector shutdown; a timed-out
 preflight check fails before collection. These are fixed bounds, not a new
 setting; collection remains off unless `REVIEW_CORPUS=enabled`.
 
+The preflight also requires the hourly limit to be one to ten decimal digits,
+just like the remaining-quota read. It interprets leading zeros as decimal and
+rejects expressions, variable names, whitespace and oversized values before
+shell arithmetic. Otherwise malformed API text could pass the reserve check or
+be evaluated as an expression. An invalid limit stops the run before collection
+or publication; retry after quota reads recover, rather than disabling the reserve.
+
 Retry after quota reads recover. Setting the reserve to 0 skips quota reads
 altogether. `just test-review-corpus` exercises these paths offline, including
 a collector that ignores SIGTERM; it does not run a live backfill.

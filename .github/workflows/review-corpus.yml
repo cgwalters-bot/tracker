@@ -102,7 +102,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           limit=$(timeout --kill-after=5s 10s gh api rate_limit --jq .resources.core.limit)
-          if ! (( RATE_LIMIT_RESERVE < limit )); then
+          # Malformed API text must not be evaluated as shell arithmetic or
+          # accidentally approve a reserve that prevents every backfill run.
+          if [[ ! $limit =~ ^[0-9]{1,10}$ ]]; then
+            echo '::error::Cannot read a valid core API limit; retry after GitHub quota reads recover.'
+            exit 1
+          fi
+          if ! (( RATE_LIMIT_RESERVE < 10#$limit )); then
             echo "::error::RATE_LIMIT_RESERVE $RATE_LIMIT_RESERVE is not below the job token's core limit of $limit"
             exit 1
           fi
