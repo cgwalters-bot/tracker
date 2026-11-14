@@ -581,7 +581,9 @@ jobs:
               for (const value of [original.slice(0, 10), original.slice(0, 10).replaceAll('-', '/'), original.replace('T', ' '),
                 original.replace('Z', '+00:00'), original.replace('.000Z', 'Z')]) {
                 const r = report(); r[field] = value;
-                assert.equal(Date.parse(value), Date.parse(original));
+                // Slash dates parse as local midnight, not UTC. These fixtures
+                // need to be parseable but noncanonical, not the same instant.
+                assert.ok(Number.isFinite(Date.parse(value)), value);
                 const result = await run({report: r, publish: true, preview: false});
                 assert.match(result.error?.message ?? '', /invalid\/stale window/, `${field}: ${value}`);
                 assert.equal(result.files.size, 2);
