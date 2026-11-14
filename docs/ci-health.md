@@ -160,6 +160,19 @@ content is a no-op. Manual preview renders the same dated JSON/Markdown and job
 summary without a write. Changing the GitHub Actions token identity would
 require a reviewed ownership migration, not automatic adoption of old comments.
 
+Valid warning and failure text can expand during escaping and UTF-8 encoding;
+a count-only preview limit could therefore refuse the entire status as too large.
+The status and job summary now keep each of their three detail sections within
+12,000 encoded bytes, including an explicit omitted-entry count. Warnings and
+failure groups still show at most 12 entries; absent overdue index entries show
+at most 100. Entries are kept whole, in order (findings first for failure groups),
+so links and escape sequences are never cut. An entry too large to fit stops that
+section, not report publication. Full details remain in the dated JSON/Markdown
+artifact; the population table, provenance, coverage caveats and overall
+60,000-byte refusal stay unchanged. This adds no option or collection and leaves
+publication off. Offline tests cover escaped and multibyte text, omission counts,
+artifact retention and both preview and opted-in publication.
+
 The `Test CI-health saved reports and publication` step in `ci.yml` executes the actual inline script with canned API and file
 seams, including dry-run/update, hostile excerpts, wrong refs, report/provenance
 refusal, no data, incomplete history and seven-day/absent-signature boundaries.
