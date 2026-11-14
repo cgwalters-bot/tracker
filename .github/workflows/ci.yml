@@ -287,6 +287,40 @@ jobs:
               assert.equal(result.target_sample_size, 30);
             });
 
+            test('per-PR counts retain empty passes and reconcile every denominator', () => {
+              const input = ledger();
+              // Same-stratum PRs must remain distinct; IDs may repeat between PRs.
+              input.prs[1].language = 'Rust';
+              input.prs[1].baseline = [{ id: 'b1', matches: ['c1'], reason: 'lost with checklist' },
+                { id: 'b2', matches: [], audit: 'unreviewed' }];
+              const before = structuredClone(input);
+              const result = score(input);
+              assert.deepEqual(result.prs.map(({ pr, language }) => ({ pr, language })),
+                input.prs.map(({ url, language }) => ({ pr: url, language })));
+              assert.deepEqual(result.prs[0].checklist, { prs: 1, operator_comments: 3, caught: 2, missed: 1,
+                findings: 5, matched_findings: 2, unmatched_findings: 3, audited_unmatched: 3,
+                supported_unmatched: 1, noise_unmatched: 1, unresolved_unmatched: 1 });
+              assert.deepEqual(result.prs[1].checklist, { prs: 1, operator_comments: 1, caught: 0, missed: 1,
+                findings: 0, matched_findings: 0, unmatched_findings: 0, audited_unmatched: 0,
+                supported_unmatched: 0, noise_unmatched: 0, unresolved_unmatched: 0 });
+              assert.equal(result.prs[1].baseline.caught, 1);
+              assert.equal(result.prs[1].baseline.unmatched_findings, 1);
+              assert.equal(result.prs[1].baseline.audited_unmatched, 0);
+              for (const pass of ['baseline', 'checklist']) {
+                for (const key of Object.keys(result.totals[pass])) {
+                  assert.equal(result.prs.reduce((sum, pr) => sum + pr[pass][key], 0), result.totals[pass][key], key);
+                  for (const [language, counts] of Object.entries(result.languages)) {
+                    assert.equal(result.prs.filter(pr => pr.language === language)
+                      .reduce((sum, pr) => sum + pr[pass][key], 0), counts[pass][key], key);
+                  }
+                }
+              }
+              assert.deepEqual(input, before);
+              result.prs[0].checklist.caught = 999;
+              assert.equal(result.totals.checklist.caught, 2, 'rows do not alias aggregate counters');
+              assert.equal(result.prs[1].checklist.caught, 0, 'rows do not share counters');
+            });
+
             test('paired catches expose gains and losses even when aggregate recall is unchanged', () => {
               const input = ledger();
               input.prs[0].baseline.push({ id: 'b3', matches: ['c3'], reason: 'baseline-only concern' });

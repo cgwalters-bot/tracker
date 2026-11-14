@@ -117,6 +117,19 @@ IDs are listed for follow-up against the archive. `sample_size` and
 held-out evaluation. Publish the archived evidence and limitations with any eventual
 evaluation report, not just this summary.
 
+The additive `prs` output keeps one row per PR in ledger order, with its submitted
+URL (`pr`), frozen `language` stratum and separate `baseline` and `checklist`
+counts. These use the same fields as the totals, including `prs: 1`. Summing rows
+reconstructs every total and language denominator. A completed empty pass still
+has a row: zero findings and catches, all eligible comments missed, and zero audit
+counts. It is not a missing review or a perfect noise score.
+
+Inspect these rows alongside `paired.prs` and the archived unmatched findings
+before drawing conclusions: a comment-heavy PR can dominate aggregate recall,
+and review noise or unaudited suggestions can be concentrated on another PR.
+The rows expose those differences without choosing a new weighting scheme,
+computing rates with zero denominators, or claiming statistical significance.
+
 Aggregate recall can hide a regression when new catches replace lost catches.
 The additive `paired` output therefore partitions eligible operator comments into
 `both`, `baseline_only`, `checklist_only` and `neither`. It gives counts in `totals`
@@ -184,7 +197,7 @@ export function score(input) {
   unique(input.prs.map(pr => typeof pr?.url === 'string' ? pr.url.toLowerCase() : pr?.url), 'PRs');
   const result = { schema: 'checklist-scores/v1', checklist_version: input.checklist_version,
     sample: input.sample, adjudicator: input.adjudicator, runs: input.runs,
-    sample_size: input.prs.length, target_sample_size: 30, totals: {}, languages: {}, unmatched: [],
+    sample_size: input.prs.length, target_sample_size: 30, totals: {}, languages: {}, prs: [], unmatched: [],
     paired: { totals: pairedCounts(), languages: {}, prs: [] } };
   for (const pass of PASSES) result.totals[pass] = counts();
   for (const pr of input.prs) {
@@ -194,6 +207,7 @@ export function score(input) {
     requireThat(pr.comments.length > 0, 'each PR needs at least one eligible operator comment');
     unique(pr.comments, 'operator comments');
     result.languages[pr.language] ??= Object.fromEntries(PASSES.map(pass => [pass, counts()]));
+    const row = { pr: pr.url, language: pr.language };
     const catches = {};
     for (const pass of PASSES) {
       list(pr[pass], 1000, `${pass} findings`);
@@ -226,11 +240,13 @@ export function score(input) {
       current.caught = caught.size;
       catches[pass] = caught;
       current.missed = pr.comments.length - caught.size;
+      row[pass] = current;
       for (const key of Object.keys(current)) {
         result.totals[pass][key] += current[key];
         result.languages[pr.language][pass][key] += current[key];
       }
     }
+    result.prs.push(row);
     result.paired.languages[pr.language] ??= pairedCounts();
     const paired = { pr: pr.url, both: [], baseline_only: [], checklist_only: [], neither: [] };
     for (const id of pr.comments) {
