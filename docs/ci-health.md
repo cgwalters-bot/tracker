@@ -22,7 +22,7 @@ were checked against both CLI and collector source. `ci-health --config FILE
 
 ## Explicit partial scope
 
-The fixed config has **20 workflow targets across 15 repositories**, not full
+The fixed config has **19 workflow targets across 15 repositories**, not full
 project coverage. All 15 default branches were discovered through the repository
 API on 2026-11-05 and were `main`. The collector discovers them again on every
 run (not assumed from this snapshot). It cannot reconstruct historical default
@@ -45,7 +45,7 @@ redirects to the canonical `bootc-dev/bcvk`, which is configured explicitly.
 |---|---|---|
 | bootc-dev/bootc | ci.yml | build-and-publish.yml, autovendor.yml, docs.yml, release.yml |
 | composefs/composefs-rs | ci.yml | bootc-revdep.yml, fuzz.yaml, publish.yml, mirror-fixture-images.yml, release.yml |
-| bootc-dev/bcvk | main.yml, main-c10s.yml | docs.yml, release.yml |
+| bootc-dev/bcvk | main.yml | docs.yml, release.yml |
 | coreos/rpm-ostree | ci.yaml | container-build.yml, autovendor.yml, scorecard.yml |
 | ostreedev/ostree | tests.yml, rust.yml, bootc.yaml | docs.yml, release.yml |
 | composefs/composefs (C) | test.yaml, builds.yaml, ci-bootc.yml | openssf-scorecard-gate.yml |
@@ -67,14 +67,40 @@ population. Workflow API registration is not proof it has eligible runs.
 The incomplete #1223 inventory has not established the complete harness workflow
 and signature inventory yet.
 
-The existing 20-target build/test baseline is retained as a deliberately partial
-daily surface under #1229; no deferred target is added or silently substituted.
-Any replacement still needs trigger review. Even adding bootc
-image publication alone requires replacing one current target. Covering every
+The build/test baseline remains a deliberately partial daily surface under
+#1229; no deferred target is added or silently substituted. The nonexistent bcvk
+target removed below leaves one slot under the unchanged 20-target ceiling;
+using that slot or replacing a target still needs trigger review. Covering every
 deferred file cannot fit the reviewed collector's cap. Full coverage requires
 a separately reviewed collector policy change; this patch does not increase
 the cap, partition the window, rotate targets, or launch multiple collectors to
 evade shared budgets. Publication stays off until acceptance is reviewed.
+
+### bcvk target correction (14 November 2026)
+
+Read-only inspection found that `main-c10s.yml` is not a bcvk workflow, rather
+than treating its 404 as proof that all bcvk Actions require more credentials.
+The [workflow listing](https://api.github.com/repos/bootc-dev/bcvk/actions/workflows)
+returned the active `main.yml` (ID 166610689), but no `main-c10s.yml`.
+Both the latter's contents and workflow-runs endpoints returned 404; the commit
+history query for that path returned an empty array. This is current API evidence,
+not proof that the path never existed in any historical branch.
+
+The retained [main.yml at a3e2327](https://github.com/bootc-dev/bcvk/blob/a3e2327d9ce3448242cbb62cbdf20ef47a534752/.github/workflows/main.yml)
+has `push` and `pull_request` triggers for `main`, and builds and runs unit and
+integration tests. Its runs API was readable, including default-branch push
+[42536699199](https://github.com/bootc-dev/bcvk/actions/runs/42536699199) and PR
+[42479738386](https://github.com/bootc-dev/bcvk/actions/runs/42479738386).
+Remove only the nonexistent target, retaining `main.yml` and all 15 repositories;
+do not replace it with a scheduled automation job or silently enlarge scope.
+No new control, credential, collector pin, budget or publication setting is added.
+
+The November 13 sample is unchanged evidence of the old 20-target configuration,
+including its 404. Offline replay supplies that exact historical target list and
+also checks that today's 19-target configuration refuses the old report before
+rendering. New reports and their scope label use the current list. A fresh hosted
+preview with the corrected configuration remains necessary: these API reads and
+offline tests do not establish job-token coverage or complete #1229 acceptance.
 
 Other excluded workflows are review/label/merge bots, Copilot/dynamic workflows,
 dispatch/apply/session/reconcile operations, upgrade/scheduled-release jobs,

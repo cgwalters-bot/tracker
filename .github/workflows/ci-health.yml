@@ -223,7 +223,7 @@ jobs:
               const lines = groupLines.map(g => g.line);
               const header = `${marker}\n## Rolling CI health: ${r.until.slice(0, 10)}\n\n` +
                 `**${r.complete ? 'Collector complete for configured targets only' : 'WARNING: INCOMPLETE OBSERVATIONS'}; not a healthy-CI verdict.**\n\n` +
-                `**Scope incomplete:** fixed 20-target baseline; additional workflows need an explicit scope decision. Index mappings pending #1223. See [coverage](https://github.com/${repo}/blob/${context.sha}/docs/ci-health.md).\n\n` +
+                `**Scope incomplete:** fixed ${config.targets.length}-target baseline; additional workflows need an explicit scope decision. Index mappings pending #1223. See [coverage](https://github.com/${repo}/blob/${context.sha}/docs/ci-health.md).\n\n` +
                 `[Run and dated JSON/Markdown](${runURL}#artifacts) · [Source JSON artifact](${artifactURL}) · source/config ${context.sha} · collector ${rev}\n\n` +
                 `Window [${r.since}, ${r.until}); attempts observed at collection time, not a historical snapshot.\n\n`;
               const warningText = warnings.length ? warnings.map(w => '- **WARNING:** ' + escape(w)).join('\n') : 'No collector warnings.';
