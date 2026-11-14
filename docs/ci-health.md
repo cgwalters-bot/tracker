@@ -460,6 +460,11 @@ upload condition and pinned artifact actions. Only the ready pair should upload.
 The dependent `verify` job checks this attempt's job/step conclusions and artifact
 names, then downloads and compares both files byte-for-byte. It makes two bounded
 listing requests, refuses truncated listings, and has only Actions read access.
+Both responses must have a nonnegative integer total below the 100-entry page
+cap and exactly that many returned entries. A short response could otherwise
+hide an unexpected upload while still containing all expected fixtures. Missing,
+malformed or mismatched totals fail verification rather than trigger pagination
+or retries; offline fixtures exercise these refusals against the actual verifier.
 Each job is capped at five minutes; the single fixture artifact expires in one
 day. There is no checkout, collector, issue API, secret, or publication opt-in.
 

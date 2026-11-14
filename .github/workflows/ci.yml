@@ -1373,7 +1373,7 @@ jobs:
                 {name: 'Upload dated pair', conclusion: phase === 'ready' ? 'success' : 'skipped'}]}));
             const prefix = 'ci-health-rehearsal-42-2-';
             async function verify(mutate = () => {}) {
-              const data = {total_count: 4, jobs: structuredClone(jobs)};
+              const data = {total_count: 4, jobs: [...structuredClone(jobs), {name: 'verify', conclusion: null}]};
               const artifacts = {total_count: 2, artifacts: [{name: prefix + 'ready'}, {name: 'ci-health-rehearsal-42-1-ready'}]};
               mutate(data, artifacts);
               let calls = 0;
@@ -1387,6 +1387,17 @@ jobs:
               assert.equal(calls, 2);
             }
             await verify();
+            // A short page can still contain every expected fixture while
+            // omitting an unexpected upload. Do not call that complete evidence.
+            for (const field of ['jobs', 'artifacts']) {
+              for (const count of [undefined, null, '4', -1, 1.5, 99, 100]) {
+                await assert.rejects(verify((d, a) => { (field === 'jobs' ? d : a).total_count = count; }));
+              }
+              for (const delta of [-1, 1]) await assert.rejects(verify((d, a) => {
+                const listing = field === 'jobs' ? d : a;
+                listing.total_count = listing[field].length + delta;
+              }));
+            }
             for (const mutate of [d => { d.jobs.pop(); }, d => { d.jobs[0].conclusion = 'success'; },
               d => { d.jobs[1].steps[1].conclusion = 'success'; }, d => { d.jobs[0].steps[1].conclusion = 'skipped'; },
               d => { d.total_count = 100; }, (_, a) => { a.total_count = 100; },
