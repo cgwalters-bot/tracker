@@ -432,6 +432,67 @@ jobs:
               assert.ok(bad.error); assert.equal(bad.calls.length, 0);
             }
           });
+          test('large escaped and UTF-8 sections stay bounded without losing the full artifact', async () => {
+            for (const value of ['&'.repeat(1800), '界'.repeat(1800)]) {
+              const r = report(), index = {};
+              r.targets[0].warnings = Array(12).fill(value);
+              r.groups = Array.from({length: 13}, (_, i) => {
+                const g = group();
+                g.observation.signature = hash(String(i));
+                g.observation.job = value;
+                return g;
+              });
+              for (let i = 0; i < 100; i++) index[hash('absent' + i)] = {...entry(8), owner: value};
+              for (const publish of [false, true]) {
+                const got = await run({report: r, index, publish, preview: false});
+                assert.ifError(got.error);
+                const body = got.summaries[0], full = got.files.get('2026-11-05.md');
+                assert.ok(Buffer.byteLength(body) < 60000);
+                assert.equal(got.calls.length, publish ? 1 : 0);
+                if (publish) assert.equal(got.calls[0].args.body, body);
+                assert.equal((full.match(/Signature /g) ?? []).length, 13);
+                assert.equal((full.match(/overdue absent signature/g) ?? []).length, 100);
+                assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
+                for (const [heading, total, pattern] of [
+                  ['Warnings', 91, /^- \*\*WARNING:\*\*/gm],
+                  ['Findings and groups', 13, /^- bootc-dev\/bootc/gm],
+                  ['Absent overdue entries', 100, /overdue absent signature/g],
+                ]) {
+                  const section = body.split('### ' + heading + '\n')[1].split('\n\n')[0];
+                  const shown = (section.match(pattern) ?? []).length;
+                  assert.ok(shown > 0 && shown < total);
+                  assert.match(section, new RegExp(`Presentation truncated: ${total - shown} more entries; see artifact`));
+                  assert.ok(Buffer.byteLength(section) <= 12000);
+                }
+                assert.match(body, /INCOMPLETE OBSERVATIONS/);
+                assert.match(body, /Aggregate attempt rates are NOT eventual/);
+              }
+            }
+          });
+          test('whole-entry truncation retains priority and discloses a first entry too large to fit', async () => {
+            for (const oversized of [false, true]) {
+              const r = report();
+              r.groups = Array.from({length: 13}, (_, i) => {
+                const g = group(); g.observation.signature = hash(String(i));
+                // Put the only recurring finding last in input order.
+                if (i < 12) { g.observation.run_ids.pop(); g.findings = []; }
+                else if (oversized) {
+                  g.observation.job = '&'.repeat(2000);
+                  g.observation.test = '&'.repeat(2000);
+                }
+                return g;
+              });
+              const got = await run({report: r}); assert.ifError(got.error);
+              const section = got.summaries[0].split('### Findings and groups\n')[1].split('\n\n')[0];
+              assert.match(section, new RegExp(`Presentation truncated: ${oversized ? 13 : 1} more entries; see artifact`));
+              if (oversized) assert.doesNotMatch(section, /Signature |No observed groups/);
+              else {
+                assert.equal((section.match(/Signature /g) ?? []).length, 12);
+                assert.match(section.split('\n')[0], /recurring_without_issue/);
+              }
+              assert.equal((got.files.get('2026-11-05.md').match(/Signature /g) ?? []).length, 13);
+            }
+          });
           test('strict seven-day boundary; absent overdue signatures audited, never called recovered', async () => {
             for (const [days, overdue] of [[7, false], [7 + 1 / 86400, true]]) {
               const e = entry(days), r = report(), g = group();

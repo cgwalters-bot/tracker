@@ -233,13 +233,24 @@ jobs:
               check(Buffer.byteLength(full) <= 4 * 1024 * 1024, 'rendered report too large');
               fs.writeFileSync(base + r.until.slice(0, 10) + '.json', raw);
               fs.writeFileSync(base + r.until.slice(0, 10) + '.md', full);
-              // Keep the stable surface bounded. Full warnings/groups remain in
-              // the artifact; explicitly disclose every presentation truncation.
-              let body = header + warnings.slice(0, 12).map(w => '- **WARNING:** ' + escape(w)).join('\n') +
-                (warnings.length > 12 ? `\n**WARNING: ${warnings.length - 12} more warnings; see artifact.**` : '') + table +
-                '\n\n### Findings and groups\n' + lines.slice(0, 12).join('\n') +
-                (groupLines.length > 12 ? `\n**Presentation truncated: ${groupLines.length - 12} more groups; see artifact.**` : '') +
-                '\n\n### Absent overdue entries\n' + (absent.join('\n') || 'None; mappings pending.') + footer;
+              // Valid log text can expand after escaping or UTF-8 encoding and
+              // otherwise prevent any status update. Bound each detail section
+              // in bytes, keeping whole entries and disclosing every omission.
+              // The full dated artifact above retains all entries.
+              const section = (entries, limit, empty) => {
+                const byteLimit = 12000, noticeReserve = 100;
+                let result = '', count = 0;
+                for (const line of entries.slice(0, limit)) {
+                  const next = result + (count ? '\n' : '') + line;
+                  if (Buffer.byteLength(next) > byteLimit - noticeReserve) break;
+                  result = next; count++;
+                }
+                return result + (count < entries.length ?
+                  `\n**Presentation truncated: ${entries.length - count} more entries; see artifact.**` : (result ? '' : empty));
+              };
+              const body = header + '### Warnings\n' + section(warnings.map(w => '- **WARNING:** ' + escape(w)), 12, 'No collector warnings.') + table +
+                '\n\n### Findings and groups\n' + section(lines, 12, 'No observed groups; this is not evidence of recovery.') +
+                '\n\n### Absent overdue entries\n' + section(absent, 100, 'None; mappings pending.') + footer;
               check(Buffer.byteLength(body) < 60000, 'comment too large');
               await core.summary.addRaw(body).write();
               // Threat: unapproved coverage or a manual rehearsal overwriting
