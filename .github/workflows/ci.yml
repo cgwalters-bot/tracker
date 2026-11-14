@@ -414,7 +414,9 @@ jobs:
               const result = JSON.parse(ok.stdout);
               assert.deepEqual(result.sample_check, { schema: sample.schema, prs: 30,
                 sha256: createHash('sha256').update(JSON.stringify(sample)).digest('hex') });
+              assert.equal(result.ledger_sha256, createHash('sha256').update(JSON.stringify(input)).digest('hex'));
               delete result.sample_check;
+              delete result.ledger_sha256;
               assert.deepEqual(result, score(input));
               for (const mutate of [
                 x => x.prs.pop(),
@@ -449,6 +451,32 @@ jobs:
               assert.equal(Object.hasOwn(JSON.parse(ordinary.stdout), 'sample_check'), false);
             });
 
+            test('CLI binds exact ledger bytes, including audit reasons absent from counts', () => {
+              const { createHash } = require('node:crypto');
+              const file = join(temp, 'digest-ledger.json');
+              const input = ledger();
+              input.prs[0].baseline[0].reason = 'Same concern: caf\u00e9';
+              const compact = JSON.stringify(input);
+              const formatted = JSON.stringify(input, null, 2) + '\n';
+              const corrected = structuredClone(input);
+              corrected.prs[0].baseline[0].reason = 'Corrected evidence reference';
+              const digests = [];
+              for (const bytes of [compact, formatted, JSON.stringify(corrected)]) {
+                writeFileSync(file, bytes);
+                const run = () => spawnSync(process.execPath, [modulePath, file], { encoding: 'utf8' });
+                const first = run();
+                assert.equal(first.status, 0, first.stderr);
+                assert.equal(run().stdout, first.stdout, 'same bytes reproduce the same result');
+                const result = JSON.parse(first.stdout);
+                assert.equal(result.ledger_sha256, createHash('sha256').update(bytes).digest('hex'));
+                digests.push(result.ledger_sha256);
+                delete result.ledger_sha256;
+                assert.deepEqual(result, score(input), 'formatting and reasons do not change counts');
+              }
+              assert.equal(new Set(digests).size, 3, 'do not hash reserialized JSON or only counted fields');
+              assert.equal(Object.hasOwn(score(input), 'ledger_sha256'), false, 'object API has no source bytes');
+            });
+
             test('CLI rejects malformed UTF-8 instead of inventing matching archive IDs', () => {
               const file = join(temp, 'encoding.json');
               const run = content => {
@@ -461,7 +489,9 @@ jobs:
               const valid = JSON.stringify(input);
               const ok = run(valid);
               assert.equal(ok.status, 0, ok.stderr);
-              assert.deepEqual(JSON.parse(ok.stdout), score(input), 'valid Unicode, including U+FFFD, is preserved');
+              const result = JSON.parse(ok.stdout);
+              delete result.ledger_sha256;
+              assert.deepEqual(result, score(input), 'valid Unicode, including U+FFFD, is preserved');
               const marker = Buffer.from('comment-\uFFFD');
               const bytes = Buffer.from(valid);
               const offset = bytes.indexOf(marker) + Buffer.byteLength('comment-');
@@ -484,7 +514,9 @@ jobs:
                 writeFileSync(file, JSON.stringify(ledger()));
                 const ok = run([file]);
                 assert.equal(ok.status, 0, ok.stderr);
-                assert.deepEqual(JSON.parse(ok.stdout), score(ledger()));
+                const result = JSON.parse(ok.stdout);
+                delete result.ledger_sha256;
+                assert.deepEqual(result, score(ledger()));
                 assert.equal(run(['--help']).status, 0);
                 const duplicate = ledger();
                 duplicate.prs[1].url = 'https://github.com/EXAMPLE/PROJECT/pull/1';
