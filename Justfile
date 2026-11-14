@@ -1171,57 +1171,33 @@ test-review-caller:
       // or permission to publish the operator's holds in a public repository.
       assert.equal(config.holds.repository, 'cgwalters-forge/bot-ops');
       assert.equal(config.holds.issue, 1);
-      for (const repo of DRAFT_REVIEW) {
-        assert.ok(config.follow.includes(repo), `${repo} must stay followed`);
-        assert.ok(pr.noMerge.includes(repo), `${repo} must stay in pr.noMerge`);
-      }
+      for (const list of [config.follow, pr.noMerge])
+        for (const repo of DRAFT_REVIEW) assert.ok(list.includes(repo), `${repo} must stay followed and unmergeable`);
       if (!(pr.draftReviewRepositories ?? []).length) return false;
       assert.deepEqual(pr.draftReviewRepositories, DRAFT_REVIEW, 'exactly the four midstream callers');
       assert.deepEqual(pr.reviewDispatchRepositories, DRAFT_REVIEW, 'no extra dispatch callers in this rollout');
-      for (const [key, list] of [['follow', config.follow], ['pr.noMerge', pr.noMerge],
-        ['pr.reviewDispatchRepositories', pr.reviewDispatchRepositories ?? []]]) {
-        for (const repo of DRAFT_REVIEW) assert.ok(list.includes(repo), `${repo} must be in ${key}`);
-      }
       assert.deepEqual(pr.reviewPools, ['openai', 'claude'], 'draft reviews need pr.reviewPools');
       assert.equal(pr.reviewWorkflow, 'review.yml');
       return true;
     };
     assert.equal(draftReviews(pass), false,
       'draft reviews wait for the callers\' result writer, a draft-accepting wrapper and the review app');
-    for (const repo of DRAFT_REVIEW) {
-      assert.ok(!(pass.pr.reviewDispatchRepositories ?? []).includes(repo), `${repo}: dispatch it only with the draft opt-in`);
-    }
+    for (const repo of DRAFT_REVIEW) assert.ok(!(pass.pr.reviewDispatchRepositories ?? []).includes(repo), `${repo}: dispatch it only with the draft opt-in`);
     const enabled = structuredClone(pass);
     Object.assign(enabled.pr, { draftReviewRepositories: [...DRAFT_REVIEW],
       reviewDispatchRepositories: [...DRAFT_REVIEW], reviewPools: ['openai', 'claude'] });
     assert.equal(draftReviews(enabled), true);
-    for (const [what, edit] of [
-      ['one repository short', pr => pr.draftReviewRepositories.pop()],
-      ['an extra repository', pr => pr.draftReviewRepositories.push('cgwalters-forge/tracker')],
-      ['merging allowed', pr => pr.noMerge.splice(pr.noMerge.indexOf('cgwalters-forge/bcvk'), 1)],
-      ['no ordinary dispatch', pr => delete pr.reviewDispatchRepositories],
-      ['extra dispatch caller', pr => pr.reviewDispatchRepositories.push('cgwalters-forge/tracker')],
-      ['no pools', pr => delete pr.reviewPools],
-    ]) {
-      const broken = structuredClone(enabled);
-      edit(broken.pr);
-      assert.throws(() => draftReviews(broken), undefined, what);
-    }
+    for (const [key, values] of Object.entries({ draftReviewRepositories: [DRAFT_REVIEW.slice(1), [...DRAFT_REVIEW, 'cgwalters-forge/tracker']],
+      reviewDispatchRepositories: [undefined, [...DRAFT_REVIEW, 'cgwalters-forge/tracker']], reviewPools: [undefined] }))
+      for (const value of values) assert.throws(() => draftReviews({ ...enabled, pr: { ...enabled.pr, [key]: value } }), undefined, key);
     const rolledBack = structuredClone(enabled);
     delete rolledBack.pr.draftReviewRepositories;
     assert.equal(draftReviews(rolledBack), false, 'rollback removes the draft opt-in');
-    for (const config of [pass, enabled, rolledBack]) {
-      for (const edit of [
-        c => { c.holds.repository = 'cgwalters-forge/tracker'; },
-        c => { c.holds.issue = 2; },
-        c => c.pr.noMerge.splice(c.pr.noMerge.indexOf(DRAFT_REVIEW[0]), 1),
-        c => c.follow.splice(c.follow.indexOf(DRAFT_REVIEW[0]), 1),
-      ]) {
-        const broken = structuredClone(config);
-        edit(broken);
-        assert.throws(() => draftReviews(broken));
-      }
-    }
+    for (const config of [pass, enabled, rolledBack]) for (const [key, value] of [
+      ['holds', { ...config.holds, repository: 'cgwalters-forge/tracker' }], ['holds', { ...config.holds, issue: 2 }],
+      ['pr', { ...config.pr, noMerge: config.pr.noMerge.filter(repo => repo !== DRAFT_REVIEW[0]) }],
+      ['follow', config.follow.filter(repo => repo !== DRAFT_REVIEW[0])],
+    ]) assert.throws(() => draftReviews({ ...config, [key]: value }), undefined, key);
     assert.doesNotMatch(workflow, /^  workflow_dispatch:/m);
     assert.doesNotMatch(workflow, /\$\{\{[^\n]*(?:inputs\.|vars\.REVIEW_(?:RECORD_ONLY|POOLS))/);
     assert.doesNotMatch(workflow, /^    with:/m, 'do not guess inputs for the old wrapper');
