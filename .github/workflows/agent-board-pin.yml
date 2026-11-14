@@ -1,5 +1,5 @@
-# Proposes moving every workflow's AGENT_BOARD_REV to agent-board's main
-# once that commit's CI is green: `just bump-agent-board` opens or updates
+# Proposes moving every workflow's AGENT_BOARD_REV to the newest main commit
+# with a successful verified CI artifact: `just bump-agent-board` opens or updates
 # one pull request from the bot's fork, which the review and the pass then
 # take like any bot PR. Off unless the repository variable AGENT_BOARD_PIN
 # is `enabled`. The pass (poll.yml) starts it when agent-board's main moves;

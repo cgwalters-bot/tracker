@@ -11,6 +11,198 @@ use serde_json::{Value, json};
 
 const MARKER: &str = "# The experiment's own tables; everything above is hosted.toml's.\n";
 
+#[test]
+fn agent_board_selection() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = temp_path("agent-board-selection");
+    std::fs::create_dir(&dir).unwrap();
+    let stub = dir.join("gh");
+    std::fs::write(&stub, "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$2\" >> \"$FIXTURE/calls\"\n[ \"$FAIL_API\" != 1 ] || exit 1\ncase \"$2\" in\n*/artifacts?*) cat \"$FIXTURE/artifacts\";;\n*/commits?*) cat \"$FIXTURE/commits\";;\n*) cat \"$FIXTURE/runs\";;\nesac\n").unwrap();
+    std::fs::set_permissions(&stub, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let sha = "a".repeat(40);
+    let newer = "b".repeat(40);
+    let run = json!({"id":42, "head_sha":sha, "head_branch":"main", "event":"push",
+        "status":"completed", "conclusion":"success", "path":".github/workflows/ci.yml"});
+    let artifact = json!({"name":"agent-board-main", "expired":false});
+    let select = |revision: &str, runs: Vec<Value>, artifacts: Vec<Value>, fail: bool| {
+        for (name, value) in [
+            ("runs", json!({"workflow_runs":runs})),
+            ("commits", json!([{"sha":newer}, {"sha":sha}])),
+            ("artifacts", json!({"artifacts":artifacts})),
+        ] {
+            std::fs::write(dir.join(name), value.to_string()).unwrap();
+        }
+        std::fs::write(dir.join("calls"), "").unwrap();
+        Command::new(std::env::var("JUST_BIN").unwrap_or_else(|_| "just".into()))
+            .args(["select-agent-board", revision])
+            .current_dir(here().join("../.."))
+            .env("PATH", format!("{}:{}", dir.display(), std::env::var("PATH").unwrap()))
+            .env("FIXTURE", &dir)
+            .env("FAIL_API", if fail { "1" } else { "0" })
+            .output().expect("running selector")
+    };
+    let accepted = |output: Output| {
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        serde_json::from_slice::<Value>(&output.stdout).expect("selector JSON")
+    };
+    assert_eq!(accepted(select(&sha, vec![run.clone()], vec![artifact.clone()], false)), json!({"sha":sha,"run":42}));
+    let calls = std::fs::read_to_string(dir.join("calls")).unwrap();
+    assert!(calls.contains(&format!("head_sha={sha}")));
+    assert!(!calls.contains("/commits?"), "exact install must not resolve a moving ref");
+    assert_eq!(accepted(select(&newer, vec![run.clone()], vec![artifact.clone()], false)), Value::Null);
+    for (key, value) in [("head_branch", "other"), ("event", "pull_request"), ("status", "in_progress"),
+        ("conclusion", "failure"), ("path", ".github/workflows/other.yml")] {
+        let mut wrong = run.clone();
+        wrong[key] = json!(value);
+        assert_eq!(accepted(select(&sha, vec![wrong], vec![artifact.clone()], false)), Value::Null, "{key}");
+    }
+    for artifacts in [vec![], vec![json!({"name":"agent-board-main","expired":true})],
+        vec![json!({"name":"agent-board","expired":false})]] {
+        assert_eq!(accepted(select(&sha, vec![run.clone()], artifacts, false)), Value::Null);
+    }
+    for (revision, runs, artifacts, fail) in [
+        (sha.as_str(), vec![run.clone()], vec![artifact.clone(), artifact.clone()], false),
+        (sha.as_str(), vec![run.clone()], vec![artifact.clone()], true),
+        ("main", vec![run.clone()], vec![artifact.clone()], false),
+        ("latest", vec![run.clone(); 31], vec![], false),
+    ] {
+        assert!(!select(revision, runs, artifacts, fail).status.success());
+    }
+    for id in [json!(0), json!(-1), json!(1.5), json!("42"), json!(9007199254740992_u64)] {
+        let mut wrong = run.clone();
+        wrong["id"] = id;
+        assert!(!select(&sha, vec![wrong], vec![artifact.clone()], false).status.success());
+    }
+    assert_eq!(accepted(select("latest", vec![run.clone()], vec![artifact.clone()], false))["sha"], sha);
+    let mut new_run = run.clone();
+    new_run["head_sha"] = json!(newer);
+    new_run["id"] = json!(43);
+    assert_eq!(accepted(select("latest", vec![run, new_run], vec![artifact], false))["sha"], newer);
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+// Offline transport fixtures exercise the real installer and gh's attestation
+// verifier. Keep these with the other probes, not in the deployment Justfile.
+#[test]
+fn agent_board_install() {
+    weekly_comparison_probe(r#"
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const just = process.env.JUST_BIN || 'just';
+const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-board-install-'));
+const rev = 'a'.repeat(40);
+const target = 'x86_64-unknown-linux-musl';
+const stub = `#!/usr/bin/env node
+const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2), mode = process.env.CASE.replace(/^artifact-/, '');
+const artifact = process.env.CASE.startsWith('artifact-');
+if (args[0] === 'api' && args[1].includes('/actions/workflows/ci.yml/runs?')) {
+  console.log(JSON.stringify({workflow_runs: artifact ? [{id: 42, head_sha: process.env.REV, head_branch: 'main', event: 'push', status: 'completed', conclusion: 'success', path: '.github/workflows/ci.yml'}] : []})); process.exit(0);
+}
+if (args[0] === 'api' && args[1].includes('/commits?')) { console.log(JSON.stringify([{sha: process.env.REV}])); process.exit(0); }
+if (args[0] === 'api' && args[1].includes('/artifacts?')) { console.log(JSON.stringify({artifacts: [{name: 'agent-board-main', expired: false}]})); process.exit(0); }
+const identity = 'https://github.com/cgwalters-forge/agent-board/.github/workflows/ci.yml@refs/heads/main';
+if (process.env.BUMP) {
+  if (args[0] === 'api' && args.some(a => a.endsWith('/commits/main'))) { console.log('${rev}'); process.exit(0); }
+  if (args[0] === 'api' && args.some(a => a.endsWith('/check-runs'))) { console.log(JSON.stringify({name: 'ci', status: 'completed', conclusion: 'success'})); process.exit(0); }
+  if (args[0] === 'release' && args[1] === 'view') { console.log(mode === 'draft' ? 'true' : 'false'); process.exit(mode === 'missing-release' ? 1 : 0); }
+  if (args[0] === 'api' && args.some(a => a.includes('/compare/'))) { fs.writeFileSync(process.env.MARKER, 'selected'); console.log(JSON.stringify({status: 'ahead'})); process.exit(0); }
+  if (args[0] === 'pr' && args[1] === 'list') { console.log(JSON.stringify({title: 'workflows: Move agent-board to aaaaaaa'})); process.exit(0); }
+}
+if (args[0] === 'attestation') {
+  if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) process.exit(9);
+  for (const s of ['--source-digest', process.env.REV, '--deny-self-hosted-runners', identity]) if (!args.includes(s)) process.exit(8);
+  if (!mode.startsWith('real-')) process.exit(mode === 'attestation' ? 1 : 0);
+  // The real verifier on the real bundle, offline: a dead proxy and the
+  // committed trusted root. The signer case asks for another identity.
+  const real = args.map(a => mode === 'real-signer' && a === identity ? identity.replace('/ci.yml@', '/release.yml@') : a);
+  const dead = 'http://127.0.0.1:9';
+  const r = spawnSync(process.env.REAL_GH, [...real, '--custom-trusted-root', path.join(process.env.FIXTURES, 'trusted_root.json')], {stdio: 'inherit', env: {...process.env, HTTPS_PROXY: dead, HTTP_PROXY: dead, NO_PROXY: ''}});
+  fs.writeFileSync(process.env.VERIFIED, String(r.status));
+  process.exit(r.status ?? 1);
+}
+if (['missing-release', 'download'].includes(mode)) process.exit(1);
+if (artifact && !(args[0] === 'run' && args[1] === 'download' && args[2] === '42' && args.includes('agent-board-main'))) process.exit(7);
+const d = args[args.indexOf('--dir') + 1];
+if (mode.startsWith('real-')) {
+  // Stand-in binaries ensure even an accepted real attestation fails checksums.
+  // real-subject changes one byte while keeping JSON valid.
+  const release = fs.readFileSync(path.join(process.env.FIXTURES, 'release.json'), 'utf8');
+  fs.writeFileSync(path.join(d, 'release.json'), mode === 'real-subject' ? release.replace('"schema"', '"schema" ') : release);
+  fs.copyFileSync(path.join(process.env.FIXTURES, 'provenance.json'), path.join(d, 'provenance.jsonl'));
+  fs.writeFileSync(path.join(d, 'SHA256SUMS'), JSON.parse(release).sha256sums);
+  for (const n of ['agent-board', 'gh-agent-board']) fs.writeFileSync(path.join(d, n + '-${target}'), 'stand-in');
+  process.exit(0);
+}
+let sums = '';
+for (const n of ['agent-board', 'gh-agent-board']) {
+  const name = n + '-${target}', data = '#!/bin/sh\\nexit 0\\n';
+  fs.writeFileSync(path.join(d, name), data);
+  sums += crypto.createHash('sha256').update(data).digest('hex') + '  ' + name + '\\n';
+}
+fs.writeFileSync(path.join(d, 'SHA256SUMS'), mode === 'sums' ? 'bad' : sums);
+fs.writeFileSync(path.join(d, 'release.json'), JSON.stringify({schema: 'agent-board.release.v1', repository: 'cgwalters-forge/agent-board', tag: artifact ? '' : 'build-${rev}', commit: mode === 'commit' ? 'b'.repeat(40) : '${rev}', target: '${target}', sha256sums: sums}));
+fs.writeFileSync(path.join(d, 'provenance.jsonl'), 'fixture');
+if (mode === 'integrity') fs.appendFileSync(path.join(d, 'agent-board-${target}'), 'tampered');
+if (mode === 'missing-asset') fs.unlinkSync(path.join(d, 'agent-board-${target}'));
+`;
+const fixtures = path.resolve('.github/agent-board-install');
+const published = JSON.parse(fs.readFileSync(path.join(fixtures, 'release.json'), 'utf8')).commit;
+const realGh = spawnSync('sh', ['-c', 'command -v gh'], {encoding: 'utf8'}).stdout.trim();
+assert.ok(realGh, 'gh on PATH, for the real attestation verifier');
+// Nonempty, so the verifier sees no token only if the installer clears them.
+const tokens = {GH_TOKEN: 'sentinel-not-a-token', GITHUB_TOKEN: 'sentinel-not-a-token'};
+const install = (mode, r, temp) => spawnSync(just, ['build-agent-board', r], {encoding: 'utf8', env: {...process.env, ...tokens, PATH: `${dir}:${process.env.PATH}`, RUNNER_TEMP: temp, GITHUB_OUTPUT: path.join(temp, 'output'), CASE: mode, REV: r, FIXTURES: fixtures, REAL_GH: realGh, VERIFIED: path.join(temp, 'verified'), GH_CONFIG_DIR: temp}});
+try {
+  fs.writeFileSync(path.join(dir, 'gh'), stub, {mode: 0o755});
+  fs.writeFileSync(path.join(dir, 'uname'), '#!/bin/sh\nif [ "$CASE" = platform ]; then printf Darwin; else /usr/bin/uname "$@"; fi\n', {mode: 0o755});
+  for (const mode of ['ok', 'missing-release', 'missing-asset', 'platform', 'download', 'attestation', 'commit', 'sums', 'integrity', 'revision', 'artifact-ok', 'artifact-download', 'artifact-attestation', 'artifact-commit', 'artifact-sums', 'artifact-integrity', 'artifact-missing-asset']) {
+    const temp = fs.mkdtempSync(path.join(dir, 'run-'));
+    const output = path.join(temp, 'output');
+    const result = install(mode, mode === 'revision' ? '' : rev, temp);
+    const success = ['ok', 'artifact-ok'].includes(mode);
+    assert.equal(result.status === 0, success, `${mode}: ${result.stdout}\n${result.stderr}`);
+    assert.equal(fs.existsSync(path.join(temp, 'agent-board/bin/agent-board')), success, mode);
+    if (success) assert.equal(fs.readFileSync(output, 'utf8'), `rev=${rev}\n`);
+    else assert.equal(fs.existsSync(output), false, mode);
+    console.log(`ok agent-board installer: ${mode}`);
+  }
+  // Only the right commit verifies; the stand-in binaries still fail checksums.
+  for (const mode of ['real-ok', 'real-revision', 'real-subject', 'real-signer']) {
+    const temp = fs.mkdtempSync(path.join(dir, 'run-'));
+    const result = install(mode, mode === 'real-revision' ? rev : published, temp);
+    const log = `${mode}: ${result.stdout}\n${result.stderr}`;
+    assert.notEqual(result.status, 0, log);
+    assert.equal(fs.readFileSync(path.join(temp, 'verified'), 'utf8') === '0', mode === 'real-ok', log);
+    if (mode === 'real-ok') assert.match(result.stdout, /agent-board-x86_64-unknown-linux-musl: FAILED/, log);
+    assert.equal(fs.existsSync(path.join(temp, 'agent-board/bin/agent-board')), false, mode);
+    console.log(`ok agent-board installer: ${mode}`);
+  }
+  for (const mode of ['ok', 'artifact-ok', 'artifact-missing-asset', 'artifact-attestation', 'artifact-integrity']) {
+    const marker = path.join(dir, 'selected');
+    fs.rmSync(marker, {force: true});
+    const result = spawnSync(just, ['bump-agent-board'], {encoding: 'utf8', env: {...process.env, ...tokens, PATH: `${dir}:${process.env.PATH}`, CASE: mode, REV: rev, BUMP: '1', MARKER: marker, GITHUB_REPOSITORY: 'cgwalters-forge/tracker'}});
+    assert.equal(result.status === 0, ['ok', 'artifact-ok'].includes(mode), `${mode}: ${result.stdout}\n${result.stderr}`);
+    assert.equal(fs.existsSync(marker), mode === 'artifact-ok', `bump must verify before selecting: ${mode}`);
+    console.log(`ok agent-board bump: ${mode}`);
+  }
+  const pins = fs.mkdtempSync(path.join(dir, 'pins-'));
+  fs.mkdirSync(path.join(pins, '.github/workflows'), {recursive: true});
+  fs.copyFileSync('Justfile', path.join(pins, 'Justfile'));
+  const checkPin = () => spawnSync(just, ['agent-board-pin'], {cwd: pins, encoding: 'utf8'});
+  fs.writeFileSync(path.join(pins, '.github/workflows/a.yml'), `env:\n  AGENT_BOARD_REV: ${rev}\n`);
+  assert.equal(checkPin().stdout.trim(), rev);
+  fs.writeFileSync(path.join(pins, '.github/workflows/b.yml'), `env:\n  AGENT_BOARD_REV: ${'b'.repeat(40)}\n`);
+  assert.notEqual(checkPin().status, 0);
+  console.log('ok agent-board pin agreement and mismatch');
+} finally { fs.rmSync(dir, {recursive: true, force: true}); }
+"#);
+}
+
 /// The agents that load skills; a pool of any other runs the `-full` profiles.
 const SKILLED_AGENTS: [&str; 2] = ["claude", "opencode"];
 
@@ -386,6 +578,25 @@ fn promote_caller_settings_and_policy_records() {
             record[i + 5..].chars().take(40).filter(|c| c.is_ascii_digit() || ('a'..='f').contains(c)).count() == 40
         }), "{upstream}: source SHA");
         assert!(body.starts_with("\n# "), "{upstream}: policy body");
+    }
+}
+
+#[test]
+fn agent_board_installs_share_the_verified_ci_artifact_path() {
+    let justfile = read("../../Justfile");
+    for required in [
+        "{{ just_executable() }} select-agent-board \"$rev\"",
+        "gh run download \"$run\" --repo \"$repo\" --name agent-board-main",
+        "gh release download \"$tag\"",
+        "--source-digest \"$rev\" --deny-self-hosted-runners",
+        "cmp \"$stage/SHA256SUMS\" \"$stage/attested-SHA256SUMS\"",
+    ] {
+        assert!(justfile.contains(required), "{required}");
+    }
+    for name in ["poll", "promote", "supervisor", "release-train"] {
+        let workflow = read(&format!("../workflows/{name}.yml"));
+        assert!(workflow.contains("just build-agent-board \"$AGENT_BOARD_REV\""), "{name}");
+        assert!(!workflow.contains("gh release download"), "{name}");
     }
 }
 
