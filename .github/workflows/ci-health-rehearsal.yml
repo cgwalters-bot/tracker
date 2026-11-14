@@ -70,8 +70,15 @@ jobs:
             const args = {...context.repo, run_id: context.runId, per_page: 100,
               request: {timeout: 10000}};
             const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
+            // Threat: a short listing can hide an unexpected upload and falsely
+            // certify retention. Require the whole single page, without retries.
+            const complete = (data, key) => {
+              assert.ok(Number.isSafeInteger(data.total_count) && data.total_count >= 0 &&
+                data.total_count < args.per_page && Array.isArray(data[key]) &&
+                data[key].length === data.total_count, `${key} listing must be complete`);
+            };
             const {data} = await github.rest.actions.listJobsForWorkflowRunAttempt({...args, attempt_number: attempt});
-            assert.ok(data.total_count < 100, 'job listing must be complete');
+            complete(data, 'jobs');
             for (const phase of ['ready', 'refused', 'partial']) {
               const jobs = data.jobs.filter(j => j.name === `fixture (${phase})`);
               assert.equal(jobs.length, 1, `one ${phase} fixture job`);
@@ -81,7 +88,7 @@ jobs:
               assert.equal(step('Upload dated pair'), phase === 'ready' ? 'success' : 'skipped');
             }
             const artifacts = await github.rest.actions.listWorkflowRunArtifacts(args);
-            assert.ok(artifacts.data.total_count < 100, 'artifact listing must be complete');
+            complete(artifacts.data, 'artifacts');
             const prefix = `ci-health-rehearsal-${context.runId}-${attempt}-`;
             const retained = artifacts.data.artifacts.filter(a => a.name.startsWith(prefix));
             assert.equal(retained.length, 1, 'only the ready fixture uploads');
