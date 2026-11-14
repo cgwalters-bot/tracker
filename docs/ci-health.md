@@ -173,6 +173,13 @@ artifact; the population table, provenance, coverage caveats and overall
 publication off. Offline tests cover escaped and multibyte text, omission counts,
 artifact retention and both preview and opted-in publication.
 
+Warning inputs retain their 2,000-character limit independently of the target
+label. Each is validated and escaped before composition, so adding a label
+cannot reject an otherwise valid maximum-length warning. The composed line is
+not escaped a second time; the same encoded-byte section and artifact limits
+still apply. Boundary tests cover plain, markup-like and multibyte warnings at
+the limit and refusal one character beyond it, without enabling publication.
+
 Once validation and both dated file writes finish, the workflow marks the pair
 ready for upload. The upload still runs if the later summary, marker checks or
 status API write fails; the reporting step and job remain failed. This prevents
