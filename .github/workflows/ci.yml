@@ -276,8 +276,12 @@ jobs:
             const manifest = {repository: 'cgwalters-forge/tracker', ref: 'refs/heads/main', source_revision: sha,
               collector_revision: rev, run_id: '42', run_attempt: '1', config_sha256: hash(configBytes), report_sha256: hash(raw), ...options.manifest};
             const files = new Map([['report.json', raw], ['provenance.json', Buffer.from(JSON.stringify(manifest))]]);
-            const calls = [], summaries = [], comments = options.comments ?? [];
-            const api = name => async args => { calls.push({name, args}); return {data: {}}; };
+            const calls = [], summaries = [], outputs = {}, comments = options.comments ?? [];
+            const api = name => async args => {
+              calls.push({name, args});
+              if (options.apiFailure) throw Error('status API unavailable');
+              return {data: {}};
+            };
             const context = {repo: {owner: 'cgwalters-forge', repo: 'tracker'}, ref: options.ref ?? 'refs/heads/main', sha, runId: 42,
               eventName: 'workflow_dispatch', payload: {repository: {default_branch: 'main'}}};
             const github = {rest: {repos: {getContent: async args => ({data: {type: 'file', encoding: 'base64', content:
@@ -287,15 +291,21 @@ jobs:
                 createComment: api('create'), updateComment: api('update')}}};
             const fakeFS = {lstatSync: path => { const name = path.split('/').pop(); if (options.missing === name || !files.has(name)) throw Error('missing report');
                 return {isFile: () => true, size: options.oversize ? 5 * 1024 * 1024 : files.get(name).length}; },
-              readFileSync: path => files.get(path.split('/').pop()), writeFileSync: (path, data) => files.set(path.split('/').pop(), data)};
+              readFileSync: path => files.get(path.split('/').pop()), writeFileSync: (path, data) => {
+                if (options.writeFailure === path.split('/').pop()) throw Error('dated file write failed');
+                files.set(path.split('/').pop(), data);
+              }};
             class Clock extends Date { static now() { return options.now ?? now; } }
             const sandbox = {Buffer, Date: Clock, console, process: {env: {RUNNER_TEMP: '/tmp', GITHUB_RUN_ATTEMPT: '1', PREVIEW: options.preview === false ? 'false' : 'true',
               RAW_ARTIFACT_URL: 'https://github.com/cgwalters-forge/tracker/actions/runs/42/artifacts/123'}},
-              context, github, core: {info() {}, summary: {addRaw(text) {summaries.push(text); return this;}, async write() {}}},
+              context, github, core: {info() {}, setOutput(name, value) {outputs[name] = value;},
+                summary: {addRaw(text) {summaries.push(text); return this;}, async write() {
+                  if (options.summaryFailure) throw Error('summary unavailable');
+                }}},
               require: name => name === 'node:fs' ? fakeFS : require(name)};
             let error;
             try { await vm.runInNewContext('(async () => {\n' + source + '\n})()', sandbox); } catch (e) { error = e; }
-            return {error, calls, files, summaries};
+            return {error, calls, files, summaries, outputs};
           }
           const owned = body => ({id: 9, body, user: {login: 'github-actions[bot]', type: 'Bot'}, issue_url: 'https://api.github.com/repos/cgwalters-forge/tracker/issues/1229'});
           test('collector step invokes once and binds saved bytes to run and config', () => {
@@ -354,6 +364,31 @@ jobs:
             const updated = await run({publish: true, preview: false, comments: [owned('<!-- tracker-ci-health:1229:v1 -->\nold')]});
             assert.ifError(updated.error); assert.deepEqual(updated.calls.map(c => c.name), ['update']);
             assert.equal(updated.calls[0].args.comment_id, 9);
+          });
+          test('dated upload survives publication failure but never admits invalid or partial reports', async () => {
+            assert.match(workflow, /name: Validate, render saved JSON, and update owned status\n        id: render/);
+            const upload = workflow.slice(workflow.lastIndexOf('      - uses: actions/upload-artifact'));
+            const guard = /if: \$\{\{ (.*) \}\}/.exec(upload)[1];
+            assert.equal(guard, "!cancelled() && steps.render.outputs.dated-ready == 'true'");
+            // Execute the status-function guard for both failed and successful steps;
+            // an explicit status function prevents Actions' implicit success() gate.
+            const admitted = new Function('cancelled', 'steps', `return ${guard.replace('outputs.dated-ready', "outputs['dated-ready']")}`);
+            for (const options of [{}, {summaryFailure: true}, {apiFailure: true},
+              {apiFailure: true, comments: [owned('<!-- tracker-ci-health:1229:v1 -->\nold')]},
+              {fullPages: true}, {manifest: {source_revision: 'f'.repeat(40)}},
+              {writeFailure: '2026-11-05.json'}, {writeFailure: '2026-11-05.md'}]) {
+              const got = await run({...options, publish: true, preview: false});
+              const ready = !options.manifest && !options.writeFailure;
+              assert.equal(got.outputs['dated-ready'], ready ? 'true' : undefined);
+              assert.equal(Boolean(got.error), Object.keys(options).length > 0);
+              if (ready) {
+                assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), report());
+                assert.match(got.files.get('2026-11-05.md'), /INCOMPLETE OBSERVATIONS/);
+              }
+              for (const cancelled of [false, true]) assert.equal(
+                admitted(() => cancelled, {render: {outputs: got.outputs}}), ready && !cancelled);
+            }
+            assert.match(upload, /if-no-files-found: error\n          retention-days: 35/);
           });
           test('wrong ref, missing/oversized report, wrong schema/targets/provenance/rates refuse writes', async () => {
             const badSchema = report(); badSchema.schema = 'other';
