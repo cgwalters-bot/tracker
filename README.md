@@ -206,12 +206,14 @@ on the org secret, restrict it to selected repositories: tracker.
 
 Scheduling is top-down (`topDown: true`): P0 epic groups are considered before
 unrelated parent discovery spends the request budget. Applying passes hand their
-disposable `.state/pass.json` cache to the next pass as the one-day `pass-state`
-artifact. Both chain dispatches supply `previous_run_id`; restore validates that
+disposable `.state/pass.json` cache and, when present, `.state/living-status.json` ledger
+to the next pass as the one-day `pass-state` artifact. Both chain dispatches supply `previous_run_id`; restore validates that
 exact run's repository, workflow, default branch, applying invocation and finished
-`pass` job. No shared cache or latest-by-name lookup is used. Missing, unreadable
-or untrusted predecessors start cold, including schedule/bootstrap runs without
-an explicit predecessor. Previews never upload state.
+`pass` job. Schedule/bootstrap runs without an explicit predecessor search at most
+100 poll runs on the default branch for the newest earlier applying invocation,
+then subject it to the same provenance checks. No shared cache or latest-by-name
+artifact lookup is used. Missing, unreadable or untrusted predecessors start cold.
+Previews never upload state.
 
 A forged cached body could steer scheduling despite a valid ETag, so only that
 trusted predecessor is accepted. Raw state can also include private usage/holds
@@ -222,7 +224,32 @@ Each repository must also be currently readable as public. Entries outside this
 allowlist are dropped whole, with their validators; repository visibility alone
 does not make a PAT-authenticated response public. Visibility checks cost one
 request per distinct allowlisted repository, capped at 100 repositories and
-90 seconds. Cache bodies are never printed; losing the whole artifact is safe.
+90 seconds, shared with the living-status ledger's repository checks. Cache and
+ledger bodies are never printed.
+
+`livingStatus` remains disabled until its machine records and replay guards have
+storage independent of the expiring artifact chain. Runner-local preservation is
+not a durable backup. When enabled later, pass-owned plans, dispatch notices and
+apply receipts can edit one status comment per issue; the pinned renderer already
+shows prose before the machine-plan fence, not raw JSON.
+
+Export leaves the original ledger unchanged and writes filtered copies beneath
+`.state/public/`. Only confirmed private entries are omitted from the public
+ledger; unreadable or mismatched metadata, a deadline, exceeded repository bound
+or invalid ledger fails export loudly without deleting the source ledger. The
+upload runs only after successful export and names only the two public files,
+never the source state directory. Retained replay records are unchanged so their
+status references still match. Historical comment cleanup remains off; review
+preview candidates before enabling it in a later change.
+
+Missing cache state only costs reads. Missing or stale living-status state instead
+refuses work on adopted issues when GitHub's status reference cannot be reconciled;
+it must never be treated as permission to dispatch or apply again. Restore the
+durable ledger before continuing those issues. The one-day artifact chain is not
+a long-term backup: a cold bootstrap, expired artifact, visibility-check failure
+or failed export may require ledger recovery. GitHub is authoritative for comment
+identity and ownership, but cannot reconstruct machine records from prose alone.
+Agentic-job's separate run-result comment is not yet integrated with this status.
 
 Reviews (including pending reviews), timelines (which can embed private
 cross-references), review comments, Actions runs/jobs/variables,
