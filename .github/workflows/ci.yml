@@ -237,6 +237,57 @@ jobs:
       - run: just test
         env:
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+      # Keep new scripts inline: deployment scripts and Justfile may only shrink.
+      - name: Test review-corpus resume checksums
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const { spawnSync } = require('node:child_process');
+          const workflow = fs.readFileSync('.github/workflows/review-corpus.yml', 'utf8');
+          const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'review-corpus-resume-'));
+          const stubs = `${temp}/stubs`;
+          try {
+            fs.mkdirSync(stubs);
+            // Execute the actual resume step. Only transport/decompression are stubbed;
+            // real sha256sum verifies both assets, including historical manifests.
+            const download = /- name: Download the current corpus\n[\s\S]*?run: \|\n([\s\S]*?)(?=      # A reserve)/.exec(workflow)[1].replace(/^          /gm, '');
+            fs.writeFileSync(`${stubs}/gh`, `#!${process.execPath}
+          const fs = require('node:fs');
+          const { createHash } = require('node:crypto');
+          const args = process.argv.slice(2);
+          const mode = process.env.DOWNLOAD_CASE;
+          if (args[1] === 'list') { if (mode !== 'first') console.log('review-corpus-20261105-000001'); }
+          else {
+            const names = ['review-corpus.jsonl.zst', 'review-corpus-state.json'];
+            const checksums = names.map(name => createHash('sha256').update(name).digest('hex') + '  ' + name);
+            for (const name of names) if (mode !== 'missing-' + name) fs.writeFileSync(name, mode === 'corrupt-' + name ? 'damaged' : name);
+            if (mode !== 'missing-manifest') fs.writeFileSync('SHA256SUMS', mode === 'empty-manifest' ? '' :
+              checksums.filter((_, i) => mode !== 'missing-checksum-' + i).join('\\n') + '\\n' +
+              (mode === 'modern' ? '0'.repeat(64) + '  status.json\\n' : ''));
+            if (!args.includes('SHA256SUMS')) process.exit(2);
+          }
+          `, { mode: 0o755 });
+            fs.writeFileSync(`${stubs}/zstd`, `#!${process.execPath}\nrequire('node:fs').writeFileSync('decompressed', '');\n`, { mode: 0o755 });
+            for (const mode of ['first', 'historical', 'modern', 'missing-manifest', 'empty-manifest',
+              'missing-checksum-0', 'missing-checksum-1', ...['review-corpus.jsonl.zst', 'review-corpus-state.json']
+                .flatMap(name => ['missing-' + name, 'corrupt-' + name])]) {
+              for (const name of ['review-corpus.jsonl.zst', 'review-corpus-state.json', 'SHA256SUMS', 'decompressed'])
+                fs.rmSync(`${temp}/${name}`, { force: true });
+              const got = spawnSync('bash', ['-euo', 'pipefail', '-c', download], { cwd: temp, encoding: 'utf8',
+                env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`, DOWNLOAD_CASE: mode,
+                  GITHUB_OUTPUT: `${temp}/output`, GITHUB_REPOSITORY: 'example/tracker', RELEASE_PREFIX: 'review-corpus-' }, timeout: 10000 });
+              assert.equal(got.error, undefined);
+              const accepted = ['first', 'historical', 'modern'].includes(mode);
+              assert.equal(got.status, accepted ? 0 : 1, `${mode}: ${got.stderr}`);
+              assert.equal(fs.existsSync(`${temp}/decompressed`), accepted && mode !== 'first', mode);
+              if (mode.startsWith('corrupt-') || mode.includes('checksum') || mode.endsWith('manifest'))
+                assert.match(got.stderr, /missing or mismatched checksum.*restore a verified snapshot/, mode);
+            }
+          } finally {
+            fs.rmSync(temp, { recursive: true, force: true });
+          }
+          console.log('ok review-corpus resume checksums (offline)');
       # Exercise the trusted renderer/publisher with no tokens or API calls.
       # Keep new scripts inline: deployment scripts and Justfile may only shrink.
       - name: Test CI-health saved reports and publication

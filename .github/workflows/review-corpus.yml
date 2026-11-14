@@ -71,6 +71,8 @@ jobs:
         # interrupted publish leaves, are never read. Only when there is none
         # (the first run) does it start from nothing; a release missing either
         # file stops the run rather than starting over on top of a corpus.
+        # Corrupt corpus or cursor bytes must not propagate into a new release:
+        # verify both against the same release's manifest before decompressing.
         # The new release is named for this time, before collecting, so a
         # failed publish job re-run late still sorts before later runs.
         run: |
@@ -80,9 +82,14 @@ jobs:
           if [[ -n $latest ]]; then
             echo "Resuming from $latest"
             gh release download "$latest" --repo "$GITHUB_REPOSITORY" \
-              --pattern review-corpus.jsonl.zst --pattern review-corpus-state.json
+              --pattern review-corpus.jsonl.zst --pattern review-corpus-state.json --pattern SHA256SUMS
             for f in review-corpus.jsonl.zst review-corpus-state.json; do
               [[ -f $f ]] || { echo "$latest has no $f" >&2; exit 1; }
+              checksum=$(sha256sum "$f")
+              if ! grep -Fxq -- "$checksum" SHA256SUMS; then
+                echo "::error::$latest has a missing or mismatched checksum for $f; restore a verified snapshot before retrying." >&2
+                exit 1
+              fi
             done
             zstd -d --rm review-corpus.jsonl.zst
           fi
