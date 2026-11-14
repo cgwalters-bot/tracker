@@ -218,6 +218,167 @@ echo "SHA256  review-corpus.jsonl.zst" | sha256sum --check
 Published releases are immutable, so a pinned tag keeps serving the same
 file.
 
+## Preparing the frozen checklist split
+
+Before mining #1231, keep held-out feedback out of the miner's context. Splitting
+individual comments by date leaks later comments on the same PR across the split;
+using the first row also misclassifies unsorted records. The explicit offline
+splitter groups **all three comment kinds by repository and PR**, using the
+earliest recorded `created_at`, not `updated_at`. First feedback on or after
+`2026-06-01T00:00:00Z` holds out the whole PR. The cutoff is fixed, not an option.
+
+After selecting a complete snapshot and checking its release notes for an early
+stop, download its four assets as above without opening the corpus in the mining
+session. From this repository, run the splitter kept below in this document:
+
+```sh
+node -e 'eval(require("node:fs").readFileSync("docs/review-corpus.md", "utf8").split("```js split-corpus\n")[1].split("\n```")[0]); main(process.argv.slice(1))' -- review-corpus-YYYYMMDD-HHMMSS /tmp/snapshot /tmp/new-split
+```
+
+Use the real selected tag and existing snapshot directory; the output must not
+exist and its parent must exist. Passing `--help` instead of the three arguments
+describes the invocation. Node and zstd are required. It independently
+checks all three asset digests and complete-snapshot metadata before decompressing,
+then writes `training.jsonl`, sorted held-out PR URLs in `holdout.txt`, and
+`provenance.json` with the fixed cutoff, input/output hashes and record/PR counts.
+Only counts go to stdout; feedback never goes to stdout or validation errors.
+Give the miner only these outputs, not the original snapshot. There is deliberately
+no held-out feedback file. Preserve the provenance and holdout list with the
+eventual checklist; keep corpus bytes outside git.
+
+This command is off unless explicitly invoked; no workflow calls it. To bound a
+malformed snapshot, compressed corpus and state are each limited to 128 MiB,
+status to 16 KiB, and the manifest to 4 KiB. Decompression is limited to 128 MiB
+and 30 seconds; parsing accepts at most 250,000 records. Oversized input, bad
+metadata, duplicate comment identities, invalid UTF-8/JSON or invalid UTC dates
+fail without publishing a split. Review these fixed bounds if a real complete
+snapshot exceeds them; do not silently truncate. Existing output is refused so a
+refresh cannot replace a frozen split by accident.
+
+The splitter does not authenticate release provenance, establish completeness
+beyond the marker, or discover earlier feedback omitted by collection. "First"
+means first in the pinned corpus window, not necessarily the PR's entire history.
+It expects the collector's UTC second-resolution timestamps. The supplied tag is
+recorded, not looked up. Hashes bind bytes, not the truth of their metadata. A
+later snapshot must not replace a frozen holdout or supply tuning feedback.
+
+The splitter lives here rather than in a script file because the repository's
+deployment code may only shrink (#890):
+
+```js split-corpus
+// Explicit offline preparation for #1231, not a miner or evaluation runner.
+const { createHash } = require('node:crypto');
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const CUTOFF = '2026-06-01T00:00:00Z';
+const MAX_BYTES = 128 * 1024 * 1024;
+const MAX_RECORDS = 250000;
+const ASSETS = ['review-corpus.jsonl.zst', 'review-corpus-state.json', 'status.json'];
+const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+const requireThat = (condition, message) => { if (!condition) throw new Error(message); };
+
+function readBounded(filename, limit) {
+  const stat = fs.lstatSync(filename);
+  requireThat(stat.isFile() && stat.size <= limit, 'snapshot asset is not a bounded regular file');
+  return fs.readFileSync(filename);
+}
+
+// Neither errors nor stdout include record text, paths, or diff hunks.
+function partition(bytes) {
+  requireThat(bytes.length <= MAX_BYTES, 'decompressed corpus exceeds 128 MiB');
+  const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  const lines = text.split('\n');
+  if (lines.at(-1) === '') lines.pop();
+  requireThat(lines.length > 0 && lines.length <= MAX_RECORDS, 'expected 1..250000 records');
+  const prs = new Map();
+  const seen = new Set();
+  const keys = lines.map((line, index) => {
+    let r;
+    try { r = JSON.parse(line); } catch { throw new Error(`invalid JSON at record ${index + 1}`); }
+    const validDate = typeof r?.created_at === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(r.created_at)
+      && Number.isFinite(Date.parse(r.created_at))
+      && new Date(r.created_at).toISOString() === r.created_at.replace('Z', '.000Z');
+    requireThat(r?.schema_version === 1 && ['review-comment', 'review-body', 'pr-comment'].includes(r.kind)
+      && typeof r.repository === 'string' && /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(r.repository)
+      && Number.isSafeInteger(r.pr_number) && r.pr_number > 0
+      && Number.isSafeInteger(r.comment_id) && r.comment_id > 0
+      && typeof r.body === 'string' && validDate, `invalid metadata at record ${index + 1}`);
+    const identity = `${r.kind}:${r.comment_id}`;
+    requireThat(!seen.has(identity), `duplicate identity at record ${index + 1}`);
+    seen.add(identity);
+    const key = `https://github.com/${r.repository.toLowerCase()}/pull/${r.pr_number}`;
+    const first = prs.get(key);
+    if (!first || r.created_at < first) prs.set(key, r.created_at);
+    return key;
+  });
+  // Decide only after scanning ALL metadata: input order and comment kind do not
+  // define a PR's first feedback. Later comments on a training PR stay training.
+  const held = new Set([...prs].filter(([, first]) => first >= CUTOFF).map(([key]) => key));
+  const training = lines.filter((_, i) => !held.has(keys[i]));
+  return {
+    training: training.length ? training.join('\n') + '\n' : '',
+    holdout: [...held].sort().map(key => key + '\n').join(''),
+    counts: { records: lines.length, training_records: training.length,
+      heldout_records: lines.length - training.length, training_prs: prs.size - held.size, heldout_prs: held.size },
+  };
+}
+
+function splitSnapshot(tag, snapshot, output) {
+  requireThat(/^review-corpus-\d{8}-\d{6}$/.test(tag), 'expected a dated review-corpus tag');
+  requireThat(!fs.existsSync(output), 'output already exists; use a new directory, never overwrite a frozen split');
+  const manifest = readBounded(path.join(snapshot, 'SHA256SUMS'), 4096).toString('utf8');
+  const assets = new Map(ASSETS.map(name => [name, readBounded(path.join(snapshot, name), name === 'status.json' ? 16384 : MAX_BYTES)]));
+  const checksums = ASSETS.map(name => `${digest(assets.get(name))}  ${name}`).sort();
+  requireThat(manifest.trimEnd().split('\n').sort().join('\n') === checksums.join('\n'), 'snapshot checksum coverage or digest mismatch');
+  let status;
+  try { status = JSON.parse(assets.get('status.json')); } catch { throw new Error('invalid snapshot status JSON'); }
+  requireThat(status?.complete === true && (status.stopped_for_quota === undefined || status.stopped_for_quota === false)
+    && status.login === 'cgwalters' && status.window?.since === '2020-11-01' && status.window?.until === null
+    && typeof status.collector_version === 'string' && status.collector_version.length > 0
+    && typeof status.run_url === 'string' && /^https:\/\/github\.com\/cgwalters-forge\/tracker\/actions\/runs\/[1-9][0-9]*$/.test(status.run_url),
+  'snapshot must be complete cgwalters feedback for the documented window and run');
+  let bytes;
+  try {
+    bytes = execFileSync('zstd', ['-dc'], { input: assets.get('review-corpus.jsonl.zst'), maxBuffer: MAX_BYTES, timeout: 30000,
+      stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch { throw new Error('decompression failed or exceeded 128 MiB/30 seconds; check zstd and snapshot'); }
+  const split = partition(bytes);
+  const provenance = { schema: 'review-checklist.split.v1', tag, cutoff: CUTOFF,
+    snapshot_sha256: Object.fromEntries(ASSETS.map(name => [name, digest(assets.get(name))])),
+    training_sha256: digest(split.training), holdout_sha256: digest(split.holdout), ...split.counts };
+  const staging = fs.mkdtempSync(path.join(path.dirname(path.resolve(output)), '.review-split-'));
+  try {
+    fs.writeFileSync(path.join(staging, 'training.jsonl'), split.training);
+    fs.writeFileSync(path.join(staging, 'holdout.txt'), split.holdout);
+    fs.writeFileSync(path.join(staging, 'provenance.json'), JSON.stringify(provenance, null, 2) + '\n');
+    fs.renameSync(staging, output);
+  } finally { fs.rmSync(staging, { recursive: true, force: true }); }
+  return split.counts;
+}
+
+function main(args) {
+  if (args.length !== 3 || args.includes('--help')) {
+    console.log('Usage: TAG SNAPSHOT NEW_OUTPUT (see "Preparing the frozen checklist split" in docs/review-corpus.md)\nOffline only; verify release notes and download the four snapshot assets first.\nWrites training.jsonl, held-out PR URLs and provenance; never prints feedback.');
+    process.exitCode = args.includes('--help') ? 0 : 1;
+    return;
+  }
+  try { console.log(JSON.stringify(splitSnapshot(...args))); }
+  catch (error) {
+    // JSON parser and external-program errors must never echo corpus data.
+    console.error(error instanceof TypeError ? 'invalid corpus structure' : error.message);
+    process.exitCode = 1;
+  }
+}
+```
+
+The `Test review-corpus holdout split` step in `ci.yml` exercises synthetic
+snapshots, the real zstd path, cutoff boundaries, unsorted/case-varied PR identities, all comment kinds,
+checksum/metadata failures, output isolation and fixed parser bounds. No complete
+corpus was mined for this preparation; #1342's released retry fix and a completed
+backfill still precede #1231, with held-out evaluation separate in #1232.
+
 ## Monthly checklist refresh
 
 [monthly-review-refresh.yml](../.github/workflows/monthly-review-refresh.yml)
