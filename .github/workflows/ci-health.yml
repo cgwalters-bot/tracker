@@ -232,8 +232,8 @@ jobs:
                 if (entry?.class === 'flake' && !entry.explained_at && until - Date.parse(entry.first_seen) > 7 * 86400000) findings.push('flake_unexplained_over_seven_days');
                 check(JSON.stringify(findings) === JSON.stringify(g.findings), 'invalid findings');
                 const mapping = entry ? ` Owner ${escape(entry.owner)}; fix ${escape(entry.fix_status)}; issue ${entry.issue ? escape(entry.issue) : 'none'}.` : ' No reviewed mapping.';
-                groupLines.push({priority: findings.length, line: `- ${escape(o.repository)} / ${escape(o.job)} / ${escape(o.test)}: ${escape(g.class)}; ${o.run_ids.length} runs, ${o.occurrences} occurrences; ${findings.join(', ') || 'no finding'}.${mapping} Signature ${o.signature}. Error: ${escape(text(o.first_error, 1000))}. ` +
-                  o.samples.map(s => `[run ${s.run_id}, attempt ${s.attempt}](${s.url})`).join(' ')});
+                groupLines.push({priority: findings.length, line: `- ${escape(o.repository)} / ${escape(o.job)} / ${escape(o.test)}: ${escape(g.class)}; ${o.run_ids.length} runs, ${o.occurrences} occurrences; first observed in window ${o.first_seen}; ${findings.join(', ') || 'no finding'}.${mapping} Signature ${o.signature}. Error: ${escape(text(o.first_error, 1000))}. ` +
+                  o.samples.map(s => `[run ${s.run_id}, attempt ${s.attempt}](${s.url}/attempts/${s.attempt}) [job ${s.job_id}](${s.url}/job/${s.job_id})`).join(' ')});
               }
               const absent = Object.entries(config.index).filter(([sig, e]) => !seen.has(sig) && e.class === 'flake' &&
                 !e.explained_at && until - Date.parse(e.first_seen) > 7 * 86400000)
