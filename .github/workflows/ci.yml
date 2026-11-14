@@ -1203,6 +1203,45 @@ jobs:
               assert.equal((got.files.get('2026-11-05.md').match(/Signature /g) ?? []).length, 13);
             }
           });
+          test('bounded findings rank distinct affected runs within existing priority', async () => {
+            const specs = [
+              ['zz-overdue', 2, 2], ['zz-widespread', 20, 20],
+              ['tie-a', 3, 3], ['tie-b', 3, 300],
+              ...Array.from({length: 11}, (_, i) => [`filler-${String(i).padStart(2, '0')}`, 2, 2000]),
+              ['aa-single-run', 1, 10000],
+            ];
+            const expected = specs.map(([job]) => hash(job));
+            const index = {[expected[0]]: entry(8)};
+            for (const publish of [false, true]) for (const reverse of [false, true]) {
+              const r = report();
+              r.groups = specs.map(([job, runs, occurrences]) => {
+                const g = group();
+                Object.assign(g.observation, {signature: hash(job), job, occurrences,
+                  run_ids: Array.from({length: runs}, (_, i) => i + 1), samples: []});
+                if (runs === 1) g.findings = [];
+                if (index[g.observation.signature]) {
+                  g.classification = index[g.observation.signature]; g.class = 'flake';
+                  g.findings.push('flake_unexplained_over_seven_days');
+                }
+                return g;
+              });
+              if (reverse) r.groups.reverse();
+              const p = r.targets[0].populations.default_push;
+              Object.assign(p, {runs: 20, attempts: 20, expected_attempts: 20, failed: 20,
+                denominator: 20, pass_rate: 0, first_attempt_failed: 20,
+                first_attempt_denominator: 20, first_attempt_pass_rate: 0});
+              const got = await run({report: r, index, publish, preview: false});
+              assert.ifError(got.error);
+              const signatures = text => [...text.matchAll(/Signature ([a-f0-9]{64})\./g)].map(m => m[1]);
+              assert.deepEqual(signatures(got.files.get('2026-11-05.md')), expected);
+              assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r, 'raw observations are not reordered');
+              assert.equal(got.calls.length, publish ? 1 : 0);
+              for (const text of [got.summaries[0], ...(publish ? [got.calls[0].args.body] : [])]) {
+                assert.deepEqual(signatures(text), expected.slice(0, 12));
+                assert.match(text, /Presentation truncated: 4 more entries; see artifact/);
+              }
+            }
+          });
           test('strict seven-day boundary; absent overdue signatures audited, never called recovered', async () => {
             for (const [days, overdue] of [[7, false], [7 + 1 / 86400, true]]) {
               const e = entry(days), r = report(), g = group();

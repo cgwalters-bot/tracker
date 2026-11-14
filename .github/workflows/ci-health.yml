@@ -232,7 +232,7 @@ jobs:
                 if (entry?.class === 'flake' && !entry.explained_at && until - Date.parse(entry.first_seen) > 7 * 86400000) findings.push('flake_unexplained_over_seven_days');
                 check(JSON.stringify(findings) === JSON.stringify(g.findings), 'invalid findings');
                 const mapping = entry ? ` Owner ${escape(entry.owner)}; fix ${escape(entry.fix_status)}; issue ${entry.issue ? escape(entry.issue) : 'none'}.` : ' No reviewed mapping.';
-                groupLines.push({priority: findings.length, line: `- ${escape(o.repository)} / ${escape(o.job)} / ${escape(o.test)}: ${escape(g.class)}; ${o.run_ids.length} runs, ${o.occurrences} occurrences; first observed in window ${o.first_seen}; ${findings.join(', ') || 'no finding'}.${mapping} Signature ${o.signature}. Error: ${escape(text(o.first_error, 1000))}. ` +
+                groupLines.push({priority: findings.length, runs: o.run_ids.length, line: `- ${escape(o.repository)} / ${escape(o.job)} / ${escape(o.test)}: ${escape(g.class)}; ${o.run_ids.length} runs, ${o.occurrences} occurrences; first observed in window ${o.first_seen}; ${findings.join(', ') || 'no finding'}.${mapping} Signature ${o.signature}. Error: ${escape(text(o.first_error, 1000))}. ` +
                   o.samples.map(s => `[run ${s.run_id}, attempt ${s.attempt}](${s.url}/attempts/${s.attempt}) [job ${s.job_id}](${s.url}/job/${s.job_id})`).join(' ')});
               }
               const absent = Object.entries(config.index).filter(([sig, e]) => !seen.has(sig) && e.class === 'flake' &&
@@ -242,9 +242,11 @@ jobs:
               const artifactURL = process.env.RAW_ARTIFACT_URL;
               check(typeof artifactURL === 'string' && artifactURL.startsWith(runURL + '/artifacts/') &&
                 /^[0-9]+$/.test(artifactURL.slice((runURL + '/artifacts/').length)), 'unsafe artifact URL');
-              // Findings sort first on the bounded status surface; unknown
-              // groups still remain in full in the dated artifact.
-              groupLines.sort((a, b) => b.priority - a.priority || a.line.localeCompare(b.line));
+              // Alphabetical ordering alone can hide widespread recurrence past
+              // the status limit. Within finding priority, rank distinct runs,
+              // not occurrences inflated by reruns or matrix jobs. Keep all
+              // groups in the dated artifact and the existing text tie-break.
+              groupLines.sort((a, b) => b.priority - a.priority || b.runs - a.runs || a.line.localeCompare(b.line));
               const lines = groupLines.map(g => g.line);
               const header = `${marker}\n## Rolling CI health: ${r.until.slice(0, 10)}\n\n` +
                 `**${r.complete ? 'Collector complete for configured targets only' : 'WARNING: INCOMPLETE OBSERVATIONS'}; not a healthy-CI verdict.**\n\n` +

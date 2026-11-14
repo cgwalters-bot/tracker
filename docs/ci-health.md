@@ -256,6 +256,17 @@ the proposed `setup.rust-lints` key never existed, the replacement uses explicit
 distribution packages, and #1071 owns hosted continuation acceptance. Do not
 invent a new lint fix or interpret #1120 closure as deployment/CI proof.
 
+Within the existing finding priority (number of findings, descending), failure
+groups sort by distinct affected runs, descending, then by the existing text
+tie-break. Alphabetical order alone could put the most widespread recurrence
+past the status's 12-entry limit. Occurrence counts do not break ties: repeated
+attempts or matrix jobs must not outrank failures affecting more distinct runs.
+These are observed counts under partial coverage, not estimates of total impact.
+The dated Markdown uses the same ordering and retains every group; saved JSON
+is unchanged. Offline fixtures exercise reversed input, equal-run ties, higher
+finding priority, high-occurrence/low-run groups, preview and opted-in publication.
+No new control, collection or budget change is added; publication stays off.
+
 The renderer verifies collector findings and lists recurring multi-run
 signatures with no mapped issue, plus reviewed unexplained flakes whose index
 first_seen is **strictly older than seven days** at `until`. Exactly seven days
