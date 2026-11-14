@@ -163,6 +163,10 @@ jobs:
                   const p = t.populations[pop];
                   for (const k of ['runs', 'attempts', 'expected_attempts', 'success', 'failed', 'cancelled', 'skipped',
                     'in_progress', 'other', 'first_attempt_success', 'first_attempt_failed', 'first_attempt_denominator', 'denominator']) integer(p[k]);
+                  // Impossible populations can advertise passing attempts with no
+                  // runs. The pinned collector observes the latest attempt at
+                  // listing time and accepts at most 100 attempts per run.
+                  check(p.runs <= p.attempts && p.expected_attempts <= 100 * p.runs, 'invalid run/attempt bounds');
                   check(p.denominator === p.success + p.failed && p.first_attempt_denominator === p.first_attempt_success + p.first_attempt_failed &&
                     p.attempts === p.denominator + p.cancelled + p.skipped + p.in_progress + p.other &&
                     p.attempts <= p.expected_attempts && p.first_attempt_denominator <= p.runs &&
@@ -175,6 +179,8 @@ jobs:
                   if (p.runs === 0) warnings.push(label + ' / ' + pop + ': NO DATA');
                   rows.push(`| ${escape(label)} | ${pop} | ${p.runs} | ${p.attempts}/${p.expected_attempts} | ${rate(p.first_attempt_success, p.first_attempt_denominator)} | ${rate(p.success, p.denominator)} | ${p.cancelled}/${p.skipped}/${p.in_progress}/${p.other} |`);
                 }
+                // Both populations share one listing: ten pages of 100 runs.
+                check(t.populations.default_push.runs + t.populations.pull_request.runs <= 1000, 'run listing exceeds bound');
               }
               check(r.complete === r.targets.every(t => t.complete), 'inconsistent report completeness');
               const seen = new Set(), groupLines = [];

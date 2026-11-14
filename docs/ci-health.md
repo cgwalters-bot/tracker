@@ -143,6 +143,15 @@ bounds/window and classification checks precede publication. Logs/names/warnings
 are escaped for HTML, Markdown and mentions; sample links must be exact Actions
 run URLs of configured repositories. Unknown provenance refuses publication.
 
+Impossible populations could otherwise publish passing attempts for zero runs.
+The publisher enforces the pinned collector's existing limits: every listed run
+has at least its latest attempt observed, expected attempts are at most 100 per
+run, and the two populations together contain at most 1,000 runs per target
+(ten pages). Partial enrichment can still leave observed attempts below expected
+attempts; empty populations remain no data. Offline refusal tests exercise both
+populations and the shared listing cap, with no rendered artifact or status
+write on refusal. These checks do not enable publication or expand collection.
+
 The only destination is tracker issue 1229 and marker
 `<!-- tracker-ci-health:1229:v1 -->`, owned by `github-actions[bot]` of type Bot.
 A matching foreign marker, duplicate, wrong issue/ref/repository or ten full
