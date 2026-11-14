@@ -152,6 +152,53 @@ if (url.endsWith('/releases?per_page=100')) {
 "#);
 }
 
+// Execute the documented download boundary; only transport/decompression are stubbed.
+#[test]
+fn review_corpus_download() {
+    weekly_comparison_probe(r#"
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const docs = fs.readFileSync('docs/review-corpus.md', 'utf8');
+const download = /```sh\n(\[ -n "\$tag"[\s\S]*?)```/.exec(docs)[1];
+const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'corpus-download-'));
+const stubs = `${temp}/stubs`;
+const assets = ['review-corpus.jsonl.zst', 'review-corpus-state.json', 'status.json'];
+const hashes = assets.map(name => require('node:crypto').createHash('sha256').update(name).digest('hex') + '  ' + name);
+try {
+  fs.mkdirSync(stubs);
+  fs.writeFileSync(`${stubs}/gh`, `#!${process.execPath}
+const fs = require('node:fs');
+fs.writeFileSync('downloaded', '');
+for (const name of ${JSON.stringify(assets)}) if (name !== process.env.MISSING) fs.writeFileSync(name, name);
+fs.writeFileSync('SHA256SUMS', process.env.MANIFEST);
+process.exit(Number(process.env.DOWNLOAD_FAIL || 0));
+`, { mode: 0o755 });
+  fs.writeFileSync(`${stubs}/zstd`, `#!${process.execPath}\nrequire('node:fs').writeFileSync('decompressed', '');\n`, { mode: 0o755 });
+  const goodManifest = hashes.join('\n') + '\n';
+  for (const [label, extra, accepted] of [
+    ['valid', {}, true], ['reordered', { MANIFEST: [...hashes].reverse().join('\n') + '\n' }, true],
+    ['empty tag', { tag: '' }, false], ['download failure', { DOWNLOAD_FAIL: '1' }, false],
+    ...assets.map(MISSING => [`missing ${MISSING}`, { MISSING }, false]),
+    ...hashes.map((_, i) => [`missing checksum ${i}`, { MANIFEST: hashes.filter((_, j) => i !== j).join('\n') + '\n' }, false]),
+    ['duplicate', { MANIFEST: goodManifest + hashes[0] + '\n' }, false],
+    ['extra path', { MANIFEST: goodManifest + hashes[0].replace(assets[0], '../outside') + '\n' }, false],
+    ['corrupt hash', { MANIFEST: goodManifest.replace(/^[a-f0-9]/, 'x') }, false],
+  ]) {
+    const directory = `${temp}/download`;
+    fs.rmSync(directory, { recursive: true, force: true });
+    fs.mkdirSync(directory);
+    const got = spawnSync('bash', ['-c', download], { cwd: directory, encoding: 'utf8', timeout: 5000,
+      env: { ...process.env, PATH: `${stubs}:${process.env.PATH}`, tag: 'review-corpus-20261105-000001', MANIFEST: goodManifest, ...extra } });
+    assert.equal(got.error, undefined, label);
+    assert.equal(got.status, accepted ? 0 : 1, label + got.stderr);
+    assert.equal(fs.existsSync(`${directory}/decompressed`), accepted, label);
+    if (extra.tag === '') assert.equal(fs.existsSync(`${directory}/downloaded`), false);
+  }
+} finally { fs.rmSync(temp, { recursive: true, force: true }); }
+"#);
+}
+
 #[test]
 fn weekly_comparison_routing() {
     weekly_comparison_probe(r#"

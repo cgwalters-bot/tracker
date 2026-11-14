@@ -133,10 +133,7 @@ sort order, skipping the undated `review-corpus`:
 
 ```sh
 tag=$(gh release list --repo cgwalters-forge/tracker --exclude-drafts --limit 1000 --json tagName \
-  --jq '[.[].tagName | select(test("^review-corpus-[0-9]{8}-[0-9]{6}$"))] | sort | last // empty')
-gh release download "$tag" --repo cgwalters-forge/tracker --pattern review-corpus.jsonl.zst --pattern SHA256SUMS
-sha256sum --check --ignore-missing SHA256SUMS
-zstd -d review-corpus.jsonl.zst
+  --jq '[.[].tagName | select(test("^review-corpus-[0-9]{8}-[0-9]{6}$"))] | sort | last // empty') || exit 1
 ```
 
 The newest release can be a partial backfill. To avoid mining an unfinished
@@ -174,8 +171,26 @@ for tag in $tags; do
 done
 ```
 
-Use the printed tag in the download command above. Download `status.json`
-too to retain its provenance and verify it with `SHA256SUMS`. The marker
+Set `tag` to the printed complete tag, then run this in an empty directory with
+Bash. It downloads current-format snapshots only (all three data assets are
+required). An empty tag must not make `gh` download an unrelated latest release.
+A missing checksum must not let unchecked corpus bytes reach decompression:
+compare the entire manifest with locally computed checksums, rather than using
+`--ignore-missing`. Reordered entries work; missing, duplicate, extra or damaged
+entries fail. No paths from the downloaded manifest are opened.
+
+```sh
+[ -n "$tag" ] || { printf '%s\n' 'No corpus tag selected' >&2; exit 1; }
+gh release download "$tag" --repo cgwalters-forge/tracker --pattern review-corpus.jsonl.zst \
+  --pattern review-corpus-state.json --pattern status.json --pattern SHA256SUMS || exit 1
+sha256sum review-corpus.jsonl.zst review-corpus-state.json status.json > actual-checksums || exit 1
+LC_ALL=C sort SHA256SUMS > expected-checksums || exit 1
+LC_ALL=C sort actual-checksums > sorted-checksums || exit 1
+diff -u expected-checksums sorted-checksums || exit 1
+zstd -d review-corpus.jsonl.zst
+```
+
+Keep the tag and verified `status.json` with the downloaded snapshot. The marker
 does not change the existing newest-release interface or historical assets.
 The selector validates metadata, not asset bytes or the cited run's authenticity;
 the subsequent checksum verification remains required. `just test-review-corpus`
