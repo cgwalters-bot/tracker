@@ -778,6 +778,48 @@ jobs:
             return {error, calls, files, summaries, outputs};
           }
           const owned = body => ({id: 9, body, user: {login: 'github-actions[bot]', type: 'Bot'}, issue_url: 'https://api.github.com/repos/cgwalters-forge/tracker/issues/1229'});
+          test('finding totals include truncated groups and distinguish absent overdue index entries', async () => {
+            const r = observedReport(), index = {};
+            for (let i = 0; i < 15; i++) {
+              const g = group(), sig = i.toString(16).padStart(64, '0');
+              g.observation.signature = sig;
+              if (i < 3) {
+                const e = entry(i === 2 ? 7 : 8);
+                e.issue = 'https://github.com/cgwalters-forge/tracker/issues/68';
+                if (i === 1) e.class = 'infra';
+                index[sig] = e; g.classification = e; g.class = e.class;
+                g.findings = i === 0 ? ['flake_unexplained_over_seven_days'] : [];
+              }
+              if (i === 14) {
+                // Unknown does not imply recurring; occurrences are not runs.
+                g.observation.run_ids = [123456789];
+                g.observation.occurrences = 50; g.findings = [];
+              }
+              r.groups.push(g);
+            }
+            index['c'.repeat(64)] = entry(8);
+            index['d'.repeat(64)] = entry(7);
+            index['e'.repeat(64)] = {...entry(8), explained_at: iso(until - 86400000), explanation: 'reviewed'};
+            index['f'.repeat(64)] = {...entry(8), class: 'real'};
+            const expected = '**Finding totals (before presentation limits):** 15 observed groups; 12 unclassified; ' +
+              '11 recurring without an issue; 1 observed overdue unexplained flakes; 1 absent overdue unexplained index entries.';
+            for (const publish of [false, true]) {
+              const got = await run({report: r, index, publish, preview: false});
+              assert.ifError(got.error);
+              for (const text of [got.files.get('2026-11-05.md'), got.summaries[0], ...got.calls.map(c => c.args.body)]) {
+                assert.ok(text.includes(expected), text);
+                assert.match(text, /Counts are signature groups, not runs; categories overlap\. Zero findings do not establish healthy CI\./);
+                assert.ok(text.indexOf(expected) < text.indexOf('| Target |'));
+              }
+              assert.match(got.summaries[0], /Presentation truncated: 3 more entries/);
+              assert.equal(got.calls.length, publish ? 1 : 0);
+              assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
+            }
+            const emptyResult = await run();
+            assert.ifError(emptyResult.error);
+            assert.match(emptyResult.summaries[0], /0 observed groups; 0 unclassified; 0 recurring without an issue; 0 observed overdue unexplained flakes; 0 absent overdue unexplained index entries/);
+            assert.match(emptyResult.summaries[0], /Zero findings do not establish healthy CI/);
+          });
           test('group recurrence is bounded by repository runs across workflows and populations', async () => {
             for (const publish of [false, true]) for (const [counts, runs, accepted] of [
               [[0, 0, 0, 0], 2, false], [[1, 0, 0, 0], 2, false],

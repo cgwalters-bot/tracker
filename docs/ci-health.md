@@ -171,6 +171,19 @@ Fork no-history is documented here, not counted as a passing population.
 
 ## Rates, index, and follow-up
 
+The dated Markdown, job summary and optional status show finding totals before
+their detail sections: all observed signature groups, unclassified groups,
+recurring groups without an issue, observed overdue unexplained flakes, and
+absent overdue unexplained index entries. These counts use the entire validated
+report/index, not the twelve displayed groups or the byte-limited preview.
+Categories overlap; they are not run counts or a count of unique root causes.
+Absent entries are kept separate because they are not current observations.
+Zero findings, especially with incomplete collection or an empty index, do not
+establish healthy CI. This adds no option, collection or classification, and
+publication remains off. Offline coverage includes truncated mixed groups,
+single-run/high-occurrence failures, the seven-day boundary, explained and
+non-flake exclusions, empty reports, and preview/publication parity.
+
 Failure groups show their first observed timestamp **within the report window**,
 not the failure's all-time onset or the reviewed index's flake-age clock. Each
 retained sample links to its exact run attempt and job, so a later rerun cannot
