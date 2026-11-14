@@ -433,7 +433,7 @@ test-review-corpus:
       const check = /- name: Check the quota reserve\n[\s\S]*?run: \|\n([\s\S]*?)(?=      - name:)/.exec(workflow)[1].replace(/^          /gm, '');
       const checkReserve = (limit, reserve = '1500') => spawnSync('bash', ['-eo', 'pipefail', '-c', check], { cwd: temp, timeout: 10000,
         env: { ...env, PATH: `${stubs}:${process.env.PATH}`, RATE_LIMIT_RESERVE: reserve, LIMIT: limit } }).status;
-      for (const [limit, status] of [['5000', 0], ['1500', 1], ['1000', 1], ['', 1], ['hung', 128 + 9 /* SIGKILL */]]) assert.equal(checkReserve(limit), status, `limit ${limit}`);
+      for (const [limit, status] of [['5000', 0], ['01900', 0 /* decimal, not octal */], ['1500', 1], ['1000', 1], ['', 1], ['hung', 128 + 9 /* SIGKILL */], ...['null', '0', '-1', '1.5', '5000+1', 'RATE_LIMIT_RESERVE+1', '5000\n5000', '18446744073709556616', ' 5000', '5000 '].map(bad => [bad, 1])]) assert.equal(checkReserve(limit), status, `limit ${JSON.stringify(limit)}`);
       const reserve = /^  RATE_LIMIT_RESERVE: (\d+)$/m.exec(workflow)[1];
       assert.equal(checkReserve('1000', reserve), 0, 'configured reserve fits the job token');
       assert(+reserve > 0);
