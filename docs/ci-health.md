@@ -171,6 +171,19 @@ Fork no-history is documented here, not counted as a passing population.
 
 ## Rates, index, and follow-up
 
+The dated Markdown, summary and optional status show **coverage totals** before
+the bounded warning preview. Every configured target is counted once as complete,
+listing-incomplete, or listing-complete with incomplete attempts/logs. Separately,
+each population reports how many targets have no observed runs. This includes
+unavailable history, not just completed empty listings; it is not proof of
+inactivity or passing CI. Cancelled/skipped/active/other-only populations have
+runs and are not counted as empty even though their pass-rate denominator is zero.
+These totals use the full validated report, not the displayed warning count,
+and describe only configured scope, not all project workflows. Tests cover mixed
+coverage with truncated warnings, entirely empty complete/incomplete reports,
+and preview/publication parity. No option, collection or budget change is added;
+publication stays off.
+
 The dated Markdown, job summary and optional status show finding totals before
 their detail sections: all observed signature groups, unclassified groups,
 recurring groups without an issue, observed overdue unexplained flakes, and

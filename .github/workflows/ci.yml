@@ -841,6 +841,41 @@ jobs:
             return {error, calls, files, summaries, outputs};
           }
           const owned = body => ({id: 9, body, user: {login: 'github-actions[bot]', type: 'Bot'}, issue_url: 'https://api.github.com/repos/cgwalters-forge/tracker/issues/1229'});
+          test('coverage totals precede truncated warnings and count empty populations by runs', async () => {
+            const r = report();
+            for (const t of r.targets) Object.assign(t, {complete: true, listing_complete: true, warnings: []});
+            Object.assign(r.targets[0], {complete: false, listing_complete: false,
+              warnings: Array(20).fill('listing unavailable')});
+            Object.assign(r.targets[1], {complete: false, warnings: ['logs unavailable']});
+            // Nonterminal-only populations have runs but no pass-rate denominator.
+            r.targets[0].populations.default_push = {...empty(), runs: 1, attempts: 1, expected_attempts: 1, cancelled: 1};
+            r.targets[1].populations.pull_request = {...empty(), runs: 1, attempts: 1, expected_attempts: 1, in_progress: 1};
+            const expected = '**Coverage totals (configured scope only):** 18/20 targets complete; ' +
+              '1 with incomplete listings; 1 with complete listings but incomplete attempts/logs. ' +
+              'Populations with no observed runs: default_push 19/20; pull_request 19/20.';
+            for (const publish of [false, true]) {
+              const got = await run({report: r, publish, preview: false});
+              assert.ifError(got.error);
+              assert.equal(got.calls.length, publish ? 1 : 0);
+              for (const text of [got.files.get('2026-11-05.md'), got.summaries[0], ...got.calls.map(c => c.args.body)]) {
+                assert.ok(text.includes(expected), text);
+                assert.ok(text.indexOf(expected) < text.indexOf('**WARNING:**'));
+                assert.match(text, /No observed runs can mean unavailable history, not inactivity or passing CI\./);
+              }
+              assert.match(got.summaries[0], /Presentation truncated:/);
+              assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
+            }
+            for (const complete of [false, true]) {
+              const allEmpty = report();
+              allEmpty.complete = complete;
+              if (complete) for (const t of allEmpty.targets) Object.assign(t, {complete: true, listing_complete: true, warnings: []});
+              const got = await run({report: allEmpty});
+              assert.ifError(got.error);
+              assert.ok(got.summaries[0].includes(`${complete ? 20 : 0}/20 targets complete; ${complete ? 0 : 20} with incomplete listings; 0 with complete listings but incomplete attempts/logs.`));
+              assert.match(got.summaries[0], /Populations with no observed runs: default_push 20\/20; pull_request 20\/20\./);
+            }
+          });
+
           test('failure counts survive missing signatures and distinguish first tries from reruns', async () => {
             const r = report(), target = r.targets[0];
             target.populations.default_push = {...empty(), runs: 2, attempts: 4, expected_attempts: 4,
