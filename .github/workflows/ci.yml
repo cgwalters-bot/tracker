@@ -384,9 +384,12 @@ jobs:
               config_sha256: hash(configBytes), report_sha256: hash(raw)});
           });
           test('explicit bounded scope, default-off policy, serialized default-branch jobs and installer', () => {
-            assert.equal(config.targets.length, 19);
+            assert.equal(config.targets.length, 20);
             assert.equal(new Set(config.targets.map(t => t.repository)).size, 15);
-            assert.equal(new Set(config.targets.map(t => JSON.stringify(t))).size, 19);
+            assert.equal(new Set(config.targets.map(t => JSON.stringify(t))).size, 20);
+            assert.deepEqual(config.targets.filter(t => t.repository === 'composefs/composefs-rs'),
+              [{repository: 'composefs/composefs-rs', workflow: 'ci.yml'},
+                {repository: 'composefs/composefs-rs', workflow: 'bootc-revdep.yml'}]);
             assert.deepEqual(config.targets.filter(t => t.repository === 'bootc-dev/bcvk'),
               [{repository: 'bootc-dev/bcvk', workflow: 'main.yml'}]);
             assert.equal(JSON.parse(fs.readFileSync('.github/ci-health/publication.json')).publish, false);
@@ -406,8 +409,28 @@ jobs:
               const md = result.files.get('2026-11-05.md');
               assert.match(md, /INCOMPLETE OBSERVATIONS/); assert.match(md, /auth \/ truncation \/ logs/);
               assert.match(md, /no data \(0\/0\)/); assert.match(md, /NOT eventual run-level/);
-              assert.match(md, /fixed 19-target baseline/);
+              assert.match(md, /fixed 20-target baseline/);
             }
+          });
+          test('reverse-dependency pre-job failures remain failed populations without invented groups', async () => {
+            const r = report();
+            const target = r.targets.find(t => t.target.repository === 'composefs/composefs-rs' && t.target.workflow === 'bootc-revdep.yml');
+            assert.ok(target, 'known recurring reverse-dependency failure must be observed');
+            target.listing_complete = true;
+            target.warnings = ['failed run has no jobs; no first-error signature available'];
+            for (const [name, count] of [['default_push', 2], ['pull_request', 1]]) {
+              target.populations[name] = {...empty(), runs: count, attempts: count, expected_attempts: count,
+                failed: count, first_attempt_failed: count, denominator: count, first_attempt_denominator: count,
+                pass_rate: 0, first_attempt_pass_rate: 0};
+            }
+            const got = await run({report: r});
+            assert.ifError(got.error); assert.equal(got.calls.length, 0);
+            const md = got.files.get('2026-11-05.md');
+            for (const [name, count] of [['default_push', 2], ['pull_request', 1]])
+              assert.ok(md.includes(`composefs/composefs-rs / bootc-revdep.yml | ${name} | ${count} | ${count}/${count} | 0.0% (0/${count}) | 0.0% (0/${count})`));
+            assert.match(md, /failed run has no jobs/);
+            assert.match(md, /No observed groups; this is not evidence of recovery/);
+            assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
           });
           test('warning length bound applies before adding the target label', async () => {
             for (const warning of ['x'.repeat(2000), '@<&\n'.repeat(500), '界'.repeat(2000)]) {
@@ -730,11 +753,11 @@ jobs:
             const targets = r.targets.map(t => t.target);
             const historical = targets.some(t => t.repository === 'bootc-dev/bcvk' && t.workflow === 'main-c10s.yml');
             if (historical) {
-              const expected = structuredClone(config.targets);
+              const expected = config.targets.filter(t => t.workflow !== 'bootc-revdep.yml');
               expected.splice(3, 0, {repository: 'bootc-dev/bcvk', workflow: 'main-c10s.yml'});
               assert.deepEqual(targets, expected);
               const refused = await run({report: r, now: Date.parse(r.until) + 12 * 3600000});
-              assert.match(refused.error?.message ?? '', /invalid target\/group counts/);
+              assert.match(refused.error?.message ?? '', /target mismatch/);
               assert.equal(refused.calls.length, 0);
               assert.equal(refused.outputs['dated-ready'], undefined);
             } else assert.deepEqual(targets, config.targets);

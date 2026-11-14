@@ -22,7 +22,7 @@ were checked against both CLI and collector source. `ci-health --config FILE
 
 ## Explicit partial scope
 
-The fixed config has **19 workflow targets across 15 repositories**, not full
+The fixed config has **20 workflow targets across 15 repositories**, not full
 project coverage. All 15 default branches were discovered through the repository
 API on 2026-11-05 and were `main`. The collector discovers them again on every
 run (not assumed from this snapshot). It cannot reconstruct historical default
@@ -44,7 +44,7 @@ redirects to the canonical `bootc-dev/bcvk`, which is configured explicitly.
 | Repository | Configured workflow files | Deferred relevant workflow files |
 |---|---|---|
 | bootc-dev/bootc | ci.yml | build-and-publish.yml, autovendor.yml, docs.yml, release.yml |
-| composefs/composefs-rs | ci.yml | bootc-revdep.yml, fuzz.yaml, publish.yml, mirror-fixture-images.yml, release.yml |
+| composefs/composefs-rs | ci.yml, bootc-revdep.yml | fuzz.yaml, publish.yml, mirror-fixture-images.yml, release.yml |
 | bootc-dev/bcvk | main.yml | docs.yml, release.yml |
 | coreos/rpm-ostree | ci.yaml | container-build.yml, autovendor.yml, scorecard.yml |
 | ostreedev/ostree | tests.yml, rust.yml, bootc.yaml | docs.yml, release.yml |
@@ -68,9 +68,8 @@ The incomplete #1223 inventory has not established the complete harness workflow
 and signature inventory yet.
 
 The build/test baseline remains a deliberately partial daily surface under
-#1229; no deferred target is added or silently substituted. The nonexistent bcvk
-target removed below leaves one slot under the unchanged 20-target ceiling;
-using that slot or replacing a target still needs trigger review. Covering every
+#1229. The reverse-dependency addition below uses the slot freed by removing the
+nonexistent bcvk target, under the unchanged 20-target ceiling. Covering every
 deferred file cannot fit the reviewed collector's cap. Full coverage requires
 a separately reviewed collector policy change; this patch does not increase
 the cap, partition the window, rotate targets, or launch multiple collectors to
@@ -97,10 +96,46 @@ No new control, credential, collector pin, budget or publication setting is adde
 
 The November 13 sample is unchanged evidence of the old 20-target configuration,
 including its 404. Offline replay supplies that exact historical target list and
-also checks that today's 19-target configuration refuses the old report before
+also checks that today's configuration refuses the old report before
 rendering. New reports and their scope label use the current list. A fresh hosted
 preview with the corrected configuration remains necessary: these API reads and
 offline tests do not establish job-token coverage or complete #1229 acceptance.
+
+### Observe composefs-rs reverse-dependency failures (14 November 2026)
+
+Use the freed slot for `composefs/composefs-rs / bootc-revdep.yml`, rather than
+leaving the recurring pre-job failure in [inventory G1](composefs-rs-ci-2026-11-03.md#pre-job-failures-g1)
+outside the daily rates. Read-only trigger review at
+[`424c820`](https://github.com/composefs/composefs-rs/blob/424c820c5e5237fef9e73a7446415108ab3eb7f9/.github/workflows/bootc-revdep.yml)
+confirms `push` and `pull_request` on `main`, plus `merge_group` and manual
+dispatch. Only the first two eligible populations are collected; this does not
+admit queue, manual, tag or other-branch runs.
+
+The runs API returned failed main pushes
+[42114866124](https://github.com/composefs/composefs-rs/actions/runs/42114866124) and
+[42114121703](https://github.com/composefs/composefs-rs/actions/runs/42114121703)
+on November 5, and failed PR run
+[43532296046](https://github.com/composefs/composefs-rs/actions/runs/43532296046)
+on November 14. The latter's jobs endpoint returned zero jobs. The source still
+contains `if: never()`. These reads establish an observable population, not a new
+30-day census or a new causal signature. The existing repair owner is
+[composefs-rs#61](https://github.com/cgwalters-forge/composefs-rs/issues/61), with
+open draft [#66, branch `bot/revdep-never`](https://github.com/cgwalters-forge/composefs-rs/pull/66);
+this configuration change does not duplicate that fix or enable its VM tests.
+
+Zero-job failures still contribute to failed run/attempt rates even when no job
+log yields a signature. Do not invent an index hash from the workflow name or
+treat an empty group list as recovery. Offline rendering tests cover failed
+populations with no groups and visible incomplete-log warnings. The historical
+November 13 JSON stays unchanged and replays only with its historical targets:
+both old and new lists have 20 entries, but different identities.
+
+No new mechanism or control is added. Publication remains off, all 15 repositories
+remain covered by the configured scope, and the collector pin and global budgets
+stay fixed. Returning from 19 to 20 targets reduces each target's enrichment
+share; coverage may remain incomplete. A fresh hosted preview of this exact
+configuration, signature mappings and repeated fix evidence remain with #1229
+and #1223. No collector invocation, hosted dispatch or status write ran here.
 
 Other excluded workflows are review/label/merge bots, Copilot/dynamic workflows,
 dispatch/apply/session/reconcile operations, upgrade/scheduled-release jobs,

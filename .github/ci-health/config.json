@@ -2,6 +2,7 @@
   "targets": [
     {"repository": "bootc-dev/bootc", "workflow": "ci.yml"},
     {"repository": "composefs/composefs-rs", "workflow": "ci.yml"},
+    {"repository": "composefs/composefs-rs", "workflow": "bootc-revdep.yml"},
     {"repository": "bootc-dev/bcvk", "workflow": "main.yml"},
     {"repository": "coreos/rpm-ostree", "workflow": "ci.yaml"},
     {"repository": "ostreedev/ostree", "workflow": "tests.yml"},
