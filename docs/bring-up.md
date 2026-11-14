@@ -152,6 +152,60 @@ for a run and fails unless it succeeds; `gh run view RUN -R
 cgwalters-forge/tracker --json jobs -q '.jobs[] | select(.conclusion ==
 "failure") | .name'` names its failed jobs.
 
+### External-runner runtime handoff (#1490)
+
+**Blocked, not wired (14 November 2026).** This continues the prerequisite
+record in [tracker#1492](https://github.com/cgwalters-forge/tracker/pull/1492);
+neither that documentation nor this update completes #1490. The concrete
+threat is associating an unrelated, replayed or agent-controlled external
+handback with a trusted tracker apply. Keep `runner=hosted` as the default,
+all external profiles disabled and `runner-gate`'s unconditional execution
+refusal until reviewed immutable interfaces exist. No new control is added.
+
+Reuse the resolver merged in
+[tracker#1491](https://github.com/cgwalters-forge/tracker/pull/1491), commit
+`bcf3a21d9115a60e000760360fe717952a3630b0`. Its
+`just test-runner-profiles` proves hosted map bypass and external refusals,
+not dispatch/correlation/apply. The following read-only forge observations
+replace #1492's 9 November prerequisite snapshot; they are not runtime pins
+or deployment approval:
+
+| Owner | Current evidence and remaining prerequisite |
+| --- | --- |
+| [agentic-job#3292](https://github.com/cgwalters-forge/agentic-job/issues/3292) | Closed by merged [#3300](https://github.com/cgwalters-forge/agentic-job/pull/3300), commit `47c5bd5135d822557e395c1eee9a6db24632fc3a`. Evidence is no longer an open-draft blocker. Bind repeated-evidence limits to the reviewed profile contract when composing; do not enable test-evidence bounds now. |
+| [agentic-job#3293](https://github.com/cgwalters-forge/agentic-job/issues/3293) | Correlation/fetch/re-check merged via [#3379](https://github.com/cgwalters-forge/agentic-job/pull/3379), commit `37c9957aa3db519693bbb872262ee6a35dad2c74`, superseding still-open #3321. ZIP pre-index bounds and routing defaults are fixed. Its recorded follow-ups remain relevant: trusted raw-file/receipt binding across upload and check, delayed-reader discovery, and production redirect/credential-boundary regression coverage. Resolve these in agentic-job, not a tracker-side correlator; the merge is not external acceptance. |
+| [agentic-job#3291](https://github.com/cgwalters-forge/agentic-job/issues/3291) | Preflight [#3295](https://github.com/cgwalters-forge/agentic-job/pull/3295) remains open at `5949c608a63d3bccc7cddc545d00788a5b433488`. Reviewed capability refusal before inference is still required; its real KVM positive control is explicitly unverified. |
+| [actions#232](https://github.com/cgwalters-forge/actions/issues/232) | External-mode wrapper remains open work; no matching implementation appears in the open-PR inventory. Need reviewed artifact-only execution with dispatch/base identity, fixed limits, capability refusal and credential isolation, not the ordinary wrapper's apply path. |
+
+Observed main revisions were agentic-job
+`b316bbc0831802ce5cf0b4a1e03cfdb4d559c2cc` and actions
+`f7bf70fd8d6f21a5e38f9690c306514ab4c294e2`. Recheck the linked drafts and
+reviews before continuing. Do not guess CLI flags, workflow inputs, artifact
+names or compatible pins. The missing implementations belong in those two
+repositories; the eventual caller composition belongs here.
+
+Once those interfaces are reviewed, persist a caller-owned record before
+dispatch: unique dispatch-id, exact base/target/kind, profile/map and immutable
+pins, caller run/attempt and finite deadline within the resolver's 330-minute
+ceiling. Isolate dispatch authority to its step; waiting, correlation and fetch
+must be read-only. Dispatch, write and lifecycle credentials must never reach
+agent/tests or waiting jobs. Missing credentials or capabilities must refuse.
+
+Re-upload raw handback verified by API ID/digest into the tracker run and
+compose tracker-owned policy/check/detect/apply using current midstream bounds
+and `agent-apply` approval, never external policy/config. Require successful
+tracker detection and trusted base/head and branch-run identity; preserve
+hosted behavior, per-item concurrency and apply replay/idempotency protection.
+
+Still required: mocked dispatch/correlation plus real checked-output/trial-apply
+fixtures covering wrong identity/digest/pins/actor, ambiguity, replay, stale
+base, skipped detection, absent credentials/capabilities and credential
+isolation. No such runtime acceptance is established here. Enabled runtime,
+cancellation and runner-loss destruction remain gated deployment acceptance
+with the existing lifecycle owner. Do not provision secrets, expand broker,
+target or bounds admission, mutate the external sandbox or dispatch externally.
+Read inference addresses from deployment configuration, not source literals.
+
 ### gh-agentic-workflows upgrade handoff (#258)
 
 To prevent staged changes from advancing an upstream-tracking fork main,
