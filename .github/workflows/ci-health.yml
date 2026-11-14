@@ -265,11 +265,20 @@ jobs:
               // groups in the dated artifact and the existing text tie-break.
               groupLines.sort((a, b) => b.priority - a.priority || b.runs - a.runs || a.line.localeCompare(b.line));
               const lines = groupLines.map(g => g.line);
+              // Count the validated groups before presentation limits hide work.
+              // Categories overlap; absent index entries are not observations.
+              const findingCount = finding => r.groups.filter(g => g.findings.includes(finding)).length;
+              const totals = `**Finding totals (before presentation limits):** ${r.groups.length} observed groups; ` +
+                `${r.groups.filter(g => g.class === 'unknown').length} unclassified; ` +
+                `${findingCount('recurring_without_issue')} recurring without an issue; ` +
+                `${findingCount('flake_unexplained_over_seven_days')} observed overdue unexplained flakes; ` +
+                `${absent.length} absent overdue unexplained index entries.\n` +
+                'Counts are signature groups, not runs; categories overlap. Zero findings do not establish healthy CI.\n\n';
               const header = `${marker}\n## Rolling CI health: ${r.until.slice(0, 10)}\n\n` +
                 `**${r.complete ? 'Collector complete for configured targets only' : 'WARNING: INCOMPLETE OBSERVATIONS'}; not a healthy-CI verdict.**\n\n` +
                 `**Scope incomplete:** fixed ${config.targets.length}-target baseline; additional workflows need an explicit scope decision. Index mappings pending #1223. See [coverage](https://github.com/${repo}/blob/${context.sha}/docs/ci-health.md).\n\n` +
                 `[Run and dated JSON/Markdown](${runURL}#artifacts) · [Source JSON artifact](${artifactURL}) · source/config ${context.sha} · collector ${rev}\n\n` +
-                `Window [${r.since}, ${r.until}); attempts observed at collection time, not a historical snapshot.\n\n`;
+                `Window [${r.since}, ${r.until}); attempts observed at collection time, not a historical snapshot.\n\n` + totals;
               const warningText = warnings.length ? warnings.map(w => '- **WARNING:** ' + w).join('\n') : 'No collector warnings.';
               const table = '\n\n| Target | Population | Target coverage | Runs | Observed/expected attempts | First-attempt pass rate | Observed attempt pass rate | Cancel/skip/active/other |\n|---|---|---|---:|---:|---|---|---|\n' + rows.join('\n');
               const footer = '\n\nAggregate attempt rates are NOT eventual run-level rates. Empty populations are not passes. Unknowns remain unknown; staged is not deployed. No issues, retries, quarantine, repair dispatch or upstream writes.\n';
