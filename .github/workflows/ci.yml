@@ -623,6 +623,29 @@ jobs:
             return {error, calls, files, summaries, outputs};
           }
           const owned = body => ({id: 9, body, user: {login: 'github-actions[bot]', type: 'Bot'}, issue_url: 'https://api.github.com/repos/cgwalters-forge/tracker/issues/1229'});
+          test('warning preview shares slots across targets before repeating a target', async () => {
+            for (const publish of [false, true]) {
+              const r = report();
+              r.targets = r.targets.slice(0, 3);
+              r.targets.forEach((t, i) => { t.warnings = Array.from({length: i ? 1 : 20}, (_, n) => `diagnostic-${i}-${n} <unsafe>`); });
+              const got = await run({report: r, targets: r.targets.map(t => t.target), publish, preview: false});
+              assert.ifError(got.error);
+              const body = got.summaries[0];
+              const preview = body.split('### Warnings\n')[1].split('\n\n')[0];
+              const lines = preview.split('\n').filter(line => line.startsWith('- **WARNING:**'));
+              assert.equal(lines.length, 12);
+              for (let i = 0; i < 3; i++) assert.ok(lines[i].includes(`diagnostic-${i}-0 &#60;unsafe&#62;`));
+              assert.ok(lines[3].includes('diagnostic-0-1'), 'second round retains source warning order');
+              assert.match(preview, /Presentation truncated: 19 more entries/);
+              assert.ok(!preview.includes('<unsafe>'));
+              const full = got.files.get('2026-11-05.md');
+              assert.equal((full.match(/diagnostic-/g) ?? []).length, 22);
+              assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
+              assert.equal(got.calls.length, publish ? 1 : 0);
+              if (publish) assert.equal(got.calls[0].args.body, body);
+            }
+          });
+
           test('failure evidence links preserve attempts, jobs and window observation time', async () => {
             for (const publish of [false, true]) for (const sampleCount of [0, 1, 3]) {
               const r = report(); r.groups = [group()];

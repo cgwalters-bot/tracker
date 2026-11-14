@@ -365,6 +365,17 @@ not escaped a second time; the same encoded-byte section and artifact limits
 still apply. Boundary tests cover plain, markup-like and multibyte warnings at
 the limit and refusal one character beyond it, without enabling publication.
 
+The warning preview takes one entry per target per round in configured order,
+with each target's collector diagnostics before its generic incomplete/no-data
+notices. This prevents one noisy target from consuming all twelve slots before
+another target's diagnostic is considered. It does not guarantee every target
+fits: the existing twelve-entry and 12,000-byte bounds still apply, whole entries
+are retained, and the omission count includes all unshown warnings. Target coverage
+stays beside every population rate; the full dated Markdown retains every warning
+grouped by target and saved JSON is unchanged. Offline fixtures cover uneven
+warning counts, escaping and preview/publication parity. No collection, new option
+or activation is added; publication remains off pending #1229 acceptance.
+
 Once validation and both dated file writes finish, the workflow marks the pair
 ready for upload. The upload still runs if the later summary, marker checks or
 status API write fails; the reporting step and job remain failed. This prevents
