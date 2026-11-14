@@ -267,15 +267,13 @@ pending mappings above stay visible, and no issue closure is called deployment.
 
 **Historical deployment gap (superseded by the hosted evidence below):** the read-only API lookup of
 `repos/cgwalters-forge/tracker/actions/workflows/ci-health.yml` and the default
-branch file lookup both returned HTTP 404 on November 13. The workflow is not
-deployed on the default branch. This run can hand back a patch, not push or start
-hosted jobs; it did not dispatch a different ref to bypass the default-branch
-guard. After merge, the controller must run manual `preview: true` and retain
-its run URL, all-source job-token access, raw/rendered artifact digests and
-upload/download/retention evidence. Scheduling and owned-comment create/update
-also remain unverified. These are deployment evidence gaps, not a request to
-change policy, credentials or variables. Keep publication off and #1229 open
-until that acceptance is reviewed.
+branch file lookup both returned HTTP 404 on November 13. The workflow was not
+deployed on the default branch at that lookup. That run could hand back a patch,
+not push or start hosted jobs; it did not dispatch a different ref to bypass the
+default-branch guard. Hosted preview, all-source job-token access, artifact
+provenance/retention, scheduling and owned-comment create/update were unverified
+then. Publication was kept off and #1229 open pending reviewed acceptance; the
+current evidence and remaining gaps are recorded below.
 
 ### 2026-11-14 hosted evidence review
 
@@ -321,6 +319,8 @@ access, healthy CI, supported signature mappings or eventual run-level outcomes.
 
 The saved hosted JSON was replayed through the existing config/renderer/publication
 regression suite, including stale-window refusal, without another live collection.
+A November 14 continuation check of the workflow run list still found only
+scheduled run 43447382610, with no manual preview available to inspect.
 Still missing: a hosted **manual** `preview: true` run, reviewed scope/index
 acceptance (including the stale bcvk `main-c10s.yml` target), and owned-comment
 create/update evidence. This patch-only handback cannot start a hosted job; the controller must
