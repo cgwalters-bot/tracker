@@ -125,6 +125,21 @@ IDs are listed for follow-up against the archive. `sample_size` and
 held-out evaluation. Publish the archived evidence and limitations with any eventual
 evaluation report, not just this summary.
 
+The CLI result includes `ledger_sha256`, the SHA-256 of the exact input bytes
+already read within the 1 MiB bound. Archive the original ledger alongside this
+result. A corrected adjudication reason can leave every count unchanged; this
+digest distinguishes that revision from the earlier ledger rather than letting
+the same archive filename stand for both. Whitespace, Unicode spelling and final
+newlines are part of the digest; it is not a hash of reserialized JSON or just
+the counted fields. The object-only `score(input)` API has no source bytes and
+does not emit this field. Invalid inputs still produce no result.
+
+This is provenance for the explicitly invoked offline scorer, not authentication
+or proof of review isolation. Compare the digest against the retained archive;
+it cannot detect someone replacing both ledger and result. No production caller,
+option or activation changes. Counts and the optional frozen-sample check remain
+unchanged.
+
 ### Cross-checking the frozen sample
 
 A ledger can accidentally omit a difficult PR, substitute another, or change its
@@ -342,8 +357,9 @@ export function main(args) {
   }
   requireThat((args.length === 1 || (args.length === 3 && args[1] === '--sample' && !args[2].startsWith('-')))
     && !args[0].startsWith('-'), 'usage: node score.mjs LEDGER.json [--sample SAMPLE.json] (see --help)');
-  const { input } = readJson(args[0], MAX_BYTES, 'ledger');
+  const { input, bytes: ledgerBytes } = readJson(args[0], MAX_BYTES, 'ledger');
   const result = score(input);
+  result.ledger_sha256 = createHash('sha256').update(ledgerBytes).digest('hex');
   if (args.length === 3) {
     const { input: sample, bytes } = readJson(args[2], 64 * 1024, 'frozen sample');
     checkSample(input, sample);
