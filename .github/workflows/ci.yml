@@ -441,6 +441,82 @@ jobs:
             }
             assert.match(upload, /if-no-files-found: error\n          retention-days: 35/);
           });
+          test('manual retention rehearsal is isolated and exercises failed-step outputs', async () => {
+            const rehearsal = fs.readFileSync('.github/workflows/ci-health-rehearsal.yml', 'utf8');
+            assert.match(rehearsal, /type: boolean\n        default: false/);
+            assert.match(rehearsal, /permissions: \{\}/);
+            assert.doesNotMatch(rehearsal, /schedule:|secrets\.|issues:|contents:|checkout|continue-on-error/);
+            assert.match(rehearsal, /fail-fast: false/);
+            assert.equal((rehearsal.match(/timeout-minutes: 5/g) ?? []).length, 2);
+            const admission = /if: \$\{\{ (inputs.confirm .*) \}\}/.exec(rehearsal)[1];
+            const admitted = new Function('inputs', 'github', 'format', `return ${admission}`);
+            for (const confirm of [false, true]) for (const repository of ['cgwalters-forge/tracker', 'other/tracker']) {
+              for (const ref of ['refs/heads/main', 'refs/heads/topic']) assert.equal(admitted({confirm},
+                {repository, ref, event: {repository: {default_branch: 'main'}}}, (_, branch) => `refs/heads/${branch}`),
+                confirm && repository === 'cgwalters-forge/tracker' && ref === 'refs/heads/main');
+            }
+            const upload = text => text.slice(text.lastIndexOf('      - uses: actions/upload-artifact'));
+            const guard = text => /if: \$\{\{ (.*) \}\}/.exec(upload(text))[1];
+            assert.equal(guard(rehearsal), guard(workflow));
+            for (const action of ['upload', 'download']) {
+              const pin = text => new RegExp(`uses: actions/${action}-artifact@([a-f0-9]{40})`).exec(text)[1];
+              assert.equal(pin(rehearsal), pin(workflow));
+            }
+            assert.match(rehearsal, /needs: fixture\n    if: \$\{\{ !cancelled\(\) && needs.fixture.result == 'failure' \}\}/);
+            const fixture = /shell: node \{0\}\n        run: \|\n([\s\S]+?)\n      - uses:/.exec(rehearsal)[1].replace(/^          /gm, '');
+            const files = new Map();
+            for (const phase of ['ready', 'refused', 'partial', 'unknown']) {
+              files.clear();
+              assert.throws(() => vm.runInNewContext(fixture, {process: {env: {PHASE: phase, RUNNER_TEMP: '/tmp', GITHUB_OUTPUT: '/output'}},
+                require: name => name === 'node:fs' ? {mkdirSync() {}, writeFileSync: (p, data) => files.set(p, data),
+                  appendFileSync: (p, data) => files.set(p, (files.get(p) ?? '') + data)} : require(name)}));
+              assert.equal(files.has('/tmp/ci-health/2000-01-01.json'), ['ready', 'partial'].includes(phase));
+              assert.equal(files.has('/tmp/ci-health/2000-01-01.md'), phase === 'ready');
+              assert.equal(files.get('/output'), phase === 'ready' ? 'dated-ready=true\n' : undefined);
+            }
+            const verifier = /          script: \|\n([\s\S]+?)\n      - uses:/.exec(rehearsal)[1].replace(/^            /gm, '');
+            const jobs = ['ready', 'refused', 'partial'].map(phase => ({name: `fixture (${phase})`, conclusion: 'failure',
+              steps: [{name: 'Fail at the selected phase', conclusion: 'failure'},
+                {name: 'Upload dated pair', conclusion: phase === 'ready' ? 'success' : 'skipped'}]}));
+            const prefix = 'ci-health-rehearsal-42-2-';
+            async function verify(mutate = () => {}) {
+              const data = {total_count: 4, jobs: structuredClone(jobs)};
+              const artifacts = {total_count: 2, artifacts: [{name: prefix + 'ready'}, {name: 'ci-health-rehearsal-42-1-ready'}]};
+              mutate(data, artifacts);
+              let calls = 0;
+              await vm.runInNewContext('(async () => {\n' + verifier + '\n})()', {require, process: {env: {GITHUB_RUN_ATTEMPT: '2'}},
+                context: {repo: {owner: 'cgwalters-forge', repo: 'tracker'}, runId: 42}, github: {rest: {actions: {
+                  listJobsForWorkflowRunAttempt: async args => {
+                    calls++; assert.equal(args.attempt_number, 2); assert.equal(args.request.timeout, 10000); return {data};
+                  }, listWorkflowRunArtifacts: async args => {
+                    calls++; assert.equal(args.per_page, 100); assert.equal(args.request.timeout, 10000); return {data: artifacts};
+                  }}}}});
+              assert.equal(calls, 2);
+            }
+            await verify();
+            for (const mutate of [d => { d.jobs.pop(); }, d => { d.jobs[0].conclusion = 'success'; },
+              d => { d.jobs[1].steps[1].conclusion = 'success'; }, d => { d.jobs[0].steps[1].conclusion = 'skipped'; },
+              d => { d.total_count = 100; }, (_, a) => { a.total_count = 100; },
+              (_, a) => { a.artifacts.shift(); }, (_, a) => { a.artifacts.push({name: prefix + 'partial'}); }]) {
+              await assert.rejects(verify(mutate));
+            }
+            const bytes = rehearsal.split('      - name: Verify retained bytes\n')[1]
+              .split('        run: |\n')[1].replace(/^          /gm, '');
+            const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'retention-rehearsal-'));
+            try {
+              const env = {...process.env, RUNNER_TEMP: temp, GITHUB_OUTPUT: temp + '/output', PHASE: 'ready'};
+              const execute = source => require('node:child_process').spawnSync(process.execPath, ['-e', source], {env, encoding: 'utf8'});
+              const failed = execute(fixture);
+              assert.equal(failed.status, 1); assert.match(failed.stderr, /publication failed after dated-ready/);
+              assert.equal(fs.readFileSync(temp + '/output', 'utf8'), 'dated-ready=true\n');
+              fs.renameSync(temp + '/ci-health', temp + '/retained');
+              assert.equal(execute(bytes).status, 0);
+              fs.writeFileSync(temp + '/retained/2000-01-01.md', 'corrupt');
+              assert.equal(execute(bytes).status, 1);
+              fs.unlinkSync(temp + '/retained/2000-01-01.json');
+              assert.equal(execute(bytes).status, 1);
+            } finally { fs.rmSync(temp, {recursive: true, force: true}); }
+          });
           test('wrong ref, missing/oversized report, wrong schema/targets/provenance/rates refuse writes', async () => {
             const badSchema = report(); badSchema.schema = 'other';
             const badTarget = report(); badTarget.targets.pop();

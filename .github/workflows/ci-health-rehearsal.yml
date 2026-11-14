@@ -1,0 +1,101 @@
+# Manual runner-semantics probe, not a CI-health observation or publication.
+name: ci-health-rehearsal
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Run an intentionally failing artifact-retention rehearsal
+        type: boolean
+        default: false
+
+permissions: {}
+concurrency:
+  group: ci-health-rehearsal
+  cancel-in-progress: false
+
+jobs:
+  fixture:
+    # Threat: an accidental dispatch creates intentional red runs. Require an
+    # explicit opt-in on the default branch; no schedule or publication path.
+    if: ${{ inputs.confirm && github.repository == 'cgwalters-forge/tracker' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        phase: [ready, refused, partial]
+    steps:
+      - name: Fail at the selected phase
+        id: render
+        env:
+          PHASE: ${{ matrix.phase }}
+        shell: node {0}
+        run: |
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const phase = process.env.PHASE;
+          assert.ok(['ready', 'refused', 'partial'].includes(phase));
+          const base = process.env.RUNNER_TEMP + '/ci-health/';
+          fs.mkdirSync(base, {recursive: true});
+          if (phase === 'refused') throw Error('fixture: validation refused');
+          fs.writeFileSync(base + '2000-01-01.json', '{"fixture":true}\n');
+          if (phase === 'partial') throw Error('fixture: second dated write failed');
+          fs.writeFileSync(base + '2000-01-01.md', 'Artifact retention fixture, not CI observations.\n');
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, 'dated-ready=true\n');
+          throw Error('fixture: publication failed after dated-ready');
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        name: Upload dated pair
+        if: ${{ !cancelled() && steps.render.outputs.dated-ready == 'true' }}
+        with:
+          name: ci-health-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.phase }}
+          path: |
+            ${{ runner.temp }}/ci-health/2*.json
+            ${{ runner.temp }}/ci-health/2*.md
+          if-no-files-found: error
+          retention-days: 1
+
+  verify:
+    needs: fixture
+    if: ${{ !cancelled() && needs.fixture.result == 'failure' }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    steps:
+      - name: Verify failed steps and upload outcomes
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        with:
+          script: |
+            const assert = require('node:assert/strict');
+            const args = {...context.repo, run_id: context.runId, per_page: 100,
+              request: {timeout: 10000}};
+            const attempt = Number(process.env.GITHUB_RUN_ATTEMPT);
+            const {data} = await github.rest.actions.listJobsForWorkflowRunAttempt({...args, attempt_number: attempt});
+            assert.ok(data.total_count < 100, 'job listing must be complete');
+            for (const phase of ['ready', 'refused', 'partial']) {
+              const jobs = data.jobs.filter(j => j.name === `fixture (${phase})`);
+              assert.equal(jobs.length, 1, `one ${phase} fixture job`);
+              assert.equal(jobs[0].conclusion, 'failure', `${phase} remains failed`);
+              const step = name => jobs[0].steps.find(s => s.name === name)?.conclusion;
+              assert.equal(step('Fail at the selected phase'), 'failure');
+              assert.equal(step('Upload dated pair'), phase === 'ready' ? 'success' : 'skipped');
+            }
+            const artifacts = await github.rest.actions.listWorkflowRunArtifacts(args);
+            assert.ok(artifacts.data.total_count < 100, 'artifact listing must be complete');
+            const prefix = `ci-health-rehearsal-${context.runId}-${attempt}-`;
+            const retained = artifacts.data.artifacts.filter(a => a.name.startsWith(prefix));
+            assert.equal(retained.length, 1, 'only the ready fixture uploads');
+            assert.equal(retained[0].name, prefix + 'ready');
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ci-health-rehearsal-${{ github.run_id }}-${{ github.run_attempt }}-ready
+          path: ${{ runner.temp }}/retained
+      - name: Verify retained bytes
+        shell: node {0}
+        run: |
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const base = process.env.RUNNER_TEMP + '/retained/';
+          assert.deepEqual(fs.readdirSync(base).sort(), ['2000-01-01.json', '2000-01-01.md']);
+          assert.equal(fs.readFileSync(base + '2000-01-01.json', 'utf8'), '{"fixture":true}\n');
+          assert.equal(fs.readFileSync(base + '2000-01-01.md', 'utf8'), 'Artifact retention fixture, not CI observations.\n');
