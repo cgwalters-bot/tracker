@@ -274,11 +274,23 @@ jobs:
                 `${findingCount('flake_unexplained_over_seven_days')} observed overdue unexplained flakes; ` +
                 `${absent.length} absent overdue unexplained index entries.\n` +
                 'Counts are signature groups, not runs; categories overlap. Zero findings do not establish healthy CI.\n\n';
+              // Count all validated targets, not the bounded warning preview.
+              // These three coverage states partition the configured scope;
+              // empty populations are independent of target completeness.
+              const targetCount = r.targets.length;
+              const emptyPopulations = pop => r.targets.filter(t => t.populations[pop].runs === 0).length;
+              const coverageTotals = '**Coverage totals (configured scope only):** ' +
+                `${r.targets.filter(t => t.complete).length}/${targetCount} targets complete; ` +
+                `${r.targets.filter(t => !t.listing_complete).length} with incomplete listings; ` +
+                `${r.targets.filter(t => t.listing_complete && !t.complete).length} with complete listings but incomplete attempts/logs. ` +
+                `Populations with no observed runs: default_push ${emptyPopulations('default_push')}/${targetCount}; ` +
+                `pull_request ${emptyPopulations('pull_request')}/${targetCount}.\n` +
+                'No observed runs can mean unavailable history, not inactivity or passing CI.\n\n';
               const header = `${marker}\n## Rolling CI health: ${r.until.slice(0, 10)}\n\n` +
                 `**${r.complete ? 'Collector complete for configured targets only' : 'WARNING: INCOMPLETE OBSERVATIONS'}; not a healthy-CI verdict.**\n\n` +
                 `**Scope incomplete:** fixed ${config.targets.length}-target baseline; additional workflows need an explicit scope decision. Index mappings pending #1223. See [coverage](https://github.com/${repo}/blob/${context.sha}/docs/ci-health.md).\n\n` +
                 `[Run and dated JSON/Markdown](${runURL}#artifacts) · [Source JSON artifact](${artifactURL}) · source/config ${context.sha} · collector ${rev}\n\n` +
-                `Window [${r.since}, ${r.until}); attempts observed at collection time, not a historical snapshot.\n\n` + totals;
+                `Window [${r.since}, ${r.until}); attempts observed at collection time, not a historical snapshot.\n\n` + coverageTotals + totals;
               const warningText = warnings.length ? warnings.map(w => '- **WARNING:** ' + w).join('\n') : 'No collector warnings.';
               const table = '\n\n| Target | Population | Target coverage | Runs | Observed/expected attempts | First-attempt pass rate | Observed attempt pass rate | Cancel/skip/active/other | Failed attempts (first/all observed) |\n|---|---|---|---:|---:|---|---|---|---|\n' + rows.join('\n') +
                 '\n\nFailed attempts include failures without a signature; first attempts are a subset of all observed attempts, not an additional count.';
