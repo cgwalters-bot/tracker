@@ -204,20 +204,48 @@ jobs:
           { echo "$LOGIN's public review feedback on other people's pull requests since $SINCE, collected by misctool $MISCTOOL_VERSION's \`review-corpus\` ([schema](https://github.com/cgwalters-forge/misctool/blob/$MISCTOOL_VERSION/README.md#jsonl-schema-version-1)). See [docs/review-corpus.md]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/blob/$DEFAULT_BRANCH/docs/review-corpus.md)."
             printf '\nRefreshed %s by %s; collection %s.\n\n~~~\n' "$(date -u +%F)" "$RUN" "$state"
             cat dist/SHA256SUMS
-            printf '~~~\n\nStats:\n\n~~~json\n'; cat dist/stats.json; printf '~~~\n'; } > notes.md
+            printf '~~~\n\nStats:\n\n~~~json\n'; cat dist/stats.json; printf '~~~\n'
+            printf '\n<!-- review-corpus-run: %s -->\n' "$RUN"; } > notes.md
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           STAMP: ${{ needs.collect.outputs.stamp }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         # A draft can still take assets; publishing makes it immutable, so it
         # is published only once all four are uploaded. A run cut short
-        # leaves a draft that the next run ignores.
+        # leaves a draft that the next run ignores. A publish-job retry may
+        # repair only its own draft: otherwise a tag collision could replace
+        # another run's assets. Never change an already published snapshot.
         run: |
           tag=$RELEASE_PREFIX$STAMP
-          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --draft --latest=false \
-            --target "$GITHUB_SHA" --title "Review corpus $STAMP" --notes-file notes.md \
-            dist/review-corpus.jsonl.zst dist/review-corpus-state.json dist/status.json dist/SHA256SUMS
-          gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest=false
+          api="repos/$GITHUB_REPOSITORY/releases"
+          # Creating a draft does not reject duplicate pending tags. Inspect all
+          # pages first, then keep the selected/created ID through publication.
+          gh api "$api?per_page=100" --paginate --slurp > releases.json
+          jq --arg tag "$tag" '[.[][] | select(.tag_name == $tag)]' releases.json > matches.json
+          count=$(jq length matches.json)
+          if [[ $count == 0 ]]; then
+            jq -n --arg tag "$tag" --arg sha "$GITHUB_SHA" --arg title "Review corpus $STAMP" --rawfile notes notes.md '{tag_name:$tag,target_commitish:$sha,name:$title,body:$notes,draft:true,make_latest:"false"}' > create.json
+            gh api "$api" --method POST --input create.json > release.json
+          elif [[ $count == 1 ]]; then
+            jq '.[0]' matches.json > release.json
+          else
+            echo '::error::Ambiguous corpus tag; inspect duplicate releases before retrying.' >&2
+            exit 1
+          fi
+          jq -e --arg sha "$GITHUB_SHA" --arg tag "$tag" --arg marker "<!-- review-corpus-run: $RUN -->" '.tag_name == $tag and .draft == true and .target_commitish == $sha and (.body | split("\n") | index($marker) != null)' release.json > /dev/null || { echo '::error::Refusing to repair a published or foreign corpus release; inspect the draft before retrying.' >&2; exit 1; }
+          id=$(jq -er '.id | select(type == "number" and . > 0 and floor == .)' release.json)
+          upload=$(jq -er '.upload_url | split("{")[0]' release.json)
+          gh api "$api/$id/assets?per_page=100" --paginate --slurp > assets.json
+          for name in review-corpus.jsonl.zst review-corpus-state.json status.json SHA256SUMS; do
+            # Clobber only this snapshot's assets, including interrupted uploads.
+            jq -r --arg name "$name" '.[][] | select(.name == $name) | .id' assets.json > asset-ids
+            while read -r asset; do
+              gh api "$api/assets/$asset" --method DELETE
+            done < asset-ids
+            gh api "$upload?name=$name" --method POST -H 'Content-Type: application/octet-stream' --input "dist/$name" > /dev/null
+          done
+          gh api "$api/$id" --method PATCH -F draft=false -f make_latest=false > /dev/null
       # A stop at the quota reserve is expected during a backfill and does
       # not fail the run.
       - name: Report an early stop
