@@ -1,0 +1,40 @@
+{
+  "metadata": {
+    "collector_version": "v0.1.0",
+    "login": "cgwalters",
+    "window": { "since": "2020-11-01", "until": null },
+    "run_url": "https://github.com/cgwalters-forge/tracker/actions/runs/42"
+  },
+  "cases": [
+    { "releases": [[2, {"complete": true}], [5, {"complete": false}], [1], [6, {"complete": true}, true], [4, {"complete": false, "stopped_for_quota": true}], [3, {"complete": false}], [0]], "selected": 2 },
+    { "releases": [[5, {"complete": false}], [1], [6, {"complete": true}, true], [4, {"complete": false, "stopped_for_quota": true}], [3, {"complete": false}], [0]] },
+    { "releases": [] },
+    { "releases": [[2, {"complete": true, "stopped_for_quota": false}]], "selected": 2 },
+    { "raw": "", "invalid": true },
+    { "raw": "{} {}", "invalid": true },
+    { "raw": "[]", "invalid": true },
+    { "raw": "null", "invalid": true },
+    { "raw": "true", "invalid": true },
+    { "raw": "{", "invalid": true },
+    { "fail": "list" },
+    { "fail": "view" },
+    { "fail": "download" }
+  ],
+  "invalid_statuses": [
+    {},
+    {"complete": "true"},
+    {"complete": null},
+    {"complete": true, "stopped_for_quota": true},
+    {"complete": false, "stopped_for_quota": null},
+    {"complete": true, "login": "someone-else"},
+    {"complete": true, "window": {"since": "2026-01-01", "until": null}},
+    {"complete": true, "window": {"since": "2020-11-01"}},
+    {"complete": true, "collector_version": ""},
+    {"complete": true, "collector_version": 1},
+    {"complete": true, "run_url": null},
+    {"complete": true, "run_url": "https://github.com/example/tracker/actions/runs/42"},
+    {"complete": true, "run_url": "https://githubXcom/cgwalters-forge/tracker/actions/runs/42"},
+    {"complete": true, "run_url": "https://github.com/cgwalters-forge/tracker/actions/runs/42\n"},
+    {"complete": true, "run_url": "https://github.com/cgwalters-forge/tracker/actions/runs/42/extra"}
+  ]
+}
