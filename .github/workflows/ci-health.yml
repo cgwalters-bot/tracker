@@ -218,7 +218,12 @@ jobs:
                 check(/^[a-f0-9]{64}$/.test(o.signature) && !seen.has(o.signature), 'invalid/duplicate signature');
                 seen.add(o.signature);
                 check(config.targets.some(t => t.repository === o.repository), 'group outside scope');
-                check(Array.isArray(o.run_ids) && o.run_ids.length > 0 && o.run_ids.length <= 1000 &&
+                // Threat: invented recurrence can outrank real failures even
+                // when the population counts are valid. Groups span workflows,
+                // so use this repository's observed runs, not one listing's cap.
+                const repositoryRuns = r.targets.filter(t => t.target.repository === o.repository)
+                  .reduce((n, t) => n + t.populations.default_push.runs + t.populations.pull_request.runs, 0);
+                check(Array.isArray(o.run_ids) && o.run_ids.length > 0 && o.run_ids.length <= repositoryRuns &&
                   new Set(o.run_ids).size === o.run_ids.length, 'invalid run IDs');
                 o.run_ids.forEach(positiveInteger); integer(o.occurrences);
                 // A normalized invalid date can place a failure inside the
