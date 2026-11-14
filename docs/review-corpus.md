@@ -58,6 +58,17 @@ from where the state left off and publishes the result as a new release:
 created as a draft, given its four assets, then published. The first run,
 finding none, starts from nothing.
 
+Before resuming, the download step checks both the compressed corpus and resume
+state against `SHA256SUMS` from that same release. A missing file, missing checksum
+or mismatch stops the run before decompression, collection or publication, so
+damaged corpus/cursor bytes cannot be carried into a new snapshot. It does not
+fall back to an older release or start over. Inspect the failed download and
+restore a verified snapshot before retrying; do not bypass the check. Historical
+releases without `status.json` still work because only the two resume assets are
+checked. This detects corruption, not a malicious publisher who can replace both
+assets and their checksums. The existing opt-in and ten-minute download bound
+are unchanged; CI covers this path without network access.
+
 The collector uses the job token, whose core API quota is shared by every
 workflow in this repository. So that the pass, dispatch, review and the
 supervisor keep working, the workflow checks the quota left before starting
