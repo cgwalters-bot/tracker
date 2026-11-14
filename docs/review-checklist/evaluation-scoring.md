@@ -23,7 +23,11 @@ These are fixed limits, not production controls or new caller settings.
 
 Freeze the checklist version, prompts, sample and matching rubric before reviews.
 Select the 30-PR language-stratified sample from the frozen whole-PR holdout, with
-at least one eligible inline operator comment per PR. Archive the selection seed,
+at least one eligible inline operator comment per PR.
+Use the splitter's [text-free sampling inventory](../review-corpus.md#preparing-the-frozen-checklist-split)
+to check inline-comment availability and language coverage without opening held-out
+feedback. Counts do not establish style/nit eligibility; freeze the mixed-language
+stratum rule and allocation separately. Archive the selection seed,
 PR URLs, strata and exact pre-review head/base commits. Run baseline and checklist
 reviews independently on those same historical inputs, without operator feedback,
 later fixes or the other pass's findings. Archive findings and model/run provenance

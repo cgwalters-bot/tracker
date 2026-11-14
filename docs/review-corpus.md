@@ -246,12 +246,34 @@ Use the real selected tag and existing snapshot directory; the output must not
 exist and its parent must exist. Passing `--help` instead of the three arguments
 describes the invocation. Node and zstd are required. It independently
 checks all three asset digests and complete-snapshot metadata before decompressing,
-then writes `training.jsonl`, sorted held-out PR URLs in `holdout.txt`, and
+then writes `training.jsonl`, sorted held-out PR URLs in `holdout.txt`, a text-free
+sampling inventory in `holdout-metadata.json`, and
 `provenance.json` with the fixed cutoff, input/output hashes and record/PR counts.
 Only counts go to stdout; feedback never goes to stdout or validation errors.
 Give the miner only these outputs, not the original snapshot. There is deliberately
 no held-out feedback file. Preserve the provenance and holdout list with the
 eventual checklist; keep corpus bytes outside git.
+
+For #1232, reopening held-out feedback just to find PRs with inline comments and
+language coverage would contaminate evaluation. Use `holdout-metadata.json`
+instead: its `review-checklist.holdout-metadata.v1` schema has a sorted `prs`
+array with only `url`, `first_feedback`, `inline_comments` and `inline_languages`.
+The last field counts inline comments in fixed categories `Rust`, `C`, `shell`,
+`Go`, `Python`, `docs` and `other`. Collector labels `Shell` and `Docs` map to
+lowercase categories; unknown, null or absent labels count as `other`, never as
+free-form output. Non-string labels other than null are invalid. PR-level comments
+affect the first-feedback date but not inline counts. PRs with no inline comments
+remain visible with zero counts; exclude them from #1232's sample.
+
+These counts describe language coverage, not style/nit eligibility or review
+quality. No comment text, IDs, paths, hunks, outcomes or commit metadata are
+copied into the inventory. Mixed-language PRs retain all their counts; the frozen
+sampling protocol must choose their single stratum and allocation before reviews,
+not silently take a majority here. The inventory neither selects the 30 PRs nor
+establishes that enough eligible PRs exist. Archive it with the frozen sample and
+verify `holdout_metadata_sha256` in `provenance.json`. Existing split directories
+are never upgraded in place; an older frozen split remains valid and must not be
+replaced by a newer corpus just to obtain this additional metadata.
 
 This command is off unless explicitly invoked; no workflow calls it. To bound a
 malformed snapshot, compressed corpus and state are each limited to 128 MiB,
@@ -282,6 +304,7 @@ const path = require('node:path');
 const CUTOFF = '2026-06-01T00:00:00Z';
 const MAX_BYTES = 128 * 1024 * 1024;
 const MAX_RECORDS = 250000;
+const LANGUAGES = ['Rust', 'C', 'shell', 'Go', 'Python', 'docs', 'other'];
 const ASSETS = ['review-corpus.jsonl.zst', 'review-corpus-state.json', 'status.json'];
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const requireThat = (condition, message) => { if (!condition) throw new Error(message); };
@@ -316,17 +339,28 @@ function partition(bytes) {
     requireThat(!seen.has(identity), `duplicate identity at record ${index + 1}`);
     seen.add(identity);
     const key = `https://github.com/${r.repository.toLowerCase()}/pull/${r.pr_number}`;
-    const first = prs.get(key);
-    if (!first || r.created_at < first) prs.set(key, r.created_at);
+    if (!prs.has(key)) prs.set(key, { url: key, first_feedback: r.created_at,
+      inline_comments: 0, inline_languages: Object.fromEntries(LANGUAGES.map(language => [language, 0])) });
+    const pr = prs.get(key);
+    if (r.created_at < pr.first_feedback) pr.first_feedback = r.created_at;
+    if (r.kind === 'review-comment') {
+      requireThat(r.language == null || typeof r.language === 'string', `invalid language at record ${index + 1}`);
+      // Only fixed labels escape into the sampling inventory, never corpus text.
+      const label = r.language === 'Shell' ? 'shell' : r.language === 'Docs' ? 'docs' : r.language;
+      const language = LANGUAGES.includes(label) ? label : 'other';
+      pr.inline_comments++;
+      pr.inline_languages[language]++;
+    }
     return key;
   });
   // Decide only after scanning ALL metadata: input order and comment kind do not
   // define a PR's first feedback. Later comments on a training PR stay training.
-  const held = new Set([...prs].filter(([, first]) => first >= CUTOFF).map(([key]) => key));
+  const held = new Set([...prs].filter(([, pr]) => pr.first_feedback >= CUTOFF).map(([key]) => key).sort());
   const training = lines.filter((_, i) => !held.has(keys[i]));
   return {
     training: training.length ? training.join('\n') + '\n' : '',
-    holdout: [...held].sort().map(key => key + '\n').join(''),
+    holdout: [...held].map(key => key + '\n').join(''),
+    metadata: JSON.stringify({ schema: 'review-checklist.holdout-metadata.v1', prs: [...held].map(key => prs.get(key)) }, null, 2) + '\n',
     counts: { records: lines.length, training_records: training.length,
       heldout_records: lines.length - training.length, training_prs: prs.size - held.size, heldout_prs: held.size },
   };
@@ -354,11 +388,13 @@ function splitSnapshot(tag, snapshot, output) {
   const split = partition(bytes);
   const provenance = { schema: 'review-checklist.split.v1', tag, cutoff: CUTOFF,
     snapshot_sha256: Object.fromEntries(ASSETS.map(name => [name, digest(assets.get(name))])),
-    training_sha256: digest(split.training), holdout_sha256: digest(split.holdout), ...split.counts };
+    training_sha256: digest(split.training), holdout_sha256: digest(split.holdout),
+    holdout_metadata_sha256: digest(split.metadata), ...split.counts };
   const staging = fs.mkdtempSync(path.join(path.dirname(path.resolve(output)), '.review-split-'));
   try {
     fs.writeFileSync(path.join(staging, 'training.jsonl'), split.training);
     fs.writeFileSync(path.join(staging, 'holdout.txt'), split.holdout);
+    fs.writeFileSync(path.join(staging, 'holdout-metadata.json'), split.metadata);
     fs.writeFileSync(path.join(staging, 'provenance.json'), JSON.stringify(provenance, null, 2) + '\n');
     fs.renameSync(staging, output);
   } finally { fs.rmSync(staging, { recursive: true, force: true }); }
@@ -367,7 +403,7 @@ function splitSnapshot(tag, snapshot, output) {
 
 function main(args) {
   if (args.length !== 3 || args.includes('--help')) {
-    console.log('Usage: TAG SNAPSHOT NEW_OUTPUT (see "Preparing the frozen checklist split" in docs/review-corpus.md)\nOffline only; verify release notes and download the four snapshot assets first.\nWrites training.jsonl, held-out PR URLs and provenance; never prints feedback.');
+    console.log('Usage: TAG SNAPSHOT NEW_OUTPUT (see "Preparing the frozen checklist split" in docs/review-corpus.md)\nOffline only; verify release notes and download the four snapshot assets first.\nWrites training.jsonl, held-out PR URLs, text-free sampling metadata and provenance; never prints feedback.');
     process.exitCode = args.includes('--help') ? 0 : 1;
     return;
   }
@@ -382,7 +418,7 @@ function main(args) {
 
 The `Test review-corpus holdout split` step in `ci.yml` exercises synthetic
 snapshots, the real zstd path, cutoff boundaries, unsorted/case-varied PR identities, all comment kinds,
-checksum/metadata failures, output isolation and fixed parser bounds. No complete
+checksum/metadata failures, text-free language counts, output isolation and fixed parser bounds. No complete
 corpus was mined for this preparation; #1342's released retry fix and a completed
 backfill still precede #1231, with held-out evaluation separate in #1232.
 

@@ -488,6 +488,37 @@ jobs:
             assert.throws(() => partition(Buffer.from([0xff])), /encoded data/);
           });
 
+          test('sampling inventory exposes only fixed metadata, independent of record order', () => {
+            const hidden = { body: 'HELDOUT_DO_NOT_EXPOSE', path: 'SECRET_PATH', diff_hunk: 'SECRET_HUNK',
+              outcome: 'SECRET_OUTCOME', commit_id: 'SECRET_COMMIT', extra: 'SECRET_EXTRA' };
+            const rows = [record(1, 2, cutoff, { ...hidden, language: 'Rust' }),
+              record(2, 2, cutoff, { ...hidden, language: 'C', repository: 'Example/Project' }),
+              record(3, 2, cutoff, { ...hidden, language: 'Shell' }),
+              record(4, 2, cutoff, { ...hidden, language: 'Docs' }),
+              record(5, 2, cutoff, { ...hidden, language: null }),
+              record(6, 2, cutoff, { ...hidden, language: 'SECRET_LANGUAGE' }),
+              record(7, 2, cutoff, { ...hidden, language: 'Rust', kind: 'pr-comment' }),
+              record(8, 1, '2026-06-02T00:00:00Z', { ...hidden, kind: 'review-body' }),
+              record(9, 3, before, { language: 'Python' }),
+              record(10, 3, cutoff, { language: 'Go' }),
+              record(11, 2, cutoff, { language: 'Python' }),
+              record(12, 2, cutoff, { language: 'Go' })];
+            const expected = { schema: 'review-checklist.holdout-metadata.v1', prs: [
+              { url: 'https://github.com/example/project/pull/1', first_feedback: '2026-06-02T00:00:00Z',
+                inline_comments: 0, inline_languages: { Rust: 0, C: 0, shell: 0, Go: 0, Python: 0, docs: 0, other: 0 } },
+              { url: 'https://github.com/example/project/pull/2', first_feedback: cutoff,
+                inline_comments: 8, inline_languages: { Rust: 1, C: 1, shell: 1, Go: 1, Python: 1, docs: 1, other: 2 } },
+            ] };
+            const split = partition(encode(rows));
+            assert.deepEqual(JSON.parse(split.metadata), expected);
+            assert.equal(partition(encode([...rows].reverse())).metadata, split.metadata);
+            assert.doesNotMatch(split.metadata, /HELDOUT_DO_NOT_EXPOSE|SECRET_/);
+            assert.deepEqual(JSON.parse(partition(encode([record(1, 1, before)])).metadata).prs, []);
+            for (const language of [42, [], {}]) {
+              assert.throws(() => partition(encode([record(1, 1, cutoff, { language })])), /invalid language at record 1$/);
+            }
+          });
+
           test('verified complete snapshot produces isolated files; failed preparation publishes nothing', () => {
             const root = fs.mkdtempSync(path.join(os.tmpdir(), 'review-split-test-'));
             const snapshot = path.join(root, 'snapshot');
@@ -523,12 +554,16 @@ jobs:
               assert.equal(cli.status, 0, cli.stderr);
               assert.equal(JSON.parse(cli.stdout).heldout_prs, 1);
               assert.doesNotMatch(cli.stdout + cli.stderr, /HELDOUT_DO_NOT_EXPOSE/);
-              assert.deepEqual(fs.readdirSync(output), ['holdout.txt', 'provenance.json', 'training.jsonl']);
+              assert.deepEqual(fs.readdirSync(output), ['holdout-metadata.json', 'holdout.txt', 'provenance.json', 'training.jsonl']);
               for (const name of fs.readdirSync(output)) assert.doesNotMatch(fs.readFileSync(path.join(output, name), 'utf8'), /HELDOUT_DO_NOT_EXPOSE/);
               const provenance = JSON.parse(fs.readFileSync(path.join(output, 'provenance.json')));
               assert.equal(provenance.cutoff, cutoff);
               assert.equal(provenance.training_sha256, hash(fs.readFileSync(path.join(output, 'training.jsonl'))));
               assert.equal(provenance.holdout_sha256, hash(fs.readFileSync(path.join(output, 'holdout.txt'))));
+              assert.equal(provenance.holdout_metadata_sha256, hash(fs.readFileSync(path.join(output, 'holdout-metadata.json'))));
+              const inventory = JSON.parse(fs.readFileSync(path.join(output, 'holdout-metadata.json')));
+              assert.equal(inventory.prs.length, provenance.heldout_prs);
+              assert.equal(inventory.prs.map(pr => pr.url + '\n').join(''), fs.readFileSync(path.join(output, 'holdout.txt'), 'utf8'));
               for (const name of names) assert.equal(provenance.snapshot_sha256[name], hash(fs.readFileSync(path.join(snapshot, name))));
               assert.throws(() => splitSnapshot(tag, snapshot, output), /output already exists/);
               for (const change of [{ complete: false }, { complete: 'true' }, { stopped_for_quota: true },
