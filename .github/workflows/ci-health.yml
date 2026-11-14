@@ -289,6 +289,14 @@ jobs:
               }
               check(matches.length <= 1, 'duplicate owned marker');
               if (matches.length) {
+                // Threat: yesterday's delayed rerun can still pass freshness
+                // validation and overwrite today's status despite serialization.
+                // Reuse the owned header; unknown state requires manual repair.
+                const date = /^## Rolling CI health: (\d{4}-\d{2}-\d{2})\n\n/.exec(matches[0].body.slice(marker.length + 1))?.[1];
+                const previous = Date.parse(date + 'T00:00:00.000Z');
+                check(Number.isFinite(previous) && new Date(previous).toISOString().slice(0, 10) === date,
+                  'invalid owned status window');
+                check(previous <= until, 'refusing to replace newer status window');
                 if (matches[0].body !== body) await github.rest.issues.updateComment({...context.repo, comment_id: matches[0].id, body});
               } else await github.rest.issues.createComment({...context.repo, issue_number: issue, body});
             } catch (error) {
