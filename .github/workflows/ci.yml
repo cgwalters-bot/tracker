@@ -1346,6 +1346,29 @@ jobs:
               assert.equal(absent.files.get('2026-11-05.md').includes('Absence does NOT prove recovery'), overdue);
             }
           });
+          test('absent overdue flakes retain reviewed follow-up context on every surface', async () => {
+            for (const issue of [null, 'https://github.com/cgwalters-forge/tracker/issues/123', '<script>@owner [issue](bad)</script>']) {
+              const e = {...entry(8), issue, owner: '<owner>@team'};
+              for (const publish of [false, true]) {
+                const got = await run({index: {[signature]: e}, publish, preview: false});
+                assert.ifError(got.error);
+                assert.equal(got.calls.length, publish ? 1 : 0);
+                for (const text of [got.files.get('2026-11-05.md'), got.summaries[0], ...(publish ? [got.calls[0].args.body] : [])]) {
+                  assert.ok(text.includes(`first seen ${e.first_seen}`));
+                  assert.match(text, /owner &#60;owner&#62;&#64;team, fix staged/);
+                  assert.ok(text.includes(`issue ${issue === null ? 'none' : issue.startsWith('https:') ? issue : '&#60;script&#62;&#64;owner &#91;issue&#93;&#40;bad&#41;&#60;/script&#62;'}.`));
+                  assert.match(text, /Absence does NOT prove recovery/);
+                  assert.doesNotMatch(text, /<script>|@team|@owner/);
+                }
+                assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), report());
+              }
+            }
+            for (const e of [{...entry(8), explained_at: iso(until)}, {...entry(8), class: 'infra'}]) {
+              const got = await run({index: {[signature]: e}});
+              assert.ifError(got.error);
+              assert.doesNotMatch(got.files.get('2026-11-05.md'), /overdue absent signature/);
+            }
+          });
           test('saved live JSON renders offline without another collection', async () => {
             const r = JSON.parse(fs.readFileSync(process.env.CI_HEALTH_SAMPLE ?? 'docs/ci-health-2026-11-13.json'));
             // Historical reports keep their original scope; never delete the

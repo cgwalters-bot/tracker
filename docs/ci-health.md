@@ -272,7 +272,15 @@ signatures with no mapped issue, plus reviewed unexplained flakes whose index
 first_seen is **strictly older than seven days** at `until`. Exactly seven days
 is not overdue. It separately audits overdue unexplained flake index entries
 absent from current groups: absence, especially with incomplete coverage, does
-not prove recovery. No failure issue creation, retry, quarantine, repair
+not prove recovery. Each absent overdue entry includes its reviewed first-seen
+date and issue (or explicit `none`), alongside owner and fix state, so the
+seven-day follow-up does not require searching the config by signature. This
+date is the index's age clock, not a new observation or proof of recurrence.
+The dated report, summary and optional status share this escaped context under
+the existing section byte/count limits; full entries remain in the artifact.
+Offline tests cover mapped/unmapped issues, hostile text and explained/non-flake
+exclusions. Publication remains off; no new option or API request is added.
+No failure issue creation, retry, quarantine, repair
 dispatch, arbitrary action or upstream write is available.
 
 ## Publication boundary and acceptance

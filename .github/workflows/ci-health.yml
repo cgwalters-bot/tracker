@@ -249,7 +249,7 @@ jobs:
               }
               const absent = Object.entries(config.index).filter(([sig, e]) => !seen.has(sig) && e.class === 'flake' &&
                 !e.explained_at && until - Date.parse(e.first_seen) > 7 * 86400000)
-                .map(([sig, e]) => `- ${sig}: overdue absent signature; owner ${escape(e.owner)}, fix ${escape(e.fix_status)}. Absence does NOT prove recovery.`);
+                .map(([sig, e]) => `- ${sig}: overdue absent signature; first seen ${escape(e.first_seen)}; owner ${escape(e.owner)}, fix ${escape(e.fix_status)}; issue ${e.issue ? escape(e.issue) : 'none'}. Absence does NOT prove recovery.`);
               const runURL = `https://github.com/${repo}/actions/runs/${context.runId}`;
               const artifactURL = process.env.RAW_ARTIFACT_URL;
               check(typeof artifactURL === 'string' && artifactURL.startsWith(runURL + '/artifacts/') &&
