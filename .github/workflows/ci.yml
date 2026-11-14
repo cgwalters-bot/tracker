@@ -611,6 +611,58 @@ jobs:
           const cutoff = '2026-06-01T00:00:00Z';
           const encode = records => Buffer.from(records.map(r => JSON.stringify(r)).join('\n') + '\n');
 
+          test('asset reads enforce the byte limit after stat and close every opened descriptor', () => {
+            const source = docs.split('```js split-corpus\n')[1].split('\n```')[0];
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'bounded-corpus-'));
+            const filename = path.join(root, 'asset');
+            let grow = false, failRead = false, consumed = 0, opened = 0, closed = 0;
+            const inspect = stat => {
+              if (grow) { grow = false; fs.appendFileSync(filename, 'x'.repeat(32)); }
+              return stat;
+            };
+            const wrapped = { ...fs,
+              lstatSync: name => inspect(fs.lstatSync(name)),
+              fstatSync: fd => inspect(fs.fstatSync(fd)),
+              openSync: (...args) => { const fd = fs.openSync(...args); opened++; return fd; },
+              closeSync: fd => { closed++; fs.closeSync(fd); },
+              readSync: (...args) => {
+                if (failRead) throw new Error('synthetic read failure');
+                // Force short reads to exercise accumulation, not just one read.
+                args[3] = Math.min(args[3], 2);
+                const n = fs.readSync(...args); consumed += n; return n;
+              },
+            };
+            const read = new Function('require', source + '\nreturn readBounded;')(
+              name => name === 'node:fs' ? wrapped : require(name));
+            try {
+              for (const size of [0, 7, 8]) {
+                fs.writeFileSync(filename, Buffer.alloc(size, 0xff));
+                assert.deepEqual(read(filename, 8), Buffer.alloc(size, 0xff));
+              }
+              fs.writeFileSync(filename, 'small'); grow = true; consumed = 0;
+              assert.throws(() => read(filename, 8), /bounded regular file|exceeds/);
+              assert.ok(consumed <= 9, 'at most the limit plus one sentinel byte is read');
+              fs.writeFileSync(filename, 'x'.repeat(9)); consumed = 0;
+              assert.throws(() => read(filename, 8), /bounded regular file|exceeds/);
+              assert.equal(consumed, 0, 'known oversized file is refused before reading');
+              fs.writeFileSync(filename, 'ok'); failRead = true;
+              assert.throws(() => read(filename, 8), /synthetic read failure/);
+              failRead = false;
+              fs.symlinkSync(filename, path.join(root, 'link'));
+              assert.throws(() => read(path.join(root, 'link'), 8));
+              assert.throws(() => read(root, 8), /bounded regular file/);
+              assert.equal(opened, closed);
+              const fifo = path.join(root, 'fifo');
+              execFileSync('mkfifo', [fifo]);
+              const probe = spawnSync(process.execPath, ['-e', source + '\nreadBounded(process.argv[1], 8);', fifo],
+                { encoding: 'utf8', timeout: 2000 });
+              assert.equal(probe.error, undefined, 'opening a FIFO without a writer must not hang');
+              assert.equal(probe.status, 1);
+              assert.equal(probe.stdout, '');
+              assert.match(probe.stderr, /bounded regular file/);
+            } finally { fs.rmSync(root, { recursive: true, force: true }); }
+          });
+
           test('sampling freezes 30 stratified candidates without feedback or order dependence', () => {
             const rows = Array.from({ length: 80 }, (_, i) => record(i + 1, i + 1, cutoff,
               { language: i < 40 ? 'Rust' : 'C', body: 'HELDOUT_DO_NOT_EXPOSE' }));

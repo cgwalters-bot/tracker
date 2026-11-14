@@ -319,6 +319,15 @@ fail without publishing a split. Review these fixed bounds if a real complete
 snapshot exceeds them; do not silently truncate. Existing output is refused so a
 refresh cannot replace a frozen split by accident.
 
+Threat: a local input can grow or be replaced between a pathname size check and
+an unbounded read, defeating these limits. The shared reader opens once, refuses
+symlinks and non-regular files, checks that descriptor, then reads at most the
+limit plus one byte to detect growth. It closes the descriptor on success and
+failure. Nonblocking open prevents a substituted FIFO from hanging before the
+regular-file check. This applies to snapshot assets, sampling inventory and plan;
+it adds no option or automatic execution. It is not a filesystem snapshot: keep
+inputs immutable and verify the recorded digests against the frozen archive.
+
 The splitter does not authenticate release provenance, establish completeness
 beyond the marker, or discover earlier feedback omitted by collection. "First"
 means first in the pinned corpus window, not necessarily the PR's entire history.
@@ -345,9 +354,17 @@ const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 const requireThat = (condition, message) => { if (!condition) throw new Error(message); };
 
 function readBounded(filename, limit) {
-  const stat = fs.lstatSync(filename);
-  requireThat(stat.isFile() && stat.size <= limit, 'snapshot asset is not a bounded regular file');
-  return fs.readFileSync(filename);
+  const fd = fs.openSync(filename, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+  try {
+    const stat = fs.fstatSync(fd);
+    requireThat(stat.isFile() && stat.size <= limit, 'snapshot asset is not a bounded regular file');
+    const buffer = Buffer.alloc(limit + 1);
+    let size = 0;
+    let n;
+    while (size < buffer.length && (n = fs.readSync(fd, buffer, size, buffer.length - size, null)) > 0) size += n;
+    requireThat(size <= limit, 'input exceeds byte limit; recover the bounded archive, never truncate it');
+    return buffer.subarray(0, size);
+  } finally { fs.closeSync(fd); }
 }
 
 // Neither errors nor stdout include record text, paths, or diff hunks.
