@@ -390,6 +390,28 @@ fn promote_caller_settings_and_policy_records() {
 }
 
 #[test]
+fn agent_board_installs_share_the_verified_ci_artifact_path() {
+    let justfile = read("../../Justfile");
+    for required in [
+        "node .github/agent-board-install/select.cjs \"$rev\"",
+        "gh run download \"$run\" --repo \"$repo\" --name agent-board-main",
+        "gh release download \"$tag\"",
+        "--source-digest \"$rev\" --deny-self-hosted-runners",
+        "cmp \"$stage/SHA256SUMS\" \"$stage/attested-SHA256SUMS\"",
+    ] {
+        assert!(justfile.contains(required), "{required}");
+    }
+    for name in ["poll", "promote", "supervisor", "release-train"] {
+        let workflow = read(&format!("../workflows/{name}.yml"));
+        assert!(workflow.contains("just build-agent-board \"$AGENT_BOARD_REV\""), "{name}");
+        assert!(!workflow.contains("gh release download"), "{name}");
+    }
+    let output = Command::new("node").arg("--test").arg(here().join("../agent-board-install/select.test.cjs"))
+        .output().expect("test CI artifact selection");
+    assert!(output.status.success(), "{output:?}");
+}
+
+#[test]
 fn promote_caller_is_bounded_to_the_default_branch() {
     let workflow = read("../workflows/promote.yml");
     for required in [
