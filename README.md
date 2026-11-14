@@ -41,6 +41,10 @@ advisory rewrite suggestions and meaning-preservation checks. It does not enable
 an automated prose reviewer. It includes a versioned [manual prompt](docs/review-checklist/prose-prompt.md)
 and [positive/negative fixtures](docs/review-checklist/prose-fixtures.md).
 
+The [checklist evaluation scorer](docs/review-checklist/evaluation-scoring.md)
+counts manually adjudicated baseline/checklist findings offline. It provides
+accounting and a matching rubric, not held-out evaluation results.
+
 The [offline architecture-review prototype](docs/architecture-review/README.md)
 contains a versioned pattern library and manual review procedure. It has only a
 three-PR development pilot and no held-out result. It is not wired into the

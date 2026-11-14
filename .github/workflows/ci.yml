@@ -238,6 +238,98 @@ jobs:
         env:
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
       # Keep new scripts inline: deployment scripts and Justfile may only shrink.
+      - name: Test checklist evaluation scoring
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const { test, after } = require('node:test');
+          const { mkdtempSync, writeFileSync, readFileSync, rmSync } = require('node:fs');
+          const { tmpdir } = require('node:os');
+          const { join } = require('node:path');
+          const { pathToFileURL } = require('node:url');
+          const { spawnSync } = require('node:child_process');
+          const source = /```javascript\n([^]*?)```/.exec(readFileSync('docs/review-checklist/evaluation-scoring.md', 'utf8'))[1];
+          const temp = mkdtempSync(join(tmpdir(), 'checklist-scoring-module-'));
+          const modulePath = join(temp, 'score.mjs');
+          after(() => rmSync(temp, { recursive: true, force: true }));
+          writeFileSync(modulePath, source);
+          (async () => {
+            const { score } = await import(pathToFileURL(modulePath));
+
+            function ledger() {
+              const run = { model: 'fixture', provenance: 'synthetic-only', prompt_sha256: 'a'.repeat(64) };
+              return { schema: 'checklist-scores/v1', checklist_version: 'fixture', sample: 'synthetic sample',
+                adjudicator: 'synthetic test', runs: { baseline: run, checklist: run }, prs: [
+                  { url: 'https://github.com/example/project/pull/1', language: 'Rust', comments: ['c1', 'c2', 'c3'],
+                    baseline: [{ id: 'b1', matches: ['c1'], reason: 'same concern' },
+                      { id: 'b2', matches: [], audit: 'unreviewed' }],
+                    checklist: [{ id: 'f1', matches: ['c1', 'c2'], reason: 'same root' },
+                      { id: 'f2', matches: ['c1'], reason: 'duplicate finding, not another catch' },
+                      { id: 'f3', matches: [], audit: 'supported', reason: 'valid additional concern' },
+                      { id: 'f4', matches: [], audit: 'noise', reason: 'inapplicable' },
+                      { id: 'f5', matches: [], audit: 'unresolved', reason: 'needs context' }] },
+                  { url: 'https://github.com/example/project/pull/2', language: 'C', comments: ['c1'], baseline: [], checklist: [] },
+                ] };
+            }
+
+            test('counts unique catches, separate finding denominators, language strata and audit coverage', () => {
+              const result = score(ledger());
+              assert.deepEqual(result.totals.checklist, { prs: 2, operator_comments: 4, caught: 2, missed: 2,
+                findings: 5, matched_findings: 2, unmatched_findings: 3, audited_unmatched: 3,
+                supported_unmatched: 1, noise_unmatched: 1, unresolved_unmatched: 1 });
+              assert.equal(result.totals.baseline.caught, 1);
+              assert.equal(result.totals.baseline.audited_unmatched, 0);
+              assert.equal(result.languages.Rust.checklist.missed, 1);
+              assert.equal(result.languages.C.baseline.missed, 1);
+              assert.equal(result.languages.C.baseline.findings, 0);
+              assert.equal(result.unmatched.length, 4);
+              assert.equal(result.sample_size, 2);
+              assert.equal(result.target_sample_size, 30);
+            });
+
+            test('refuses ambiguous or incomplete adjudications rather than silently improving scores', () => {
+              for (const mutate of [
+                x => { x.schema = 'other'; }, x => { delete x.runs.checklist; },
+                x => { x.runs.baseline.prompt_sha256 = 'not-a-digest'; }, x => { delete x.sample; },
+                x => { x.prs = []; }, x => { x.prs = Array(31).fill(x.prs[0]); },
+                x => { x.prs.push(x.prs[0]); }, x => { x.prs[0].language = '__proto__'; },
+                x => { x.prs[0].comments.push('c1'); }, x => { x.prs[0].comments = []; },
+                x => { delete x.prs[0].baseline; }, x => { x.prs[0].baseline.push(x.prs[0].baseline[0]); },
+                x => { x.prs[0].baseline[0].matches = ['unknown']; },
+                x => { x.prs[0].baseline[0].matches = ['c1', 'c1']; },
+                x => { delete x.prs[0].baseline[0].reason; },
+                x => { x.prs[0].baseline[0].audit = 'noise'; },
+                x => { delete x.prs[0].baseline[1].audit; },
+                x => { x.prs[0].baseline[1].audit = 'wrong'; },
+                x => { delete x.prs[0].checklist[2].reason; },
+              ]) {
+                const input = ledger(); mutate(input); assert.throws(() => score(input));
+              }
+            });
+
+            test('CLI emits JSON only on success and bounds input without leaking malformed contents', () => {
+              const dir = mkdtempSync(join(tmpdir(), 'checklist-score-'));
+              const file = join(dir, 'ledger.json');
+              const run = args => spawnSync(process.execPath, [modulePath, ...args], { encoding: 'utf8' });
+              try {
+                writeFileSync(file, JSON.stringify(ledger()));
+                const ok = run([file]);
+                assert.equal(ok.status, 0, ok.stderr);
+                assert.deepEqual(JSON.parse(ok.stdout), score(ledger()));
+                assert.equal(run(['--help']).status, 0);
+                for (const content of ['{"private-feedback": broken', ' '.repeat(1024 * 1024 + 1)]) {
+                  writeFileSync(file, content);
+                  const bad = run([file]);
+                  assert.equal(bad.status, 1);
+                  assert.equal(bad.stdout, '');
+                  assert.doesNotMatch(bad.stderr, /private-feedback/);
+                }
+                assert.equal(run([]).status, 1);
+                assert.equal(run([join(dir, 'missing')]).status, 1);
+              } finally { rmSync(dir, { recursive: true, force: true }); }
+            });
+          })().catch(error => { console.error(error); process.exitCode = 1; });
+      # Keep new scripts inline: deployment scripts and Justfile may only shrink.
       - name: Test review-corpus resume checksums
         shell: node {0}
         run: |
