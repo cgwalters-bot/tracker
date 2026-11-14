@@ -171,6 +171,17 @@ Fork no-history is documented here, not counted as a passing population.
 
 ## Rates, index, and follow-up
 
+Failure groups show their first observed timestamp **within the report window**,
+not the failure's all-time onset or the reviewed index's flake-age clock. Each
+retained sample links to its exact run attempt and job, so a later rerun cannot
+silently redirect investigation to the latest attempt's overview. These links
+use the already validated run URL and numeric attempt/job IDs; no extra API
+requests or log downloads are made. Groups without samples gain no invented
+evidence. The dated Markdown, summary and optional owned status use the same
+evidence text, subject to the existing status truncation limits. Publication
+remains off by default; this does not complete #1223's classification inventory
+or #1229's hosted acceptance.
+
 Each population displays distinct runs, observed/expected attempts, first-attempt
 passes/denominator (run-level first try) and observed attempt passes/denominator.
 The latter is **not an eventual run-level rate**. Cancellations, skips, active
