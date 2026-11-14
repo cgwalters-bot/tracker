@@ -1779,9 +1779,8 @@ agent-board-pin:
     echo "$pins"
 
 # Opens or updates the one pull request, from the bot's fork, that moves
-# every AGENT_BOARD_REV to the head of agent-board's configured branch
-# (.github/poll/agent-board.json), once all that commit's check runs have
-# passed and it is ahead of the pin (agent-board-pin.yml). It commits in this
+# every AGENT_BOARD_REV to the newest installable main CI commit in a bounded
+# scan, once it is ahead of the pin (agent-board-pin.yml). It commits in this
 # checkout, and needs GITHUB_REPOSITORY and GH_TOKEN to push and open the PR.
 bump-agent-board:
     #!/usr/bin/env bash
@@ -1791,17 +1790,11 @@ bump-agent-board:
     branch=$(jq -er .branch .github/poll/agent-board.json)
     bot=$(jq -er .bot .github/poll/agent-board.json)
     upstream=${source#https://github.com/}
-    head=$(gh api "repos/$upstream/commits/$branch" --jq .sha)
+    selected=$({{ just_executable() }} select-agent-board latest "$branch")
+    if [[ $selected == null ]]; then echo 'no successful main CI artifact in the discovery window'; exit 0; fi
+    head=$(jq -er .sha <<< "$selected")
     [[ $head =~ ^[0-9a-f]{40}$ ]]
     if [[ $head == "$pin" ]]; then echo "the pin is $branch's head $head"; exit 0; fi
-    runs=$(gh api --paginate "repos/$upstream/commits/$head/check-runs" --jq '.check_runs[] | {name, status, conclusion}' | jq -cs .)
-    if ! jq -e 'length > 0 and all(.[]; .status == "completed" and (.conclusion | IN("success", "neutral", "skipped")))' <<< "$runs" > /dev/null; then
-      echo "$head: CI is not green yet: $runs"; exit 0
-    fi
-    # Publication follows CI: green source alone is not an installable pin.
-    if ! published=$(gh release view "build-$head" --repo "$upstream" --json isDraft --jq '.isDraft') || [[ $published != false ]]; then
-      echo "$head: no published binary release yet"; exit 0
-    fi
     (export RUNNER_TEMP=$(mktemp -d); trap 'rm -rf "$RUNNER_TEMP"' EXIT
       GITHUB_OUTPUT=/dev/null {{ just_executable() }} build-agent-board "$head")
     # Never backwards or onto rewritten history; compare lists at most 250 commits.
@@ -1815,7 +1808,7 @@ bump-agent-board:
     fork=$(gh api --paginate "repos/$GITHUB_REPOSITORY/forks" --jq ".[] | select(.owner.login == \"$bot\") | .full_name" | head -n1)
     [[ -n $fork ]] || { echo "::error::$bot has no fork of $GITHUB_REPOSITORY"; exit 1; }
     body=$(
-      echo "Every \`AGENT_BOARD_REV\` in \`.github/workflows/\` moves from $pin to $head, $branch's head, whose check runs all passed. Review [what changes]($source/compare/$pin...$head) in the program given the bot's token. The agent-board commits in between:"
+      echo "Every \`AGENT_BOARD_REV\` in \`.github/workflows/\` moves from $pin to $head, the newest $branch commit with a successful CI artifact in the discovery window. Its attestation and checksums verified before this proposal. Review [what changes]($source/compare/$pin...$head) in the program given the bot's token. The agent-board commits in between:"
       echo
       # Subjects in code spans, so their #N and @login do not reference here.
       jq -r --arg s "$source" '.commits[] | "- [\(.sha[0:7])](\($s)/commit/\(.sha)) `\(.commit.message | split("\n")[0] | gsub("`"; "'\''"))`"' <<< "$compare"
@@ -2219,6 +2212,25 @@ test-maintain-shadow:
 
 # No moving refs or source fallback: substituted assets must not run with the
 # bot's write token. The attested manifest binds both digests to reviewed CI.
+select-agent-board rev branch='main':
+    #!/usr/bin/env bash
+    set -euo pipefail
+    rev=$1 branch=$2 repo=cgwalters-forge/agent-board
+    [[ $rev == latest || $rev =~ ^[0-9a-f]{40}$ ]] || { echo 'expected pinned revision' >&2; exit 1; }
+    branch=$(jq -rn --arg b "$branch" '$b | @uri')
+    runs=$(timeout 20 gh api "repos/$repo/actions/workflows/ci.yml/runs?branch=$branch&event=push&status=success&per_page=100&head_sha=${rev/latest/}")
+    commits=$(if [[ $rev == latest ]]; then timeout 20 gh api "repos/$repo/commits?sha=$branch&per_page=100"; else jq -nc --arg sha "$rev" '[{sha:$sha}]'; fi)
+    candidates=$(jq -c --arg branch "$2" --argjson commits "$commits" '[ $commits[].sha as $sha | .workflow_runs[] | select(.head_sha == $sha and .head_branch == $branch and .event == "push" and .status == "completed" and .conclusion == "success" and .path == ".github/workflows/ci.yml") | {sha:$sha, run:.id} ]' <<< "$runs")
+    listings=0
+    while read -r candidate; do
+      (( listings += 1 )); [[ $listings -le 30 ]] || { echo 'agent-board artifact discovery exceeded 30 runs' >&2; exit 1; }
+      run=$(jq -er '.run | select(type == "number" and . > 0 and . <= 9007199254740991 and floor == .)' <<< "$candidate")
+      count=$(timeout 20 gh api "repos/$repo/actions/runs/$run/artifacts?per_page=100" | jq -er '[.artifacts[] | select(.name == "agent-board-main" and .expired == false)] | length')
+      [[ $count -le 1 ]] || { echo 'ambiguous agent-board-main artifact' >&2; exit 1; }
+      if [[ $count == 1 ]]; then echo "$candidate"; exit 0; fi
+    done < <(jq -c '.[]' <<< "$candidates")
+    echo null
+
 build-agent-board rev=env("AGENT_BOARD_REV", ""):
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2232,8 +2244,15 @@ build-agent-board rev=env("AGENT_BOARD_REV", ""):
     rm -f "$dest/agent-board"
     stage=$(mktemp -d "$RUNNER_TEMP/agent-board-download.XXXXXX")
     trap 'rm -rf "$stage"' EXIT
-    timeout 180 gh release download "$tag" --repo "$repo" --dir "$stage" \
-      --pattern "*-$target" --pattern SHA256SUMS --pattern release.json --pattern provenance.jsonl
+    selected=$({{ just_executable() }} select-agent-board "$rev")
+    if [[ $selected != null ]]; then
+      run=$(jq -er .run <<< "$selected")
+      timeout 180 gh run download "$run" --repo "$repo" --name agent-board-main --dir "$stage"
+      tag=''
+    else
+      timeout 180 gh release download "$tag" --repo "$repo" --dir "$stage" \
+        --pattern "*-$target" --pattern SHA256SUMS --pattern release.json --pattern provenance.jsonl
+    fi
     GH_TOKEN='' GITHUB_TOKEN='' timeout 180 gh attestation verify "$stage/release.json" \
       --bundle "$stage/provenance.jsonl" --repo "$repo" \
       --cert-identity "https://github.com/$repo/.github/workflows/ci.yml@refs/heads/main" \
@@ -2248,122 +2267,9 @@ build-agent-board rev=env("AGENT_BOARD_REV", ""):
     echo "rev=$rev" >> "${GITHUB_OUTPUT:-/dev/null}"
     echo "Installed agent-board $rev ($target)"
 
-# Offline transport fixtures exercise the real installer; no network or token.
-# The real-* cases also run gh's own attestation verifier on a published
-# release, so gh must be on PATH.
+# Offline installer probes live with the other config-test transport fixtures.
 test-agent-board-install:
-    #!/usr/bin/env node
-    const assert = require('node:assert/strict');
-    const fs = require('node:fs');
-    const os = require('node:os');
-    const path = require('node:path');
-    const { spawnSync } = require('node:child_process');
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-board-install-'));
-    const rev = 'a'.repeat(40);
-    const target = 'x86_64-unknown-linux-musl';
-    const stub = `#!/usr/bin/env node
-    const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), { spawnSync } = require('node:child_process');
-    const args = process.argv.slice(2), mode = process.env.CASE;
-    const identity = 'https://github.com/cgwalters-forge/agent-board/.github/workflows/ci.yml@refs/heads/main';
-    if (process.env.BUMP) {
-      if (args[0] === 'api' && args.some(a => a.endsWith('/commits/main'))) { console.log('${rev}'); process.exit(0); }
-      if (args[0] === 'api' && args.some(a => a.endsWith('/check-runs'))) { console.log(JSON.stringify({name: 'ci', status: 'completed', conclusion: 'success'})); process.exit(0); }
-      if (args[0] === 'release' && args[1] === 'view') { console.log(mode === 'draft' ? 'true' : 'false'); process.exit(mode === 'missing-release' ? 1 : 0); }
-      if (args[0] === 'api' && args.some(a => a.includes('/compare/'))) { fs.writeFileSync(process.env.MARKER, 'selected'); console.log(JSON.stringify({status: 'ahead'})); process.exit(0); }
-      if (args[0] === 'pr' && args[1] === 'list') { console.log(JSON.stringify({title: 'workflows: Move agent-board to aaaaaaa'})); process.exit(0); }
-    }
-    if (args[0] === 'attestation') {
-      if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) process.exit(9);
-      for (const s of ['--source-digest', process.env.REV, '--deny-self-hosted-runners', identity]) if (!args.includes(s)) process.exit(8);
-      if (!mode.startsWith('real-')) process.exit(mode === 'attestation' ? 1 : 0);
-      // The real verifier on the real bundle, offline: a dead proxy and the
-      // committed trusted root. The signer case asks for another identity.
-      const real = args.map(a => mode === 'real-signer' && a === identity ? identity.replace('/ci.yml@', '/release.yml@') : a);
-      const dead = 'http://127.0.0.1:9';
-      const r = spawnSync(process.env.REAL_GH, [...real, '--custom-trusted-root', path.join(process.env.FIXTURES, 'trusted_root.json')], {stdio: 'inherit', env: {...process.env, HTTPS_PROXY: dead, HTTP_PROXY: dead, NO_PROXY: ''}});
-      fs.writeFileSync(process.env.VERIFIED, String(r.status));
-      process.exit(r.status ?? 1);
-    }
-    if (['missing-release', 'download'].includes(mode)) process.exit(1);
-    const d = args[args.indexOf('--dir') + 1];
-    if (mode.startsWith('real-')) {
-      // The published release.json and its bundle; the binaries are
-      // stand-ins, so even an accepted attestation ends at the checksums.
-      // real-subject changes one byte and keeps the JSON valid, so only the
-      // attested subject digest can catch it.
-      const release = fs.readFileSync(path.join(process.env.FIXTURES, 'release.json'), 'utf8');
-      fs.writeFileSync(path.join(d, 'release.json'), mode === 'real-subject' ? release.replace('"schema"', '"schema" ') : release);
-      fs.copyFileSync(path.join(process.env.FIXTURES, 'provenance.json'), path.join(d, 'provenance.jsonl'));
-      fs.writeFileSync(path.join(d, 'SHA256SUMS'), JSON.parse(release).sha256sums);
-      for (const n of ['agent-board', 'gh-agent-board']) fs.writeFileSync(path.join(d, n + '-${target}'), 'stand-in');
-      process.exit(0);
-    }
-    let sums = '';
-    for (const n of ['agent-board', 'gh-agent-board']) {
-      const name = n + '-${target}', data = '#!/bin/sh\\nexit 0\\n';
-      fs.writeFileSync(path.join(d, name), data);
-      sums += crypto.createHash('sha256').update(data).digest('hex') + '  ' + name + '\\n';
-    }
-    fs.writeFileSync(path.join(d, 'SHA256SUMS'), mode === 'sums' ? 'bad' : sums);
-    fs.writeFileSync(path.join(d, 'release.json'), JSON.stringify({schema: 'agent-board.release.v1', repository: 'cgwalters-forge/agent-board', tag: 'build-${rev}', commit: mode === 'commit' ? 'b'.repeat(40) : '${rev}', target: '${target}', sha256sums: sums}));
-    fs.writeFileSync(path.join(d, 'provenance.jsonl'), 'fixture');
-    if (mode === 'integrity') fs.appendFileSync(path.join(d, 'agent-board-${target}'), 'tampered');
-    if (mode === 'missing-asset') fs.unlinkSync(path.join(d, 'agent-board-${target}'));
-    `;
-    // The published release.json, its bundle and Sigstore's trusted root
-    // (`gh attestation trusted-root`), from agent-board's build-<commit>
-    // release, for the real verifier.
-    const fixtures = path.resolve('.github/agent-board-install');
-    const published = JSON.parse(fs.readFileSync(path.join(fixtures, 'release.json'), 'utf8')).commit;
-    const realGh = spawnSync('sh', ['-c', 'command -v gh'], {encoding: 'utf8'}).stdout.trim();
-    assert.ok(realGh, 'gh on PATH, for the real attestation verifier');
-    // Nonempty, so the verifier sees no token only if the installer clears them.
-    const tokens = {GH_TOKEN: 'sentinel-not-a-token', GITHUB_TOKEN: 'sentinel-not-a-token'};
-    const install = (mode, r, temp) => spawnSync('{{ just_executable() }}', ['build-agent-board', r], {encoding: 'utf8', env: {...process.env, ...tokens, PATH: `${dir}:${process.env.PATH}`, RUNNER_TEMP: temp, GITHUB_OUTPUT: path.join(temp, 'output'), CASE: mode, REV: r, FIXTURES: fixtures, REAL_GH: realGh, VERIFIED: path.join(temp, 'verified'), GH_CONFIG_DIR: temp}});
-    try {
-      fs.writeFileSync(path.join(dir, 'gh'), stub, {mode: 0o755});
-      fs.writeFileSync(path.join(dir, 'uname'), '#!/bin/sh\nif [ "$CASE" = platform ]; then printf Darwin; else /usr/bin/uname "$@"; fi\n', {mode: 0o755});
-      for (const mode of ['ok', 'missing-release', 'missing-asset', 'platform', 'download', 'attestation', 'commit', 'sums', 'integrity', 'revision']) {
-        const temp = fs.mkdtempSync(path.join(dir, 'run-'));
-        const output = path.join(temp, 'output');
-        const result = install(mode, mode === 'revision' ? '' : rev, temp);
-        assert.equal(result.status === 0, mode === 'ok', `${mode}: ${result.stdout}\n${result.stderr}`);
-        assert.equal(fs.existsSync(path.join(temp, 'agent-board/bin/agent-board')), mode === 'ok', mode);
-        if (mode === 'ok') assert.equal(fs.readFileSync(output, 'utf8'), `rev=${rev}\n`);
-        else assert.equal(fs.existsSync(output), false, mode);
-        console.log(`ok agent-board installer: ${mode}`);
-      }
-      // Only the right commit verifies, and then the stand-in binaries fail
-      // their checksums; the wrong commit, a changed subject or another
-      // signer is rejected by the verifier itself.
-      for (const mode of ['real-ok', 'real-revision', 'real-subject', 'real-signer']) {
-        const temp = fs.mkdtempSync(path.join(dir, 'run-'));
-        const result = install(mode, mode === 'real-revision' ? rev : published, temp);
-        const log = `${mode}: ${result.stdout}\n${result.stderr}`;
-        assert.notEqual(result.status, 0, log);
-        assert.equal(fs.readFileSync(path.join(temp, 'verified'), 'utf8') === '0', mode === 'real-ok', log);
-        if (mode === 'real-ok') assert.match(result.stdout, /agent-board-x86_64-unknown-linux-musl: FAILED/, log);
-        assert.equal(fs.existsSync(path.join(temp, 'agent-board/bin/agent-board')), false, mode);
-        console.log(`ok agent-board installer: ${mode}`);
-      }
-      for (const mode of ['ok', 'missing-release', 'draft', 'missing-asset', 'attestation', 'integrity']) {
-        const marker = path.join(dir, 'selected');
-        fs.rmSync(marker, {force: true});
-        const result = spawnSync('{{ just_executable() }}', ['bump-agent-board'], {encoding: 'utf8', env: {...process.env, ...tokens, PATH: `${dir}:${process.env.PATH}`, CASE: mode, REV: rev, BUMP: '1', MARKER: marker, GITHUB_REPOSITORY: 'cgwalters-forge/tracker'}});
-        assert.equal(result.status === 0, ['ok', 'missing-release', 'draft'].includes(mode), `${mode}: ${result.stdout}\n${result.stderr}`);
-        assert.equal(fs.existsSync(marker), mode === 'ok', `bump must verify before selecting: ${mode}`);
-        console.log(`ok agent-board bump: ${mode}`);
-      }
-      const pins = fs.mkdtempSync(path.join(dir, 'pins-'));
-      fs.mkdirSync(path.join(pins, '.github/workflows'), {recursive: true});
-      fs.copyFileSync('Justfile', path.join(pins, 'Justfile'));
-      const checkPin = () => spawnSync('{{ just_executable() }}', ['agent-board-pin'], {cwd: pins, encoding: 'utf8'});
-      fs.writeFileSync(path.join(pins, '.github/workflows/a.yml'), `env:\n  AGENT_BOARD_REV: ${rev}\n`);
-      assert.equal(checkPin().stdout.trim(), rev);
-      fs.writeFileSync(path.join(pins, '.github/workflows/b.yml'), `env:\n  AGENT_BOARD_REV: ${'b'.repeat(40)}\n`);
-      assert.notEqual(checkPin().status, 0);
-      console.log('ok agent-board pin agreement and mismatch');
-    } finally { fs.rmSync(dir, {recursive: true, force: true}); }
+    JUST_BIN="{{ just_executable() }}" cargo test --locked --manifest-path .github/agentic-job/config-test/Cargo.toml --target-dir "{{ env('CARGO_TARGET_DIR', cache_directory() / 'tracker-config-test') }}" agent_board_
 
 # The shared workflow check that ci.yml's lint job calls, run locally from
 # a checkout of the forge's actions repository (its lint/README.md), the
