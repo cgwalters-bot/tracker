@@ -3,7 +3,6 @@
     {"repository": "bootc-dev/bootc", "workflow": "ci.yml"},
     {"repository": "composefs/composefs-rs", "workflow": "ci.yml"},
     {"repository": "bootc-dev/bcvk", "workflow": "main.yml"},
-    {"repository": "bootc-dev/bcvk", "workflow": "main-c10s.yml"},
     {"repository": "coreos/rpm-ostree", "workflow": "ci.yaml"},
     {"repository": "ostreedev/ostree", "workflow": "tests.yml"},
     {"repository": "ostreedev/ostree", "workflow": "rust.yml"},

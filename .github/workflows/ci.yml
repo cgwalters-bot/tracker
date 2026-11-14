@@ -384,9 +384,11 @@ jobs:
               config_sha256: hash(configBytes), report_sha256: hash(raw)});
           });
           test('explicit bounded scope, default-off policy, serialized default-branch jobs and installer', () => {
-            assert.equal(config.targets.length, 20);
+            assert.equal(config.targets.length, 19);
             assert.equal(new Set(config.targets.map(t => t.repository)).size, 15);
-            assert.equal(new Set(config.targets.map(t => JSON.stringify(t))).size, 20);
+            assert.equal(new Set(config.targets.map(t => JSON.stringify(t))).size, 19);
+            assert.deepEqual(config.targets.filter(t => t.repository === 'bootc-dev/bcvk'),
+              [{repository: 'bootc-dev/bcvk', workflow: 'main.yml'}]);
             assert.equal(JSON.parse(fs.readFileSync('.github/ci-health/publication.json')).publish, false);
             assert.match(workflow, /cron: '43 6 \* \* \*'/);
             assert.match(workflow, /group: ci-health\n  cancel-in-progress: false/);
@@ -404,6 +406,7 @@ jobs:
               const md = result.files.get('2026-11-05.md');
               assert.match(md, /INCOMPLETE OBSERVATIONS/); assert.match(md, /auth \/ truncation \/ logs/);
               assert.match(md, /no data \(0\/0\)/); assert.match(md, /NOT eventual run-level/);
+              assert.match(md, /fixed 19-target baseline/);
             }
           });
           test('warning length bound applies before adding the target label', async () => {
@@ -637,7 +640,7 @@ jobs:
                 assert.equal((full.match(/overdue absent signature/g) ?? []).length, 100);
                 assert.deepEqual(JSON.parse(got.files.get('2026-11-05.json')), r);
                 for (const [heading, total, pattern] of [
-                  ['Warnings', 91, /^- \*\*WARNING:\*\*/gm],
+                  ['Warnings', 4 * config.targets.length + 11, /^- \*\*WARNING:\*\*/gm],
                   ['Findings and groups', 13, /^- bootc-dev\/bootc/gm],
                   ['Absent overdue entries', 100, /overdue absent signature/g],
                 ]) {
@@ -690,13 +693,27 @@ jobs:
           });
           test('saved live JSON renders offline without another collection', async () => {
             const r = JSON.parse(fs.readFileSync(process.env.CI_HEALTH_SAMPLE ?? 'docs/ci-health-2026-11-13.json'));
+            // Historical reports keep their original scope; never delete the
+            // failed target from saved evidence to make today's config match.
+            const targets = r.targets.map(t => t.target);
+            const historical = targets.some(t => t.repository === 'bootc-dev/bcvk' && t.workflow === 'main-c10s.yml');
+            if (historical) {
+              const expected = structuredClone(config.targets);
+              expected.splice(3, 0, {repository: 'bootc-dev/bcvk', workflow: 'main-c10s.yml'});
+              assert.deepEqual(targets, expected);
+              const refused = await run({report: r, now: Date.parse(r.until) + 12 * 3600000});
+              assert.match(refused.error?.message ?? '', /invalid target\/group counts/);
+              assert.equal(refused.calls.length, 0);
+              assert.equal(refused.outputs['dated-ready'], undefined);
+            } else assert.deepEqual(targets, config.targets);
             // Replay at collection time, not the canned fixture's fixed date. The
             // production freshness gate still rejects this sample two days later.
             const collectedAt = Date.parse(r.until) + 12 * 3600000;
-            const got = await run({report: r, now: collectedAt});
+            const got = await run({report: r, targets, now: collectedAt});
             assert.ifError(got.error); assert.equal(got.calls.length, 0);
             assert.ok(got.files.has(r.until.slice(0, 10) + '.md'));
-            const stale = await run({report: r, now: Date.parse(r.until) + 2 * 86400000});
+            assert.match(got.files.get(r.until.slice(0, 10) + '.md'), new RegExp(`fixed ${targets.length}-target baseline`));
+            const stale = await run({report: r, targets, now: Date.parse(r.until) + 2 * 86400000});
             assert.match(stale.error?.message ?? '', /invalid\/stale window/);
             assert.equal(stale.calls.length, 0);
           });
