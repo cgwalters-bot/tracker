@@ -104,6 +104,93 @@ is set by the repository variable `INFERENCE_URL` (or, if unset, the organizatio
 tailnet setting); without joining, the pass paces on the last published
 snapshot. Passes share one concurrency group and never overlap.
 
+### Poll read credential cutover (#1679)
+
+The isolated **Start the agent-board pin bump** step can use Octo STS for its
+two in-org reads: the agent-board branch head and tracker's existing pin PR.
+Its dispatch still uses the job token, and `One pass` still uses the PAT.
+This first slice does **not** give the main pass an independent rate limit.
+The concrete threat is exposing a long-lived credential with bot write access
+to code that needs only two public reads. No write identity, review gate,
+ruleset bypass or accepted author changes in this slice: the App only reads;
+`--author cgwalters-bot` still selects the existing bot-authored pin PR.
+
+It is off by default. Set tracker repository variable `POLL_READ_STS_DOMAIN`
+to the operator's Octo STS hostname (HTTPS, no scheme or path) only after the
+App installation and the org-level policy below are deployed. Leave the
+variable unset to retain the PAT for this step. With it set, minting is capped
+at one minute, the read/dispatch step at two minutes; exchange failure or an
+empty minted token never falls back to the PAT. Unset the variable to roll back.
+The separate existing `AGENT_BOARD_PIN=enabled` gate still controls the step.
+
+The policy belongs in **cgwalters-forge/.github**, not tracker, at
+`.github/chainguard/tracker-poll-reads.sts.yaml`. It is an external prerequisite,
+not a policy deployed by this patch. Before activation, confirm the repository's
+actual OIDC subject form (name-only versus immutable IDs) and substitute that
+exact subject if needed. Do not broaden the subject to accommodate a mismatch.
+The additional claims bind this grant to the exact caller, workflow and main
+branch, not just any job with a repository subject:
+
+```yaml
+issuer: https://token.actions.githubusercontent.com
+subject: repo:cgwalters-forge/tracker:ref:refs/heads/main
+claim_pattern:
+  repository: cgwalters-forge/tracker
+  workflow_ref: cgwalters-forge/tracker/\.github/workflows/poll\.yml@refs/heads/main
+  ref: refs/heads/main
+permissions:
+  contents: read
+  pull_requests: read
+repositories:
+  - agent-board
+  - tracker
+```
+
+Verify a main-branch run with the enabled variable before retiring any secret:
+the exchange and both reads must succeed, the dispatch must still use the job
+token, and a non-main/workflow-mismatched identity must be refused. Offline
+coverage is `cargo test --locked --manifest-path .github/agentic-job/config-test/Cargo.toml poll_read_sts`.
+No live federation or secret setting is performed here.
+
+The main pass cannot yet be cut over safely in this repository alone. Its
+pinned [credential client](https://github.com/cgwalters-forge/agent-board/blob/c80688c0d7d73e5c5cfccc022b95f16375668cb5/crates/board-forge/src/github.rs)
+uses one `GH_TOKEN` for reads and writes, with only dispatch separately routed.
+The pass mixes org reads with external PR follow-up, authored-PR discovery,
+private broker direction, and writes whose receipts are trusted as
+`cgwalters-bot`. First add opt-in org-read routing in agent-board, preserving
+PAT routing for external/private-account reads and identity-sensitive writes,
+then pin and configure that tested revision here. Never replace the entire
+pass token with this two-repository read-only token or broaden its permissions.
+App tokens use the installed App's identity, not `cgwalters-bot`, and tokens
+from one installation share its rate limit: a new policy alone is not a
+dedicated installation or an independent limit from other App users.
+
+Current tracker workflow inventory (14 November 2026; all paths below are
+under `.github/workflows/`) remains unchanged except the optional read step:
+
+| PAT caller | Use and reason it remains |
+| --- | --- |
+| `poll.yml` | Mixed in-org/external reads and bot-authored writes in `One pass`; optional isolated pin reads above |
+| `promote.yml`, `review-send.yml` | Upstream promotion/push/PR publication and approved upstream review comments; retain PAT for external bot actions |
+| `dispatch.yml`, `session.yml`, `supervisor.yml` | Safe-output publication/push/status as the bot, potentially external; supervisor also has mixed private reads and in-org executor/state writes |
+| `agent-board-pin.yml` | In-org pin PR/branch writes as the bot; migrate separately after authorship consumers are tested |
+| `broker-probe.yml` | Reads and incident writes against the broker account outside the org |
+| `release-train.yml` | In-org release/repair reads and writes; separate migration needed |
+| `weekly-blog.yml` | In-org project reads and site issue/board writes; separate migration needed |
+| `retro.yml`, `weekly-eval.yml` | In-org safe-output publication as the bot; separate migration needed |
+| `weekly-comparison.yml` | Accepts `SAFE_OUTPUTS_PAT` from its reusable-workflow caller; publishes in-org comparison changes as that identity |
+
+There are no workflow references to `GH_READ_TOKEN` or
+`STAGING_PROJECT_READ_TOKEN` in this checkout. An org code-search sample also
+found `SAFE_OUTPUTS_PAT` contracts in actions and agentic-job, and a reconcile
+caller in agent-board; these are **not** a complete installed-secret census.
+The remaining org-wide inventory, trust-policy PR, mixed-read routing, writer
+identity compatibility and secret restriction are follow-up slices of #1679.
+**Confirmed repository still needing `CGWALTERS_BOT_PAT`: tracker.** Do not
+restrict the org secret to that selected repository yet: private repositories,
+midstream forks and reusable-workflow secret forwarding have not been fully
+audited, so the exact org-wide remaining list is still unverified.
+
 Scheduling is top-down (`topDown: true`): P0 epic groups are considered before
 unrelated parent discovery spends the request budget. Applying passes hand their
 disposable `.state/pass.json` cache to the next pass as the one-day `pass-state`
