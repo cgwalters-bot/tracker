@@ -180,16 +180,29 @@ under `.github/workflows/`) remains unchanged except the optional read step:
 | `retro.yml`, `weekly-eval.yml` | In-org safe-output publication as the bot; separate migration needed |
 | `weekly-comparison.yml` | Accepts `SAFE_OUTPUTS_PAT` from its reusable-workflow caller; publishes in-org comparison changes as that identity |
 
-There are no workflow references to `GH_READ_TOKEN` or
-`STAGING_PROJECT_READ_TOKEN` in this checkout. An org code-search sample also
-found `SAFE_OUTPUTS_PAT` contracts in actions and agentic-job, and a reconcile
-caller in agent-board; these are **not** a complete installed-secret census.
-The remaining org-wide inventory, trust-policy PR, mixed-read routing, writer
-identity compatibility and secret restriction are follow-up slices of #1679.
-**Confirmed repository still needing `CGWALTERS_BOT_PAT`: tracker.** Do not
-restrict the org secret to that selected repository yet: private repositories,
-midstream forks and reusable-workflow secret forwarding have not been fully
-audited, so the exact org-wide remaining list is still unverified.
+Org-wide workflow census (14 November 2026): the default branches of all 39
+cgwalters-forge repositories, all public (forks included; secure-host is empty),
+were searched for the four secret names. Outside tracker:
+
+| Repository | Use |
+| --- | --- |
+| actions | `cgwalters-agentic-job.yml` and `cgwalters-review.yml` declare and forward `SAFE_OUTPUTS_PAT` to agentic-job; the caller chooses its value |
+| agentic-job | Reusable workflows (`agentic-job.yml`, `policy.yml`, `apply.yml`, `dispatch.yml`, `review.yml`) take `SAFE_OUTPUTS_PAT` for publication and status; the `example*.yml` callers pass it from an apply environment; CI passes none |
+| agent-board | `reconcile.yml` reads its staging project with `STAGING_PROJECT_READ_TOKEN` and passes `SAFE_OUTPUTS_PAT` to apply, both from environments (`staging-project-read`, `staging-project-apply`) |
+
+No workflow outside tracker names `CGWALTERS_BOT_PAT`, and none anywhere names
+`GH_READ_TOKEN`. This covers workflow references only: this run could not list
+installed org, repository or environment secrets, and non-default branches were
+not searched. A secret exposed to all repositories is still available to any
+workflow added on any branch (tracker#1619), which is why the scope should be
+restricted. Each `SAFE_OUTPUTS_PAT` value is an environment secret owned by its
+caller and is migrated separately. The trust-policy PR, mixed-read routing,
+writer identity compatibility and secret restriction are follow-up slices of
+#1679.
+
+**Repositories still needing `CGWALTERS_BOT_PAT`: tracker only.** After the
+operator confirms in settings that no other repository or environment depends
+on the org secret, restrict it to selected repositories: tracker.
 
 Scheduling is top-down (`topDown: true`): P0 epic groups are considered before
 unrelated parent discovery spends the request budget. Applying passes hand their
