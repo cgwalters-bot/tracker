@@ -269,11 +269,43 @@ These counts describe language coverage, not style/nit eligibility or review
 quality. No comment text, IDs, paths, hunks, outcomes or commit metadata are
 copied into the inventory. Mixed-language PRs retain all their counts; the frozen
 sampling protocol must choose their single stratum and allocation before reviews,
-not silently take a majority here. The inventory neither selects the 30 PRs nor
+not silently take a majority here. The inventory itself neither selects the 30 PRs nor
 establishes that enough eligible PRs exist. Archive it with the frozen sample and
 verify `holdout_metadata_sha256` in `provenance.json`. Existing split directories
 are never upgraded in place; an older frozen split remains valid and must not be
 replaced by a newer corpus just to obtain this additional metadata.
+
+### Freezing a text-free evaluation sample
+
+The same offline snippet has an explicit `--sample` mode for #1232:
+
+```sh
+node -e 'eval(require("node:fs").readFileSync("docs/review-corpus.md", "utf8").split("```js split-corpus\n")[1].split("\n```")[0]); main(process.argv.slice(1))' -- --sample holdout-metadata.json plan.json
+```
+
+It prints a JSON candidate sample, not feedback or an evaluation result. First
+verify the inventory's checksum against the frozen split provenance. Archive the
+plan, inventory and output before any review; never try seeds until a desired
+result appears. No workflow invokes this mode.
+
+The plan is `{"seed":"predeclared-seed","allocation":{"Rust":10,"C":10,"other":10}}`.
+Choose allocations from text-free coverage before reviews; omitted strata get
+zero slots, and positive integer allocations must total exactly 30. This is an
+example, not a claim that these strata have enough eligible PRs. The fixed
+mixed-language rule is the largest inline-comment count, with ties broken in
+`Rust, C, shell, Go, Python, docs, other` order. PRs with no inline comments are
+excluded. Within each stratum, rank by SHA-256 of the JSON pair `[seed, canonical
+PR URL]`, then by URL. This is deterministic sampling, not a claim of statistical
+representativeness. Insufficient coverage fails rather than borrowing slots or
+shrinking the sample. Metadata cannot establish style/nit eligibility; record
+later exclusions without substituting favorable PRs or claiming a complete run.
+
+Threat: hand-picking candidates after opening feedback contaminates the held-out
+comparison. This mechanism uses only fixed metadata, emits only URLs/strata and
+counts, and binds the source bytes with a digest. It does not prove the seed was
+predeclared or prevent someone rerunning it. Inventory reads remain bounded to
+128 MiB and 250,000 PRs; the plan is limited to 16 KiB. Unknown fields are rejected
+so feedback cannot accidentally be passed through as sampling provenance.
 
 This command is off unless explicitly invoked; no workflow calls it. To bound a
 malformed snapshot, compressed corpus and state are each limited to 128 MiB,
@@ -401,9 +433,66 @@ function splitSnapshot(tag, snapshot, output) {
   return split.counts;
 }
 
+function sampleInventory(bytes, plan) {
+  const fields = (value, names) => value && typeof value === 'object' && !Array.isArray(value)
+    && Object.keys(value).length === names.length && names.every(name => Object.hasOwn(value, name));
+  requireThat(fields(plan, ['seed', 'allocation']) && typeof plan.seed === 'string'
+    && plan.seed.trim().length > 0 && plan.seed.length <= 128, 'expected a predeclared seed and allocation');
+  requireThat(plan.allocation && typeof plan.allocation === 'object' && !Array.isArray(plan.allocation)
+    && Object.entries(plan.allocation).every(([language, n]) => LANGUAGES.includes(language)
+      && Number.isSafeInteger(n) && n > 0 && n <= 30)
+    && Object.values(plan.allocation).reduce((a, b) => a + b, 0) === 30, 'allocation must total 30 across known strata');
+  requireThat(bytes.length <= MAX_BYTES, 'inventory exceeds 128 MiB');
+  let inventory;
+  try { inventory = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+  catch { throw new Error('invalid inventory UTF-8 or JSON'); }
+  requireThat(fields(inventory, ['schema', 'prs']) && inventory.schema === 'review-checklist.holdout-metadata.v1'
+    && Array.isArray(inventory.prs) && inventory.prs.length <= MAX_RECORDS, 'invalid inventory schema or PR count');
+  const seen = new Set();
+  const strata = Object.fromEntries(LANGUAGES.map(language => [language, []]));
+  for (const pr of inventory.prs) {
+    requireThat(fields(pr, ['url', 'first_feedback', 'inline_comments', 'inline_languages'])
+      && typeof pr.url === 'string' && pr.url.length <= 1024
+      && /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/pull\/[1-9][0-9]*$/.test(pr.url)
+      && typeof pr.first_feedback === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(pr.first_feedback)
+      && Number.isFinite(Date.parse(pr.first_feedback))
+      && new Date(pr.first_feedback).toISOString() === pr.first_feedback.replace('Z', '.000Z')
+      && pr.first_feedback >= CUTOFF, 'invalid held-out PR metadata');
+    const url = pr.url.toLowerCase();
+    requireThat(!seen.has(url), 'duplicate inventory PR');
+    seen.add(url);
+    requireThat(fields(pr.inline_languages, LANGUAGES) && Number.isSafeInteger(pr.inline_comments)
+      && pr.inline_comments >= 0 && pr.inline_comments <= MAX_RECORDS
+      && Object.values(pr.inline_languages).every(n => Number.isSafeInteger(n) && n >= 0 && n <= MAX_RECORDS)
+      && Object.values(pr.inline_languages).reduce((a, b) => a + b, 0) === pr.inline_comments, 'invalid inline counts');
+    if (!pr.inline_comments) continue;
+    const language = LANGUAGES.reduce((best, next) => pr.inline_languages[next] > pr.inline_languages[best] ? next : best);
+    strata[language].push({ url, rank: digest(JSON.stringify([plan.seed, url])) });
+  }
+  const prs = [];
+  const available = {};
+  const allocation = {};
+  for (const language of LANGUAGES) {
+    available[language] = strata[language].length;
+    allocation[language] = plan.allocation[language] ?? 0;
+    requireThat(available[language] >= allocation[language], `insufficient candidates for ${language}; freeze a feasible allocation before reviews`);
+    strata[language].sort((a, b) => a.rank < b.rank ? -1 : a.rank > b.rank ? 1 : a.url < b.url ? -1 : 1);
+    prs.push(...strata[language].slice(0, allocation[language]).map(({ url }) => ({ url, language })));
+  }
+  return { schema: 'review-checklist.sample.v1', inventory_sha256: digest(bytes), seed: plan.seed,
+    stratum_rule: 'largest-inline-count; ties: Rust,C,shell,Go,Python,docs,other', allocation, available, prs };
+}
+
 function main(args) {
+  if (args.length === 3 && args[0] === '--sample') {
+    let plan;
+    try { plan = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(readBounded(args[2], 16384))); }
+    catch { throw new Error('invalid or oversized sampling plan'); }
+    console.log(JSON.stringify(sampleInventory(readBounded(args[1], MAX_BYTES), plan), null, 2));
+    return;
+  }
   if (args.length !== 3 || args.includes('--help')) {
-    console.log('Usage: TAG SNAPSHOT NEW_OUTPUT (see "Preparing the frozen checklist split" in docs/review-corpus.md)\nOffline only; verify release notes and download the four snapshot assets first.\nWrites training.jsonl, held-out PR URLs, text-free sampling metadata and provenance; never prints feedback.');
+    console.log('Usage: TAG SNAPSHOT NEW_OUTPUT | --sample INVENTORY PLAN (see "Preparing the frozen checklist split" in docs/review-corpus.md)\nOffline only; verify release notes and download the four snapshot assets first.\nWrites training.jsonl, held-out PR URLs, text-free sampling metadata and provenance; sampling prints candidate URLs/strata, never feedback.');
     process.exitCode = args.includes('--help') ? 0 : 1;
     return;
   }

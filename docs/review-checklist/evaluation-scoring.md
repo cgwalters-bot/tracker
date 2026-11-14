@@ -31,8 +31,11 @@ Select the 30-PR language-stratified sample from the frozen whole-PR holdout, wi
 at least one eligible inline operator comment per PR.
 Use the splitter's [text-free sampling inventory](../review-corpus.md#preparing-the-frozen-checklist-split)
 to check inline-comment availability and language coverage without opening held-out
-feedback. Counts do not establish style/nit eligibility; freeze the mixed-language
-stratum rule and allocation separately. Archive the selection seed,
+feedback. The explicitly invoked [candidate sampler](../review-corpus.md#freezing-a-text-free-evaluation-sample)
+can freeze 30 candidates using a predeclared seed/allocation and its documented
+largest-inline-count stratum rule. Counts do not establish style/nit eligibility;
+archive exclusions rather than silently replacing candidates after reading feedback.
+Archive the selection seed,
 PR URLs, strata and exact pre-review head/base commits. Run baseline and checklist
 reviews independently on those same historical inputs, without operator feedback,
 later fixes or the other pass's findings. Archive findings and model/run provenance
