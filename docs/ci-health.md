@@ -173,6 +173,15 @@ artifact; the population table, provenance, coverage caveats and overall
 publication off. Offline tests cover escaped and multibyte text, omission counts,
 artifact retention and both preview and opted-in publication.
 
+Once validation and both dated file writes finish, the workflow marks the pair
+ready for upload. The upload still runs if the later summary, marker checks or
+status API write fails; the reporting step and job remain failed. This prevents
+a publication outage from discarding the validated evidence needed to diagnose
+it. Invalid reports and partially written pairs are not uploaded as dated
+reports, and cancellation does not force an upload. The original raw artifact
+remains separate. Offline regressions inject summary/API and file-write failures
+and check the upload condition; no live publication acceptance is implied.
+
 The `Test CI-health saved reports and publication` step in `ci.yml` executes the actual inline script with canned API and file
 seams, including dry-run/update, hostile excerpts, wrong refs, report/provenance
 refusal, no data, incomplete history and seven-day/absent-signature boundaries.
@@ -180,7 +189,7 @@ It runs alongside `just test` in the required CI job, including the retained
 November 13 live sample. To run that same Node step locally without dependencies:
 
 ```sh
-node -e 'const fs = require("node:fs"); const w = fs.readFileSync(".github/workflows/ci.yml", "utf8"); eval(/shell: node \{0\}\n        run: \|\n([\s\S]+?)\n\n  # actionlint/.exec(w)[1].replace(/^          /gm, ""));'
+node -e 'const fs = require("node:fs"); const w = fs.readFileSync(".github/workflows/ci.yml", "utf8").split("- name: Test CI-health saved reports and publication\n")[1]; eval(/shell: node \{0\}\n        run: \|\n([\s\S]+?)\n\n  # actionlint/.exec(w)[1].replace(/^          /gm, ""));'
 ```
 
 Setting `CI_HEALTH_SAMPLE=/path/report.json` substitutes another saved

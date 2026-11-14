@@ -86,6 +86,7 @@ jobs:
           name: ci-health-raw-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/ci-health
       - name: Validate, render saved JSON, and update owned status
+        id: render
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         env:
           PREVIEW: ${{ github.event_name != 'schedule' && inputs.preview != false }}
@@ -233,6 +234,7 @@ jobs:
               check(Buffer.byteLength(full) <= 4 * 1024 * 1024, 'rendered report too large');
               fs.writeFileSync(base + r.until.slice(0, 10) + '.json', raw);
               fs.writeFileSync(base + r.until.slice(0, 10) + '.md', full);
+              core.setOutput('dated-ready', 'true');
               // Valid log text can expand after escaping or UTF-8 encoding and
               // otherwise prevent any status update. Bound each detail section
               // in bytes, keeping whole entries and disclosing every omission.
@@ -283,6 +285,9 @@ jobs:
               throw error;
             }
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        # A failed summary or status write must not discard validated reports.
+        # Never upload a partial pair or reports refused before validation.
+        if: ${{ !cancelled() && steps.render.outputs.dated-ready == 'true' }}
         with:
           name: ci-health-dated-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
