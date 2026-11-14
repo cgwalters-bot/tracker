@@ -113,6 +113,18 @@ IDs are listed for follow-up against the archive. `sample_size` and
 held-out evaluation. Publish the archived evidence and limitations with any eventual
 evaluation report, not just this summary.
 
+Aggregate recall can hide a regression when new catches replace lost catches.
+The additive `paired` output therefore partitions eligible operator comments into
+`both`, `baseline_only`, `checklist_only` and `neither`. It gives counts in `totals`
+and `languages`, and comment IDs in `prs` for archive lookup, in ledger order.
+Each comment appears exactly once per PR, even when several findings match it;
+the same ID on another PR is a separate comment. The four counts sum to the
+operator-comment denominator. Baseline recall uses `both + baseline_only`, and
+checklist recall uses `both + checklist_only`. Inspect baseline-only losses as
+well as checklist-only gains; neither category establishes causation or statistical
+significance. These are paired observations from the existing adjudications, not
+new matching judgments. Input schema, invocation and fixed bounds are unchanged.
+
 ## Offline scorer
 
 This explicitly invoked snippet stays in documentation because deployment code
@@ -149,6 +161,10 @@ function counts() {
     supported_unmatched: 0, noise_unmatched: 0, unresolved_unmatched: 0 };
 }
 
+function pairedCounts() {
+  return { both: 0, baseline_only: 0, checklist_only: 0, neither: 0 };
+}
+
 // Matching is an adjudicator's job. This only checks and counts the ledger.
 export function score(input) {
   requireThat(input?.schema === 'checklist-scores/v1', 'expected checklist-scores/v1');
@@ -164,7 +180,8 @@ export function score(input) {
   unique(input.prs.map(pr => typeof pr?.url === 'string' ? pr.url.toLowerCase() : pr?.url), 'PRs');
   const result = { schema: 'checklist-scores/v1', checklist_version: input.checklist_version,
     sample: input.sample, adjudicator: input.adjudicator, runs: input.runs,
-    sample_size: input.prs.length, target_sample_size: 30, totals: {}, languages: {}, unmatched: [] };
+    sample_size: input.prs.length, target_sample_size: 30, totals: {}, languages: {}, unmatched: [],
+    paired: { totals: pairedCounts(), languages: {}, prs: [] } };
   for (const pass of PASSES) result.totals[pass] = counts();
   for (const pr of input.prs) {
     requireThat(/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/pull\/[1-9][0-9]*$/.test(pr.url), 'invalid PR URL');
@@ -173,6 +190,7 @@ export function score(input) {
     requireThat(pr.comments.length > 0, 'each PR needs at least one eligible operator comment');
     unique(pr.comments, 'operator comments');
     result.languages[pr.language] ??= Object.fromEntries(PASSES.map(pass => [pass, counts()]));
+    const catches = {};
     for (const pass of PASSES) {
       list(pr[pass], 1000, `${pass} findings`);
       unique(pr[pass].map(finding => finding?.id), `${pass} findings`);
@@ -202,12 +220,24 @@ export function score(input) {
         }
       }
       current.caught = caught.size;
+      catches[pass] = caught;
       current.missed = pr.comments.length - caught.size;
       for (const key of Object.keys(current)) {
         result.totals[pass][key] += current[key];
         result.languages[pr.language][pass][key] += current[key];
       }
     }
+    result.paired.languages[pr.language] ??= pairedCounts();
+    const paired = { pr: pr.url, both: [], baseline_only: [], checklist_only: [], neither: [] };
+    for (const id of pr.comments) {
+      const baseline = catches.baseline.has(id);
+      const checklist = catches.checklist.has(id);
+      const category = baseline ? (checklist ? 'both' : 'baseline_only') : (checklist ? 'checklist_only' : 'neither');
+      paired[category].push(id);
+      result.paired.totals[category]++;
+      result.paired.languages[pr.language][category]++;
+    }
+    result.paired.prs.push(paired);
   }
   return result;
 }

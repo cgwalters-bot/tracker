@@ -287,6 +287,30 @@ jobs:
               assert.equal(result.target_sample_size, 30);
             });
 
+            test('paired catches expose gains and losses even when aggregate recall is unchanged', () => {
+              const input = ledger();
+              input.prs[0].baseline.push({ id: 'b3', matches: ['c3'], reason: 'baseline-only concern' });
+              const before = structuredClone(input);
+              const result = score(input);
+              assert.equal(result.totals.baseline.caught, result.totals.checklist.caught);
+              assert.deepEqual(result.paired.totals, { both: 1, baseline_only: 1, checklist_only: 1, neither: 1 });
+              assert.deepEqual(result.paired.languages, {
+                Rust: { both: 1, baseline_only: 1, checklist_only: 1, neither: 0 },
+                C: { both: 0, baseline_only: 0, checklist_only: 0, neither: 1 },
+              });
+              assert.deepEqual(result.paired.prs, [
+                { pr: input.prs[0].url, both: ['c1'], baseline_only: ['c3'], checklist_only: ['c2'], neither: [] },
+                { pr: input.prs[1].url, both: [], baseline_only: [], checklist_only: [], neither: ['c1'] },
+              ]);
+              assert.deepEqual(input, before);
+              for (const pr of input.prs) { pr.baseline = []; pr.checklist = []; }
+              assert.deepEqual(score(input).paired.totals, { both: 0, baseline_only: 0, checklist_only: 0, neither: 4 });
+              for (const pass of ['baseline', 'checklist']) {
+                for (const pr of input.prs) pr[pass] = [{ id: 'all', matches: pr.comments, reason: 'all concerns' }];
+              }
+              assert.deepEqual(score(input).paired.totals, { both: 4, baseline_only: 0, checklist_only: 0, neither: 0 });
+            });
+
             test('PR identity ignores owner/repository case, not PR number or repository', () => {
               for (const url of ['https://github.com/Example/project/pull/1',
                 'https://github.com/example/Project/pull/1', 'https://github.com/EXAMPLE/PROJECT/pull/1']) {
