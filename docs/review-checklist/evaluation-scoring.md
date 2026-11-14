@@ -96,6 +96,11 @@ chosen at sampling. Comment IDs are unique within a PR; finding IDs within a
 PR/pass. Audited unmatched findings require a reason; matched findings require a
 reason and must not carry an unmatched audit state. Unknown comment references,
 duplicate IDs and missing passes fail rather than silently changing denominators.
+PR identity ignores owner/repository letter case: listing `example/project` and
+`Example/Project` with the same PR number is an error, even across language strata.
+This prevents duplicate PRs from inflating sample size and comment/finding counts.
+Distinct repositories or PR numbers remain separate; output keeps the submitted URL
+spelling for archive lookup. Repository renames and transfers are not resolved offline.
 
 The JSON result retains provenance references and reports counts in total and per
 language, separately for baseline and checklist. `caught / operator_comments` is
@@ -156,7 +161,7 @@ export function score(input) {
   }
   list(input.prs, 30, 'PRs');
   requireThat(input.prs.length > 0, 'at least one PR is required');
-  unique(input.prs.map(pr => pr?.url), 'PRs');
+  unique(input.prs.map(pr => typeof pr?.url === 'string' ? pr.url.toLowerCase() : pr?.url), 'PRs');
   const result = { schema: 'checklist-scores/v1', checklist_version: input.checklist_version,
     sample: input.sample, adjudicator: input.adjudicator, runs: input.runs,
     sample_size: input.prs.length, target_sample_size: 30, totals: {}, languages: {}, unmatched: [] };

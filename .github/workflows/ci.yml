@@ -287,6 +287,27 @@ jobs:
               assert.equal(result.target_sample_size, 30);
             });
 
+            test('PR identity ignores owner/repository case, not PR number or repository', () => {
+              for (const url of ['https://github.com/Example/project/pull/1',
+                'https://github.com/example/Project/pull/1', 'https://github.com/EXAMPLE/PROJECT/pull/1']) {
+                const input = ledger();
+                input.prs[1].url = url;
+                assert.throws(() => score(input), /PRs: empty or duplicate ID/);
+              }
+              for (const url of ['https://github.com/Example/Project/pull/2',
+                'https://github.com/Example/Other/pull/1', 'https://github.com/Other/Project/pull/1']) {
+                const input = ledger();
+                input.prs[0].url = url;
+                input.prs[1].url = 'https://github.com/example/project/pull/1';
+                const before = structuredClone(input);
+                const result = score(input);
+                assert.equal(result.sample_size, 2);
+                assert.equal(result.totals.baseline.operator_comments, 4);
+                assert.equal(result.unmatched[0].pr, url, 'retain the archived URL spelling');
+                assert.deepEqual(input, before, 'do not mutate the ledger');
+              }
+            });
+
             test('refuses ambiguous or incomplete adjudications rather than silently improving scores', () => {
               for (const mutate of [
                 x => { x.schema = 'other'; }, x => { delete x.runs.checklist; },
@@ -317,6 +338,13 @@ jobs:
                 assert.equal(ok.status, 0, ok.stderr);
                 assert.deepEqual(JSON.parse(ok.stdout), score(ledger()));
                 assert.equal(run(['--help']).status, 0);
+                const duplicate = ledger();
+                duplicate.prs[1].url = 'https://github.com/EXAMPLE/PROJECT/pull/1';
+                writeFileSync(file, JSON.stringify(duplicate));
+                const rejected = run([file]);
+                assert.equal(rejected.status, 1);
+                assert.equal(rejected.stdout, '');
+                assert.match(rejected.stderr, /PRs: empty or duplicate ID/);
                 for (const content of ['{"private-feedback": broken', ' '.repeat(1024 * 1024 + 1)]) {
                   writeFileSync(file, content);
                   const bad = run([file]);
