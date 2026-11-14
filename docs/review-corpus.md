@@ -75,6 +75,16 @@ stopped early in the notes and `status.json`, and the run fails. Dispatch it aga
 The publishing job's token can write the repository's contents, but the job
 runs only `gh release` commands on its own new release.
 
+An API error or a non-integer quota response also stops collection, using the
+same bounded termination, but fails the collection step rather than reporting
+an ordinary quota stop. Otherwise an unavailable quota endpoint could let the
+collector drain the token shared with review and dispatch. Retained output can
+still be published as incomplete (`complete: false`, `stopped_for_quota: false`);
+if the first run has no corpus/state yet, packing fails and nothing is published.
+Retry after quota reads recover. Setting the reserve to 0 skips quota reads
+altogether. `just test-review-corpus` exercises these paths offline, including
+a collector that ignores SIGTERM; it does not run a live backfill.
+
 If an upload is interrupted, the run leaves an unpublished draft release.
 The next run ignores drafts and resumes from the last published release, so
 nothing is lost but that run's work; delete the draft by hand. The
