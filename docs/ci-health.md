@@ -249,6 +249,18 @@ the upload-ready output, or a status write. The existing 30-day, midnight and
 freshness checks still apply. Offline tests cover both endpoints, normalized
 invalid dates, valid boundaries and replay of the retained collector sample.
 
+Failure observations' `first_seen` timestamps must also round-trip through UTC
+inside `[since, until)`. Unlike window endpoints, the pinned collector preserves
+GitHub's `created_at` text here: accept second precision (`...:00Z`) as well as
+the millisecond report form (`...:00.000Z`). They need not be midnight.
+Otherwise an impossible date such as February 30 can be
+silently normalized into the reporting window and accepted as failure evidence.
+The existing validator rejects rather than repairs that input before dated files
+or publication; no new control or request is added and publication remains off.
+Regression tests cover normalized dates, alternate spellings, invalid types, both
+window edges and valid sub-day instants. Hosted acceptance remains with #1229;
+this does not replace the evidence work in #1618 or complete the epic.
+
 The noncanonical-date fixtures require parseable input, not epoch equality with
 UTC midnight: Node parses slash-form dates in the local timezone. This keeps the
 offline check usable outside UTC without weakening the renderer's exact-format

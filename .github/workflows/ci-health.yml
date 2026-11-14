@@ -204,7 +204,13 @@ jobs:
                 check(Array.isArray(o.run_ids) && o.run_ids.length > 0 && o.run_ids.length <= 1000 &&
                   new Set(o.run_ids).size === o.run_ids.length, 'invalid run IDs');
                 o.run_ids.forEach(integer); integer(o.occurrences);
-                check(o.occurrences >= o.run_ids.length && Date.parse(o.first_seen) >= since && Date.parse(o.first_seen) < until, 'invalid observation');
+                // A normalized invalid date can place a failure inside the
+                // window. The collector preserves GitHub's created_at, which
+                // uses seconds; also accept the millisecond UTC report form.
+                const firstSeen = Date.parse(o.first_seen);
+                check(o.occurrences >= o.run_ids.length && firstSeen >= since && firstSeen < until &&
+                  [new Date(firstSeen).toISOString(), new Date(firstSeen).toISOString().replace('.000Z', 'Z')]
+                    .includes(o.first_seen), 'invalid observation');
                 assert.deepStrictEqual(g.classification, config.index[o.signature] ?? null, 'unreviewed classification');
                 check(g.class === (config.index[o.signature]?.class ?? 'unknown'), 'unreviewed class');
                 check(Array.isArray(o.samples) && o.samples.length <= 3, 'invalid samples');

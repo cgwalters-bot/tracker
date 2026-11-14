@@ -359,6 +359,31 @@ jobs:
             return {error, calls, files, summaries, outputs};
           }
           const owned = body => ({id: 9, body, user: {login: 'github-actions[bot]', type: 'Bot'}, issue_url: 'https://api.github.com/repos/cgwalters-forge/tracker/issues/1229'});
+          test('observation dates are canonical UTC instants in the half-open window', async () => {
+            const end = Date.UTC(2026, 2, 5), start = end - 30 * 86400000;
+            for (const [firstSeen, valid] of [
+              [iso(start), true], [iso(end - 1), true], ['2026-02-28T12:34:56.789Z', true],
+              [iso(start - 1), false], [iso(end), false],
+              ['2026-02-30T00:00:00.000Z', false],
+              ['2026-03-02T00:00:00Z', true], ['2026-03-02T01:00:00.000+01:00', false],
+              ['2026-03-02', false], ['not a date', false], [null, false],
+            ]) {
+              const r = report(); r.since = iso(start); r.until = iso(end);
+              r.groups = [group()]; r.groups[0].observation.first_seen = firstSeen;
+              const result = await run({report: r, now: end + 3600000, publish: true, preview: false});
+              if (valid) {
+                assert.equal(result.error, undefined, firstSeen);
+                assert.equal(result.calls.length, 1);
+                assert.equal(result.outputs['dated-ready'], 'true');
+              } else {
+                assert.match(result.error?.message ?? '', /invalid observation/, String(firstSeen));
+                assert.equal(result.calls.length, 0);
+                assert.equal(result.outputs['dated-ready'], undefined);
+                assert.deepEqual([...result.files.keys()], ['report.json', 'provenance.json']);
+              }
+            }
+          });
+
           test('collector step invokes once and binds saved bytes to run and config', () => {
             const collect = /        shell: node \{0\}\n        run: \|\n([\s\S]+?)\n      - uses: actions\/upload-artifact/.exec(workflow)[1].replace(/^          /gm, '');
             const configBytes = fs.readFileSync('.github/ci-health/config.json');
