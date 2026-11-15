@@ -45,12 +45,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: cgwalters-forge/agentic-job
-          ref: 427ce2295925654be9c35e91ca5cee91bbc2c9ea # supports own_author in the current bounds
+          ref: 489c69d53cc23b989131952c9e3ca4d5add4e2b5 # v0.6.14, as dispatch.yml's run wrapper
           path: _dispatch-policy
           persist-credentials: false
       - name: Install the pinned policy binary by verified source digest
         env:
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW_REPOSITORY: cgwalters-forge/agentic-job
         run: |
           bash _dispatch-policy/secure-host/binary.sh get --out "$RUNNER_TEMP/dispatch-policy-bin"
           echo "$RUNNER_TEMP/dispatch-policy-bin" >> "$GITHUB_PATH"

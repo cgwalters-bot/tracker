@@ -22,7 +22,8 @@
 # `profile` job puts it before the task, so a dispatch carries only what is
 # particular to its item. The wrapper adds its own line on top, which says
 # what the kind may hand back.
-# Non-review calls pin actions#250 for item-repo forwarding. Review is a separate immutable call:
+# Non-review calls pin the wrapper at agentic-job v0.6.14, whose policy reads
+# the bounds' organization rules. Review is a separate immutable call:
 # its wrapper owns REVIEW_POOLS, base policy/config and checked submission.
 name: dispatch
 run-name: ${{ inputs.kind }} ${{ inputs.repo }}#${{ inputs.item }}${{ inputs.kind == 'review' && format(' {0} ({1})', inputs.head, inputs.pool) || (inputs.pool && format(' ({0})', inputs.pool) || '') }}${{ inputs.kind != 'review' && inputs.config == 'acp-experiment' && ' [acp-experiment]' || '' }}
@@ -385,7 +386,7 @@ jobs:
   run:
     needs: profile
     if: ${{ inputs.kind != 'review' }}
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@428fc617f985f8c5c4aabaf22afdbf2dfc744010
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@652610d2907f74c8e9ea711fec2ee30a18a98d6e
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:
