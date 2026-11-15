@@ -1,6 +1,6 @@
 # Publishes cgwalters' public review feedback on other people's pull
 # requests as a dated `review-corpus-YYYYMMDD-HHMMSS` release of this
-# repository, a new one each refresh, weekly (#1230, part of #1224);
+# repository, daily while incomplete, then weekly (#1230, part of #1224);
 # docs/review-corpus.md says what it holds and how to pin it. This
 # repository's releases are immutable once published, so each is created as
 # a draft, given its assets and only then published. misctool's
@@ -10,8 +10,8 @@
 name: review-corpus
 on:
   schedule:
-    # Sundays 05:17 UTC.
-    - cron: '17 5 * * 0'
+    # Daily 05:17 UTC; recent complete snapshots skip collection below.
+    - cron: '17 5 * * *'
   workflow_dispatch:
 permissions: {}
 # The collector's state allows one writer: two runs resuming from the same
@@ -37,8 +37,33 @@ env:
   # hourly limit (1000 requests), which a step checks; 0 turns it off.
   RATE_LIMIT_RESERVE: 500
 jobs:
-  collect:
+  freshness:
     if: ${{ vars.REVIEW_CORPUS == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      # Avoid spending the shared quota on redundant daily refreshes once the
+      # backfill finishes. Missing historical markers still allow collection.
+      - name: Check snapshot freshness
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 1000 --json tagName \
+            --jq "[.[].tagName | select(test(\"^${RELEASE_PREFIX}[0-9]{8}-[0-9]{6}\$\"))] | sort | last // empty")
+          [[ -n $latest ]] || exit 0
+          gh release view "$latest" --repo "$GITHUB_REPOSITORY" --json publishedAt,assets > release.json
+          jq -e 'any(.assets[]; .name == "status.json")' release.json > /dev/null || exit 0
+          gh release download "$latest" --repo "$GITHUB_REPOSITORY" --pattern status.json --output status.json
+          skip=$(jq -nr --slurpfile release release.json --slurpfile status status.json \
+            '$status[0].complete == true and (now - ($release[0].publishedAt | fromdateiso8601) | . >= 0 and . < 6 * 86400)')
+          echo "skip=$skip" >> "$GITHUB_OUTPUT"
+
+  collect:
+    needs: freshness
+    if: ${{ vars.REVIEW_CORPUS == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.freshness.outputs.skip != 'true' }}
     runs-on: ubuntu-26.04
     # The collection (300) and the rest, within GitHub's six-hour job limit.
     timeout-minutes: 350

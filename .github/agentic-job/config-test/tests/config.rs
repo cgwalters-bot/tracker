@@ -246,6 +246,73 @@ fn weekly_comparison_probe(script: &str) {
 }
 
 #[test]
+fn review_corpus_freshness() {
+    weekly_comparison_probe(r#"
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const workflow = fs.readFileSync('.github/workflows/review-corpus.yml', 'utf8');
+const freshness = workflow.split('\n  freshness:\n')[1].split('\n  collect:\n')[0];
+const script = /run: \|\n([^]*)/.exec(freshness)[1].replace(/^          /gm, '');
+assert.match(workflow, /cron: '17 5 \* \* \*'/);
+assert.match(freshness, /timeout-minutes: 5/);
+assert.match(freshness, /if: \$\{\{ vars.REVIEW_CORPUS == 'enabled' && github.ref == format\('refs\/heads\/\{0\}', github.event.repository.default_branch\) \}\}/);
+assert.match(freshness, /skip: \$\{\{ steps.check.outputs.skip \}\}/);
+assert.match(workflow, /collect:\n    needs: freshness\n    if: .*needs.freshness.outputs.skip != 'true'/);
+assert.match(workflow, /publish:\n    needs: collect/);
+const resumeSelection = /latest=([^]*?last \/\/ empty"\))/.exec(workflow.split('- name: Download the current corpus')[1])[0];
+assert.ok(script.includes(resumeSelection.replace(/^          /gm, '')), 'same newest-release selection as resume');
+const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'corpus-freshness-'));
+try {
+  // Only transport is stubbed; use the workflow's real shell and jq decisions.
+  fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}
+const fs = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const args = process.argv.slice(2), rows = JSON.parse(process.env.RELEASES);
+if (process.env.FAIL === args[1]) process.exit(1);
+const row = rows.find(r => r.tagName === args[2]);
+if (args[1] === 'list') process.stdout.write(execFileSync('jq', ['-r', args[args.indexOf('--jq') + 1]],
+  { input: JSON.stringify(rows.filter(r => !r.draft)) }));
+else if (args[1] === 'view') process.stdout.write(JSON.stringify(row));
+else if (args[1] === 'download') fs.writeFileSync(args[args.indexOf('--output') + 1], process.env.RAW_STATUS ?? JSON.stringify(row.status));
+else throw Error('unexpected gh command');
+`, { mode: 0o755 });
+  const now = Date.now();
+  const dated = (n, complete, ageDays) => ({ tagName: `review-corpus-20261105-00000${n}`, draft: false,
+    status: { complete }, assets: [{ name: 'status.json' }],
+    publishedAt: new Date(now - ageDays * 86400000).toISOString().replace(/\.\d{3}Z$/, 'Z') });
+  const cases = [
+    { rows: [], skip: '' },
+    { rows: [dated(1, true, 1)], skip: 'true' },
+    { rows: [dated(1, true, 6 - 1 / 1440)], skip: 'true' },
+    { rows: [dated(1, true, 6)], skip: 'false' },
+    { rows: [dated(1, true, 7)], skip: 'false' },
+    { rows: [dated(1, true, -1)], skip: 'false' },
+    ...[false, 'true', null].map(complete => ({ rows: [dated(1, complete, 1)], skip: 'false' })),
+    { rows: [{ ...dated(1, true, 1), assets: [] }], skip: '' },
+    // Newest incomplete wins over older complete; drafts/undated tags do not win.
+    { rows: [dated(2, false, 1), dated(1, true, 1)], skip: 'false' },
+    { rows: [{ ...dated(3, false, 1), draft: true }, dated(1, true, 1), { tagName: 'review-corpus' }], skip: 'true' },
+    ...['list', 'view', 'download'].map(fail => ({ rows: [dated(1, true, 1)], fail })),
+    { rows: [dated(1, true, 1)], raw: '{', fail: 'parse' },
+  ];
+  for (const scenario of cases) {
+    fs.writeFileSync(`${temp}/output`, '');
+    fs.rmSync(`${temp}/status.json`, { force: true });
+    const got = spawnSync('bash', ['-euo', 'pipefail', '-c', script], { cwd: temp, encoding: 'utf8',
+      env: { ...process.env, PATH: `${temp}:${process.env.PATH}`, RELEASES: JSON.stringify(scenario.rows),
+        RELEASE_PREFIX: 'review-corpus-', GITHUB_REPOSITORY: 'example/tracker', GITHUB_OUTPUT: `${temp}/output`,
+        FAIL: scenario.fail, RAW_STATUS: scenario.raw }, timeout: 10000 });
+    assert.equal(got.error, undefined);
+    assert.equal(got.status === 0, !scenario.fail, JSON.stringify(scenario));
+    assert.equal(fs.readFileSync(`${temp}/output`, 'utf8'),
+      scenario.skip ? `skip=${scenario.skip}\n` : '', JSON.stringify(scenario));
+  }
+} finally { fs.rmSync(temp, { recursive: true, force: true }); }
+"#);
+}
+
+#[test]
 fn review_corpus_publication() {
     weekly_comparison_probe(r#"
 const assert = require('node:assert/strict');
