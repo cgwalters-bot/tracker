@@ -50,9 +50,19 @@ change with each refresh.
 
 ## Refreshing
 
-`.github/workflows/review-corpus.yml` runs weekly and on manual dispatch,
-once the repository variable `REVIEW_CORPUS` is `enabled`. It installs the
-pinned misctool release and verifies its build attestation. It downloads the
+`.github/workflows/review-corpus.yml` runs daily at 05:17 UTC and on manual dispatch,
+once the repository variable `REVIEW_CORPUS` is `enabled`. A five-minute preflight
+uses the same newest-published-dated-release selection as resume. If that release's
+`status.json` has boolean `complete: true` and its publication is less than six
+days old, collection and publication are skipped, including on manual dispatch.
+This avoids spending the shared API quota on redundant daily refreshes: incomplete
+backfills run daily, then complete snapshots refresh roughly weekly. No release or
+a historical release without `status.json` allows collection; API/download failures
+stop the run. The existing opt-in and quota reserve are unchanged.
+`just test-config` covers this decision offline using the workflow's actual shell
+and jq filter, including incomplete/old snapshots and read failures.
+When collecting, it installs the pinned misctool release and verifies its build
+attestation. It downloads the
 corpus and state of the newest published `review-corpus-*` release, collects
 from where the state left off and publishes the result as a new release:
 created as a draft, given its four assets, then published. The first run,
