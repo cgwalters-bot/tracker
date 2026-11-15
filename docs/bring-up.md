@@ -89,9 +89,11 @@ gh workflow run dispatch.yml -R cgwalters-forge/tracker \
 ```
 
 `KIND` is implement, review, fix, triage or research; `N` is an issue, or a
-pull request for review and fix; `OWNER/REPO` must be listed in
+pull request for review and fix; `OWNER/REPO` must be admitted by
 `.github/agentic-job/dispatch.toml` (`fix.toml` for a fix), or, for a
-midstream fork, in `midstream.toml` and `midstream-fix.toml` instead.
+midstream fork, by `midstream.toml` and `midstream-fix.toml` instead.
+dispatch.toml and midstream.toml admit the organization's repositories
+by their live metadata; the fix bounds still name theirs.
 
 For a staged implement issue, add `-f issue_repo=cgwalters-forge/tracker`:
 `N` then names the issue there, while `repo` remains the checkout and PR

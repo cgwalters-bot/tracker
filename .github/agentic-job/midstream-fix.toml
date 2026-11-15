@@ -2,9 +2,13 @@
 # fix.toml's bounds without `ready_when_complete`, so apply never takes a
 # midstream pull request out of draft; midstream.toml says why. The profile
 # job of dispatch.yml passes this file as the wrapper's `fix-allow` for a
-# target listed here.
+# target that midstream.toml's rule matches. Unlike midstream.toml, `repos`
+# stays a list of names: the pass also reads this file (poll.yml's
+# `--fix-bounds`), and agent-board's reader at its pin refuses an
+# organization rule, so a fork given the topic is fixed only once it is
+# named here too.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows"]
+repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/ostree", "cgwalters-forge/gh-agentic-workflows"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576

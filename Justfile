@@ -19,11 +19,11 @@ test-runner-profiles:
     const mapPath = '.github/agentic-job/runner-profiles.json';
     const example = JSON.parse(fs.readFileSync(mapPath));
     assert.ok(Object.values(example).every(p => p.enabled === false));
-    const name = Object.keys(example)[0];
+    const name = Object.keys(example)[0], target = change => JSON.stringify({ full_name: 'cgwalters-forge/bootc', owner: { login: 'cgwalters-forge' }, fork: true, topics: ['ci', 'bot-midstream'], ...change });
     const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'runner-profile-'));
     const env = { RUNNER_PROFILE: name, KIND: 'implement', REPO: 'cgwalters-forge/bootc',
       POOL: '', EFFORT: '', CONFIG: 'hosted', DETECT_MODEL: 'deployment-model',
-      CALLER_REF: 'refs/heads/main', DEFAULT_BRANCH: 'main' };
+      CALLER_REF: 'refs/heads/main', DEFAULT_BRANCH: 'main', TARGET: target({}) };
     const run = (map, extra = {}) => {
       if (map === undefined) fs.rmSync(`${temp}/${mapPath}`, { force: true });
       else fs.writeFileSync(`${temp}/${mapPath}`, typeof map === 'string' ? map : JSON.stringify(map));
@@ -47,7 +47,7 @@ test-runner-profiles:
       refuse(example, {}, 'disabled');
       refuse(enabled, {}, 'unimplemented');
       for (const kind of ['fix', 'review', 'research', 'triage']) refuse(enabled, { KIND: kind }, 'requires implement');
-      for (const repo of ['cgwalters-forge/tracker', 'cgwalters-forge/ostree', 'bootc-dev/bootc']) refuse(enabled, { REPO: repo }, 'outside midstream');
+      for (const [repo, change] of [['cgwalters-forge/tracker', { full_name: 'cgwalters-forge/tracker', fork: false }], ['cgwalters-forge/bootc', { topics: ['bot-fork'] }], ['bootc-dev/bootc', { full_name: 'bootc-dev/bootc', owner: { login: 'bootc-dev' } }], ['cgwalters-forge/bootc', { full_name: 'cgwalters-forge/ostree-x' }]]) refuse(enabled, { REPO: repo, TARGET: target(change) }, 'outside midstream');
       for (const [key, value, reason] of [['POOL', 'claude', 'pool/effort'], ['EFFORT', 'heavy', 'pool/effort'],
         ['CONFIG', 'acp-experiment', 'hosted config'], ['DETECT_MODEL', '', 'detection configuration'],
         ['DETECT_MODEL', '  ', 'detection configuration'], ['CALLER_REF', 'refs/heads/other', 'default branch']]) refuse(enabled, { [key]: value }, reason);
@@ -1153,7 +1153,7 @@ test-review-caller:
         assert.ok(fs.statSync(`.github/agentic-job/profiles/${kind}.md`).size > 0, `${kind} has a profile`);
         fs.rmSync(output, { force: true });
         execFileSync('bash', ['-euo', 'pipefail', '-c', boundsScript],
-          { env: { PATH: process.env.PATH, KIND: kind, REPO: 'cgwalters-forge/agent-board', GITHUB_OUTPUT: output } });
+          { env: { PATH: process.env.PATH, KIND: kind, MIDSTREAM: 'false', GITHUB_OUTPUT: output } });
         const bounds = { triage: 'comment', research: 'comment', session: 'session' }[kind] ?? 'dispatch';
         assert.match(fs.readFileSync(output, 'utf8'), new RegExp(`^allow=\\.github/agentic-job/${bounds}\\.toml$`, 'm'), kind);
         assert.equal(evaluate(poolSource, settings), 'openai', `${kind} keeps a given pool`);
@@ -1171,7 +1171,7 @@ test-review-caller:
       assert.deepEqual(pr.draftReviewRepositories, DRAFT_REVIEW, 'exactly the four midstream callers');
       for (const [key, list] of [['follow', config.follow], ['pr.noMerge', pr.noMerge],
         ['pr.reviewDispatchRepositories', pr.reviewDispatchRepositories ?? []]]) {
-        for (const repo of DRAFT_REVIEW) assert.ok(list.includes(repo), `${repo} must be in ${key}`);
+        for (const repo of DRAFT_REVIEW) assert.ok(list.includes(repo) || (key !== 'pr.reviewDispatchRepositories' && list.some(e => e.forks === true && e.org === config.midstream.owner)), `${repo} must be in ${key}`);
       }
       assert.deepEqual(pr.reviewPools, ['openai', 'claude'], 'draft reviews need pr.reviewPools');
       assert.equal(pr.reviewWorkflow, 'review.yml');
@@ -1189,7 +1189,7 @@ test-review-caller:
     for (const [what, edit] of [
       ['one repository short', pr => pr.draftReviewRepositories.pop()],
       ['an extra repository', pr => pr.draftReviewRepositories.push('cgwalters-forge/tracker')],
-      ['merging allowed', pr => pr.noMerge.splice(pr.noMerge.indexOf('cgwalters-forge/bcvk'), 1)],
+      ['merging allowed', pr => { pr.noMerge = pr.noMerge.filter(e => typeof e === 'string' && e !== 'cgwalters-forge/bcvk'); }],
       ['no ordinary dispatch', pr => delete pr.reviewDispatchRepositories],
       ['no pools', pr => delete pr.reviewPools],
     ]) {
@@ -1992,7 +1992,7 @@ test-supervisor-config:
     [[ $out == act=false ]]
 
 # pass.json and the fix bounds poll.yml passes, through the pinned binary's
-# offline `pass --check-config` (agent-board#756), which reads no token: a
+# `pass --check-config` (agent-board#756), which reads only the org listing: a
 # setting the pass refuses would otherwise fail every pass after the merge
 # (#1403). It runs on every pull request, so a pin move that tightens the
 # checks is caught too. The pin is the poll's: agent-board-pin keeps one.
@@ -2015,8 +2015,8 @@ build-supervisor-agent-board:
 # bot and dispatch settings and its whole `pr` policy, following only FOLLOW.
 # The pinned poll takes every `pr` key of the pinned pass at its top level
 # under the same name (agent-board docs/poll.md, Configuration), so each is
-# copied with its value, except the two lists that may name only followed
-# repositories, which keep their FOLLOW entry alone. A key in neither list
+# copied with its value, except the lists where only FOLLOW matters (noMerge
+# holds organization rules), which keep its name alone. A key in neither list
 # fails the run: a key the pass gains must be placed here, never dropped
 # unseen, or the preview would compare a different policy (#1362).
 maintain-shadow-config pass follow:
@@ -2025,8 +2025,8 @@ maintain-shadow-config pass follow:
     jq -e --arg follow "$2" '
       ["reviewWorkflow", "fixPools", "toilFixPool", "conflictFixPool", "mergeAuthors", "rebaseRounds", "mergeQueue",
         "checkReruns", "unstall", "ownerBranches", "ownSpaceOnly", "foldRounds", "reviewPools",
-        "headOwners", "noMerge", "operatorPaths", "staleDays", "actionFirst"] as $copied
-      | ["reviewDispatchRepositories", "draftReviewRepositories"] as $scoped
+        "headOwners", "operatorPaths", "staleDays", "actionFirst"] as $copied
+      | ["reviewDispatchRepositories", "draftReviewRepositories", "noMerge"] as $scoped
       | (.pr // {}) as $pr
       | ($pr | keys - $copied - $scoped) as $unknown
       | if $unknown != [] then
@@ -2035,7 +2035,7 @@ maintain-shadow-config pass follow:
       | ({operator, bot, dispatchRepo, dispatchWorkflow} | with_entries(select(.value != null))) + {follow: [$follow]}
       + ($pr | with_entries(select(.key | IN($copied[]))))
       + ($pr | with_entries(select(.key | IN($scoped[]))
-          | .value |= map(select(ascii_downcase == ($follow | ascii_downcase)))))' "$1"
+          | .value |= map(select(type == "string" and ascii_downcase == ($follow | ascii_downcase)))))' "$1"
 
 # maintain-shadow.yml previews with the job token only, and its poll gets
 # pass.json's settings. With AGENT_BOARD, the pinned CLI must take its flags.
@@ -2104,7 +2104,7 @@ test-maintain-shadow:
     // know fails naming it (#1362). The pinned pass has no `pr` key the pinned
     // poll refuses, so nothing is left out on purpose.
     const follow = 'cgwalters-forge/agentic-job';
-    const scoped = ['reviewDispatchRepositories', 'draftReviewRepositories'];
+    const scoped = ['reviewDispatchRepositories', 'draftReviewRepositories', 'noMerge'];
     const dir = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'shadow-config-'));
     process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
     const generate = (pass) => {
@@ -2136,7 +2136,7 @@ test-maintain-shadow:
       const expected = { operator: pass.operator, bot: pass.bot, dispatchRepo: pass.dispatchRepo,
         dispatchWorkflow: pass.dispatchWorkflow, follow: [follow] };
       for (const [key, value] of Object.entries(pass.pr ?? {})) {
-        expected[key] = scoped.includes(key) ? value.filter((r) => r.toLowerCase() === follow.toLowerCase()) : value;
+        expected[key] = scoped.includes(key) ? value.filter((r) => typeof r === 'string' && r.toLowerCase() === follow.toLowerCase()) : value;
       }
       assert.deepEqual(configs[name] = JSON.parse(got.stdout), expected, name);
     }

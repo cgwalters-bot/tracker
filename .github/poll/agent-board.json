@@ -57,6 +57,7 @@
       "cgwalters-forge/bcvk",
       "cgwalters-forge/rpm-ostree",
       "cgwalters-forge/anaconda",
+      "cgwalters-forge/ostree",
       "cgwalters-forge/atomic-linux-sandbox"
     ]
   }

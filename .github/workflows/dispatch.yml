@@ -115,7 +115,10 @@ jobs:
           DETECT_MODEL: ${{ vars.AGENTIC_JOB_DETECT_MODEL }}
           CALLER_REF: ${{ github.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # The target's live metadata, which the midstream rule is checked against.
+          if [[ $RUNNER_PROFILE != hosted ]]; then TARGET=$(gh api "repos/${REPO}"); export TARGET; fi
           python3 - <<'PY'
           import json, os, re, sys, tomllib
           from pathlib import Path
@@ -184,8 +187,11 @@ jobs:
           profile = profiles[name]
           require(profile['enabled'], 'runner profile is disabled')
           require(os.environ['KIND'] == 'implement', 'external runner requires implement')
-          bounds = tomllib.loads(Path('.github/agentic-job/midstream.toml').read_text())
-          require(os.environ['REPO'].lower() in [r.lower() for r in bounds['repos']],
+          rules = tomllib.loads(Path('.github/agentic-job/midstream.toml').read_text())['repos']
+          target = json.loads(os.environ['TARGET'])
+          require(target['full_name'].lower() == os.environ['REPO'].lower() and any(
+                  target['owner']['login'].lower() == rule['org'].lower() and target['fork'] is rule['forks']
+                  and set(rule['topics']) <= set(target['topics']) for rule in rules),
                   'external runner target is outside midstream bounds')
           require(not os.environ['POOL'] and not os.environ['EFFORT'], 'external runner refuses pool/effort')
           require(os.environ['CONFIG'] == 'hosted', 'external runner requires hosted config')
@@ -268,7 +274,6 @@ jobs:
             .github/agentic-job/profiles
             .github/agentic-job/pools.json
             .github/agentic-job/midstream.toml
-            .github/agentic-job/midstream-fix.toml
             .github/agent-board-install
             Justfile
       # A GitHub release outage must not stop the job: build the same just
@@ -331,29 +336,46 @@ jobs:
       # (D17, docs/operator-notes.md). A session has session.toml: its batch
       # is one comment too, which the pass alone applies, within the pass's
       # own bounds (agent-board's docs/sessions.md), but only on
-      # cgwalters-forge, never bootc-dev. A midstream fork, a target that
-      # midstream.toml or midstream-fix.toml lists, gets those, which keep
-      # its pull requests drafts (#336); their repos lists are the only list
-      # of midstreams here. The wrapper takes `fix-allow` for fix and
-      # `allow` for every other kind.
+      # cgwalters-forge, never bootc-dev. A midstream fork gets
+      # midstream.toml and midstream-fix.toml, which keep its pull requests
+      # drafts (#336): a target whose live metadata matches midstream.toml's
+      # rule, the organization, fork flag and topics that its policy checks
+      # again. A failed lookup stops the run rather than picking the
+      # ordinary bounds. The wrapper takes `fix-allow` for fix and `allow`
+      # for every other kind.
+      - name: Read the target's metadata
+        id: target
+        env:
+          REPO: ${{ inputs.repo }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          target=$(gh api "repos/${REPO}")
+          TARGET=$target python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, tomllib
+          rules = tomllib.load(open('.github/agentic-job/midstream.toml', 'rb'))['repos']
+          target = json.loads(os.environ['TARGET'])
+          if target['full_name'].lower() != os.environ['REPO'].lower():
+              raise SystemExit(f"metadata names {target['full_name']}, not {os.environ['REPO']}")
+          midstream = any(target['owner']['login'].lower() == rule['org'].lower() and target['fork'] is rule['forks']
+                          and set(rule['topics']) <= set(target['topics']) for rule in rules)
+          print(f'midstream={str(midstream).lower()}')
+          PY
       - name: Resolve the bounds
         id: bounds
         env:
           KIND: ${{ inputs.kind }}
-          REPO: ${{ inputs.repo }}
+          MIDSTREAM: ${{ steps.target.outputs.midstream }}
         run: |
           dir=.github/agentic-job
-          listed() {
-            sed -n '/^repos = /{s///p;q}' "$1" |
-              jq -e --arg repo "${REPO,,}" 'map(ascii_downcase) | index($repo)' > /dev/null
-          }
+          [[ $MIDSTREAM == true || $MIDSTREAM == false ]] ||
+            { echo "::error::no midstream decision for the target: '${MIDSTREAM}'"; exit 1; }
           case "$KIND" in
             triage|research) allow=$dir/comment.toml ;;
             session) allow=$dir/session.toml ;;
-            *) allow=$dir/dispatch.toml; listed "$dir/midstream.toml" && allow=$dir/midstream.toml ;;
+            *) allow=$dir/dispatch.toml; [[ $MIDSTREAM == true ]] && allow=$dir/midstream.toml ;;
           esac
           fix=$dir/fix.toml
-          listed "$dir/midstream-fix.toml" && fix=$dir/midstream-fix.toml
+          [[ $MIDSTREAM == true ]] && fix=$dir/midstream-fix.toml
           printf 'allow=%s\nfix-allow=%s\n' "$allow" "$fix" >> "$GITHUB_OUTPUT"
       - name: Put the profile before the task
         id: compose
