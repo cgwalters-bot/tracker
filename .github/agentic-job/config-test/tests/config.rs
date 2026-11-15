@@ -1154,7 +1154,7 @@ fn dispatch_forwards_optional_issue_repository_without_redirecting_work() {
     // Keep this dispatch-only pin separate from the review release train's
     // literal wrapper references, which it scans and rewrites in this file.
     let wrapper = "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml";
-    assert!(has_line(run, &format!("    uses: {wrapper}@428fc617f985f8c5c4aabaf22afdbf2dfc744010")));
+    assert!(has_line(run, &format!("    uses: {wrapper}@652610d2907f74c8e9ea711fec2ee30a18a98d6e")));
     for line in [
         "      repo: ${{ inputs.repo }}",
         "      item: ${{ inputs.item }}",
@@ -2248,7 +2248,7 @@ fn workflows_follow_our_own_repositories_at_main_dispatch_and_review_excepted_an
             let dispatch_wrapper = file == "dispatch.yml"
                 && uses.split_once('@')
                     .is_some_and(|(path, pin)| path == "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml"
-                        && matches!(pin, "ba6c56925e63551fd4373fbeb23456a2f4a316da" | "428fc617f985f8c5c4aabaf22afdbf2dfc744010"));
+                        && matches!(pin, "ba6c56925e63551fd4373fbeb23456a2f4a316da" | "652610d2907f74c8e9ea711fec2ee30a18a98d6e"));
             // These callers compose the harness directly: policy/check/apply and the
             // actions must run at one immutable source revision. Its workflow
             // test checks that all six pins agree.
