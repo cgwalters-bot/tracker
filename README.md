@@ -334,8 +334,12 @@ Apply opens complete work ready for review (`ready_when_complete` in
 `dispatch.toml` and `fix.toml`), except on a midstream fork: a repository
 with the `bot-midstream` topic whose main tracks upstream (#336).
 Every pull request there stays a draft. `dispatch.yml` gives those targets
-`midstream.toml` and `midstream-fix.toml` instead, based on those files' `repos`.
-A fork with that topic must be added to those lists before receiving dispatches.
+`midstream.toml` and `midstream-fix.toml` instead, by the target's live
+metadata against `midstream.toml`'s organization rule, which agentic-job's
+policy checks again; the pass follows them by the same metadata. Giving a
+fork the topic admits it for implement; a fix there also needs its name in
+`midstream-fix.toml`, which the pass reads with agent-board's
+`--fix-bounds`, and that reader takes no rule yet.
 cgwalters-review skips drafts, so a midstream pull request gets no automatic
 review; `/review` still works.
 

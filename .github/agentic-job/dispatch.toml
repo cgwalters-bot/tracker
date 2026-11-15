@@ -1,8 +1,10 @@
 # Bounds for dispatch.yml: the repositories a dispatched run may target.
-# Exact names, no globs; add a repository here before dispatching to it.
-# The midstream forks composefs-rs and bootc (epic #160) and bcvk are not
-# listed here: their bounds are midstream.toml, which dispatch.yml picks for them,
-# so that every pull request there stays a draft (#336).
+# The organization's own repositories by one rule that agentic-job's policy
+# checks against live metadata: public, unarchived and not a fork. The
+# midstream forks are not admitted here: their bounds are midstream.toml,
+# which dispatch.yml picks for them by their metadata, so that every pull
+# request there stays a draft (#336). Other owners' repositories are exact
+# names, no globs, which metadata cannot select.
 # The bot-owned praxis-credential-broker is a target the poll does not
 # follow either (docs/bring-up.md).
 # The organization site cgwalters-forge/cgwalters-forge.github.io is a target
@@ -16,7 +18,7 @@
 # refuses a private target and the wrapper a private caller. A private
 # target would need a dispatch workflow and agent job in bot-ops itself.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/tracker", "cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge-stage/board-test", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool", "cgwalters-forge/forge-infra", "cgwalters-bot/praxis-credential-broker", "cgwalters-forge/cgwalters-forge.github.io", "cgwalters-forge/atomic-linux-sandbox"]
+repos = [{ org = "cgwalters-forge", forks = false }, "cgwalters-forge-stage/board-test", "cgwalters-bot/praxis-credential-broker"]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576

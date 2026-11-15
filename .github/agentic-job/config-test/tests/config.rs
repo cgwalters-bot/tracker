@@ -548,24 +548,21 @@ try {
 #[test]
 fn promote_caller_settings_and_policy_records() {
     let config = json_file("../pass.json");
-    let forks = json!({
-        "cgwalters-forge/bcvk": { "upstream": "bootc-dev/bcvk", "base": "main" },
-        "cgwalters-forge/bootc": { "upstream": "bootc-dev/bootc", "base": "main" },
-        "cgwalters-forge/composefs-rs": { "upstream": "composefs/composefs-rs", "base": "main" },
-        "cgwalters-forge/ostree": { "upstream": "ostreedev/ostree", "base": "main" },
-    });
+    // No `forks`: the pass derives each midstream's from its GitHub parent
+    // and the parent's default branch, these as of 2026-11-15.
     assert_eq!(config["promote"], json!({
-        "onApproval": true, "publish": true, "forks": forks,
+        "onApproval": true, "publish": true,
         "signoff": { "name": "Colin Walters", "email": "walters@verbum.org" },
         "policyRepository": "cgwalters-forge/tracker", "policyPath": "upstream-policy",
     }));
-    for (repo, fork) in forks.as_object().unwrap() {
+    assert_eq!(config["midstream"], json!({"owner": "cgwalters-forge", "topic": "bot-midstream"}));
+    for (repo, upstream) in [
+        ("cgwalters-forge/bcvk", "bootc-dev/bcvk"), ("cgwalters-forge/bootc", "bootc-dev/bootc"),
+        ("cgwalters-forge/composefs-rs", "composefs/composefs-rs"), ("cgwalters-forge/ostree", "ostreedev/ostree"),
+    ] {
         // Followed midstreams remain excluded from ordinary merging.
-        if config["follow"].as_array().unwrap().contains(&json!(repo)) {
-            assert_eq!(config["midstream"]["owner"], repo.split('/').next().unwrap());
-            assert!(config["pr"]["noMerge"].as_array().unwrap().contains(&json!(repo)));
-        }
-        let upstream = fork["upstream"].as_str().unwrap();
+        assert!(covers(&config["follow"], known(repo), false), "{repo}");
+        assert!(covers(&config["pr"]["noMerge"], known(repo), true), "{repo}");
         let record = read(&format!("../../upstream-policy/{upstream}.md"));
         assert!(record.starts_with("---\nverdict: bot-ok\n"), "{upstream}");
         let (header, body) = record.split_once("\n---\n").expect("policy frontmatter");
@@ -1029,19 +1026,48 @@ fn strings(v: &toml::Value, what: &str) -> Vec<String> {
         .collect()
 }
 
-/// A bounds file's targets.
-fn repos(name: &str) -> Vec<String> {
-    let table = toml_file(name);
-    strings(table.get("repos").unwrap_or_else(|| panic!("{name} has no repos")), name)
+/// The exact names (or `OWNER/*`) of a `repos` list, less its organization
+/// rules, the only other entries it may have.
+fn names(v: &toml::Value, what: &str) -> Vec<String> {
+    let list = v.as_array().unwrap_or_else(|| panic!("{what} is not an array"));
+    assert!(list.iter().all(|e| e.is_str() || e.is_table()), "{what}: an entry is neither a name nor a rule");
+    list.iter().filter_map(|e| e.as_str().map(str::to_owned)).collect()
 }
 
-/// Each `repos` list of a bounds file: its targets, then its unprotected files'.
+/// A bounds file's targets named exactly.
+fn repos(name: &str) -> Vec<String> {
+    let table = toml_file(name);
+    names(table.get("repos").unwrap_or_else(|| panic!("{name} has no repos")), name)
+}
+
+/// A bounds file's organization rules, which agentic-job's policy checks
+/// against a target's live metadata (its docs/stable-interfaces.md).
+fn rules(name: &str) -> Vec<toml::Table> {
+    let table = toml_file(name);
+    let list = table["repos"].as_array().unwrap_or_else(|| panic!("{name}: repos is not an array"));
+    list.iter().filter_map(|e| e.as_table().cloned()).collect()
+}
+
+/// The rule midstream.toml admits the midstream forks by.
+fn midstream_rule() -> toml::Table {
+    toml::from_str(r#"org = "cgwalters-forge"
+forks = true
+topics = ["bot-midstream"]
+properties = { origin = "fork" }"#).unwrap()
+}
+
+/// The rule dispatch.toml admits the organization's own repositories by.
+fn owned_rule(org: &str) -> toml::Table {
+    toml::from_str(&format!("org = \"{org}\"\nforks = false")).unwrap()
+}
+
+/// Each `repos` list of a bounds file, by name: its targets, then its unprotected files'.
 fn lists(name: &str) -> Vec<Vec<String>> {
     fn walk(table: &toml::Table, name: &str, out: &mut Vec<Vec<String>>) {
         for (key, value) in table {
             match value {
                 toml::Value::Table(t) => walk(t, name, out),
-                v if key == "repos" => out.push(strings(v, name)),
+                v if key == "repos" => out.push(names(v, name)),
                 _ => {}
             }
         }
@@ -1049,6 +1075,93 @@ fn lists(name: &str) -> Vec<Vec<String>> {
     let mut out = vec![];
     walk(&toml_file(name), name, &mut out);
     out
+}
+
+/// A public, unarchived repository as GitHub describes it, as far as the
+/// bounds' rules and the pass's organization entries read it.
+struct Repo {
+    name: &'static str,
+    fork: bool,
+    topics: &'static [&'static str],
+    origin: &'static str,
+}
+
+/// The repositories the bounds and the pass are checked against, with the
+/// metadata they have (or, for `-x`, could have). A fork with the topic is
+/// a midstream; that is all that makes one.
+const REPOS: &[Repo] = &{
+    const fn owned(name: &'static str) -> Repo {
+        Repo { name, fork: false, topics: &[], origin: "first-party" }
+    }
+    const fn midstream(name: &'static str) -> Repo {
+        Repo { name, fork: true, topics: &["bot-midstream"], origin: "fork" }
+    }
+    const fn upstream(name: &'static str) -> Repo {
+        Repo { name, fork: false, topics: &[], origin: "" }
+    }
+    [
+        owned("cgwalters-forge/tracker"), owned("cgwalters-forge/agentic-job"), owned("cgwalters-forge/agent-board"),
+        owned("cgwalters-forge/review"), owned("cgwalters-forge/actions"), owned("cgwalters-forge/agenthome"),
+        owned("cgwalters-forge/misctool"), owned("cgwalters-forge/forge-infra"),
+        owned("cgwalters-forge/cgwalters-forge.github.io"), owned("cgwalters-forge/atomic-linux-sandbox"),
+        owned("cgwalters-forge/new-tool-x"),
+        midstream("cgwalters-forge/composefs-rs"), midstream("cgwalters-forge/bootc"), midstream("cgwalters-forge/bcvk"),
+        midstream("cgwalters-forge/rpm-ostree"), midstream("cgwalters-forge/anaconda"), midstream("cgwalters-forge/ostree"),
+        midstream("cgwalters-forge/gh-agentic-workflows"), midstream("cgwalters-forge/dracut-x"),
+        // A fork without the topic is neither the organization's own nor a midstream.
+        Repo { name: "cgwalters-forge/gh-aw", fork: true, topics: &["bot-fork"], origin: "fork" },
+        // Nor is the topic on a fork of another organization.
+        Repo { name: "cgwalters-bot/bootc", fork: true, topics: &["bot-midstream"], origin: "" },
+        upstream("cgwalters-forge-stage/board-test"), upstream("cgwalters-bot/praxis-credential-broker"),
+        upstream("bootc-dev/bootc"), upstream("bootc-dev/gh-agentic-workflows"), upstream("composefs/composefs-rs"),
+        upstream("ostreedev/ostree"),
+        Repo { name: "bootc-dev/homebrew-bcvk", fork: true, topics: &[], origin: "" },
+    ]
+};
+
+fn known(name: &str) -> &'static Repo {
+    REPOS.iter().find(|r| r.name == name).unwrap_or_else(|| panic!("{name} is not in REPOS"))
+}
+
+fn owner_is(repo: &Repo, owner: &str) -> bool {
+    repo.name.split_once('/').is_some_and(|(o, _)| o.eq_ignore_ascii_case(owner))
+}
+
+/// Whether bounds file `name` admits `repo`: an exact name ignoring case,
+/// `OWNER/*`, or a rule whose organization, fork flag, topics and string
+/// properties all match, as agentic-job's policy compares them.
+fn admits(name: &str, repo: &Repo) -> bool {
+    let by_name = repos(name).iter().any(|r| {
+        r.eq_ignore_ascii_case(repo.name) || r.strip_suffix("/*").is_some_and(|owner| owner_is(repo, owner))
+    });
+    by_name
+        || rules(name).iter().any(|rule| {
+            let topics = rule.get("topics").map_or(vec![], |t| strings(t, name));
+            let properties = rule.get("properties").and_then(toml::Value::as_table).cloned().unwrap_or_default();
+            owner_is(repo, rule["org"].as_str().unwrap())
+                && rule["forks"].as_bool() == Some(repo.fork)
+                && topics.iter().all(|t| repo.topics.contains(&t.as_str()))
+                && properties.iter().all(|(k, v)| k == "origin" && v.as_str() == Some(repo.origin))
+        })
+}
+
+/// Whether a pass.json repository list covers `repo` after agent-board
+/// expands its organization entries: `forks: false` takes the non-forks,
+/// `forks: true` those and the topic's midstreams, but in `pr.noMerge` only
+/// the midstreams (agent-board's docs/pass.md, Organization repository entries).
+fn covers(list: &Value, repo: &Repo, no_merge: bool) -> bool {
+    let midstream = repo.fork && repo.topics.contains(&"bot-midstream");
+    list.as_array().expect("a repository list").iter().any(|e| match e {
+        Value::String(name) => name.eq_ignore_ascii_case(repo.name),
+        rule => {
+            owner_is(repo, rule["org"].as_str().expect("an organization entry"))
+                && match rule["forks"].as_bool().expect("forks") {
+                    false => !repo.fork && repo.origin != "fork",
+                    true if no_merge => midstream,
+                    true => midstream || (!repo.fork && repo.origin != "fork"),
+                }
+        }
+    })
 }
 
 /// The lines of `text` split at each line equal to `line`.
@@ -1171,7 +1284,7 @@ fn dispatch_forwards_optional_issue_repository_without_redirecting_work() {
     assert!(!title.contains("issue_repo"));
     for source in ["", "cgwalters-forge/tracker"] {
         let selected = run_step(&step_script("Resolve the bounds"), &[
-            ("KIND", "implement"), ("REPO", "cgwalters-forge/agent-board"), ("ISSUE_REPO", source),
+            ("KIND", "implement"), ("MIDSTREAM", "false"), ("ISSUE_REPO", source),
         ]).unwrap();
         assert_eq!(selected, "allow=.github/agentic-job/dispatch.toml\nfix-allow=.github/agentic-job/fix.toml\n");
     }
@@ -1377,22 +1490,20 @@ fn hosted_turns_the_egress_lockdown_off() {
 
 #[test]
 fn misctool_is_a_dispatch_and_fix_target_with_matching_workflow_edit_bounds() {
-    let dispatch_lists = lists("dispatch.toml");
-    let fix_lists = lists("fix.toml");
-    for (name, bounds) in [("dispatch", &dispatch_lists), ("fix", &fix_lists)] {
+    let misctool = known("cgwalters-forge/misctool");
+    for name in ["dispatch.toml", "fix.toml"] {
+        let bounds = lists(name);
         assert_eq!(bounds.len(), 2, "{name}");
-        for repos in bounds {
-            assert!(repos.iter().any(|r| r == "cgwalters-forge/misctool"), "{name}");
-        }
+        assert!(admits(name, misctool), "{name}");
+        assert!(bounds[1].iter().any(|r| r == misctool.name), "{name}");
     }
-    // Less the upstreams bootc-dev/* (D17, below) and composefs/composefs-rs, which fix has and dispatch has not.
-    for i in 0..2 {
-        let fix = fix_lists[i]
-            .iter()
-            .filter(|r| !["bootc-dev/*", "composefs/composefs-rs"].contains(&r.as_str()))
-            .cloned()
-            .collect();
-        assert_eq!(sorted(dispatch_lists[i].clone()), sorted(fix));
+    assert_eq!(sorted(lists("dispatch.toml")[1].clone()), sorted(lists("fix.toml")[1].clone()));
+    // fix.toml names only what dispatch.toml admits, less the upstreams
+    // bootc-dev/* (D17, below) and composefs/composefs-rs, which fix has and dispatch has not.
+    for repo in repos("fix.toml") {
+        if !["bootc-dev/*", "composefs/composefs-rs"].contains(&repo.as_str()) {
+            assert!(admits("dispatch.toml", known(&repo)), "{repo}");
+        }
     }
 }
 
@@ -1403,7 +1514,7 @@ fn misctool_is_a_dispatch_and_fix_target_with_matching_workflow_edit_bounds() {
 fn forge_infra_is_a_followed_target_without_unprotected_files() {
     let repo = "cgwalters-forge/forge-infra";
     for name in ["dispatch.toml", "fix.toml", "comment.toml"] {
-        assert!(repos(name).iter().any(|r| r == repo), "{name}");
+        assert!(admits(name, known(repo)), "{name}");
     }
     for name in ["dispatch.toml", "fix.toml"] {
         assert!(!lists(name)[1].iter().any(|r| r == repo), "{name}");
@@ -1416,10 +1527,10 @@ fn forge_infra_is_a_followed_target_without_unprotected_files() {
 fn atomic_linux_sandbox_is_a_followed_work_target_not_a_midstream_fork() {
     let repo = "cgwalters-forge/atomic-linux-sandbox";
     for name in ["dispatch.toml", "fix.toml", "comment.toml"] {
-        assert!(repos(name).iter().any(|r| r == repo), "{name}");
+        assert!(admits(name, known(repo)), "{name}");
     }
     for name in ["midstream.toml", "midstream-fix.toml"] {
-        assert!(!repos(name).iter().any(|r| r == repo), "{name}");
+        assert!(!admits(name, known(repo)), "{name}");
     }
     let board = json_file("../poll/agent-board.json");
     for list in [&board["follow"], &board["schedule"]["repositories"]] {
@@ -1427,10 +1538,10 @@ fn atomic_linux_sandbox_is_a_followed_work_target_not_a_midstream_fork() {
     }
     let pass = json_file("../pass.json");
     for key in ["follow", "workRepositories"] {
-        assert!(pass[key].as_array().expect(key).contains(&json!(repo)), "{key}");
+        assert!(covers(&pass[key], known(repo), false), "{key}");
     }
-    assert!(pass["holds"]["proposals"]["repositories"].as_array().unwrap().contains(&json!(repo)));
-    assert!(!pass["pr"]["noMerge"].as_array().unwrap().contains(&json!(repo)));
+    assert!(covers(&pass["holds"]["proposals"]["repositories"], known(repo), false));
+    assert!(!covers(&pass["pr"]["noMerge"], known(repo), true));
 }
 
 // The midstream fork bcvk takes staged pull requests as composefs-rs and
@@ -1440,28 +1551,27 @@ fn atomic_linux_sandbox_is_a_followed_work_target_not_a_midstream_fork() {
 fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
     let repo = "cgwalters-forge/bcvk";
     for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
-        assert!(repos(name).iter().any(|r| r == repo), "{name}");
+        assert!(admits(name, known(repo)), "{name}");
     }
     for name in ["dispatch.toml", "fix.toml"] {
-        assert!(!repos(name).iter().any(|r| r == repo), "{name}");
+        assert!(!admits(name, known(repo)), "{name}");
     }
     let board = json_file("../poll/agent-board.json");
     assert!(board["schedule"]["repositories"].as_array().expect("schedule.repositories").contains(&json!(repo)));
     assert!(!board["follow"].as_array().expect("agent-board.json's follow").contains(&json!(repo)));
     let pass = json_file("../pass.json");
     for key in ["follow", "workRepositories"] {
-        assert!(pass[key].as_array().expect(key).contains(&json!(repo)), "{key}");
+        assert!(covers(&pass[key], known(repo), false), "{key}");
     }
-    assert!(pass["pr"]["noMerge"].as_array().expect("pr.noMerge").contains(&json!(repo)));
-    let proposals = &pass["holds"]["proposals"]["repositories"];
-    assert!(proposals.as_array().expect("holds.proposals.repositories").contains(&json!(repo)));
+    assert!(covers(&pass["pr"]["noMerge"], known(repo), true));
+    assert!(covers(&pass["holds"]["proposals"]["repositories"], known(repo), false));
 }
 
 #[test]
 fn gh_agentic_workflows_has_the_only_midstream_workflow_exception_and_is_never_merged_into() {
     let repo = "cgwalters-forge/gh-agentic-workflows";
     for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
-        assert!(repos(name).iter().any(|r| r == repo), "{name}");
+        assert!(admits(name, known(repo)), "{name}");
     }
     assert!(!has_line_starting(&read("comment.toml"), "[unprotected_files]"));
     for name in ["midstream.toml", "midstream-fix.toml"] {
@@ -1472,13 +1582,14 @@ fn gh_agentic_workflows_has_the_only_midstream_workflow_exception_and_is_never_m
         assert_eq!(strings(&exception["dot_folders"], name), [".github"]);
     }
     for name in ["dispatch.toml", "fix.toml"] {
+        assert!(!admits(name, known(repo)), "{name}");
         for list in lists(name) {
             assert!(!list.iter().any(|r| r == repo), "{name}");
         }
     }
     let pass = json_file("../pass.json");
-    for list in [&pass["follow"], &pass["workRepositories"], &pass["pr"]["noMerge"]] {
-        assert!(list.as_array().expect("pass repository list").contains(&json!(repo)));
+    for (list, no_merge) in [(&pass["follow"], false), (&pass["workRepositories"], false), (&pass["pr"]["noMerge"], true)] {
+        assert!(covers(list, known(repo), no_merge));
     }
 }
 
@@ -1519,7 +1630,8 @@ fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
         return;
     }
     let head = "0".repeat(40);
-    for repo in repos("midstream.toml") {
+    // midstream-fix.toml's names, each admitted by midstream.toml's rule on its live metadata.
+    for repo in repos("midstream-fix.toml") {
         for (file, kind) in [("midstream.toml", "create_pull_request"), ("midstream-fix.toml", "push_to_pull_request_branch")] {
             let clone_url = format!("https://github.com/{repo}");
             let file_path = path_of(file);
@@ -1617,9 +1729,9 @@ fn dispatch_and_fix_open_complete_work_ready() {
 fn recorded_excluded_tracker_fix_still_refuses_identical_requests() {
     let incident = json_file("config-test/tests/excluded-fix.json");
     let request = &incident["request"];
-    let selected = run_step(&step_script("Resolve the bounds"), &[
-        ("KIND", "fix"), ("REPO", request["REPO"].as_str().unwrap()),
-    ]).unwrap();
+    // The recorded target, tracker, is the organization's own, not a midstream fork.
+    assert!(!admits("midstream.toml", known(request["REPO"].as_str().unwrap())));
+    let selected = run_step(&step_script("Resolve the bounds"), &[("KIND", "fix"), ("MIDSTREAM", "false")]).unwrap();
     assert!(selected.contains("fix-allow=.github/agentic-job/fix.toml\n"));
     // Keep this comparison in the ordinary configuration suite even without
     // a CLI: later own-author admission must not silently widen branch bounds.
@@ -1803,12 +1915,17 @@ fn only_triage_research_and_fix_may_target_bootc_dev() {
         rest,
         &["**B**. ", "Fix rounds run on the bot's own bootc-dev pull requests", "Triage and research answers may also be posted"]
     ))));
-    let mut expected = [repos("dispatch.toml"), repos("midstream.toml")].concat();
-    expected.push("bootc-dev/*".to_owned());
-    assert_eq!(sorted(repos("comment.toml")), sorted(expected));
+    // Every entry of dispatch.toml and midstream.toml, and bootc-dev's own
+    // repositories by rule: agentic-job takes no glob beside a rule.
+    assert_eq!(sorted(repos("comment.toml")), sorted([repos("dispatch.toml"), repos("midstream.toml")].concat()));
+    let mut expected = [rules("dispatch.toml"), rules("midstream.toml")].concat();
+    expected.push(owned_rule("bootc-dev"));
+    assert_eq!(rules("comment.toml"), expected);
     let fix_bootc: Vec<String> = repos("fix.toml").into_iter().filter(|r| r.starts_with("bootc-dev")).collect();
     assert_eq!(fix_bootc, ["bootc-dev/*"]);
-    assert!(!repos("dispatch.toml").iter().any(|r| r.starts_with("bootc-dev")));
+    for name in ["dispatch.toml", "midstream.toml", "session.toml"] {
+        assert!(!REPOS.iter().any(|r| owner_is(r, "bootc-dev") && admits(name, r)), "{name}");
+    }
     let comment_outputs = outputs("comment.toml");
     let keys: Vec<&str> = output_entries(&comment_outputs).into_iter().map(|(k, _)| k).collect();
     assert_eq!(keys, ["add_comment", "noop", "missing_tool", "missing_data"]);
@@ -1828,6 +1945,9 @@ fn session_bounds_are_comment_bounds_on_cgwalters_forge_only() {
     let expected: Vec<String> =
         [repos("dispatch.toml"), repos("midstream.toml")].concat().into_iter().filter(|r| r.starts_with("cgwalters-forge/")).collect();
     assert_eq!(sorted(repos("session.toml")), sorted(expected));
+    let expected: Vec<toml::Table> =
+        [rules("dispatch.toml"), rules("midstream.toml")].concat().into_iter().filter(|r| r["org"].as_str() == Some("cgwalters-forge")).collect();
+    assert_eq!(rules("session.toml"), expected);
     let head = |name: &str| drop_lines(before_table(&read(name)), |l| l.starts_with('#') || l.starts_with("repos = "));
     assert_eq!((head("session.toml"), outputs("session.toml")), (head("comment.toml"), outputs("comment.toml")));
     assert!(!has_line_starting(&read("session.toml"), "[unprotected_files]"));
@@ -1835,8 +1955,8 @@ fn session_bounds_are_comment_bounds_on_cgwalters_forge_only() {
 
 // Midstream forks (the `bot-midstream` topic) take dispatch.toml's and
 // fix.toml's bounds without `ready_when_complete`, so their pull requests
-// stay drafts (#336); dispatch.yml picks them
-// by kind and by the midstream lists.
+// stay drafts (#336); dispatch.yml picks them by kind and by the target's
+// live metadata, against midstream.toml's rule.
 #[test]
 fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_picks_them() {
     let uncommented = |text: &str| drop_lines(text, |l| l.starts_with('#'));
@@ -1853,18 +1973,20 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
             })
             .collect()
     };
-    assert_eq!(repos("midstream.toml"), ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows"]);
+    assert_eq!((repos("midstream.toml"), rules("midstream.toml")), (vec![], vec![midstream_rule()]));
+    assert_eq!((repos("dispatch.toml").len(), rules("dispatch.toml")), (2, vec![owned_rule("cgwalters-forge")]));
+    // midstream-fix.toml names only midstreams: agent-board's --fix-bounds reads no rule.
+    assert!(rules("midstream-fix.toml").is_empty() && rules("fix.toml").is_empty());
+    for repo in repos("midstream-fix.toml") {
+        assert!(admits("midstream.toml", known(&repo)), "{repo}");
+    }
     for (midstream, base) in [("midstream.toml", "dispatch.toml"), ("midstream-fix.toml", "fix.toml")] {
         let text = uncommented(&read(midstream));
         assert!(!text.contains("ready_when_complete"), "{midstream}");
-        assert_eq!(
-            (head(midstream), entries(midstream), repos(midstream)),
-            (head(base), entries(base), repos("midstream.toml")),
-            "{midstream}"
-        );
+        assert_eq!((head(midstream), entries(midstream)), (head(base), entries(base)), "{midstream}");
         // Disjoint, or dispatch.yml's choice would decide which bounds hold.
-        for repo in repos(midstream) {
-            assert!(!read(base).contains(&format!("\"{repo}\"")), "{repo} in {base}");
+        for repo in REPOS {
+            assert!(!(admits(midstream, repo) && admits(base, repo)), "{} in {midstream} and {base}", repo.name);
         }
     }
     let dispatch = dispatch();
@@ -1878,27 +2000,90 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
         ]
         .map(|line| format!("      {line}"))
     );
+    assert!(dispatch.contains("          MIDSTREAM: ${{ steps.target.outputs.midstream }}\n"));
+    // The decision on each repository's metadata as GitHub returns it, which
+    // a stub gh prints: midstream exactly where midstream.toml's rule admits.
+    let stub = temp_path("gh");
+    std::fs::create_dir_all(&stub).unwrap();
+    let gh = stub.join("gh");
+    std::fs::write(&gh, "#!/bin/sh\n[ \"$*\" = \"api repos/$REPO\" ] && [ -z \"$GH_FAIL\" ] && printf '%s' \"$GH_FIXTURE\"\n").unwrap();
+    std::fs::set_permissions(&gh, std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+    let path = format!("{}:{}", stub.display(), std::env::var("PATH").unwrap());
+    let read_target = step_script("Read the target's metadata");
+    let decide = |repo: &str, fixture: &Value, fail: &str| {
+        run_step(&read_target, &[("REPO", repo), ("GH_FIXTURE", &fixture.to_string()), ("GH_FAIL", fail), ("PATH", &path)])
+    };
+    let metadata = |r: &Repo| {
+        json!({"full_name": r.name, "owner": {"login": r.name.split('/').next().unwrap()}, "fork": r.fork, "topics": r.topics, "archived": false})
+    };
+    for repo in REPOS {
+        let expected = format!("midstream={}\n", admits("midstream.toml", repo));
+        assert_eq!(decide(repo.name, &metadata(repo), ""), Ok(expected), "{}", repo.name);
+    }
+    let bootc = metadata(known("cgwalters-forge/bootc"));
+    assert_eq!(decide("CGWalters-Forge/BootC", &bootc, ""), Ok("midstream=true\n".to_owned()));
+    // The topic on a non-fork is no midstream, as agentic-job's rule needs a fork.
+    let topic = json!({"full_name": "cgwalters-forge/topic-x", "owner": {"login": "cgwalters-forge"}, "fork": false, "topics": ["bot-midstream"]});
+    assert_eq!(decide("cgwalters-forge/topic-x", &topic, ""), Ok("midstream=false\n".to_owned()));
+    // A failed or incomplete lookup, or a renamed repository, refuses: no output, not the ordinary bounds.
+    let mut renamed = bootc.clone();
+    renamed["full_name"] = json!("cgwalters-forge/bootc-x");
+    let mut partial = bootc.clone();
+    partial.as_object_mut().unwrap().remove("topics");
+    for (fixture, fail) in [(&bootc, "1"), (&renamed, ""), (&partial, ""), (&json!("not found"), "")] {
+        assert!(decide("cgwalters-forge/bootc", fixture, fail).is_err(), "{fixture} {fail}");
+    }
     let step = step_script("Resolve the bounds");
-    // bootc-dev/bootc is upstream, no midstream; neither is a name that only contains one.
-    for (repos, allow, fix) in [
-        (&["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/BootC", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows"][..], "midstream.toml", "midstream-fix.toml"),
-        (&["cgwalters-forge/tracker", "bootc-dev/bootc", "cgwalters-forge/bootc-x", "cgwalters-forge", "bootc-dev/gh-agentic-workflows", "cgwalters-forge/gh-agentic-workflows-x"][..], "dispatch.toml", "fix.toml"),
-    ] {
-        for repo in repos {
-            for kind in KINDS {
-                let allow = match kind {
-                    "triage" | "research" => "comment.toml",
-                    "session" => "session.toml",
-                    _ => allow,
-                };
-                assert_eq!(
-                    run_step(&step, &[("KIND", kind), ("REPO", repo)]),
-                    Ok(format!("allow=.github/agentic-job/{allow}\nfix-allow=.github/agentic-job/{fix}\n")),
-                    "{kind} {repo}"
-                );
-            }
+    for (midstream, allow, fix) in [("true", "midstream.toml", "midstream-fix.toml"), ("false", "dispatch.toml", "fix.toml")] {
+        for kind in KINDS {
+            let allow = match kind {
+                "triage" | "research" => "comment.toml",
+                "session" => "session.toml",
+                _ => allow,
+            };
+            assert_eq!(
+                run_step(&step, &[("KIND", kind), ("MIDSTREAM", midstream)]),
+                Ok(format!("allow=.github/agentic-job/{allow}\nfix-allow=.github/agentic-job/{fix}\n")),
+                "{kind} {midstream}"
+            );
         }
     }
+    for midstream in ["", "True", "yes"] {
+        assert!(run_step(&step, &[("KIND", "implement"), ("MIDSTREAM", midstream)]).is_err(), "{midstream:?}");
+    }
+}
+
+// Each repository's bounds, by name or by its metadata: a fork that gets the
+// topic, or a new repository of the organization, is admitted with no edit
+// here, except that fix.toml and midstream-fix.toml still name theirs.
+#[test]
+fn the_bounds_admit_each_repository_by_name_or_metadata() {
+    let files = ["dispatch.toml", "midstream.toml", "fix.toml", "midstream-fix.toml", "comment.toml", "session.toml"];
+    const OWNED: [bool; 6] = [true, false, true, false, true, true];
+    const MIDSTREAM: [bool; 6] = [false, true, false, true, true, true];
+    const NONE: [bool; 6] = [false; 6];
+    for (repo, expected) in [
+        ("cgwalters-forge/tracker", OWNED), ("cgwalters-forge/agentic-job", OWNED), ("cgwalters-forge/agent-board", OWNED),
+        ("cgwalters-forge/review", OWNED), ("cgwalters-forge/actions", OWNED), ("cgwalters-forge/agenthome", OWNED),
+        ("cgwalters-forge/misctool", OWNED), ("cgwalters-forge/forge-infra", OWNED),
+        ("cgwalters-forge/cgwalters-forge.github.io", OWNED), ("cgwalters-forge/atomic-linux-sandbox", OWNED),
+        ("cgwalters-forge/new-tool-x", [true, false, false, false, true, true]),
+        ("cgwalters-forge/composefs-rs", MIDSTREAM), ("cgwalters-forge/bootc", MIDSTREAM), ("cgwalters-forge/bcvk", MIDSTREAM),
+        ("cgwalters-forge/rpm-ostree", MIDSTREAM), ("cgwalters-forge/anaconda", MIDSTREAM), ("cgwalters-forge/ostree", MIDSTREAM),
+        ("cgwalters-forge/gh-agentic-workflows", MIDSTREAM),
+        ("cgwalters-forge/dracut-x", [false, true, false, false, true, true]),
+        ("cgwalters-forge/gh-aw", NONE), ("cgwalters-bot/bootc", NONE), ("ostreedev/ostree", NONE),
+        ("cgwalters-forge-stage/board-test", [true, false, true, false, true, false]),
+        ("cgwalters-bot/praxis-credential-broker", [true, false, true, false, true, false]),
+        ("bootc-dev/bootc", [false, false, true, false, true, false]),
+        ("bootc-dev/gh-agentic-workflows", [false, false, true, false, true, false]),
+        ("bootc-dev/homebrew-bcvk", [false, false, true, false, false, false]),
+        ("composefs/composefs-rs", [false, false, true, false, false, false]),
+    ] {
+        let got = files.map(|file| admits(file, known(repo)));
+        assert_eq!(got, expected, "{repo}: {files:?}");
+    }
+    assert_eq!(REPOS.len(), 28, "every repository has a row above");
 }
 
 #[test]
@@ -1952,6 +2137,32 @@ fn agentic_job_policy_admits_bootc_dev_only_for_comments_and_fixes() {
     }
 }
 
+// The policy job's own reading of the rules on live metadata, for
+// repositories no bounds file names: a midstream fork, a fork without the
+// topic, an owned repository and bootc-dev's fork and own repository.
+#[test]
+fn agentic_job_policy_admits_unnamed_repositories_by_live_metadata() {
+    if !agentic_job_installed() {
+        return;
+    }
+    for (repo, file, admitted) in [
+        ("cgwalters-forge/dracut", "midstream.toml", true), ("cgwalters-forge/dracut", "dispatch.toml", false),
+        ("cgwalters-forge/gh-aw", "midstream.toml", false), ("cgwalters-forge/gh-aw", "dispatch.toml", false),
+        ("cgwalters-forge/secure-host", "dispatch.toml", true), ("cgwalters-forge/secure-host", "midstream.toml", false),
+        ("bootc-dev/bcvk", "comment.toml", true), ("bootc-dev/homebrew-bcvk", "comment.toml", false),
+    ] {
+        let (kind, outputs) = match file {
+            "comment.toml" => ("analysis", "add_comment,noop"),
+            _ => ("branch", "create_pull_request,noop"),
+        };
+        let result = agentic_job(&[
+            "policy", "--allow", &path_of(file), "--repo", repo, "--clone-url", &format!("https://github.com/{repo}"),
+            "--kind", kind, "--outputs", outputs, "--max-outputs", "3", "--base", "main",
+        ]);
+        assert_eq!(result.status.success(), admitted, "{repo} {file}: {}", String::from_utf8_lossy(&result.stderr));
+    }
+}
+
 // The policy job's own reading of the bounds, so a spelling it ignores fails.
 #[test]
 fn agentic_job_policy_keeps_ready_when_complete_from_both_bounds_and_the_midstream_ones_leave_drafts() {
@@ -1991,6 +2202,9 @@ fn no_repository_the_bot_owns_is_a_dispatch_or_fix_target_unless_it_opts_in() {
     // naming them, in lowercase; add one only after checking that file is there.
     let opted_in = BTreeSet::from(["cgwalters-bot/praxis-credential-broker"]);
     for name in ["dispatch.toml", "fix.toml"] {
+        for rule in rules(name) {
+            assert!(!rule["org"].as_str().unwrap().eq_ignore_ascii_case(&bot), "{name}: a rule admits {bot}'s repositories");
+        }
         for repo in repos(name) {
             if opted_in.contains(repo.to_lowercase().as_str()) {
                 continue;
@@ -2352,7 +2566,6 @@ fn release_train_callers_hold_one_wrappers_pin() {
 #[test]
 fn the_pass_starts_work_only_where_dispatch_and_fix_runs_may_act_on_known_pools() {
     let pass = json_file("../pass.json");
-    let either = |names: &[&str]| -> Vec<String> { names.iter().flat_map(|n| repos(n)).collect() };
     let names = |v: &Value, what: &str| -> Vec<String> {
         v.as_array()
             .unwrap_or_else(|| panic!("{what} is not an array"))
@@ -2360,17 +2573,25 @@ fn the_pass_starts_work_only_where_dispatch_and_fix_runs_may_act_on_known_pools(
             .map(|s| s.as_str().unwrap_or_else(|| panic!("{what} has a non-string")).to_owned())
             .collect()
     };
-    let scheduled = either(&["dispatch.toml", "midstream.toml"]);
-    for repo in names(&pass["workRepositories"], "workRepositories") {
-        assert!(scheduled.contains(&repo), "{repo} is scheduled but not in dispatch.toml or midstream.toml");
+    // Every name in the lists is one REPOS describes, so the loop below sees it.
+    for key in ["follow", "workRepositories"] {
+        for entry in pass[key].as_array().expect(key) {
+            if let Some(repo) = entry.as_str() {
+                known(repo);
+            }
+        }
     }
-    // An `owner/*` bound covers each of that owner's repositories.
-    let followed = either(&["fix.toml", "midstream-fix.toml"]);
-    for repo in names(&pass["follow"], "follow") {
-        let covered = followed
-            .iter()
-            .any(|r| *r == repo || r.strip_suffix("/*").is_some_and(|owner| repo.starts_with(&format!("{owner}/"))));
-        assert!(covered, "{repo} is followed but not in fix.toml or midstream-fix.toml");
+    for repo in REPOS {
+        let either = |files: [&str; 2]| files.iter().any(|f| admits(f, repo));
+        if covers(&pass["workRepositories"], repo, false) {
+            assert!(either(["dispatch.toml", "midstream.toml"]), "{} is scheduled but not in dispatch.toml or midstream.toml", repo.name);
+        }
+        // A repository the organization entries add later is followed before
+        // the fix bounds name it; until then the pass's --fix-bounds check
+        // skips its fix rounds.
+        if covers(&pass["follow"], repo, false) && !repo.name.ends_with("-x") {
+            assert!(either(["fix.toml", "midstream-fix.toml"]), "{} is followed but not in fix.toml or midstream-fix.toml", repo.name);
+        }
     }
     let mut used: Vec<String> = pass["pools"].as_object().expect("pass.json's pools").keys().cloned().collect();
     for key in ["planPools", "triagePools"] {

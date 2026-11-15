@@ -6,14 +6,16 @@
 # promotes work upstream instead. cgwalters-review skips drafts, so these
 # get no automatic review; `/review` still works. The pass follows them for
 # fix rounds, and `pr.noMerge` in pass.json keeps it from merging there.
-# Nothing here reads the topic: these lists are what decides, so a fork
-# that gets the topic must be added here before it is dispatched to.
-# The profile job of dispatch.yml picks this file for a target listed here,
-# so a repository belongs here or in dispatch.toml, never both; the same
-# for midstream-fix.toml and fix.toml. Protected files stay blocked except
-# for the repository-scoped workflow admission below.
+# The one rule below is the list: agentic-job's policy admits a target by
+# its live metadata (a public, unarchived fork in the organization with the
+# topic and `origin` property), so giving a fork the topic is all it takes.
+# The profile job of dispatch.yml picks this file for a target whose live
+# metadata matches this rule's organization, fork flag and topics, and
+# dispatch.toml's rule takes only non-forks, so a repository falls under
+# one or the other. Protected files stay blocked except for the
+# repository-scoped workflow admission below.
 hosts = ["github.com"]
-repos = ["cgwalters-forge/composefs-rs", "cgwalters-forge/bootc", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/gh-agentic-workflows"]
+repos = [{ org = "cgwalters-forge", forks = true, topics = ["bot-midstream"], properties = { origin = "fork" } }]
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576
