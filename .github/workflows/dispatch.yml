@@ -6,7 +6,8 @@
 # trigger and its inputs, the run name, the concurrency, the
 # environment that gates apply and which secret is the apply token; the
 # bounds are in .github/agentic-job (dispatch.toml, comment.toml for
-# `triage` and `research`, session.toml for `session`, fix.toml for `fix`, midstream.toml and
+# `triage` and `research`, recovery.toml for a triage of a pull request,
+# session.toml for `session`, fix.toml for `fix`, midstream.toml and
 # midstream-fix.toml in their place for a midstream fork) and
 # the runner configuration in hosted.toml there, the wrapper's default paths.
 # The `pool` input picks the agent and model from the closed set in pools.json
@@ -360,10 +361,29 @@ jobs:
                           and set(rule['topics']) <= set(target['topics']) for rule in rules)
           print(f'midstream={str(midstream).lower()}')
           PY
+      # A triage whose item is a pull request of the target is agent-board's
+      # PR recovery (pass.json's pr.agentRecovery): it gets recovery.toml,
+      # which may close that repository's pull requests and file an issue
+      # there. Any other triage has an issue as its item and keeps
+      # comment.toml. A failed or moved lookup stops the run.
+      - name: Read whether the item is a pull request
+        id: item
+        if: inputs.kind == 'triage' && inputs.issue_repo == ''
+        env:
+          REPO: ${{ inputs.repo }}
+          ITEM: ${{ inputs.item }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ $ITEM =~ ^[1-9][0-9]*$ ]] || { echo "::error::item '${ITEM}' is not a number"; exit 1; }
+          read -r number pull < <(gh api "repos/${REPO}/issues/${ITEM}" --jq '"\(.number) \(.pull_request != null)"') || true
+          [[ $number == "$ITEM" && ($pull == true || $pull == false) ]] ||
+            { echo "::error::no issue or pull request ${REPO}#${ITEM}"; exit 1; }
+          echo "pull=${pull}" >> "$GITHUB_OUTPUT"
       - name: Resolve the bounds
         id: bounds
         env:
           KIND: ${{ inputs.kind }}
+          PULL: ${{ steps.item.outputs.pull }}
           MIDSTREAM: ${{ steps.target.outputs.midstream }}
           REPO: ${{ inputs.repo }}
           # Threat: an injected task turning on cross-repository publication.
@@ -374,7 +394,8 @@ jobs:
           [[ $MIDSTREAM == true || $MIDSTREAM == false ]] ||
             { echo "::error::no midstream decision for the target: '${MIDSTREAM}'"; exit 1; }
           case "$KIND" in
-            triage|research) allow=$dir/comment.toml ;;
+            triage) allow=$dir/comment.toml; [[ ${PULL:-} == true ]] && allow=$dir/recovery.toml ;;
+            research) allow=$dir/comment.toml ;;
             session) allow=$dir/session.toml ;;
             *) allow=$dir/dispatch.toml; [[ $MIDSTREAM == true ]] && allow=$dir/midstream.toml ;;
           esac
@@ -415,7 +436,7 @@ jobs:
   run:
     needs: profile
     if: ${{ inputs.kind != 'review' }}
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@652610d2907f74c8e9ea711fec2ee30a18a98d6e
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@780114b6409bc9aec99546bc3132a7ee9783b083
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:
@@ -449,6 +470,9 @@ jobs:
       apply-environment: agent-apply
       # From the profile job, which says how it picks them.
       allow: ${{ needs.profile.outputs.allow }}
+      # Recovery triage's closing and filing outputs come from recovery.toml
+      # (actions#276); every other triage keeps the wrapper's comment-only set.
+      triage-outputs-from-allow: ${{ needs.profile.outputs.allow == '.github/agentic-job/recovery.toml' }}
       # The wrapper's fixed max-outputs is 3 (no caller input): with secondary
       # bounds, two draft PRs share that ceiling with one ancillary request.
       fix-allow: ${{ needs.profile.outputs.fix-allow }}
