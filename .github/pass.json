@@ -26,7 +26,6 @@
   "openPrCap": 6,
   "topDown": true,
   "requestShare": 60,
-  "requestWindow": {"passMinutes": 10, "floor": 1200},
   "reserveOperator": true,
   "state": ".state/pass.json",
   "bodyPlans": true,
