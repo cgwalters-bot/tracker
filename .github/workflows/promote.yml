@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AGENT_BOARD_REV: 765522b7010a79d00dea9ed48c320f7703809077
+  AGENT_BOARD_REV: a4320f759d47f95c647912d7abfc8af1fa211661
 
 jobs:
   promote:
