@@ -85,8 +85,8 @@ separation, archived runs against their manifests and hashes, and count
 consistency, including invalid-record fixtures. This is a
 structural check, **not** semantic citation verification or an architecture review.
 `just test-architecture-review fixtures` also runs the deterministic offline
-packet fixtures (and the structural checks). The existing recipe preserves the
-builder without adding a script file or changing the new-file policy.
+packet fixtures (and the structural checks). The recipe runs the script in
+[checks.md](checks.md), which keeps the builder out of the Justfile and script files.
 `just test-architecture-review e2e` additionally exercises the actual rebuild and
 verify dispatch with canned API responses and temporary filesystem isolation.
 It doesn't need live GitHub access or inference. Cases include stale HEAD files,
