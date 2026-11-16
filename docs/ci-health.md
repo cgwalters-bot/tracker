@@ -599,14 +599,63 @@ identity/owner/fix mapping of either sample. Each occurs in one observed run;
 neither supports recurrence or same-SHA recovery here. The index stays empty,
 pending mappings above stay visible, and no issue closure is called deployment.
 
-**Hosted acceptance unavailable in this handback:** the read-only API lookup of
+**Historical deployment gap (superseded by the hosted evidence below):** the read-only API lookup of
 `repos/cgwalters-forge/tracker/actions/workflows/ci-health.yml` and the default
-branch file lookup both returned HTTP 404 on November 13. The workflow is not
-deployed on the default branch. This run can hand back a patch, not push or start
-hosted jobs; it did not dispatch a different ref to bypass the default-branch
-guard. After merge, the controller must run manual `preview: true` and retain
-its run URL, all-source job-token access, raw/rendered artifact digests and
-upload/download/retention evidence. Scheduling and owned-comment create/update
-also remain unverified. These are deployment evidence gaps, not a request to
-change policy, credentials or variables. Keep publication off and #1229 open
-until that acceptance is reviewed.
+branch file lookup both returned HTTP 404 on November 13. The workflow was not
+deployed on the default branch at that lookup. That run could hand back a patch,
+not push or start hosted jobs; it did not dispatch a different ref to bypass the
+default-branch guard. Hosted preview, all-source job-token access, artifact
+provenance/retention, scheduling and owned-comment create/update were unverified
+then. Publication was kept off and #1229 open pending reviewed acceptance; the
+current evidence and remaining gaps are recorded below.
+
+### 2026-11-14 hosted evidence review (updated 2026-11-16)
+
+The existing implementation [#1325](https://github.com/cgwalters-forge/tracker/pull/1325)
+is merged, not an outstanding draft. Read-only inspection found the default-branch
+workflow active and one completed [scheduled run, 43447382610](https://github.com/cgwalters-forge/tracker/actions/runs/43447382610),
+at source `3310be48fae2d26472e7b840b69845729d8e5190` on November 13.
+Both collect and report jobs passed. The logs record the verified installation
+of `223fc372d321abfc643929faa4e8218b2422f30d`, one collection, same-run artifact
+download with a matching archive digest, and `Preview only; status comment unchanged.`
+The scheduled invocation had `PREVIEW=false`; the source policy's `publish: false`
+kept it read-only. This is scheduled preview evidence, **not a manual dispatch
+or comment-publication test**. No new collection or dispatch was made for this review.
+
+The downloaded provenance binds that source, collector, run attempt 1 and the
+unchanged config hash `f322be4b7ca7e0a34b22f433941e0d0c3edcf3017ae165503b3102f8b80cbf3b`.
+The raw report SHA-256 is
+`5e5af5bd2bbf7eef0dc7573a209ca245af09ca32cc4ad606f9efee6d6fb9b46b`;
+the dated JSON is byte-identical. The artifacts are
+[raw JSON/provenance](https://github.com/cgwalters-forge/tracker/actions/runs/43447382610/artifacts/14049485678)
+(archive SHA-256 `1a497803f1aeea0e6a3cae1d1ccbab8cb4015ac82bd09fa9e406acaa7b9cfd1b`)
+and [dated JSON/Markdown](https://github.com/cgwalters-forge/tracker/actions/runs/43447382610/artifacts/14049650425)
+(archive SHA-256 `54cbfbbaaacbbe0a860fd1e53939c61bdbc3fc0cd4fa9190ee2195837e46aac5`).
+Both were downloadable during this review; the API lists expiry on December 18,
+consistent with 35-day retention, not proof they will remain available indefinitely.
+
+The hosted report covers the same October 14–November 13 window but is a separate
+sample from the local one above. **It remains incomplete.** In particular, bcvk
+`main-c10s.yml` returned HTTP 404 with the job token: its empty populations are
+unavailable history, unlike the local sample's completed empty listing. The
+workflow does not exist, so that listing was a missing workflow reported as
+complete; the [bcvk target correction](#bcvk-target-correction-14-november-2026)
+has since removed the target. Other targets retain
+byte/time/log warnings, and C composefs `builds.yaml` and agenthome
+`ci.yml` have no eligible history. Successful jobs do not establish full source
+access, healthy CI, supported signature mappings or eventual run-level outcomes.
+
+The saved hosted JSON was replayed through the existing config/renderer/publication
+regression suite, including stale-window refusal, without another live collection.
+By November 16 the run list had three more successful scheduled runs, the
+latest [43907771184](https://github.com/cgwalters-forge/tracker/actions/runs/43907771184)
+at `b4acada`, all with the corrected configuration (SHA-256
+`ebda882a7dfaef7a3419809bce5ecd3b03d0929e5efd869d0d34f39b666a0ae7`); the latest again logged `Preview only; status comment unchanged.` Their reports
+have not been reviewed here, and none was a manual dispatch.
+Still missing: a hosted **manual** `preview: true` run, review of a
+corrected-configuration report, reviewed scope/index acceptance, and owned-comment
+create/update evidence. This patch-only handback cannot start a hosted job; the controller must
+dispatch `ci-health.yml` on the default branch with `preview: true` and retain its
+run/artifacts. No credential or variable change is requested. Keep publication
+off and #1229 open; neither the earlier 404 deployment gap nor first-target
+starvation should be reported as the current blocker.
