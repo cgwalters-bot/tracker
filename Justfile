@@ -285,7 +285,7 @@ test-heavy-consumers board:
     fn main() {
         let normal = read(".github/agentic-job/pools.json");
         let mut heavy = normal.clone();
-        heavy["openai"]["heavy"] = json!({"model": "praxis/gpt-6-astra"});
+        heavy["openai"]["heavy"] = json!({"model": "praxis/gpt-6.2-astra"});
         let settings = Settings::from_json(
             &read(".github/poll/agent-board.json"),
             &read(".github/supervisor/config.json"),
@@ -357,7 +357,7 @@ test-heavy-review review:
       const now = Date.parse('2026-11-05T00:00:00Z');
       const before = parseBudget(JSON.stringify(pools), now);
       assert.equal(before.limitUsd, 300);
-      pools.openai.heavy = { model: 'praxis/gpt-6-astra' };
+      pools.openai.heavy = { model: 'praxis/gpt-6.2-astra' };
       assert.deepEqual(parseBudget(JSON.stringify(pools), now), before);
       console.log(`ok review UI parseBudget at ${revision} accepts heavy; deployed UI revision remains unverified`);
     }
