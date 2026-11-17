@@ -47,7 +47,12 @@ jobs:
             say which facts it could not confirm, and say whether
             cgwalters-forge/agentic-job's crates/agentic-job/src/run/prices.toml
             needs the new rates, with the exact entries. Never add a model the
-            broker cannot serve.
+            broker cannot serve. Keep every replaced model defined until no
+            caller names it: search the organization's first-party
+            repositories for the old IDs (tracker's
+            .github/agentic-job/pools.json, actions' deployment/deployment.json
+            and any others) and list each one in the pull request; callers
+            that still name a removed model fail every run on that pool.
         run: |
           gh workflow run dispatch.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
             -f kind=implement -f repo="$REPO" -f item="$ITEM" -f pool=openai -f task="$TASK"
