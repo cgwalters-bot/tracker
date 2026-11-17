@@ -382,13 +382,15 @@ test-architecture-review mode="test" id="B2588":
       assert.equal(r.protocol, 'isolated-protocol.md');
       assert.equal(r.protocol_sha256, sha256(read(r.protocol)));
       assert.equal(r.protocol_frozen_before_discovery, true);
-      // The amendment is pinned here like the protocol hash, so its text cannot drift after feedback retrieval.
+      // Amendments are pinned here like the protocol hash, so any later edit to their text must also change this list.
       assert.deepEqual(r.protocol_amendments.map(a => sha256(a.rule)),
-        ['c46ddf94bfe73a3c0d093960e6a57928024275d5aacd94e1bf4076b7c45e5d7e'], 'all-channel pre-feedback rule');
+        ['c46ddf94bfe73a3c0d093960e6a57928024275d5aacd94e1bf4076b7c45e5d7e', 'a60404fd1fd72b9379f6d8423153114ac2d996782184e17a3b3d5a53716592b5'],
+        'all-channel pre-feedback rule, then its numeric review-ID clarification');
       for (const amendment of r.protocol_amendments) {
         assert.equal(amendment.after_discovery, true);
         assert.equal(amendment.before_feedback_retrieval, true);
         assert.match(amendment.date, /^2026-\d\d-\d\d$/);
+        assert.ok(amendment.date >= r.discovery.date, 'amendments follow discovery');
         assert.ok(amendment.reason);
       }
       assert.deepEqual(Object.keys(r.artifact_sha256).sort(), ['patterns.md', 'prompt.md', 'references.json']);
@@ -461,6 +463,8 @@ test-architecture-review mode="test" id="B2588":
         assert.ok(c.review.id);
         assert.match(c.review.submitted_at, /^2026-\d\d-\d\dT\d\d:\d\d:\d\dZ$/);
         assert.ok(c.review.url.startsWith(`https://github.com/${c.repository}/pull/${c.pr}#pullrequestreview-`));
+        // The own-review feedback exclusion matches this numeric REST ID, not the GraphQL review.id.
+        assert.match(c.review.url, /#pullrequestreview-[1-9][0-9]*$/);
         assert.equal(c.metadata_counts.files, c.paths.length);
         assert.ok(c.paths.length > 0 && c.paths.length <= 100);
         assert.equal(new Set(c.paths).size, c.paths.length);
@@ -534,6 +538,13 @@ test-architecture-review mode="test" id="B2588":
       invalid(r => r.protocol_amendments = []);
       invalid(r => r.protocol_amendments[0].before_feedback_retrieval = false);
       invalid(r => r.protocol_amendments[0].rule = r.protocol_amendments[0].rule.replace(' or PR comment', ''));
+      invalid(r => r.protocol_amendments.pop());
+      invalid(r => {
+        const pinned = r.candidates[0];
+        const nonNumeric = pinned.review.url.replace(/[0-9]+$/, 'x');
+        pinned.metadata_audit.reviews.find(review => review.id === pinned.review.id).url = nonNumeric;
+        pinned.review.url = nonNumeric;
+      });
       invalid(r => r.candidates[0] = { ...r.candidates[0], repository: 'bootc-dev/bootc', pr: 2603 });
       invalid(r => r.exposure.excluded_prs.pop());
       invalid(r => r.candidates[1] = structuredClone(r.candidates[0]));

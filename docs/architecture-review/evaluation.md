@@ -379,3 +379,8 @@ pre-feedback claim; inline comments of the pinned review itself are excluded,
 since their draft timestamps precede submission. Checks pin the rule's hash. The
 protocol text is unchanged. Like the freeze, the amendment's chronology is
 asserted, not independently timestamped.
+
+A second amendment, also before any feedback retrieval, says that exclusion
+matches the numeric REST review ID from the review URL's `#pullrequestreview-N`
+fragment against `pull_request_review_id`, not the GraphQL node ID stored as
+`review.id`, and that it narrows the frozen inline-feedback rule too.

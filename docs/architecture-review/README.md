@@ -143,6 +143,12 @@ records for these exact cases. Repeating discovery, using today's base or adding
 a timestamp now cannot repair that provenance. Do not fetch feedback or start
 reviewers while the historical-input gate is closed.
 
+The protocol's pre-feedback rule is superseded by `protocol_amendments` in
+isolated.json, since the hashed protocol text cannot change: earlier feedback
+on any channel invalidates a case, except inline comments of the pinned review
+itself, matched by the numeric REST ID in its `#pullrequestreview-N` URL. Apply
+the amendments before scoring.
+
 The default verification recipe also checks these separate records and negative
 fixtures: protocol/artifact hashes, pilot/exposure disjointness, earliest submitted
 review pins, ordered metadata-proxy selection, candidate uniqueness, pagination

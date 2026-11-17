@@ -9,7 +9,10 @@
   "protocol_amendments": [
     {"date":"2026-11-05", "after_discovery":true, "before_feedback_retrieval":true,
      "rule":"Pre-feedback validity covers every feedback channel retrieved for scoring: a cgwalters inline comment, review body or PR comment timestamped before the pinned review's submitted_at invalidates that case's pre-feedback claim and is reported, never silently repinned. Inline comments attached to the pinned review itself (pull_request_review_id equal to its ID) are excluded, because their pending-draft timestamps precede submission.",
-     "reason":"The frozen protocol text names only inline feedback; an earlier PR comment exposes design feedback just as much. Recorded here rather than by editing the hashed protocol, before any feedback retrieval."}
+     "reason":"The frozen protocol text names only inline feedback; an earlier PR comment exposes design feedback just as much. Recorded here rather than by editing the hashed protocol, before any feedback retrieval."},
+    {"date":"2026-11-17", "after_discovery":true, "before_feedback_retrieval":true,
+     "rule":"The pinned review's ID for the own-review exclusion is its numeric REST review ID, the N in its URL's #pullrequestreview-N fragment, compared with each inline comment's pull_request_review_id; it is not the GraphQL node ID recorded as review.id. This exclusion also narrows the frozen protocol's inline-feedback rule.",
+     "reason":"The earlier amendment said only 'its ID' while the record stores GraphQL node IDs, which never equal the numeric pull_request_review_id, so the exclusion could not apply. Clarified before any feedback retrieval; the earlier amendment's text is unchanged."}
   ],
   "artifact_sha256": {
     "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
