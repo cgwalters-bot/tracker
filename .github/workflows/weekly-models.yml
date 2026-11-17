@@ -1,0 +1,53 @@
+# Weekly model bumps (agenthome#102): an implement run on agenthome, which
+# reaches the inference broker as every agent run does, runs agenthome's
+# `just discover-models --write` and opens one PR only when a newer model
+# replaces a tier's. Discovery does not compare an unchanged model's price or
+# limits; those still need a hand-made PR. No new credential: discovery takes
+# the run's own broker endpoint and token from its opencode configuration.
+name: weekly-models
+
+on:
+  schedule:
+    # Mondays 06:23 UTC.
+    - cron: '23 6 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  dispatch:
+    # dispatch.yml only runs from the default branch.
+    if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    # What lets the job token start dispatch.yml here.
+    permissions:
+      actions: write
+    steps:
+      - name: Start the discovery run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO: cgwalters-forge/agenthome
+          # The standing issue that owns this job; it stays open.
+          ITEM: '102'
+          TASK: >-
+            The weekly model check for agenthome#102. On agenthome's main
+            branch, run discovery with this run's broker endpoint and token,
+            which the runner keeps in its opencode configuration, and never
+            print either: `cfg=~/.config/opencode/opencode.json;
+            BROKER_BASE_URL=$(jq -r '.provider[].options.baseURL' "$cfg")
+            BROKER_API_KEY=$(jq -r '.provider[].options.apiKey' "$cfg")
+            just discover-models --write`, then `just check`. If it reports
+            no model bumps, hand back with no pull request; it only finds
+            newer models, so change no price or limit of an unchanged model.
+            Otherwise open one pull request with the bump. Its body must have
+            the line `Refs #102` on its own and no closing keyword for #102,
+            which stays open for next week's run. Name each source in it,
+            say which facts it could not confirm, and say whether
+            cgwalters-forge/agentic-job's crates/agentic-job/src/run/prices.toml
+            needs the new rates, with the exact entries. Never add a model the
+            broker cannot serve.
+        run: |
+          gh workflow run dispatch.yml --repo "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH" \
+            -f kind=implement -f repo="$REPO" -f item="$ITEM" -f pool=openai -f task="$TASK"
