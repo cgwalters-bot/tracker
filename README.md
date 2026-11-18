@@ -568,7 +568,7 @@ Both midstream caller bounds set `[github.outputs] own-branch-repos` to
 `["cgwalters-forge/*"]`, trusting org CI for own-branch pushes without committing
 `accept-owner-branches` files to upstream-tracking defaults. Repository admission,
 branch bounds, draft policy and protected files remain unchanged. This requires
-agentic-job#3404, which dispatch's non-review policy/check/apply pin (v0.6.14)
+agentic-job#3404, which dispatch's non-review policy/check/apply pin (v0.6.16)
 includes. The one-time removal of fork-only default-branch commits and any job-specific ruleset bypass require a
 separate operator decision on #1581; neither is implemented or authorized here.
 Open midstream PRs continue through ordinary fix rounds, without special rebases.
