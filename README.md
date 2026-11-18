@@ -206,7 +206,13 @@ operator confirms in settings that no other repository or environment depends
 on the org secret, restrict it to selected repositories: tracker.
 
 Scheduling is top-down (`topDown: true`): P0 epic groups are considered before
-unrelated parent discovery spends the request budget. Applying passes hand their
+unrelated parent discovery spends the request budget. To keep already-held
+items from consuming the reads needed by ready work, `readFreeHolds: true`
+uses holds proven by the current board pass before reading assignment history.
+Incomplete evidence still takes the normal read path; start checks and caps
+are unchanged. Remove the setting to restore the default behavior.
+
+Applying passes hand their
 disposable `.state/pass.json` cache and, when present, `.state/living-status.json` ledger
 to the next pass as the one-day `pass-state` artifact. Both chain dispatches supply `previous_run_id`; restore validates that
 exact run's repository, workflow, default branch, applying invocation and finished
