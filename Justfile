@@ -1835,28 +1835,21 @@ check-review-gate:
 review-gate-repos:
     @python3 -c 'import sys, tomllib; print(*sorted({r for p in sys.argv[1:] for r in tomllib.load(open(p, "rb")).get("unprotected_files", {}).get("repos", [])}))' .github/agentic-job/dispatch.toml .github/agentic-job/fix.toml .github/agentic-job/midstream.toml .github/agentic-job/midstream-fix.toml
 
-# A repository's drift from the manifest (.github/forge-sync/repos.json,
-# #544), one line each, from its fetched files on stdin:
-# {"repo": ..., "review": <review_workflow's YAML or null>, "dependabot": <dependabot.yml
-# or null>, "justfile": <bool>, "renovate": <renovate.json or null>}. Fails
-# on any drift, a repository the manifest does not list, or an exemption that
-# is unknown or gives no reason. The YAML is parsed with yq (its first
-# document), so only jobs.review.uses counts as the review call, which a
-# pinned unrelated job cannot hide. Only a manifest that sets
-# renovate_preset requires the Renovate config to list it in `extends`, so
-# that no repository's runner label goes stale unnoticed (#1054).
+# Validate the forge manifest's repository list and pinned review call (#544).
 forge-sync-manifest manifest:
     @jq -e '(.repos | type == "array" and length > 0 and all(.[]; .repo | type == "string")) and (.review_workflow | type == "string" and test("^[a-zA-Z0-9_-]+\\.ya?ml$")) and (.review_call | type == "string" and test("^[a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+/\\.github/workflows/[a-zA-Z0-9_-]+\\.ya?ml@[0-9a-f]{40}$"))' "$1" > /dev/null
 
+# Report drift for one stdin object: repo, justfile (bool), review and dependabot
+# (YAML or null), renovate (JSON text or null). Only the first YAML document's
+# jobs.review.uses counts; renovate_preset, when set, must be in extends (#1054).
 forge-sync-drift manifest: (forge-sync-manifest manifest)
     #!/usr/bin/env bash
     set -euo pipefail
-    input=$(cat)
+    input=$(jq -cse 'if length == 1 and (.[0] | type == "object") then .[0] else error("expected one JSON object on stdin") end')
     yaml() { jq -r --arg k "$1" '.[$k] // empty' <<< "$input" | yq -p=yaml -o=json -I=0 'select(document_index == 0)'; }
-    review=$(yaml review)
-    dependabot=$(yaml dependabot)
-    drift=$(jq -r --slurpfile m "$1" --argjson rv "$review" --argjson dp "$dependabot" '
-      $m[0] as $m | .repo as $r | (first($m.repos[] | select(.repo == $r)) // null) as $e
+    review=$(yaml review); dependabot=$(yaml dependabot)
+    drift=$(printf '%s\n' "$input" "${review:-null}" "${dependabot:-null}" | jq -sr --slurpfile m "$1" '
+      . as [$input, $rv, $dp] | $input | $m[0] as $m | .repo as $r | (first($m.repos[] | select(.repo == $r)) // null) as $e
       | if $e == null then "\($r) \($path): expected an entry, found none" else ($e.exempt // {}) as $x
       | ($x | to_entries[] | select((.key | IN("review", "dependabot", "justfile", "renovate") | not) or (.value | type != "string" or length == 0))
         | "\($r) \($path): expected exempt.\(.key) to be review, dependabot, justfile or renovate with a reason, found \(.value | tojson)"),
@@ -1873,15 +1866,10 @@ forge-sync-drift manifest: (forge-sync-manifest manifest)
           else .renovate as $text | (if $text == null then null else try ($text | fromjson) catch null end) as $rc
           | select([$rc | objects | .extends | arrays | .[] | select(. == $p)] == [])
           | "\($r) renovate.json: expected extends to list \($p), found \(if $text == null then "no file" elif $rc | type != "object" then "no JSON object" else $rc.extends // [] | tojson end)" end)
-      end' --arg path "$1" <<< "$input")
+      end' --arg path "$1")
     [[ -z $drift ]] || { echo "$drift"; exit 1; }
 
-# forge-sync-drift on each fixture under .github/forge-sync/testdata, and
-# under its renovate/ whose manifest sets renovate_preset, against the
-# manifest.json beside it, passing for pass-* and reporting drift for the
-# fixture's repository otherwise; then on this repository's own files against
-# the real manifest, so moving dispatch.yml's review pin without review_call,
-# or dropping .github/renovate.json or renovate_preset, fails here.
+# Check drift fixtures against their local manifests and this repo against the real manifest.
 test-forge-sync:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -1895,7 +1883,9 @@ test-forge-sync:
         echo "ok $f ($want)"
       done
     done
-    bad=$(mktemp)
+    bad=$(mktemp); output=$(mktemp); trap 'rm -f "$bad" "$output"' EXIT
+    cat "$top/renovate/pass-extends-preset.json" "$top/renovate/pass-extends-preset.json" > "$bad"
+    if {{ just_executable() }} forge-sync-drift "$top/renovate/manifest.json" < "$bad" > "$output" 2>&1 || ! grep -q 'expected one JSON object on stdin' "$output"; then cat "$output" >&2; exit 1; fi
     # Without renovate_preset no Renovate config is required; a preset that is
     # not a name, or a moving or missing review call, makes every repo drift.
     {{ just_executable() }} forge-sync-drift "$top/manifest.json" < "$top/renovate/fail-no-renovate.json"
@@ -1907,19 +1897,26 @@ test-forge-sync:
     done
     for manifest in '{}' '{"repos": []}' '{"repos": [{}]}' '[' ''; do
       if [[ -n $manifest ]]; then echo "$manifest" > "$bad"; else rm -f "$bad"; fi
-      if {{ just_executable() }} forge-sync "$bad" > /dev/null 2>&1; then
-        echo "forge-sync with manifest '$manifest': want fail, got pass" >&2; exit 1
-      fi
+      ! {{ just_executable() }} forge-sync "$bad" > /dev/null 2>&1 || { echo "forge-sync with manifest '$manifest': want fail, got pass" >&2; exit 1; }
       echo "ok forge-sync refuses manifest '${manifest:-<missing>}'"
     done
+    # forge-sync offline on files over Linux's per-argument limit, including YAML that stays large after parsing.
+    jq '.repos |= map(select(.repo == "example/synced"))' "$top/renovate/manifest.json" > "$bad"
+    gh() { case $2 in */justfile) printf '#%262144s\n' '' ;;
+      */review.yml) if [[ ${oversized_pin:-} ]]; then jq -nr '"jobs:\n  review:\n    uses: " + (("😀" * 50000) | tojson)'; else jq -r .review "$fixture" && printf 'padding: "%262144s"\n' ''; fi ;;
+      */dependabot.yml) jq -r .dependabot "$fixture" && printf 'padding: "%262144s"\n' '' ;;
+      */.github/renovate.json) jq -c '.renovate | fromjson | .padding = ("x" * 262144)' "$fixture" ;; *) echo 'HTTP 404' >&2; return 1 ;; esac; }; export -f gh
+    export fixture=$top/renovate/pass-extends-preset.json; GITHUB_OUTPUT=/dev/null {{ just_executable() }} forge-sync "$bad"
+    : > "$output"; if oversized_pin=1 GITHUB_OUTPUT="$output" {{ just_executable() }} forge-sync "$bad" > /dev/null; then exit 1; fi
+    grep -qx 'failed=example/synced' "$output"; report=$(sed -n 's/^drift=//p' "$output")
+    jq -eR 'utf8bytelength <= 100000 and (fromjson | startswith("example/synced .github/workflows/review.yml: expected jobs.review.uses ") and endswith("[drift truncated]"))' <<< "$report" > /dev/null
+    DRIFT=$report /bin/true
     self=$(jq -e --rawfile review .github/workflows/dispatch.yml --rawfile dependabot .github/dependabot.yml --rawfile renovate .github/renovate.json \
       'select(.review_workflow == "dispatch.yml" and (has("review_pin") | not) and all(.repos[]; .exempt.review == null)) | {repo: "cgwalters-forge/tracker", $review, $dependabot, justfile: true, $renovate}' .github/forge-sync/repos.json)
     {{ just_executable() }} forge-sync-drift .github/forge-sync/repos.json <<< "$self"
     echo "ok this repository against .github/forge-sync/repos.json"
     # The real manifest must keep requiring the preset of this repository.
-    if {{ just_executable() }} forge-sync-drift .github/forge-sync/repos.json <<< "$(jq '.renovate = null' <<< "$self")" > /dev/null 2>&1; then
-      echo "this repository without .github/renovate.json: want drift, got none" >&2; exit 1
-    fi
+    ! {{ just_executable() }} forge-sync-drift .github/forge-sync/repos.json <<< "$(jq '.renovate = null' <<< "$self")" > /dev/null 2>&1 || { echo "this repository without .github/renovate.json: want drift, got none" >&2; exit 1; }
     echo "ok this repository without .github/renovate.json drifts"
 
 # forge-sync-drift on the default branch of every repository in the
@@ -1945,22 +1942,23 @@ forge-sync manifest=".github/forge-sync/repos.json": (forge-sync-manifest manife
     failed=() drift=
     for repo in $repos; do
       out= renovate=null
+      # Fetched files go to jq on stdin: one can exceed argv's per-argument limit.
       if j=$(fetch "$repo" Justfile) && if [[ $j == null ]]; then j=$(fetch "$repo" justfile); fi &&
         if [[ -n $preset ]]; then
           renovate=$(fetch "$repo" renovate.json) && if [[ $renovate == null ]]; then renovate=$(fetch "$repo" .github/renovate.json); fi
         fi &&
-        input=$(jq -n --arg repo "$repo" --argjson review "$(fetch "$repo" ".github/workflows/$(jq -r .review_workflow "$1")")" \
-          --argjson dependabot "$(fetch "$repo" .github/dependabot.yml)" --argjson j "$j" --argjson renovate "$renovate" \
-          '{$repo, $review, $dependabot, justfile: ($j != null), $renovate}') &&
+        review=$(fetch "$repo" ".github/workflows/$(jq -r .review_workflow "$1")") && dependabot=$(fetch "$repo" .github/dependabot.yml) &&
+        input=$(printf '%s\n' "$review" "$dependabot" "$j" "$renovate" | jq -s --arg repo "$repo" '. as [$review, $dependabot, $j, $renovate] | {$repo, $review, $dependabot, justfile: ($j != null), $renovate}') &&
         out=$({{ just_executable() }} forge-sync-drift "$1" <<< "$input"); then
         echo "ok $repo"; continue
       fi
       out=${out:-"$repo: could not be read or checked"}
       echo "$out"; drift+=$out$'\n'; failed+=("$repo")
     done
-    # The lines quote the repositories' files, so the output is capped.
-    drift=${drift%$'\n'}
-    printf 'failed=%s\ndrift=%s\n' "${failed[*]}" "$(jq -nc --arg d "${drift:0:50000}" '$d')" >> "${GITHUB_OUTPUT:-/dev/null}"
+    # DRIFT is one env entry. If encoded JSON exceeds 100 KB, re-encode up to
+    # 16,000 code points (at most six bytes each), not a slice of encoded JSON.
+    report=$(printf '%s' "${drift%$'\n'}" | jq -Rrs '(if length > 50000 then .[:50000] + "\n[drift truncated]" else . end) | if (tojson | utf8bytelength) > 100000 then .[:16000] + "\n[drift truncated]" else . end | tojson')
+    printf 'failed=%s\ndrift=%s\n' "${failed[*]}" "$report" >> "${GITHUB_OUTPUT:-/dev/null}"
     [[ ${#failed[@]} -eq 0 ]]
 
 # The runner configuration's checks; those that run `agentic-job` skip where
