@@ -3077,6 +3077,17 @@ fn the_pass_preserves_read_budget_for_ready_work() {
 }
 
 #[test]
+fn the_pass_repairs_questions_within_existing_revisit_bounds() {
+    let pass = json_file("../pass.json");
+    // Keep the existing ages, one slot, and inherited triage pools.
+    assert_eq!(
+        pass["revisit"],
+        json!({"perPass": 1, "afterDays": 14, "heldAfterDays": 7, "repairQuestions": true})
+    );
+    assert!(matches!(pass.get("operatorQuestionsOnly"), None | Some(Value::Bool(false))));
+}
+
+#[test]
 fn the_pass_starts_work_only_where_dispatch_and_fix_runs_may_act_on_known_pools() {
     let pass = json_file("../pass.json");
     let names = |v: &Value, what: &str| -> Vec<String> {
