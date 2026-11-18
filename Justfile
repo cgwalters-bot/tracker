@@ -4,8 +4,8 @@
 # Recipes see their arguments as $1, $2, ...
 set positional-arguments
 
-# Every test of the files under .github.
-test: test-runner-profiles test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-pass-state test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-retro test-needs-you-fit agent-board-pin
+# Repository and workflow checks run by CI.
+test: test-runner-profiles test-agent-board-install test-config test-supervisor-config test-pass-config test-supervisor-workflow test-poll-bounds test-poll-next test-pass-state test-maintain-shadow test-review-caller test-review-gate test-forge-sync test-review-corpus test-review-refresh test-architecture-review test-retro test-needs-you-fit agent-board-pin
 
 # Execute the workflow's actual resolver, without credentials or forge traffic.
 test-runner-profiles:
@@ -482,7 +482,7 @@ test-review-corpus:
     }
     console.log('ok review-corpus quota reserve, status, checksums, draft publication and newest-complete sample selection');
 
-# Manual structural checks of the offline architecture-review prototype.
+# Structural checks of the offline architecture-review prototype.
 test-architecture-review mode="test" id="B2588":
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
