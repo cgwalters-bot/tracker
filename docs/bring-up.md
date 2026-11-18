@@ -347,7 +347,7 @@ Never take these lists or the publication issue from dispatch inputs.
 Operator prerequisites: permit the operator to reach the runner's serve port,
 isolate runners from each other, and enable tailnet HTTPS
 ([agentic-job#536](https://github.com/cgwalters-forge/agentic-job/issues/536));
-choose the operator login list and review site's origins
+choose the operator login list and the control app's origins
 ([tracker#576](https://github.com/cgwalters-forge/tracker/issues/576)). Record any
 applied tailnet change in the operator's private infrastructure log. No
 tailnet change is made by this workflow.
@@ -365,7 +365,7 @@ credential is not added here.
 This uses the wrapper's research profile: no patch or board mutation, and at
 most one end-of-session comment plus bounded diagnostic outputs, checked and
 applied separately under `dispatch.toml`. Dispatching work, board updates,
-mid-session writes, the review site's pane and a scripted fake-agent end-to-end
+mid-session writes, the control app's pane and a scripted fake-agent end-to-end
 run remain follow-ups. `session.yml` composes the task with agent-board's
 `supervise session`, at the commit `supervisor.yml` pins, where it is tested.
 
@@ -604,7 +604,7 @@ tracker's WIP, pace, budgets or retry policy as defaults.
 
 The exhaustive pass reference linked above covers optional fields. Every
 additional identity/destination must be yours: `holds.repository`/`issue`
-(private, with `holds.needsYou` for the app); `holds.proposals`'s repository,
+(private, with `holds.needsYou` for the control app); `holds.proposals`'s repository,
 label, repositories and org; `direction.repository`/`issue`;
 `maintain.repos.include`/`exclude` and `maintain.digest.repository`/`issue`;
 `sweep.repository`; all `pr` repository, author, head-owner, workflow and
@@ -660,9 +660,11 @@ supervisor's pre-checkout gate needs `OPERATOR` and
 `SUPERVISOR_REQUESTS_ISSUE`, and sessions need `TAILNET_DOMAIN` and trusted
 operator/origin lists. These are separate installations.
 
-### 5. Host the review app for your operator
+<a name="5-host-the-review-app-for-your-operator"></a>
 
-Use the review app's [README](https://github.com/cgwalters-forge/review/blob/main/README.md)
+### 5. Host the control app for your operator
+
+Use the control app's [README](https://github.com/cgwalters-forge/review/blob/main/README.md)
 for Node requirements, `npm ci`, `npm run check`, local serving and static
 hosting. It is a browser client of GitHub, not the review workflow or a
 scheduler. Its current GitHub pages are **Needs you** and **Status**; old
@@ -728,7 +730,7 @@ For the components above, the remaining places to inspect are:
   Workflows also name this secret, wrapper paths and fixed publication
   issues. Copy only needed lanes and inventory each identity; legacy
   poll/supervisor config is not a second pass config to synchronize.
-- **review:** the constants and JSON files in step 5 are build-time
+- **control app (`review`):** the constants and JSON files in step 5 are build-time
   deployment settings, not repository-variable overrides. Pages/static
   branding and the CLI's project-specific upstream filter name remain
   deployment-specific too. Signing in as another operator does not
