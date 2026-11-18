@@ -3071,6 +3071,12 @@ fn the_broker_stays_followed_without_automatic_merging() {
 }
 
 #[test]
+fn the_pass_preserves_read_budget_for_ready_work() {
+    let pass = json_file("../pass.json");
+    assert_eq!(pass["readFreeHolds"].as_bool(), Some(true));
+}
+
+#[test]
 fn the_pass_starts_work_only_where_dispatch_and_fix_runs_may_act_on_known_pools() {
     let pass = json_file("../pass.json");
     let names = |v: &Value, what: &str| -> Vec<String> {
