@@ -218,6 +218,49 @@ repository settings, opens no upstream PR, retriggers no upstream run and
 does not close #258. The fork issue, upgrade, compilation, repository tests
 and fresh checkout evidence remain later work before any upstream delivery.
 
+### ostree target admission (#1242, #1243, #1245, #1246)
+
+`cgwalters-forge/ostree` already uses the same route as bcvk: the existing
+`midstream.toml` and `comment.toml` rules match its fork metadata, and
+`midstream-fix.toml` names it for fix rounds. The pass follows it as a work
+repository, includes it in proposal holds, and bars local merges. It is on
+the board schedule, not the legacy follow list. Implement PRs stay drafts
+and fixes cannot mark them ready, so staged work does not advance the
+upstream-tracking default branch through this lane.
+
+Repository admission does not authorize workflow edits. To prevent a run
+from changing privileged CI, ostree remains outside `unprotected_files` in
+both profiles; #1239's current workflow-admission plan excludes it. Before
+dispatching work that needs a workflow change, obtain separate reviewed
+authorization for the exact target and paths, audit privileged triggers and
+secret exposure on the fork, and verify current-head review with stale
+approvals dismissed. Do not route around the patch check.
+
+On 18 November 2026, read-only GitHub API checks confirmed the public fork
+of `ostreedev/ostree` has default branch `main`, topic `bot-midstream` and
+custom property `origin=fork`. The effective branch rules report org ruleset
+25084478 requiring one approval and dismissing stale approvals on push.
+The separate legacy branch-protection endpoint returned HTTP 403. The daily
+`check-review-gate` covers workflow-exempt repositories, not ostree.
+
+The original handoff described the fork as issues-disabled; the API now
+reports issues enabled, but no issue for the Debian 32-bit DNS failure was
+found. Before a subsequent implement plan, the controller needs a real
+destination issue in the fork, not a tracker number or PR number. Proposed
+title: **CI: Diagnose Debian 32-bit setup DNS failures**. Proposed body:
+
+> The Debian Stable 32 bit job fails during container setup: `apt-get update`
+> cannot resolve `deb.debian.org`, then installation fails with missing package
+> indexes. Reproduce with pinned image and runner inputs, compare against the
+> last good setup, fix the DNS cause, and make index-fetch failures fatal with
+> a clear diagnostic. Keep the 32-bit job; use bounded retries only if the
+> reproduction demonstrates transient recovery.
+
+After an issue exists and workflow edits are authorized, use the actual fork
+issue URL on a standalone `Part of` line in any ostree draft. No fork settings,
+issues or workflows were changed here. Keep #1242 open for DNS reproduction,
+repair and workflow admission.
+
 ### Excluded fix requests: receiving evidence (#1293, companion #1292)
 
 The four historical requests reached tracker with `fix.toml` supplied, and
