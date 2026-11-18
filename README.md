@@ -212,6 +212,53 @@ uses holds proven by the current board pass before reading assignment history.
 Incomplete evidence still takes the normal read path; start checks and caps
 are unchanged. Remove the setting to restore the default behavior.
 
+#### Repairing needs-you questions
+
+A label-only ask or a question superseded by a newer verdict leaves the
+operator without a decision to make. Tracker opts into the pass's default-off
+`revisit.repairQuestions`. It lets the existing revisit draw consider recently
+active, questionless held issues in scope. Repair triage should state the
+decision and options or give evidence for releasing the hold through existing
+policy. Scheduling repair does not clear a hold or grant approval. Repairs
+share the single revisit slot, inherited triage pools, existing candidate
+scope, 14-day ordinary and 7-day held revisit timing, cooldown and pass caps.
+`operatorQuestionsOnly` and the operator-domain policy are unchanged.
+
+For a read-only comparison, run the workflow-pinned `agent-board pass` with
+the two `poll.yml` fix bounds and its existing caps, without `--apply`. Use
+`--record` in a private directory, then `--replay` for a same-input comparison
+where the recording covers all needed reads. Do not publish raw recordings,
+logs or hold bodies. Record the pin, config revision, what was actually read
+and the resulting decisions; missing reads or a pass that never reached the
+revisit draw do not establish that there are no missing questions.
+
+On 18 November 2026, two live `--record` previews used agent-board
+`52adc0d6996cbe7e56cfec0598b6194cfab74357` and tracker base
+`2f09dfe491fd8b88fd9eb3a57e62c4172ccc845f` (current config versus that same
+config with only `revisit.repairQuestions: true`). Startup reported the flag
+off for current and no longer off for proposed. Both read-only attempts hit
+the local 180-second timeout after cache diagnostics, before any revisit
+decision or usable recording. A separate read of the configured private
+usage/holds issue returned HTTP 404 with this run's token. This comparison
+confirms flag activation at startup, not a scheduling decision or coverage of
+the board or published asks.
+
+After reviewed merge, the existing applying `poll.yml` owns repair dispatch.
+Check its first completed pass with repair enabled for revisit decisions and
+plan/dispatch receipts, then inspect a later `supervisor.yml` `supervisor-health`
+report covering the updated publication. In the authorized view, account for
+each remaining published ask without a concrete question with a pending
+repair-triage URL or an explicit uncovered-scope or dependency reason (for
+example, an out-of-scope pull request or an unreadable thread). Record the
+applying run and report revisions and any follow-up gaps, without publishing
+private ask text. Acceptance is pending until that accounting is complete;
+an unchanged replay, missing data or asks merely disappearing is not proof.
+
+To roll back, remove only `revisit.repairQuestions` in a reviewed change and
+verify the next applying pass uses that revision. Ordinary revisits continue.
+Already dispatched triage is not undone: inspect its receipts and outcomes
+under the existing policy. Keep the holds and approval boundaries intact.
+
 Applying passes hand their
 disposable `.state/pass.json` cache and, when present, `.state/living-status.json` ledger
 to the next pass as the one-day `pass-state` artifact. Both chain dispatches supply `previous_run_id`; restore validates that
