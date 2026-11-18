@@ -436,7 +436,10 @@ jobs:
   run:
     needs: profile
     if: ${{ inputs.kind != 'review' }}
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@780114b6409bc9aec99546bc3132a7ee9783b083
+    # Follows actions' main, as supervisor.yml and session.yml do (tracker#1694):
+    # a commit pin here was never moved by the release train, so agent runs
+    # stayed on v0.6.14 while fixes shipped.
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:
