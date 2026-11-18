@@ -1888,27 +1888,28 @@ fn atomic_linux_sandbox_is_a_followed_work_target_not_a_midstream_fork() {
     assert!(!covers(&pass["pr"]["noMerge"], known(repo), true));
 }
 
-// The midstream fork bcvk takes staged pull requests as composefs-rs and
-// bootc do: midstream bounds only, scheduled, followed for fix rounds by the
-// pass but never merged into, since its main tracks upstream.
+// These forks take staged pull requests under midstream bounds only. The
+// pass schedules their work and follows fixes but never merges into them.
 #[test]
-fn bcvk_is_a_midstream_target_that_is_never_merged_into() {
-    let repo = "cgwalters-forge/bcvk";
-    for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
-        assert!(admits(name, known(repo)), "{name}");
-    }
-    for name in ["dispatch.toml", "fix.toml"] {
-        assert!(!admits(name, known(repo)), "{name}");
-    }
+fn bcvk_and_ostree_are_midstream_targets_that_are_never_merged_into() {
     let board = json_file("../poll/agent-board.json");
-    assert!(board["schedule"]["repositories"].as_array().expect("schedule.repositories").contains(&json!(repo)));
-    assert!(!board["follow"].as_array().expect("agent-board.json's follow").contains(&json!(repo)));
     let pass = json_file("../pass.json");
-    for key in ["follow", "workRepositories"] {
-        assert!(covers(&pass[key], known(repo), false), "{key}");
+    for repo in ["cgwalters-forge/bcvk", "cgwalters-forge/ostree"] {
+        let target = known(repo);
+        for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
+            assert!(admits(name, target), "{repo} {name}");
+        }
+        for name in ["dispatch.toml", "fix.toml"] {
+            assert!(!admits(name, target), "{repo} {name}");
+        }
+        assert!(board["schedule"]["repositories"].as_array().expect("schedule.repositories").contains(&json!(repo)), "{repo}");
+        assert!(!board["follow"].as_array().expect("agent-board.json's follow").contains(&json!(repo)), "{repo}");
+        for key in ["follow", "workRepositories"] {
+            assert!(covers(&pass[key], target, false), "{repo} {key}");
+        }
+        assert!(covers(&pass["pr"]["noMerge"], target, true), "{repo}");
+        assert!(covers(&pass["holds"]["proposals"]["repositories"], target, false), "{repo}");
     }
-    assert!(covers(&pass["pr"]["noMerge"], known(repo), true));
-    assert!(covers(&pass["holds"]["proposals"]["repositories"], known(repo), false));
 }
 
 #[test]
@@ -2017,18 +2018,33 @@ fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str) {
     std::fs::write(&policy_path, policy.to_string()).unwrap();
     let item = json!({"type": kind, "title": "Test workflow admission", "body": "Test.",
         "message": "Test workflow admission", "branch": "dispatch/x"});
-    std::fs::write(out.join("outputs.jsonl"), item.to_string()).unwrap();
     std::fs::write(out.join("base.json"), json!({"repo": repo, "ref": policy["base"], "commit": head}).to_string()).unwrap();
-    agentic_job_ok(&["collect", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
+    let collect = |item: &Value| {
+        std::fs::write(out.join("outputs.jsonl"), item.to_string()).unwrap();
+        agentic_job_ok(&["collect", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
+    };
+    let check = || agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
+    collect(&item);
     for path in ["src/test.txt", ".github/workflows/test.yml", ".github/agentic-job/runner-profiles.json", ".other/test.txt", "AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
         if repo == "cgwalters-forge/tracker" && !path.contains('/') {
             continue; // Tracker's existing filename exemptions are unchanged.
         }
         let patch = format!("From {} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: {head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test workflow admission\n\n---\ndiff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+test\n", "1".repeat(40));
         std::fs::write(out.join("aw-dispatch-x.patch"), patch).unwrap();
-        let result = agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
+        let result = check();
         let accepted = path == "src/test.txt" || (["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/tracker"].contains(&repo) && path == ".github/workflows/test.yml");
         assert_eq!(result.status.success(), accepted, "{repo} {kind} {path}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
+        if repo == "cgwalters-forge/ostree" && path == "src/test.txt" && kind == "create_pull_request" {
+            // The collector accepts the boolean, but check must refuse an
+            // explicit attempt to publish the same valid patch outside draft.
+            let mut ready = item.clone();
+            ready["draft"] = json!(false);
+            collect(&ready);
+            let result = check();
+            let stderr = String::from_utf8_lossy(&result.stderr);
+            assert!(!result.status.success() && stderr.contains("not a draft"), "{stderr}");
+            collect(&item);
+        }
     }
     std::fs::remove_dir_all(dir).unwrap();
 }
@@ -2434,6 +2450,11 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
     assert_eq!((repos("dispatch.toml").len(), rules("dispatch.toml")), (2, vec![owned_rule("cgwalters-forge")]));
     // midstream-fix.toml names only midstreams: agent-board's --fix-bounds reads no rule.
     assert!(rules("midstream-fix.toml").is_empty() && rules("fix.toml").is_empty());
+    assert_eq!(sorted(repos("midstream-fix.toml")), [
+        "cgwalters-forge/anaconda", "cgwalters-forge/bcvk", "cgwalters-forge/bootc",
+        "cgwalters-forge/composefs-rs", "cgwalters-forge/gh-agentic-workflows",
+        "cgwalters-forge/ostree", "cgwalters-forge/rpm-ostree",
+    ]);
     for repo in repos("midstream-fix.toml") {
         assert!(admits("midstream.toml", known(&repo)), "{repo}");
     }
@@ -2493,6 +2514,16 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
         assert!(decide("cgwalters-forge/bootc", fixture, fail).is_err(), "{fixture} {fail}");
     }
     let step = step_script("Resolve the bounds");
+    let ostree = known("cgwalters-forge/ostree");
+    let mut without_topic = metadata(ostree);
+    without_topic["topics"] = json!([]);
+    assert_eq!(decide(ostree.name, &without_topic, ""), Ok("midstream=false\n".to_owned()));
+    let selected = decide(ostree.name, &metadata(ostree), "").unwrap();
+    let midstream = selected.trim().strip_prefix("midstream=").unwrap();
+    for (kind, allow) in [("implement", "midstream.toml"), ("fix", "midstream.toml"), ("triage", "comment.toml"), ("research", "comment.toml")] {
+        assert_eq!(run_step(&step, &[("KIND", kind), ("MIDSTREAM", midstream)]),
+            Ok(format!("allow=.github/agentic-job/{allow}\nfix-allow=.github/agentic-job/midstream-fix.toml\n")), "{kind}");
+    }
     for (midstream, allow, fix) in [("true", "midstream.toml", "midstream-fix.toml"), ("false", "dispatch.toml", "fix.toml")] {
         for kind in KINDS {
             let allow = match kind {
@@ -2579,7 +2610,7 @@ fn agentic_job_policy_admits_bootc_dev_only_for_comments_and_fixes() {
     };
     // The bot's dispatch branches, and the homegit era's bot/** ones (#710),
     // in bootc-dev and in the midstream forks; no other branch pattern.
-    for repo in ["bootc-dev/bootc", "cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk"] {
+    for repo in ["bootc-dev/bootc", "cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/bcvk", "cgwalters-forge/ostree"] {
         for branch in ["dispatch/x", "bot/install-output", "bot/a/b"] {
             assert!(fix(repo, branch), "{repo} {branch}");
         }
@@ -2606,6 +2637,8 @@ fn agentic_job_policy_admits_unnamed_repositories_by_live_metadata() {
     }
     for (repo, file, admitted) in [
         ("cgwalters-forge/dracut", "midstream.toml", true), ("cgwalters-forge/dracut", "dispatch.toml", false),
+        ("cgwalters-forge/ostree", "midstream.toml", true), ("cgwalters-forge/ostree", "dispatch.toml", false),
+        ("cgwalters-forge/ostree", "comment.toml", true), ("ostreedev/ostree", "midstream.toml", false),
         ("cgwalters-forge/gh-aw", "midstream.toml", false), ("cgwalters-forge/gh-aw", "dispatch.toml", false),
         ("cgwalters-forge/secure-host", "dispatch.toml", true), ("cgwalters-forge/secure-host", "midstream.toml", false),
         ("bootc-dev/bcvk", "comment.toml", true), ("bootc-dev/homebrew-bcvk", "comment.toml", false),
