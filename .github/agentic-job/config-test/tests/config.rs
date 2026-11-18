@@ -1048,16 +1048,17 @@ fn profile(name: &str) -> String {
     read(&format!("profiles/{name}.md"))
 }
 
-// Static prompt-contract coverage, not a behavioral model evaluation (#1384).
+// These assertions check the prompt text, not how a model follows it.
 #[test]
 fn triage_profile_reserves_operator_verdicts_for_concrete_decisions() {
     let triage = profile("triage");
     for rule in [
-        "A `needs-operator` verdict must name the concrete reserved decision and link evidence that it is needed",
+        "Use `needs-operator` only for an outstanding decision reserved to the operator",
         "credentials, upstream publication, rulesets, disclosure, budget, bounds, follow or target admission",
-        "Otherwise give a safe default within existing authority, a correctly routed plan or an evidenced dependency",
-        "A missing run capability, review or validation alone is not an operator-policy question",
-        "report what remains unverified, never claim success from missing evidence",
+        "State the specific question and link evidence showing why that decision is needed under current policy",
+        "Otherwise recommend a safe default within existing authority, route a plan to the responsible controller, or identify a dependency and link evidence that it blocks the next step",
+        "A missing run capability or pending review or validation is not itself a reserved decision",
+        "Say what could not be done or verified; claim success only when supported by evidence",
         "Preserve all existing safety and approval boundaries",
         "Post the result as one comment on the item",
         "Lead with the conclusion and keep it short",
