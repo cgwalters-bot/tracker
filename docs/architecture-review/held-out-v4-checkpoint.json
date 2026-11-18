@@ -1,0 +1,49 @@
+{
+  "status": "blocked_before_preflight",
+  "development_evidence": {
+    "pilot": "https://github.com/cgwalters-forge/tracker/issues/1227",
+    "v1": "https://github.com/cgwalters-forge/tracker/pull/1303",
+    "v3": "https://github.com/cgwalters-forge/tracker/pull/1444",
+    "v3_revision": "3ca0e9a84ab2c1761686b74bc6d75eccd37c0745",
+    "earlier_preflight": "https://github.com/cgwalters-forge/tracker/pull/1468"
+  },
+  "verified_v3_sha256": {
+    "held-out-protocol-v2.md": "43429600227cfaf935b744d835265edfb4279e7fea027cefb50d3b440455cad2",
+    "held-out-protocol-v3.md": "2506c9c7a738a5cd4260493c7ccd029484d9b40bab74be3bf90c73265a1ebe78",
+    "held-out-v2-rubric.md": "f590b327f07729851b002517a78ca377f6f9839b6ee682a4d207f7a3ea6dde1d",
+    "held-out-v3-selection.json": "dd48b43c6598afd1e43da8f115b6c7a3b074dd996debc3ab3ff812cd989cbd63"
+  },
+  "pilot_baseline": {
+    "revision": "2f09dfe491fd8b88fd9eb3a57e62c4172ccc845f",
+    "restoration": "https://github.com/cgwalters-forge/tracker/issues/1735",
+    "artifact_sha256": {
+      "prompt.md": "41fff6f107981d80956cc4bebc30a782a6f9c9b17fe630e305c8e881f6170e9e",
+      "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
+      "references.json": "771045ba21c8eac23c82338576f1aef2c9fa6095f6f0c7cab21a8e16ce26bb24"
+    },
+    "checks": {"default": "9/9", "fixtures": "9/9", "e2e": "10/10"}
+  },
+  "preflight": {
+    "retention": "No admitted path was shown to retain and retrieve a standalone evaluation archive with matching hashes. The dispatch run action uploads diagnostics, a transcript and untrusted proposals for a separate check. None of those uploads establishes admission or exact round-trip of evaluator files under this handback contract.",
+    "dispatch_wrapper": "https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/.github/workflows/cgwalters-agentic-job.yml",
+    "upload_contract": "https://github.com/cgwalters-forge/agentic-job/blob/427ce2295925654be9c35e91ca5cee91bbc2c9ea/run/action.yml",
+    "stop_order": "Stopped at the retention gate before a noncandidate inference request. The earlier preflight showed reachability only, not tool-less isolation or enforced inference bounds.",
+    "reviewer_isolation_proved": false,
+    "scorer_isolation_proved": false,
+    "inference_requests": 0,
+    "controller_substituted": false
+  },
+  "packet_tool": {
+    "revision": "https://github.com/cgwalters-forge/misctool/commit/5c9eb7c4a78849d5b2b15946cf703517cd3f0913",
+    "executed": false,
+    "discovery_mismatch": "The tool searches by submitted review date and permits up to 1,000 search results per repository. That does not enforce the merge-date window and five pages of twenty required for v4."
+  },
+  "v4_protocol_frozen": false,
+  "candidate_discovery_requests": 0,
+  "candidate_feedback_bodies_read": 0,
+  "frozen_sample": null,
+  "review_runs": 0,
+  "scoring_runs": 0,
+  "scores": null,
+  "next": "First demonstrate an admitted evidence upload and hash-verified retrieval with a noncandidate. Verify remaining budget and enforceable per-run limits before proving fresh tool-less reviewer and separate scorer contexts using only environment-configured inference. Then freeze v4 prospectively, preserving v3's repository set, merge window and architecture eligibility. Resolve all prior exposure exclusions, use bounded metadata-only discovery, and prove each historical base before building or reviewing any selected packet."
+}
