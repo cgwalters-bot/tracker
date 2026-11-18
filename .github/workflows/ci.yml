@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: cgwalters-forge/agentic-job
-          ref: 489c69d53cc23b989131952c9e3ca4d5add4e2b5 # v0.6.14, as dispatch.yml's run wrapper
+          ref: 2b937aaac81da06d8bff5f317e58df6ad7063e1e # v0.6.16, as dispatch.yml's run wrapper
           path: _dispatch-policy
           persist-credentials: false
       - name: Install the pinned policy binary by verified source digest
