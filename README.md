@@ -27,7 +27,7 @@ instructions.
 
 These issues are opened by the bot's workflows here or by manually running
 [agent-board](https://github.com/cgwalters-forge/agent-board)'s `ask create`.
-The [review app](https://github.com/cgwalters-forge/review) is a UI for the same queue.
+The [control app](https://github.com/cgwalters-forge/review) is a UI for the same queue.
 
 [docs/bring-up.md](docs/bring-up.md) says how to start a coordinator on a
 fresh machine from credentials alone, how to dispatch a run and where its
@@ -91,7 +91,7 @@ dispatched runner.
 every ten minutes, with `.github/pass.json` as its configuration. A pass
 follows the bot's pull requests to a fix, a merge or a person, refreshes
 the pools' usage from the inference broker and publishes the `bot-usage/v1`
-snapshot the review app reads (from agent-board#306 on), plans and applies the operator's live epics,
+snapshot the control app reads (from agent-board#306 on), plans and applies the operator's live epics,
 starts board work by Priority within `wip` and each pool's pace, and derives
 each board item's Status. Each decision is one line of the run's summary;
 agent-board's docs say what each means and what it holds. The rules
@@ -732,7 +732,7 @@ with the paced-review cutover above, since `pr.reviewPools` applies to every
 followed repository. Preview before applying. To roll back, remove
 `pr.draftReviewRepositories`. A `review:quick` label, whether added by hand or
 left over from before the rollback, never grants authority to mark ready,
-merge, fix or approve. Approval stays bound to the head the app displays.
+merge, fix or approve. Approval stays bound to the head the control app displays.
 
 ### Broker outages
 
@@ -860,7 +860,7 @@ the operator's prompts over the tailnet, for up to `session.json`'s
 when the session ends, as for any run. A session is an explicit request, in
 `supervisor-agent`, and needs `TAILNET_DOMAIN` and `session.json` enabled.
 A step posts its `wss://` endpoint on `session.json`'s issue (#728) as
-`session.yml`'s runs have it; the review site's chat pane reads only the
+`session.yml`'s runs have it; the control app's chat pane reads only the
 workflows its configuration lists, so far `session.yml`. `[session]`
 operators and origins are `hosted.toml`'s, copied into `supervisor.toml`.
 
@@ -936,7 +936,7 @@ there. CI installs the supervisor workflow's exact pin with
 shipped settings and executor policy without API calls or writes.
 
 The agent cannot read the private decisions document (its token reads only
-this repository), and the review site's last-run panel is
+this repository), and the control app's last-run panel is
 cgwalters-forge/review's to build; both are left from #626.
 
 ## The release train
@@ -1038,10 +1038,10 @@ actionable approvals first (agent-board#722, review#251). Before, the
 `pr.operatorPaths` approval, unranked and newest, lost its card first and
 review showed it as a "Detail not published" placeholder. `just
 test-needs-you-fit`, part of `just test`, keeps the publication's settings
-as they are. Given read-only agent-board and review checkouts, it also
+as they are. Given read-only agent-board and `review` checkouts, it also
 checks that the pin's 174-decision fixture keeps each approval's card and
-`review-at-head` descriptor, and that review reads one row per decision,
-each approval actionable. Review still counts each group member as a
+`review-at-head` descriptor, and that the control app reads one row per decision,
+each approval actionable. The control app still counts each group member as a
 decision in its summary line (202 for the fixture's 174). To roll back,
 first set `AGENT_BOARD_PIN` to anything but `enabled` so the hourly bump
 does not propose main again. Then move every pin back to
@@ -1101,7 +1101,7 @@ publication; a consumer compatibility probe must supply a synthetic needs-you
 envelope. None of these checks is a private snapshot or a deployed UI test.
 
 Before accepting deployment, an authorized viewer should identify the deployed
-review revision and read the current private publication without writing: verify
+control app revision and read the current private publication without writing: verify
 the extension version, displayed head and observation time, missing/partial
 fallbacks, and unchanged counts and destination. Do not paste the private payload
 into public logs or this repository. This run did not read that publication,

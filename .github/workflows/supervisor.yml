@@ -275,7 +275,7 @@ jobs:
       SAFE_OUTPUTS_PAT: ${{ secrets.CGWALTERS_BOT_PAT }}
 
   # The wrapper names a session's endpoint on its item, here the requests
-  # issue; the review app's chat pane looks for it on session.json's issue,
+  # issue; the control app's chat pane looks for it on session.json's issue,
   # in a comment by github-actions[bot] with this run's URL, as session.yml's
   # wrapper posts it. The address is the wrapper's: its agent job joins the
   # tailnet as agentic-job-RUN-ATTEMPT.

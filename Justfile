@@ -343,7 +343,7 @@ test-heavy-consumers board:
 # Manual: node >=22.18, read-only review source checkout; no dependencies needed.
 test-heavy-review review:
     #!/usr/bin/env node
-    // Read-only probe of the review UI's actual pools parser, not a copy.
+    // Read-only probe of the control app's actual pools parser, not a copy.
     const assert = require('node:assert/strict');
     const fs = require('node:fs');
     const path = require('node:path');
@@ -359,7 +359,7 @@ test-heavy-review review:
       assert.equal(before.limitUsd, 300);
       pools.openai.heavy = { model: 'praxis/gpt-6.2-astra' };
       assert.deepEqual(parseBudget(JSON.stringify(pools), now), before);
-      console.log(`ok review UI parseBudget at ${revision} accepts heavy; deployed UI revision remains unverified`);
+      console.log(`ok control app parseBudget at ${revision} accepts heavy; deployed UI revision remains unverified`);
     }
     main().catch(error => { console.error(error); process.exitCode = 1; });
 
@@ -1181,7 +1181,7 @@ test-review-caller:
       return true;
     };
     assert.equal(draftReviews(pass), false,
-      'draft reviews wait for the callers\' result writer, a draft-accepting wrapper and the review app');
+      'draft reviews wait for the callers\' result writer, a draft-accepting wrapper and the control app');
     for (const repo of DRAFT_REVIEW) assert.ok(!(pass.pr.reviewDispatchRepositories ?? []).includes(repo), `${repo}: dispatch it only with the draft opt-in`);
     const enabled = structuredClone(pass);
     Object.assign(enabled.pr, { draftReviewRepositories: [...DRAFT_REVIEW],
@@ -1660,7 +1660,7 @@ test-supervisor-workflow:
 # whose serialized 174-decision fixture must keep every approval's card at
 # its full head with a descriptor offering `review-at-head` there, and REVIEW
 # (node >=22.18), whose own parser and inbox cards must read it complete,
-# one row a decision, each approval actionable. Review's `parseHolds` would
+# one row a decision, each approval actionable. The control app's `parseHolds` would
 # refuse the fixture's synthetic holds, which have no `url` as a pass's do.
 test-needs-you-fit board="" review="":
     #!/usr/bin/env node
@@ -1704,7 +1704,7 @@ test-needs-you-fit board="" review="":
       }
       const cargo = ['--locked', '--manifest-path', `${root}/Cargo.toml`, '-p', 'board-forge'];
       execFileSync('cargo', ['test', ...cargo, 'approvals_'], { stdio: 'inherit' });
-      if (!review) return console.log(`ok needs-you settings and the fixture at ${pin}; review's reading skipped`);
+      if (!review) return console.log(`ok needs-you settings and the fixture at ${pin}; control app check skipped`);
       const load = file => import(pathToFileURL(path.resolve(review, file)).href);
       const { parseNeedsYou } = await load('src/github/holds.ts');
       const { inboxCards, refusal } = await load('src/github/inbox.ts');
@@ -1719,7 +1719,7 @@ test-needs-you-fit board="" review="":
         assert.equal(refusal(row.ask, 'review-at-head'), undefined, key);
       }
       const revision = execFileSync('git', ['-C', review, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-      console.log(`ok needs-you settings, the fixture at ${pin} and review ${revision}'s reading of it`);
+      console.log(`ok needs-you settings, the fixture at ${pin} and control app parsing at ${revision}`);
     }
     main().catch(error => { console.error(error); process.exitCode = 1; });
 

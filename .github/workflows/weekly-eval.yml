@@ -40,9 +40,9 @@ jobs:
             any other
             comparable tool you find (one that runs coding agents from
             GitHub events with bounded, checked effects, or that schedules
-            such work from a board). Compare cgwalters-forge/review with
-            gh-cao's dashboard the same way. Work from their sources and docs, not
-            from memory or from earlier comments on this issue, and name the
+            such work from a board). Compare the control app (cgwalters-forge/review)
+            with gh-cao's dashboard the same way. Work from their sources and docs,
+            not from memory or from earlier comments on this issue, and name the
             commit of each that you read. Post one short comment on this
             issue, conclusion first: the recommendation (keep going, adopt a
             named piece of theirs, or switch), then what they have that we

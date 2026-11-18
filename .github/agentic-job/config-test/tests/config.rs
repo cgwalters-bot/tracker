@@ -603,6 +603,7 @@ for (const event_name of ['schedule', 'workflow_dispatch']) {
   }
 }
 assert.match(trigger, /max-parallel: 1\n      matrix:\n        repo: \[cgwalters-forge\/agentic-job, cgwalters-forge\/agent-board\]/);
+assert.match(trigger, /control app \(cgwalters-forge\/review\)/);
 assert.match(trigger, /uses: \.\/\.github\/workflows\/weekly-comparison.yml/);
 assert.match(workflow, /group: weekly-comparison-\$\{\{ inputs.repo \}\}\n  cancel-in-progress: false/);
 assert.match(workflow, /task: \$\{\{ needs.brief.outputs.task \}\}/);
@@ -626,7 +627,7 @@ assert.deepEqual(JSON.parse(parsed.stdout), { hosts: ['github.com'],
   github: { outputs: { create_pull_request: { max: 1 }, noop: { max: 1 },
     missing_tool: { max: 1 }, missing_data: { max: 1 } } } });
 for (const text of ['one draft pull request', 'one commit', 'full commit SHA', 'immutable upstream source',
-  'native queue', 'MCP integrations', 'measurement versus board, pass and review', 'open comparison PR',
+  'native queue', 'MCP integrations', 'measurement versus board, pass and the control app', 'open comparison PR',
   'return noop', 'No long report comment', 'without closing it', 'Do not change code']) assert.ok(brief.includes(text), text);
 "#);
 }

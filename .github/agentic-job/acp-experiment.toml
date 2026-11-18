@@ -119,7 +119,7 @@ packages = ["python3-venv", "nftables", "just"]
 # devices; a tagged device sends none and is refused.
 [session]
 operators = ["cgwalters@gmail.com"]
-# The review site's chat pane.
+# The control app's chat pane.
 origins = ["https://cgwalters-forge.github.io"]
 # Send a dispatched run the comments made on its item while it works, so
 # the operator's later direction reaches it instead of being lost

@@ -12,9 +12,10 @@ and name the full commit SHA of each repository inspected. Every factual
 comparison claim must link to an immutable upstream source at that SHA.
 
 Compare agentic-job and agent-board with github/gh-aw and githubnext/gh-cao,
-and other directly comparable tools when relevant. Include review versus CAO's
-dashboard. Inspect all gh-aw releases and changelog entries since the page's
-last recorded baseline, including orchestration, scheduling and campaigns.
+and other directly comparable tools when relevant. Include the control app
+(`cgwalters-forge/review`) versus CAO's dashboard. Inspect all gh-aw releases and
+changelog entries since the page's last recorded baseline, including
+orchestration, scheduling and campaigns.
 State each new capability's relevance, distinguish releases from unreleased
 main, and separate source observations from live or measured evidence.
 Missing sources or truncated history mean missing_data, not invented parity.
@@ -24,10 +25,10 @@ sandbox and subsequent CI steps, checked safe outputs, brokered inference,
 gh-aw's compiler, MCP integrations, memory and preview microVMs. In
 cgwalters-forge/agent-board, create or update docs/background-ghaw.md for the
 coordination side: gh-aw's native queue, CAO fleet policy and campaign
-measurement versus board, pass and review. Link to agentic-job's comparison
-instead of repeating its run-side explanation. A second changed file may only
-be a documentation index/link to the page. Do not change code, pins, settings,
-credentials, workflows or deployment policy. Recommendations to adopt a
+measurement versus board, pass and the control app. Link to agentic-job's
+comparison instead of repeating its run-side explanation. A second changed
+file may only be a documentation index/link to the page. Do not change code,
+pins, settings, credentials, workflows or deployment policy. Recommendations to adopt a
 feature are documentation, not authority to implement it.
 
 Keep a dated baseline and a concise conclusion (keep going, adopt a named
