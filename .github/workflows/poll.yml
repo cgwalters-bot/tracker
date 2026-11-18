@@ -7,7 +7,8 @@ run-name: pass${{ inputs.apply && ' (apply)' || '' }}
 
 # The clock is the `next` job: each applying pass starts the next one ten
 # minutes after its own start, and `next-fallback` stands in when `next`
-# fails or GitHub never creates it. GitHub drops most `*/10` scheduled runs
+# fails or GitHub never creates it, or when GitHub cancels a started pass for
+# its timeout or a lost runner. GitHub drops most `*/10` scheduled runs
 # (hours apart on 2026-11-08), so the schedule restarts a broken chain only
 # eventually, not within one interval. Its disposable response cache
 # comes from a validated applying predecessor; bootstrap runs discover one.
@@ -304,19 +305,25 @@ jobs:
   # Best-effort recovery when `next` fails or never runs, including a missing
   # `pass`. Use only runner tools and one dispatch attempt; there is no further
   # recovery job. Dropped GitHub schedules/jobs still prevent a within-one-
-  # interval guarantee. Previews and cancelled/replaced passes never recover.
+  # interval guarantee. Previews never recover. A cancelled pass recovers only
+  # when it started and GitHub ended it (job timeout or lost runner); a run
+  # replaced while pending or cancelled by hand does not. `!cancelled()` holds
+  # after a dependency times out (observed, not documented) and turns false
+  # when the run is cancelled, which also stops a recovery already running.
   next-fallback:
     needs: [pass, next]
     if: >-
-      ${{ !cancelled() && needs.pass.result != 'cancelled' &&
+      ${{ !cancelled() &&
       (needs.next.result == 'failure' || needs.next.result == 'skipped' || needs.next.result == '') &&
       vars.PASS_APPLY == 'enabled' &&
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.apply)) }}
     runs-on: ubuntu-26.04
     timeout-minutes: 12
+    # `checks: read` reads the cancelled pass job's annotations.
     permissions:
       actions: write
+      checks: read
     steps:
       - name: Recover the next pass
         env:
@@ -327,6 +334,20 @@ jobs:
         shell: bash
         run: |
           printf 'Recovery dependencies: pass=<%s> next=<%s>\n' "$PASS_RESULT" "$NEXT_RESULT"
+          # Threat: recovering a replaced or hand-cancelled run restarts a chain
+          # someone stopped. GitHub's failure annotation on the started pass job
+          # decides. A step can write the same text, so this is a heuristic: it
+          # must be the whole message, and any cancel annotation vetoes it.
+          if [[ $PASS_RESULT == cancelled ]]; then
+            job=$(timeout 30s gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" -f filter=latest \
+              --jq 'first(.jobs[] | select(.name == "pass" and .started_at != null) | .id) // empty')
+            [[ -n $job ]] || { echo 'the pass never started; not recovering'; exit 0; }
+            ended=$(timeout 30s gh api --method GET "repos/$GITHUB_REPOSITORY/check-runs/$job/annotations" -f per_page=100 \
+              --jq '[.[] | select(.annotation_level == "failure") | .message] |
+                any(test("^The job (running on runner .+ )?has exceeded the maximum execution time of [^ ]+( minutes)?\\.?$|^The (self-)?hosted runner: [^\n]+ lost communication with the server\\.( |$)")) and
+                (any(test("canceled by|higher priority")) | not)')
+            [[ $ended == true ]] || { echo 'the pass was cancelled, not ended by GitHub; not recovering'; exit 0; }
+          fi
           started=$(timeout 30s gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)
           [[ -n $started && $started != null ]] || { echo '::error::missing run start time' >&2; exit 1; }
           started_epoch=$(date -d "$started" +%s)

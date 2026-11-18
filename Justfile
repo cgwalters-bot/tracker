@@ -1284,11 +1284,9 @@ test-poll-next:
     const supervisor = ['--supervisor-workflow', 'supervisor.yml', '--supervisor-stale-minutes', '30',
       '--supervisor-input', 'prompt=', '--supervisor-input', 'session=false'];
     const train = ['--train-workflow', 'release-train.yml', '--train-stale-minutes', '60'];
-    for (const value of ['', 'enabled', 'Apply', ' apply', 'dry-run ', 'preview']) {
-      assert.deepEqual(run({ RELEASE_TRAIN: value }), base, `RELEASE_TRAIN=${JSON.stringify(value)}`);
-    }
-    for (const value of ['dry-run', 'apply']) {
-      assert.deepEqual(run({ RELEASE_TRAIN: value }), [...base, ...train], `RELEASE_TRAIN=${value}`);
+    for (const [value, woken] of [['', false], ['enabled', false], ['Apply', false], [' apply', false], ['dry-run ', false],
+      ['preview', false], ['dry-run', true], ['apply', true]]) {
+      assert.deepEqual(run({ RELEASE_TRAIN: value }), woken ? [...base, ...train] : base, `RELEASE_TRAIN=${JSON.stringify(value)}`);
     }
     for (const [value, enabled] of [['off', false], ['preview', true], ['apply', true]]) {
       assert.deepEqual(run({ SUPERVISOR: value }), enabled ? [...base, ...supervisor] : base, `SUPERVISOR=${value}`);
@@ -1310,29 +1308,20 @@ test-poll-next:
     assert.ok(fallback, 'the final fallback job');
     assert.match(fallback, /^ {4}needs: \[pass, next\]$/m);
     const gate = /^ {4}if: >-\n((?: {6}.*\n)+)/m.exec(fallback)[1].trim().replace(/^\$\{\{ | \}\}$/g, '');
-    for (const result of ['success', 'failure', 'cancelled', 'skipped', '']) {
-      for (const pass of ['success', 'failure', 'cancelled', 'skipped', '']) {
-      for (const cancelled of [false, true]) {
-        for (const apply of ['', 'enabled', 'disabled']) {
-          for (const event of ['schedule', 'workflow_dispatch', 'push']) {
-          for (const applying of [false, true]) {
-          for (const ref of ['refs/heads/main', 'refs/heads/other', 'refs/tags/main']) {
-          const got = require('node:vm').runInNewContext(gate, {
-            cancelled: () => cancelled, needs: { pass: { result: pass }, next: { result } }, vars: { PASS_APPLY: apply },
-            github: { ref, event_name: event, event: { repository: { default_branch: 'main' } } },
-            inputs: { apply: applying }, format: (template, branch) => template.replace('{0}', branch),
-          });
-          assert.equal(got, ['failure', 'skipped', ''].includes(result) && pass !== 'cancelled' && !cancelled &&
-            apply === 'enabled' && ref === 'refs/heads/main' && (event === 'schedule' || (event === 'workflow_dispatch' && applying)));
-          }
-          }
-          }
-        }
-      }
-      }
+    const product = (...lists) => lists.reduce((rows, list) => rows.flatMap(row => list.map(item => [...row, item])), [[]]);
+    const results = ['success', 'failure', 'cancelled', 'skipped', ''];
+    for (const [result, pass, cancelled, apply, event, applying, ref] of product(results, results, [false, true], ['', 'enabled', 'disabled'],
+      ['schedule', 'workflow_dispatch', 'push'], [false, true], ['refs/heads/main', 'refs/heads/other', 'refs/tags/main'])) {
+      const got = require('node:vm').runInNewContext(gate, {
+        cancelled: () => cancelled, needs: { pass: { result: pass }, next: { result } }, vars: { PASS_APPLY: apply },
+        github: { ref, event_name: event, event: { repository: { default_branch: 'main' } } },
+        inputs: { apply: applying }, format: (template, branch) => template.replace('{0}', branch),
+      });
+      assert.equal(got, ['failure', 'skipped', ''].includes(result) && !cancelled &&
+        apply === 'enabled' && ref === 'refs/heads/main' && (event === 'schedule' || (event === 'workflow_dispatch' && applying)));
     }
     assert.match(fallback, /^ {4}timeout-minutes: 12$/m);
-    assert.match(fallback, /^ {4}permissions:\n {6}actions: write\n {4}steps:/m);
+    assert.match(fallback, /^ {4}permissions:\n {6}actions: write\n {6}checks: read\n {4}steps:/m);
     assert.doesNotMatch(fallback, /uses:|continue-on-error:|^ {2}\S/m);
     assert.equal((fallback.match(/^ {6}- /gm) ?? []).length, 1, 'one step without setup');
     assert.match(fallback, /^ {10}GH_TOKEN: \$\{\{ github.token \}\}$/m);
@@ -1345,9 +1334,10 @@ test-poll-next:
     const args = process.argv.slice(2);
     require('node:fs').appendFileSync(process.env.CALLS, JSON.stringify(args) + '\\n');
     if (args[0] === 'api') {
-      const listing = args.includes('--method');
-      if (process.env.API_FAIL === (listing ? 'list' : 'start')) { console.error('fixture API failure'); process.exit(1); }
-      process.stdout.write(listing ? (process.env[args.includes('page=2') ? 'PAGE2' : 'RUNS']) : (process.env.START || '2026-11-02T17:51:00Z'));
+      const kind = args.find(arg => arg.startsWith('repos/')).match(/\\/(jobs|annotations|runs)$/)?.[1] ?? 'start';
+      if (process.env.API_FAIL === kind) { console.error('fixture API failure'); process.exit(1); }
+      const fixed = { runs: process.env[args.includes('page=2') ? 'PAGE2' : 'RUNS'], start: process.env.START || '2026-11-02T17:51:00Z' }[kind];
+      process.stdout.write(fixed ?? require('node:child_process').execFileSync('jq', ['-r', args[args.indexOf('--jq') + 1]], { input: process.env[kind.toUpperCase()] }));
     } else { console.log(args.join(' ')); process.exit(Number(process.env.DISPATCH_EXIT || 0)); }
     `, { mode: 0o755 });
       fs.writeFileSync(path.join(sandbox, 'date'), '#!/bin/bash\nif [[ $1 == -d ]]; then printf "1000\\n"; else printf "%s\\n" "$NOW"; fi\n', { mode: 0o755 });
@@ -1357,54 +1347,64 @@ test-poll-next:
       const rows = runs => JSON.stringify({ workflow_runs: runs });
       const log = 'Recovery dependencies: pass=<> next=<skipped>';
       const callsPath = path.join(sandbox, 'calls');
+      const jobs = started => JSON.stringify({ jobs: [{ id: 7, name: 'next', started_at: 'x' }, { id: 9, name: 'pass', started_at: started }] });
       const recover = (env = {}) => {
         fs.writeFileSync(callsPath, '');
         return require('node:child_process').spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', recovery], {
-          env: { PATH: `${sandbox}:${process.env.PATH}`, GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '42', DEFAULT_BRANCH: 'main',
-            PASS_RESULT: '', NEXT_RESULT: 'skipped', CALLS: callsPath, NOW: '1900', RUNS: rows([me]), ...env }, encoding: 'utf8',
+          env: { PATH: `${sandbox}:${process.env.PATH}`, GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '42', DEFAULT_BRANCH: 'main', PASS_RESULT: '',
+            NEXT_RESULT: 'skipped', CALLS: callsPath, NOW: '1900', RUNS: rows([me]), JOBS: jobs('2026-11-02T17:51:30Z'), ANNOTATIONS: '[]', ...env }, encoding: 'utf8',
         });
       };
       const calls = () => fs.readFileSync(callsPath, 'utf8').trim().split('\n').map(JSON.parse);
-      for (const [now, delay] of [['1120', '480'], ['1600', null], ['1900', null], ['900', '600']]) {
-        const got = recover({ NOW: now });
+      const recovered = (env, stop = /workflow run poll.yml/, count) => {
+        const got = recover(env), what = JSON.stringify(env);
         assert.equal(got.status, 0, got.stderr);
-        assert.deepEqual(got.stdout.trimEnd().split('\n'), [log, ...(delay ? [`sleep ${delay}`] : []), dispatch]);
+        assert.equal(got.stdout.split('\n')[0], `Recovery dependencies: pass=<${env.PASS_RESULT ?? ''}> next=<skipped>`, what);
+        assert.match(got.stdout, stop, what);
+        if (count) assert.equal(calls().length, count, what);
+      };
+      for (const [now, delay] of [['1120', '480'], ['1600', null], ['1900', null], ['900', '600']]) {
+        recovered({ NOW: now }, new RegExp(`^${[log, ...(delay ? [`sleep ${delay}`] : []), dispatch].join('\n')}\n$`), 3);
         assert.deepEqual(calls().at(-1), dispatch.split(' '));
-        assert.equal(calls().length, 3);
       }
       const failed = recover({ NOW: '1900', DISPATCH_EXIT: '1' });
       assert.equal(failed.status, 1, 'dispatch failure stays visible');
       assert.deepEqual(failed.stdout.trimEnd().split('\n'), [log, dispatch], 'no retry on failure');
       assert.equal(calls().filter(args => args[0] === 'workflow').length, 1);
-      for (const env of [{ API_FAIL: 'start' }, { API_FAIL: 'list' }, { START: 'null' }, { RUNS: '{}' }, { RUNS: '{' },
-        { RUNS: rows([]) }, { RUNS: rows([{ ...me, status: null }]) }, { RUNS: rows([{ ...me, created_at: 'invalid' }]) }]) {
+      for (const env of [{ API_FAIL: 'start' }, { API_FAIL: 'runs' }, { START: 'null' }, { RUNS: '{}' }, { RUNS: '{' },
+        { RUNS: rows([]) }, { RUNS: rows([{ ...me, status: null }]) }, { RUNS: rows([{ ...me, created_at: 'invalid' }]) },
+        { PASS_RESULT: 'cancelled', API_FAIL: 'jobs' }, { PASS_RESULT: 'cancelled', API_FAIL: 'annotations' }]) {
         const unreadable = recover(env);
         assert.notEqual(unreadable.status, 0, JSON.stringify(env));
         assert.ok(unreadable.stderr, 'failure stays visible');
-        assert.equal(unreadable.stdout.trimEnd(), log, 'API failure stops recovery');
+        assert.equal(unreadable.stdout.trimEnd(), log.replace('<>', `<${env.PASS_RESULT ?? ''}>`), 'API failure stops recovery');
         assert.ok(calls().every(args => args[0] === 'api'));
       }
       const newer = { ...me, id: 43 };
-      for (const status of ['queued', 'waiting', 'pending', 'requested', 'in_progress']) {
-        for (const event of ['schedule', 'workflow_dispatch']) {
-          const got = recover({ RUNS: rows([{ ...newer, status, event }, me]) });
-          assert.equal(got.status, 0, got.stderr);
-          assert.match(got.stdout, /run 43 continues the chain/);
-          assert.equal(calls().length, 2, 'no dispatch for newer active applying run');
-        }
+      for (const [status, event] of product(['queued', 'waiting', 'pending', 'requested', 'in_progress'], ['schedule', 'workflow_dispatch'])) {
+        recovered({ RUNS: rows([{ ...newer, status, event }, me]) }, /run 43 continues the chain/, 2);
       }
-      for (const other of [{ ...newer, status: 'completed' }, { ...newer, head_branch: 'other' },
-        { ...newer, display_title: 'pass' }, { ...newer, event: 'push' }, { ...me, id: 41 },
-        { ...newer, created_at: '2026-11-02T17:50:59Z' }]) {
-        const got = recover({ RUNS: rows([other, me]) });
-        assert.equal(got.status, 0, got.stderr);
-        assert.match(got.stdout, /workflow run poll.yml/);
-      }
+      for (const other of [{ ...newer, status: 'completed' }, { ...newer, head_branch: 'other' }, { ...newer, display_title: 'pass' },
+        { ...newer, event: 'push' }, { ...me, id: 41 }, { ...newer, created_at: '2026-11-02T17:50:59Z' }]) recovered({ RUNS: rows([other, me]) });
       const full = Array.from({ length: 100 }, (_, i) => ({ ...newer, id: 100 + i, status: 'completed' }));
-      assert.equal(recover({ RUNS: rows(full), PAGE2: rows([me]) }).status, 0);
-      assert.equal(calls().length, 4, 'second page reaches current run before dispatch');
+      recovered({ RUNS: rows(full), PAGE2: rows([me]) }, undefined, 4); // second page reaches current run before dispatch
       assert.notEqual(recover({ RUNS: rows(full), PAGE2: rows(full) }).status, 0);
       assert.equal(calls().length, 3, 'bounded at two pages; no blind dispatch');
+      // Wording from GitHub's own annotations; a pass ended by a timeout also gets "The operation was canceled."
+      const timeout = 'The job running on runner GitHub Actions 3 has exceeded the maximum execution time of 40 minutes.';
+      const lost = 'The hosted runner: GitHub Actions 3 lost communication with the server. Anything in your workflow that terminates the runner process, starves it for CPU/Memory, or blocks its network access can cause this error.';
+      const notes = (...messages) => JSON.stringify(messages.map(message => ({ annotation_level: 'failure', message })));
+      const ignored = /not ended by GitHub; not recovering/;
+      for (const [env, count, stop] of [[{ ANNOTATIONS: notes('Process completed with exit code 1.', timeout) }, 5], [{ ANNOTATIONS: notes(lost) }, 5],
+        [{ ANNOTATIONS: notes('The job has exceeded the maximum execution time of 1m0s', 'The operation was canceled.') }, 5],
+        [{ ANNOTATIONS: notes('The run was canceled by @someone.', timeout) }, 2, ignored], [{ ANNOTATIONS: notes(`Error: ${lost}`, `log: ${timeout}`) }, 2, ignored],
+        [{ ANNOTATIONS: notes("Canceling since a higher priority waiting request for 'pass' exists", lost) }, 2, ignored],
+        [{ ANNOTATIONS: notes('The operation was canceled.') }, 2, ignored], [{ ANNOTATIONS: notes() }, 2, ignored],
+        [{ ANNOTATIONS: JSON.stringify([{ annotation_level: 'warning', message: timeout }]) }, 2, ignored],
+        [{ JOBS: jobs(null) }, 1, /never started; not recovering/], [{ JOBS: JSON.stringify({ jobs: [] }) }, 1, /never started/]]) {
+        recovered({ PASS_RESULT: 'cancelled', ...env }, stop, count);
+        if (count > 1) assert.deepEqual(calls()[1].slice(0, 4), ['api', '--method', 'GET', 'repos/owner/repo/check-runs/9/annotations']);
+      }
     } finally {
       fs.rmSync(sandbox, { recursive: true, force: true });
     }
