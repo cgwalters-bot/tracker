@@ -1,5 +1,5 @@
 {
-  "status": "blocked_before_preflight",
+  "status": "blocked_at_inference_preflight",
   "development_evidence": {
     "pilot": "https://github.com/cgwalters-forge/tracker/issues/1227",
     "v1": "https://github.com/cgwalters-forge/tracker/pull/1303",
@@ -25,12 +25,24 @@
   },
   "preflight": {
     "retention": "No admitted path was shown to retain and retrieve a standalone evaluation archive with matching hashes. The dispatch run action uploads diagnostics, a transcript and untrusted proposals for a separate check. None of those uploads establishes admission or exact round-trip of evaluator files under this handback contract.",
+    "retention_round_trip": {
+      "path": "Files in this directory handed back as the pull request branch patch, then fetched through the GitHub contents API at the pushed head.",
+      "head": "a321ae7d7f22dc7a159f20877ad9abcc557f7f90",
+      "matched_sha256": {
+        "held-out-v4-checkpoint.json": "9d2947e5e3dbacf68fc4097830bb521ccb2fb6ed64242331a076232bde645e69",
+        "prompt.md": "41fff6f107981d80956cc4bebc30a782a6f9c9b17fe630e305c8e881f6170e9e",
+        "patterns.md": "767b34678abcf6aa8e592759e2991204cade08f650bb97e9f17fe9d8fefe7fb0",
+        "references.json": "771045ba21c8eac23c82338576f1aef2c9fa6095f6f0c7cab21a8e16ce26bb24"
+      },
+      "limit": "This proves noncandidate retention only for repository files within the handback size and path limits, not for a standalone archive or larger run artifacts."
+    },
+    "inference_attempts": "On 2026-11-19 near 03:35Z, two minimal no-tools Messages requests (max_tokens 64) to the environment-configured endpoint, 30 seconds apart, both returned HTTP 429 rate_limit_error with no completion (second request_id req_011ChBbCP4BLfw3Czy5W5A8S). Not retried further or routed elsewhere.",
     "dispatch_wrapper": "https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/.github/workflows/cgwalters-agentic-job.yml",
     "upload_contract": "https://github.com/cgwalters-forge/agentic-job/blob/427ce2295925654be9c35e91ca5cee91bbc2c9ea/run/action.yml",
-    "stop_order": "Stopped at the retention gate before a noncandidate inference request. The earlier preflight showed reachability only, not tool-less isolation or enforced inference bounds.",
+    "stop_order": "Retention is shown only for repository files (the checkpoint hash matched is its prior revision's); a standalone archive stays unproven. Stopped at the inference gate because no noncandidate request completed. The earlier preflight showed reachability only, not tool-less isolation or enforced inference bounds.",
     "reviewer_isolation_proved": false,
     "scorer_isolation_proved": false,
-    "inference_requests": 0,
+    "inference_requests": {"attempted": 2, "completed": 0},
     "controller_substituted": false
   },
   "packet_tool": {
@@ -45,5 +57,5 @@
   "review_runs": 0,
   "scoring_runs": 0,
   "scores": null,
-  "next": "First demonstrate an admitted evidence upload and hash-verified retrieval with a noncandidate. Verify remaining budget and enforceable per-run limits before proving fresh tool-less reviewer and separate scorer contexts using only environment-configured inference. Then freeze v4 prospectively, preserving v3's repository set, merge window and architecture eligibility. Resolve all prior exposure exclusions, use bounded metadata-only discovery, and prove each historical base before building or reviewing any selected packet."
+  "next": "Keep evidence as repository files within the handback limits unless a standalone archive is proven. Obtain a completed no-tools noncandidate inference request (the endpoint rate-limited this run); verify remaining budget and enforceable per-run limits before proving fresh tool-less reviewer and separate scorer contexts using only environment-configured inference. Then freeze v4 prospectively, preserving v3's repository set, merge window and architecture eligibility. Resolve all prior exposure exclusions, use bounded metadata-only discovery, and prove each historical base before building or reviewing any selected packet."
 }
