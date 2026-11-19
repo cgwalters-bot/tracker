@@ -1,10 +1,21 @@
 # Promotes approved drafts in midstream forks upstream. Which repositories
 # qualify comes from repository metadata, never from a switch here.
+# A manual run may instead preview the one-time draft-body repair
+# (agent-board issue 1002) with the same verified binary and token; the
+# preview writes nothing. Apply is deliberately not offered: it waits for
+# the footer fix in the pin and a dispatch gate limited to the controller.
+# Schedules have no inputs, so they only ever promote.
 name: promote
 on:
   schedule:
     - cron: '17,32,47,2 * * * *'
   workflow_dispatch:
+    inputs:
+      repair:
+        description: Preview the draft-body repair instead of promoting; writes nothing
+        type: choice
+        options: ['off', preview]
+        default: 'off'
 
 permissions: {}
 # Two promoters could publish the same approved head concurrently.
@@ -39,8 +50,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: just build-agent-board "$AGENT_BOARD_REV"
       - name: Promote approved drafts
+        if: ${{ inputs.repair != 'preview' }}
         timeout-minutes: 8
         env:
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
         run: '"$AGENT_BOARD" promote --config .github/pass.json --apply --max-writes 4'
+      # The preview's before/after, unchanged and held lines are this run's
+      # public, human-readable log; there is no machine-readable report.
+      - name: Preview draft-body repair
+        if: ${{ inputs.repair == 'preview' }}
+        timeout-minutes: 8
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
+        run: '"$AGENT_BOARD" promote --config .github/pass.json --repair-bodies'

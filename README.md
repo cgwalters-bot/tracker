@@ -407,6 +407,9 @@ does not check a `PROMOTE` variable; the command uses `promote.publish` in
 The eight-minute invocation uses the bot token and the same verified binary
 pin as the pass. Its four-write cap admits at most one whole publication,
 including the create-only branch write needed for rebasing or sign-off.
+A manual run may instead preview the [one-time draft-body repair](#one-time-draft-body-repair-blocked-on-the-footer-fix)
+through its `repair` input; that run writes nothing, and a scheduled run,
+which has no inputs, only ever promotes.
 
 The config selects bcvk, bootc, composefs-rs and ostree and reads source-pinned
 records in `upstream-policy/` on tracker's default branch. Midstreams stay in
@@ -448,54 +451,92 @@ records are not on the default branch yet.
 
 Do not start the live repair until the [agent-board footer fix](https://github.com/cgwalters-forge/agent-board/issues/1002)
 has merged and is deployed in [the verified agent-board pin](#the-agent-board-pin).
-The checked pin `52adc0d6996cbe7e56cfec0598b6194cfab74357` still holds
-complete generated comments as ambiguous HTML. Use the normal verified pin bump
-and reuse the existing pin PR rather than opening another one. Before starting,
-record the exact deployed revision, verify that it contains the merged fix,
-and link passing regression checks at that revision for byte-for-byte footer
-preservation and continued refusal of ambiguous bodies. A green check on a
-revision without the fix does not qualify.
+No agent-board change for it had merged as of 19 November 2026, so the pin
+`46cb74b8d8a49875206ff48a2added806f9295c4` still holds complete generated
+comments as ambiguous HTML ([its `contexts()`](https://github.com/cgwalters-forge/agent-board/blob/46cb74b8d8a49875206ff48a2added806f9295c4/crates/board-forge/src/promote/text.rs#L175-L209))
+but can still propose edits to bodies with no generated footer, such as
+`Work.` followed by `Fixes #61`; an earlier no-op
+[recorded preview](https://github.com/cgwalters-forge/tracker/issues/1730#issuecomment-6938473718)
+does not bound what a later revision edits. Use the
+normal verified pin bump and reuse the existing pin PR rather than opening
+another one. Before starting, record the exact deployed revision, verify that
+it contains the merged fix, and link passing regression checks at that
+revision for byte-for-byte footer preservation and continued refusal of
+ambiguous bodies. A green check on a revision without the fix does not qualify.
 
-After deployment, only the authorized controller runs the standalone command
-from the deployed checkout, using the verified binary and existing bot identity.
-This is manual, off by default, and separate from scheduled publication.
+A manual `promote.yml` dispatch with `repair=preview` (the input is `off` by
+default) installs the verified binary, uses the existing bot token, and runs
+`agent-board promote --config .github/pass.json --repair-bodies` instead of
+the publication step. The two steps are mutually exclusive, and a schedule
+has no inputs, so it only ever promotes. The `promote` concurrency group holds
+one pending run and a newer pending run replaces it, so a preview dispatched
+while a promotion runs can be cancelled by the next schedule before it starts:
+confirm the dispatched run completed, not cancelled, before reading its log as
+evidence, and dispatch again if not. `gh run list --workflow promote.yml`
+finds the run; its result is only the human-readable job log
+(`gh run view RUN --log`), with each draft's `would repair` before/after,
+`unchanged` or `held for manual repair` line and no credentials or private
+configuration. There is no machine-readable repair report.
 
-1. Preview with no apply flag:
+The workflow deliberately offers no apply. Anyone with Actions write access
+can dispatch it, so an apply input would let callers other than the
+controller edit bot-owned drafts with the bot token. The pin bump that
+deploys the footer fix adds apply, with a cap and a dispatch gate limited to
+the controller; until then, apply runs only as the controller's own
+`agent-board promote --config .github/pass.json --repair-bodies --apply --max-writes N`
+from a deployed checkout, once the fix is deployed. Agent prose, an issue
+comment or an earlier preview never applies anything.
+
+1. Preview, which writes nothing:
 
    ```sh
-   agent-board promote --config .github/pass.json --repair-bodies
+   gh workflow run promote.yml --repo cgwalters-forge/tracker -f repair=preview
    ```
 
-   Check that the scan covered all verified forks and finished without errors or
-   deferral; a zero exit alone is not proof of completion. Review every proposed
-   before/after and skip. Only unambiguous source bookkeeping in the bot's open
-   drafts may change. Check that the source issue is the right one and the
-   generated footer bytes are identical. Leave ambiguous cases held.
-2. Before applying, check the deployed publisher. A `bot-ok` approval binds
-   the current head, not the body. If body text was the only hold, scheduled
-   promotion can publish the repaired draft under that approval, even before
-   re-preview. Defer repair if that consequence is not authorized. Repair also
-   makes the bot the last body editor. A human-text draft then holds until the
-   operator edits it and gives fresh authorization through the normal promotion
-   process. Do not change approval or publication behavior for this repair.
-3. Apply only if there are safe edits and the controller can confirm a window
-   with no concurrent draft creation or changes in the repair scope, from the
-   final reviewed preview through apply. Otherwise leave it at preview. Use the
-   existing bot credential and the same command with explicit
-   `--apply --max-writes N`, where `N` is positive and no greater than either
-   the reviewed edit count or the promote job's four-write cap. The cap is not
-   a selector: apply scans again rather than using a saved preview. It checks
-   fresh draft identity and body against its own scan before each write, but
-   the read and write are not atomic. It writes only fork draft bodies, never
-   upstream. Inspect apply diagnostics even on exit zero and reconcile failed
-   or uncertain writes against the reviewed before/after bodies before another
-   batch or claiming completion.
-4. Re-run the preview with no apply flag. Confirm a complete scan with no
-   remaining eligible edits. If the cap left eligible edits, review the new
-   preview before any further bounded batch. Record unresolved skips and link
-   the preview, apply (if any), and re-preview evidence on the
-   [repair issue](https://github.com/cgwalters-forge/tracker/issues/1730).
-   Keep it open through controller verification.
+   Check that the scan covered every verified fork and finished without errors
+   or deferral; a zero exit alone is not proof of completion. Review every
+   proposed before/after and hold. Only unambiguous source bookkeeping in the
+   bot's own open drafts may change: the source issue is the right one of the
+   fork and the generated footer bytes are identical. Human-written drafts,
+   two candidate sources, a source only in prose, and anything touching titles
+   or commits stay held; the repair never rewrites them.
+2. Before applying, know what the deployed publisher then does. A `bot-ok`
+   approval binds the current head, not the body, so repair neither grants nor
+   resets an approval. If body text was the only hold, the next scheduled
+   promotion can publish the repaired draft under its existing current-head
+   approval, before any re-preview. Defer the repair if that is not authorized.
+   Repair also makes the bot the body's last editor, so a draft held on human
+   text stays held until the operator edits it again and authorizes it through
+   the normal promotion process. Do not change approval or publication behavior
+   for this repair.
+3. Apply only after that review, when there are safe edits and the controller
+   can confirm a window with no concurrent draft creation or changes in the
+   repair scope, from the final reviewed preview through apply. Otherwise leave
+   it at preview. Give the explicit `--max-writes N`, positive and no greater
+   than either the reviewed edit count or the promote job's four-write cap
+   (the pinned binary bounds neither), and repeat for the next batch only
+   after its own review. The cap is not a selector. As [agent-board documents at the pin](https://github.com/cgwalters-forge/agent-board/blob/46cb74b8d8a49875206ff48a2added806f9295c4/docs/architecture.md#promote),
+   apply scans again rather than using a saved preview, checks that the token
+   is the configured bot's, and re-reads each draft's number, state, draft
+   flag, author, title and body just before editing only its body, but the
+   read and write are not atomic. It writes only fork draft bodies, never
+   upstream; this repository tests its own wiring, not those gates. Inspect apply diagnostics even on
+   exit zero and reconcile failed or uncertain writes against the reviewed
+   before/after bodies before another batch or claiming completion.
+4. Preview again. Confirm a complete scan with no remaining `would repair`
+   lines; agent-board documents a repaired body as unchanged by a second run,
+   and this re-preview is what shows it for these drafts. If the cap left
+   eligible edits, review the new preview before any further bounded batch.
+
+Acceptance is recorded on the [repair issue](https://github.com/cgwalters-forge/tracker/issues/1730),
+kept open through controller verification, and linked from
+[agent-board issue 1002](https://github.com/cgwalters-forge/agent-board/issues/1002)
+without closing it: the preview and re-preview run links and the apply's
+output; per configured fork, which drafts were repaired, which stay held and why, and
+which eligible edits remain; and a read-only promotion preview
+(`agent-board promote --config .github/pass.json`, no apply flag) showing
+composefs-rs PR 66's gate after the repair. Fixture tests here prove the
+caller's wiring, not a live repair.
 
 ### Misctool secondary publication (dormant)
 

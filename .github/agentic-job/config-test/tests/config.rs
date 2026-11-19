@@ -859,7 +859,8 @@ fn promote_caller_is_bounded_to_the_default_branch() {
     let workflow = read("../workflows/promote.yml");
     for required in [
         "cron: '17,32,47,2 * * * *'",
-        "  workflow_dispatch:\n\npermissions: {}",
+        "  workflow_dispatch:\n    inputs:\n",
+        "\npermissions: {}\n",
         "group: promote\n  cancel-in-progress: false",
         "timeout-minutes: 20",
         "persist-credentials: false",
@@ -905,6 +906,56 @@ fn promote_caller_is_bounded_to_the_default_branch() {
         }
     "#;
     let output = Command::new("node").args(["-e", script, guard]).output().expect("evaluate promotion gate");
+    assert!(output.status.success(), "{output:?}");
+}
+
+/// The one-time draft-body repair preview is a manual selection, never a
+/// schedule's, exclusive with publication, and runs the same verified binary
+/// with the same token without writing. Apply is not offered until the
+/// footer fix is in the pin and a dispatch gate limits it to the controller.
+#[test]
+fn promote_repair_preview_is_manual_and_exclusive() {
+    let workflow = read("../workflows/promote.yml");
+    assert!(workflow.contains("      repair:\n        description: Preview the draft-body repair instead of promoting; writes nothing\n        type: choice\n        options: ['off', preview]\n        default: 'off'\n"));
+    assert!(!workflow.contains("max-writes:"), "no repair cap until apply exists");
+    let (setup, rest) = workflow.split_once("      - name: Promote approved drafts\n").unwrap();
+    let (publication, repair) = rest.split_once("      - name: Preview draft-body repair\n").unwrap();
+    assert!(setup.contains("run: just build-agent-board \"$AGENT_BOARD_REV\""));
+    assert!(!setup.contains("inputs."), "the install does not vary with the dispatch");
+    for (name, step) in [("publication", publication), ("repair", repair)] {
+        for required in [
+            "timeout-minutes: 8",
+            "GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}",
+            "AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board",
+        ] {
+            assert!(step.contains(required), "{name}: {required}");
+        }
+        assert_eq!(step.matches("secrets.").count(), 1, "{name}: one credential, the existing one");
+    }
+    assert!(publication.contains("promote --config .github/pass.json --apply --max-writes 4"));
+    assert!(!publication.contains("repair-bodies"), "publication never repairs");
+    assert!(repair.contains("run: '\"$AGENT_BOARD\" promote --config .github/pass.json --repair-bodies'\n"));
+    assert!(!repair.contains("--apply"), "the preview never applies");
+
+    // Exactly one of the two steps runs for any dispatch, and a schedule,
+    // which has no inputs, only ever promotes. JavaScript's `==`/`!=`
+    // against string literals agree with Actions' for these gates; a gate
+    // relying on Actions' case-insensitive or numeric coercion would not.
+    let gate = |step: &str| step.lines().find_map(|line| line.strip_prefix("        if: ${{ "))
+        .unwrap().strip_suffix(" }}").unwrap().to_owned();
+    let script = r#"
+        const assert = require('node:assert/strict');
+        const [publishes, repairs] = process.argv.slice(1).map(gate => new Function('inputs', `return ${gate}`));
+        for (const [inputs, expected] of [
+          [{}, false], [{ repair: '' }, false], [{ repair: 'off' }, false],
+          [{ repair: 'preview' }, true],
+        ]) {
+          assert.equal(repairs(inputs), expected, JSON.stringify(inputs));
+          assert.equal(publishes(inputs), !expected, JSON.stringify(inputs));
+        }
+    "#;
+    let output = Command::new("node").args(["-e", script, &gate(publication), &gate(repair)])
+        .output().expect("evaluate step gates");
     assert!(output.status.success(), "{output:?}");
 }
 
