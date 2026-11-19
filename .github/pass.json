@@ -74,7 +74,7 @@
     "fixPools": ["openai", "claude"],
     "mergeAuthors": ["dependabot[bot]"],
     "headOwners": ["cgwalters-bot", "cgwalters-forge"],
-    "rebaseRounds": 2,
+    "rebaseRounds": 2, "fixRounds": 5,
     "mergeQueue": {"tries": 3, "fixedFlakes": [{"repository": "cgwalters-forge/agentic-job", "number": 3048, "jobs": ["job secure-host / build failed at step Build and test"]}]}
   }
 }
