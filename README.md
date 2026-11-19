@@ -528,7 +528,8 @@ completed through [actions#222](https://github.com/cgwalters-forge/actions/pull/
 The API records successful [dispatch 42348718765](https://github.com/cgwalters-forge/tracker/actions/runs/42348718765)
 and [review 42320676566](https://github.com/cgwalters-forge/actions/actions/runs/42320676566),
 both referencing wrapper `ba6c569` and helpers `427ce22`. This satisfies that
-wrapper gate, **not two-PR publication**. Dispatch still follows wrapper main.
+wrapper gate, **not two-PR publication**. Dispatch now pins wrapper
+`c8cd562`, at which no live review has been recorded yet.
 
 No variable, credential or live publication was changed here. Before enabling,
 an authorized operator must run a controlled primary-plus-secondary draft
@@ -634,12 +635,12 @@ layer, not in a second tracker pool resolver.
 exclusive jobs, malformed/missing head, expected-head forwarding, exact title,
 and unchanged non-review/legacy contracts. It does **not** prove stale-head
 rejection or checked submission. Immutable wrapper boundary tests are
-[cgwalters-agentic-job.test.mjs](https://github.com/cgwalters-forge/actions/blob/f05e2372d3bd5540406d444e26c70ba8c845b07d/.github/workflows/cgwalters-agentic-job.test.mjs)
+[cgwalters-agentic-job.test.mjs](https://github.com/cgwalters-forge/actions/blob/c8cd562edc4c342b888a5a9344f87a584d5bb614/.github/workflows/cgwalters-agentic-job.test.mjs)
 (including missing/unknown pool, head/admission and pre-submit checks) and
-[review_wrapper.rs](https://github.com/cgwalters-forge/actions/blob/f05e2372d3bd5540406d444e26c70ba8c845b07d/lint/tests/review_wrapper.rs)
+[review_wrapper.rs](https://github.com/cgwalters-forge/actions/blob/c8cd562edc4c342b888a5a9344f87a584d5bb614/lint/tests/review_wrapper.rs)
 (credential, immutable dependency and checked-publication boundaries).
-`just test-review-wrapper PATH` runs the Node boundary suite from a read-only
-checkout at that exact SHA; it performs no live inference or review.
+`just test-review-wrapper PATH` runs both suites from a read-only checkout
+at that exact SHA; it performs no live inference or review.
 
 #### Followed caller inventory
 
@@ -739,7 +740,7 @@ including actions and agentic-job: defining a legacy review wrapper locally
 is no longer an exemption from installing the ordinary caller. `review_pin`
 is replaced by `review_workflow = dispatch.yml` and the full `review_call`
 at the same immutable actions revision as tracker's `dispatch.yml` review
-job, `ba6c56925e63551fd4373fbeb23456a2f4a316da`.
+job, `c8cd562edc4c342b888a5a9344f87a584d5bb614`.
 
 The concrete threat is a moving review wrapper changing the workflow gate
 without a reviewed pin update. `just forge-sync` reads the selected workflow

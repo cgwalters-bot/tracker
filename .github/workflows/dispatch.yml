@@ -23,7 +23,7 @@
 # `profile` job puts it before the task, so a dispatch carries only what is
 # particular to its item. The wrapper adds its own line on top, which says
 # what the kind may hand back.
-# Non-review calls pin the wrapper at agentic-job v0.6.16, whose policy reads
+# Both calls pin the wrapper at agentic-job v0.6.16, whose policy reads
 # the bounds' organization rules. Review is a separate immutable call:
 # its wrapper owns REVIEW_POOLS, base policy/config and checked submission.
 name: dispatch
@@ -229,9 +229,9 @@ jobs:
   review:
     needs: review-gate
     if: ${{ inputs.kind == 'review' }}
-    # Immutable wrapper from actions#217 (runner-only, agentic-job 427ce22),
-    # not a release tag.
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da
+    # The run job's immutable wrapper (runner-only, agentic-job v0.6.16),
+    # not a release tag; the release train leaves it to a reviewed change.
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@c8cd562edc4c342b888a5a9344f87a584d5bb614
     permissions:
       contents: read
       issues: write

@@ -1,7 +1,7 @@
 {
   "_comment": "The forge-native repositories and the CI files each must have (#544/#1171). Each needs review_workflow with jobs.review calling exactly review_call, a .github/dependabot.yml with a daily github-actions update, and a root Justfile. The review call is immutable because a moving wrapper could change the only gate on workflow changes without review here. The ordinary non-review job may still follow main. This is source drift detection, not proof of admission, pacing, publication or merge provenance. Each also needs a renovate.json or .github/renovate.json whose extends lists renovate_preset, the runner-label preset cgwalters-forge/actions publishes. A repository is exempt from review, dependabot, justfile or renovate only through an entry in its exempt object whose value is the reason. just forge-sync reports drift; it never enables reviews. PR 1500 owns the paced scheduling rollout; missing dispatch callers reported here must be installed before that rollout.",
   "review_workflow": "dispatch.yml",
-  "review_call": "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da",
+  "review_call": "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@c8cd562edc4c342b888a5a9344f87a584d5bb614",
   "renovate_preset": "github>cgwalters-forge/actions//renovate/runners",
   "repos": [
     { "repo": "cgwalters-forge/agentic-job" },

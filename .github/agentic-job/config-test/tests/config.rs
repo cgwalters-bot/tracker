@@ -2954,7 +2954,7 @@ fn workflows_follow_our_own_repositories_at_main_dispatch_and_review_excepted_an
             let dispatch_wrapper = file == "dispatch.yml"
                 && uses.split_once('@')
                     .is_some_and(|(path, pin)| path == "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml"
-                        && matches!(pin, "ba6c56925e63551fd4373fbeb23456a2f4a316da" | "c8cd562edc4c342b888a5a9344f87a584d5bb614"));
+                        && pin == "c8cd562edc4c342b888a5a9344f87a584d5bb614");
             // These callers compose the harness directly: policy/check/apply and the
             // actions must run at one immutable source revision. Its workflow
             // test checks that all six pins agree.

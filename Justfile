@@ -1101,7 +1101,7 @@ test-review-caller:
     assert.match(job('review'), /^    needs: review-gate$/m);
     assert.match(job('run'), /^    needs: profile$/m);
     const review = job('review');
-    assert.match(review, /^    uses: cgwalters-forge\/actions\/\.github\/workflows\/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da$/m);
+    assert.match(review, /^    uses: cgwalters-forge\/actions\/\.github\/workflows\/cgwalters-agentic-job.yml@c8cd562edc4c342b888a5a9344f87a584d5bb614$/m);
     const withBlock = review.split('    with:\n')[1].split('    #')[0];
     assert.deepEqual(withBlock.trim().split('\n').map(line => line.trim().split(':')[0]), ['kind', 'repo', 'item', 'head', 'pool', 'task']);
     for (const key of ['repo', 'item', 'head', 'pool']) assert.ok(withBlock.includes(`${key}: ${expression(`inputs.${key}`)}`));
@@ -1241,8 +1241,10 @@ test-review-wrapper actions:
     const assert = require('node:assert/strict');
     const { execFileSync } = require('node:child_process');
     const cwd = require('node:path').resolve(process.argv[2]);
-    assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim(), 'ba6c56925e63551fd4373fbeb23456a2f4a316da');
+    assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim(), 'c8cd562edc4c342b888a5a9344f87a584d5bb614');
     execFileSync('node', ['--test', '.github/workflows/cgwalters-agentic-job.test.mjs'], { cwd, stdio: 'inherit' });
+    // Credential and checkout boundaries moved here from the Node suite.
+    execFileSync('cargo', ['test', '-q', '--test', 'review_wrapper'], { cwd: `${cwd}/lint`, stdio: 'inherit' });
 
 # poll must pass both of the fix bounds files dispatch selects per target.
 test-poll-bounds:
