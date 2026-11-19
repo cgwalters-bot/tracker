@@ -689,7 +689,7 @@ review/non-review jobs mutually exclusively. Non-review profile, ordinary
 before; reviews never enter those jobs.
 
 The separate literal ordinary-wrapper call pins
-[actions#198 at f05e2372d3bd5540406d444e26c70ba8c845b07d](https://github.com/cgwalters-forge/actions/blob/f05e2372d3bd5540406d444e26c70ba8c845b07d/README.md#ordinary-dispatched-reviews-dormant).
+[actions at `ba6c569`](https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/.github/workflows/cgwalters-agentic-job.yml).
 It receives only kind/repo/item/head/pool and a fixed task hint, no apply PAT or
 provider key. The wrapper owns trusted `REVIEW_POOLS` resolution (explicit
 agent/model and optional base-owned config, no ordinary fallback), fixed
@@ -704,12 +704,13 @@ layer, not in a second tracker pool resolver.
 exclusive jobs, malformed/missing head, expected-head forwarding, exact title,
 and unchanged non-review/legacy contracts. It does **not** prove stale-head
 rejection or checked submission. Immutable wrapper boundary tests are
-[cgwalters-agentic-job.test.mjs](https://github.com/cgwalters-forge/actions/blob/f05e2372d3bd5540406d444e26c70ba8c845b07d/.github/workflows/cgwalters-agentic-job.test.mjs)
+[cgwalters-agentic-job.test.mjs](https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/.github/workflows/cgwalters-agentic-job.test.mjs)
 (including missing/unknown pool, head/admission and pre-submit checks) and
-[review_wrapper.rs](https://github.com/cgwalters-forge/actions/blob/f05e2372d3bd5540406d444e26c70ba8c845b07d/lint/tests/review_wrapper.rs)
+[review_wrapper.rs](https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/lint/tests/review_wrapper.rs)
 (credential, immutable dependency and checked-publication boundaries).
-`just test-review-wrapper PATH` runs the Node boundary suite from a read-only
-checkout at that exact SHA; it performs no live inference or review.
+`just test-review-wrapper PATH` runs both suites from a read-only checkout at
+that exact SHA. It needs Node and Cargo, and Cargo may fetch locked dependencies
+on a cold cache. It performs no live inference or review.
 
 #### Followed caller inventory
 

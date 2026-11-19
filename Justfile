@@ -1235,14 +1235,14 @@ test-review-caller:
     }
     console.log('ok dormant ordinary review gate, exclusive routes, expected-head forwarding, exact identity and unchanged legacy admission');
 
-# Manual offline owning-layer tests from a read-only checkout of the review pin.
+# Manual owning-layer tests from a read-only checkout of the review pin.
 test-review-wrapper actions:
-    #!/usr/bin/env node
-    const assert = require('node:assert/strict');
-    const { execFileSync } = require('node:child_process');
-    const cwd = require('node:path').resolve(process.argv[2]);
-    assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim(), 'ba6c56925e63551fd4373fbeb23456a2f4a316da');
-    execFileSync('node', ['--test', '.github/workflows/cgwalters-agentic-job.test.mjs'], { cwd, stdio: 'inherit' });
+    #!/usr/bin/env bash
+    set -euo pipefail; cd -- "$1"
+    [[ $(git rev-parse HEAD) == ba6c56925e63551fd4373fbeb23456a2f4a316da ]] || { echo 'expected the actions checkout at the review pin (ba6c569)' >&2; exit 1; }
+    target=$(mktemp -d); trap 'rm -rf -- "$target"' EXIT
+    node --test .github/workflows/cgwalters-agentic-job.test.mjs
+    cargo test --locked --manifest-path lint/Cargo.toml --target-dir "$target" --test review_wrapper
 
 # poll must flag both fix bounds files dispatch selects per target, the same as
 # pass.json's fixBounds: its config copy in RUNNER_TEMP cannot resolve those.
