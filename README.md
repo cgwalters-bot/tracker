@@ -269,6 +269,16 @@ then subject it to the same provenance checks. No shared cache or latest-by-name
 artifact lookup is used. Missing, unreadable or untrusted predecessors start cold.
 Previews never upload state.
 
+Beside it, an applying pass uploads `pass-private`: agent-board's SQLite store
+and the two sweep fields of its state (`changes_sweep`, `changes_swept`), which
+let the next pass walk only what changed. No cached response is in it, so the
+public export's visibility filter is never bypassed. It is encrypted with the
+`POLL_STATE_KEY` repository secret, which nothing else uses, and restored only
+from the same validated predecessor. If it is missing or expired, the key is
+unset or rotated, or either half fails its checks, the store starts cold: the
+next passes walk every pull request until a full walk completes. To rotate the
+key, set a new random `POLL_STATE_KEY`; nothing else is needed.
+
 A forged cached body could steer scheduling despite a valid ETag, so only that
 trusted predecessor is accepted. Raw state can also include private usage/holds
 comments or unpublished reviews even in public repositories. Before uploading,

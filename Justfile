@@ -2236,3 +2236,58 @@ test-agent-board-install:
 #   just lint ../actions
 lint actions:
     {{ just_executable() }} --justfile "{{ actions }}/lint/Justfile" --working-directory . check
+
+# The hosted pass's private state (poll.yml): agent-board's SQLite store and
+# the two sweep fields of .state/pass.json that let the next pass narrow its
+# walk (agent-board's pass/changed.rs). Nothing else of the state is carried,
+# so no cached response bypasses the public export's visibility filter. The
+# pair is encrypted with POLL_STATE_KEY, a secret only this workflow uses.
+# `restore` installs it only when gpg really decrypted it and both halves pass
+# the checks the pinned agent-board would apply; anything else starts cold.
+pass-private mode:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    [ -n "${POLL_STATE_KEY:-}" ] || { echo '::warning::POLL_STATE_KEY is unset: the pass store starts cold'; exit 0; }
+    max_store=$((256 << 20))
+    gpg_args=(--batch --quiet --yes --pinentry-mode loopback --passphrase-fd 3)
+    fields='{changes_sweep, changes_swept}'
+    sane='(keys - ["changes_sweep", "changes_swept"] == []) and
+        (.changes_swept == null or (.changes_swept | type == "string")) and
+        (.changes_sweep == null or (.changes_sweep | type == "object" and
+          keys == ["active", "covered", "observed", "scope", "started"] and
+          all(.scope, .started, .observed; type == "string") and (.active | type == "boolean") and
+          (.covered | type == "array" and all(.[]; type == "string"))))'
+    usable() {
+        [ -f "$1/pass.sqlite" ] && [ ! -L "$1/pass.sqlite" ] && [ -f "$1/sweep.json" ] && [ ! -L "$1/sweep.json" ] &&
+            [ "$(stat -c %s "$1/pass.sqlite")" -le "$max_store" ] &&
+            [ "$(head -c 15 "$1/pass.sqlite")" = 'SQLite format 3' ] &&
+            jq -e "type == \"object\" and ($sane)" "$1/sweep.json" > /dev/null
+    }
+    case "{{ mode }}" in
+    restore)
+        stage=$(mktemp -d "$RUNNER_TEMP/private.XXXXXX")
+        # gpg also "decrypts" an unencrypted OpenPGP message; only a
+        # DECRYPTION_OKAY status means the key opened an integrity-protected one.
+        status=$(gpg "${gpg_args[@]}" --status-fd 1 -d -o "$stage/pair.tar" "$RUNNER_TEMP/private-in/state.tar.gpg" \
+            3<<< "$POLL_STATE_KEY" 2> /dev/null) || status=
+        if grep -q '^\[GNUPG:\] DECRYPTION_OKAY' <<< "$status" &&
+            tar -xf "$stage/pair.tar" -C "$stage" --no-same-owner --no-same-permissions pass.sqlite sweep.json 2> /dev/null &&
+            usable "$stage"; then
+            base='{"schema": "agent-board/poll-state/v1", "interval_seconds": 300}'
+            [ -f .state/pass.json ] && jq -e 'type == "object"' .state/pass.json > /dev/null && base=$(cat .state/pass.json)
+            mkdir -p .store .state
+            jq --slurpfile sweep "$stage/sweep.json" '. + $sweep[0]' <<< "$base" > "$stage/pass.json"
+            mv "$stage/pass.sqlite" .store/pass.sqlite && mv "$stage/pass.json" .state/pass.json
+            echo 'Restored the pass store and sweep'
+        else echo 'Private pass state unusable; the store starts cold'; fi ;;
+    save)
+        [ -f .store/pass.sqlite ] && [ -f .state/pass.json ] || { echo 'Nothing to save'; exit 0; }
+        out="$RUNNER_TEMP/private-out" && rm -rf "$out" && mkdir -p "$out/pair"
+        cp .store/pass.sqlite "$out/pair/pass.sqlite"
+        jq "$fields" .state/pass.json > "$out/pair/sweep.json"
+        usable "$out/pair" || { echo '::warning::the pass store or sweep is unusable; not saved'; exit 0; }
+        tar -cf "$out/pair.tar" -C "$out/pair" pass.sqlite sweep.json
+        gpg "${gpg_args[@]}" --symmetric --cipher-algo AES256 -o "$out/state.tar.gpg" "$out/pair.tar" 3<<< "$POLL_STATE_KEY"
+        rm -rf "$out/pair" "$out/pair.tar" && echo "saved=true" >> "$GITHUB_OUTPUT" ;;
+    *) echo "unknown mode {{ mode }}" >&2; exit 2 ;;
+    esac

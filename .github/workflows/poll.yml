@@ -121,7 +121,27 @@ jobs:
         if: steps.restore.outcome == 'failure'
         run: rm -rf .state
       - name: Prepare state directory
-        run: mkdir -p .state
+        run: mkdir -p .state .store
+      # The pass's SQLite store and the sweep fields the public state leaves
+      # out (`just pass-private`), as one encrypted file from the predecessor
+      # run validated above. Whatever fails its checks starts the store cold.
+      - name: Restore private pass state
+        id: private-in
+        if: steps.predecessor.outputs.run-id != ''
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ steps.predecessor.outputs.run-id }}
+          name: pass-private
+          path: ${{ runner.temp }}/private-in
+      - name: Decrypt private pass state
+        if: steps.private-in.outcome == 'success'
+        env:
+          POLL_STATE_KEY: ${{ secrets.POLL_STATE_KEY }}
+        shell: bash
+        run: just pass-private restore
       - name: One pass
         id: pass
         timeout-minutes: 18
@@ -145,6 +165,26 @@ jobs:
             --fix-bounds .github/agentic-job/fix.toml \
             --fix-bounds .github/agentic-job/midstream-fix.toml \
             --max-dispatch 20 --max-writes 60 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
+      # Only an applying pass writes new private state; a preview saves none.
+      - name: Encrypt private pass state
+        id: private-out
+        if: >-
+          ${{ !cancelled() && steps.pass.outcome != 'skipped' &&
+          ((github.event_name == 'schedule' && vars.PASS_APPLY == 'enabled') ||
+          (github.event_name == 'workflow_dispatch' && inputs.apply)) }}
+        env:
+          POLL_STATE_KEY: ${{ secrets.POLL_STATE_KEY }}
+        shell: bash
+        run: just pass-private save
+      - name: Upload private pass state
+        if: ${{ !cancelled() && steps.private-out.outputs.saved == 'true' }}
+        timeout-minutes: 2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pass-private
+          path: ${{ runner.temp }}/private-out/state.tar.gpg
+          retention-days: 1
+          if-no-files-found: error
       # Threat: raw state includes private usage/holds comments and status records.
       # Export only allowed responses and ledger entries in public repositories.
       - name: Prepare public pass state
