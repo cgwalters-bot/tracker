@@ -36,13 +36,13 @@
       },
       "limit": "This proves noncandidate retention only for repository files within the handback size and path limits, not for a standalone archive or larger run artifacts."
     },
-    "inference_attempts": "On 2026-11-19 near 03:35Z, two minimal no-tools Messages requests (max_tokens 64) to the environment-configured endpoint, 30 seconds apart, both returned HTTP 429 rate_limit_error with no completion (second request_id req_011ChBbCP4BLfw3Czy5W5A8S). Not retried further or routed elsewhere.",
+    "inference_attempts": "On 2026-11-19 near 03:35Z, two minimal no-tools Messages requests (max_tokens 64) to the environment-configured endpoint, 30 seconds apart, both returned HTTP 429 rate_limit_error with no completion (second request_id req_011ChBbCP4BLfw3Czy5W5A8S). That run did not retry further or route elsewhere. In a later run on 2026-11-19, one request at 04:05Z omitting the bearer token got HTTP 401 (req_011ChBdDaEPAkgHZg6Wbg19f); two correctly authenticated requests at 04:05Z and 04:06Z, 90 seconds apart, again returned HTTP 429 rate_limit_error (req_011ChBdEDQXSB4ws7kc4NK8u, req_011ChBdMKpwXcBcZp1S3d8Zh). The same endpoint served that run's own agent session meanwhile; whether separate requests have their own limit or exhaust a quota shared with the session is unknown.",
     "dispatch_wrapper": "https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/.github/workflows/cgwalters-agentic-job.yml",
     "upload_contract": "https://github.com/cgwalters-forge/agentic-job/blob/427ce2295925654be9c35e91ca5cee91bbc2c9ea/run/action.yml",
     "stop_order": "Retention is shown only for repository files (the checkpoint hash matched is its prior revision's); a standalone archive stays unproven. Stopped at the inference gate because no noncandidate request completed. The earlier preflight showed reachability only, not tool-less isolation or enforced inference bounds.",
     "reviewer_isolation_proved": false,
     "scorer_isolation_proved": false,
-    "inference_requests": {"attempted": 2, "completed": 0},
+    "inference_requests": {"sent": 5, "auth_errors": 1, "rate_limited": 4, "completed": 0},
     "controller_substituted": false
   },
   "packet_tool": {
@@ -57,5 +57,5 @@
   "review_runs": 0,
   "scoring_runs": 0,
   "scores": null,
-  "next": "Keep evidence as repository files within the handback limits unless a standalone archive is proven. Obtain a completed no-tools noncandidate inference request (the endpoint rate-limited this run); verify remaining budget and enforceable per-run limits before proving fresh tool-less reviewer and separate scorer contexts using only environment-configured inference. Then freeze v4 prospectively, preserving v3's repository set, merge window and architecture eligibility. Resolve all prior exposure exclusions, use bounded metadata-only discovery, and prove each historical base before building or reviewing any selected packet."
+  "next": "Keep evidence as repository files within the handback limits unless a standalone archive is proven. Obtain a completed no-tools noncandidate inference request (the endpoint rate-limited two runs); verify remaining budget and enforceable per-run limits before proving fresh tool-less reviewer and separate scorer contexts using only environment-configured inference. Then freeze v4 prospectively, preserving v3's repository set, merge window and architecture eligibility. Resolve all prior exposure exclusions, use bounded metadata-only discovery, and prove each historical base before building or reviewing any selected packet."
 }
