@@ -1,0 +1,39 @@
+# Checks that the org's GitHub App (variable APP_ID, environment secret
+# APP_PRIVATE_KEY of github-app)
+# mints a scoped installation token through cgwalters-forge/actions'
+# app-token action: the first step of moving roles off CGWALTERS_BOT_PAT
+# (#766, starting with the status role in #768). Read-only; it writes
+# nothing as the app.
+name: app-token-check
+on:
+  workflow_dispatch:
+permissions: {}
+jobs:
+  check:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    # The key is a secret of this environment only, which deploys only from
+    # main: a workflow edited on another branch can't read it.
+    environment: github-app
+    permissions: {}
+    steps:
+      # Pinned, not followed at main as our other actions are: this step
+      # receives the App's private key, so the code that holds it changes only
+      # by a reviewed change here.
+      - id: app
+        uses: cgwalters-forge/actions/app-token@59814e7302830812ae069dc4a31fe0714bf6a350 # main
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: tracker
+          permission-issues: read
+      # What the installation reaches, and the token's own rate limit,
+      # which is separate from the bot PAT's.
+      - name: Use the token
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          gh api installation/repositories --jq '"repositories: \(.total_count)"'
+          gh api "repos/$GITHUB_REPOSITORY/issues?per_page=1" --jq '"read issue #\(.[0].number)"'
+          gh api rate_limit --jq '"core limit \(.resources.core.limit), remaining \(.resources.core.remaining)"'

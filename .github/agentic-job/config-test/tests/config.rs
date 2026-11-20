@@ -3011,11 +3011,14 @@ fn workflows_follow_our_own_repositories_at_main_dispatch_and_review_excepted_an
             // test checks that all six pins agree.
             let composed_piece = matches!(file.as_str(), "retro.yml" | "weekly-comparison.yml")
                 && uses.starts_with("cgwalters-forge/agentic-job/");
+            // The App token action receives an App private key: pinned, so the
+            // code holding the key moves only by a reviewed change here.
+            let key_handler = uses.starts_with("cgwalters-forge/actions/app-token@");
             // A local call uses this caller's own reviewed commit, not a ref.
             if file == "weekly-eval.yml" && uses == "./.github/workflows/weekly-comparison.yml" {
                 continue;
             }
-            let ok = match uses.starts_with(&owner) && file != "review.yml" && !dispatch_wrapper && !composed_piece {
+            let ok = match uses.starts_with(&owner) && file != "review.yml" && !dispatch_wrapper && !composed_piece && !key_handler {
                 true => is_ref(uses, |rev| rev == "main"),
                 false => is_ref(uses, is_commit),
             };
