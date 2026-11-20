@@ -441,6 +441,164 @@ review and dismisses stale approvals on push. A repository without it
 fails the run and gets a comment on one open "Ruleset drift" issue here;
 `just check-review-gate` runs the same check locally.
 
+## Moving this deployment to infra
+
+**Tracker remains the only deployment writer.** This is an inventory at
+[tracker `f08f48d`](https://github.com/cgwalters-forge/tracker/tree/f08f48d95e37603f75be1bc66fbda92302dec769)
+and [cgwalters-forge/infra `effda4a`](https://github.com/cgwalters-forge/infra/tree/effda4afbb9ae44dc216db9d5954afeebd47e607),
+not an instruction to install a second caller. The destination is the
+`bot-midstream` fork of `bootc-dev/infra`, not its upstream or `forge-infra`.
+Its [workflow directory](https://github.com/cgwalters-forge/infra/tree/effda4afbb9ae44dc216db9d5954afeebd47e607/.github/workflows)
+already has image builds, merge, renovate, upgrade, sync-common and generated
+drafter/fix/review workflows. `review.lock.yml` is not `review.yml`, but both
+could act on the same PR. Its `Justfile` is already occupied; its
+[upgrade workflow](https://github.com/cgwalters-forge/infra/blob/effda4afbb9ae44dc216db9d5954afeebd47e607/.github/workflows/upgrade.yml)
+recompiles gh-aw sources and refreshes `.github/aw/actions-lock.json`. It does
+not own agent-board or actions wrapper pins. Before staging,
+agree who owns downstream-only files on `main` and which PR checks and
+privileged events may coexist. Tracker's midstream sync only fast-forwards:
+after a downstream-only commit it reports divergence rather than merging
+upstream changes. Resolve that ownership before relying on sync. If unresolved,
+do not install on the fork. File presence is not evidence of activation.
+
+### Which identity changes?
+
+* **Caller:** the repository receiving Actions dispatches, running the jobs and
+  serving their run URLs would change. In [pass.json](../.github/pass.json)
+  and [poll/agent-board.json](../.github/poll/agent-board.json) distinguish
+  `dispatchRepo`/`dispatchWorkflow` from repositories being worked on. Keep
+  the default-branch input contract, run-name prefix and `issue_repo` routing.
+* **Policy:** caller checkouts and wrapper `allow` paths must resolve trusted
+  [bounds, profiles, pool and runner maps](../.github/agentic-job) at the
+  reviewed source. Moving dispatch requires moving or explicitly sourcing those
+  inputs together, not falling back to target code. Target review policy
+  (`workflow/review*`) stays on each trusted base. Keep `promote.policyRepository`
+  and `policyPath` pointing to tracker's [upstream policy](../upstream-policy).
+* **State:** keep Project 1, tracker epics, questions, proposals and maintain
+  digest, target PR markers and staged issue comments at their current hosts.
+  [Supervisor config](../.github/supervisor/config.json) names tracker issues
+  656 (requests) and 718 (state), operator issue 2 (log); decisions stay on
+  operator issue 1 and holds/usage on bot-ops issue 1. Session publication stays
+  on the issue in [session.json](../.github/agentic-job/session.json). Do not
+  replace all occurrences of `tracker` or recreate issues at the destination.
+
+### Caller inventory
+
+The links below are the checked-in `.github/workflows` callers. “Move” means
+candidate after authorization, not enabled. “Keep” means leave at source until
+its owner explicitly relocates or retires it. Manual means `workflow_dispatch`.
+
+| Caller | Entry points and dependency | Disposition |
+| --- | --- | --- |
+| [dispatch.yml](../.github/workflows/dispatch.yml) | Manual/API from pass, supervisor, CLI and report callers; resolves profiles/pools/bounds and calls the actions wrapper (different SHAs for review and non-review). | Move with admission replay and disabled runner map. |
+| [poll.yml](../.github/workflows/poll.yml) | Ten-minute cron, manual apply/preview, successor and recovery dispatch; `.github/pass.json`, fix bounds, `just build-agent-board`. `next` can also wake supervisor, release train and maintain-shadow; pass can request a pin bump. | Move as a single chain, including its readers of run history. |
+| [supervisor.yml](../.github/workflows/supervisor.yml) | Two crons, poll wake-up, manual prompt/session and request-issue comment. Uses `.github/{poll/agent-board,supervisor/config,usage/config}.json`, pools and supervisor bounds. | Move health/judge/execute only after resolving event delivery: tracker comments do not trigger infra, and the session guard compares the publication repo to the caller. Keep the lane at source or paused until parity; no second executor. |
+| [session.yml](../.github/workflows/session.yml), [review-send.yml](../.github/workflows/review-send.yml) | Manual session uses session config/profile, poll and supervisor config; review-send reads issue/comment events and the poll review allowlist. | Keep: publication and operator gestures belong to the original issues. |
+| [agent-board-pin.yml](../.github/workflows/agent-board-pin.yml), [release-train.yml](../.github/workflows/release-train.yml) | Hourly/manual or poll; `just bump-agent-board` and [release-train config](../.github/release-train/config.json). | Move only the updater of relocated files. Keep `tracking` in tracker; distinguish release repo/fork, wrapper upgrade files and `callers[].repository/fork/files` in tracker and agent-board. Do not redirect PRs for files left behind. |
+| [promote.yml](../.github/workflows/promote.yml), [midstream-sync.yml](../.github/workflows/midstream-sync.yml) | Scheduled/manual promotion from pass config; scheduled/manual fork sync. | Keep; resolve destination fork ownership before either can advance it. |
+| [broker-probe.yml](../.github/workflows/broker-probe.yml), [maintain-shadow.yml](../.github/workflows/maintain-shadow.yml) | Probe cron uses `.github/broker/config.json`; shadow uses pass config on cron/manual/poll wake-up. | Keep diagnostics; point supervisor health at the actual probe run host before moving it. |
+| [forge-sync.yml](../.github/workflows/forge-sync.yml), [ruleset-check.yml](../.github/workflows/ruleset-check.yml) | Daily/manual; `.github/forge-sync/repos.json` and workflow-exempt bounds; report drift on tracker. | Keep with policy and issue publication. |
+| [ci-health.yml](../.github/workflows/ci-health.yml), [ci-health-rehearsal.yml](../.github/workflows/ci-health-rehearsal.yml) | Daily/manual collection/publication using `.github/ci-health/`; confirmed manual fixture. | Keep reports, fixture and repository guard together. |
+| [weekly-models.yml](../.github/workflows/weekly-models.yml), [monthly-review-refresh.yml](../.github/workflows/monthly-review-refresh.yml), [weekly-eval.yml](../.github/workflows/weekly-eval.yml) | Scheduled/manual; dispatch in `GITHUB_REPOSITORY` or, for eval's documentation mode, call [weekly-comparison.yml](../.github/workflows/weekly-comparison.yml) with comparison profile/bounds. | Keep report targets; redirect dispatch endpoint or pause producers at cutover. |
+| [retro.yml](../.github/workflows/retro.yml), [weekly-blog.yml](../.github/workflows/weekly-blog.yml), [review-corpus.yml](../.github/workflows/review-corpus.yml) | Scheduled/manual; retro profile/bounds, `.github/weekly-digest.json`, repository release assets respectively. | Keep publications and consumers at existing hosts. |
+| [ci.yml](../.github/workflows/ci.yml), [review.yml](../.github/workflows/review.yml) | PR/merge group CI; base-owned PR/comment review. | Keep tracker checks/review for tracker changes. Move caller-specific assertions with their caller, not the whole CI or another review bot. |
+| [tailnet-join.yml](../.github/workflows/tailnet-join.yml), [soak.yml](../.github/workflows/soak.yml) | Manual diagnostics; soak uses `workflow/soak.cjs`, `soak*.toml` and [its procedure](soak.md). | Keep dormant, not a production dependency or a parity run. Retire redundant copies only after an owner confirms no consumers. |
+
+Check the edges outside these YAML files before switching a producer:
+
+* The [agent-board dispatch CLI](https://github.com/cgwalters-forge/agent-board/blob/b5677d3edf35a1d1d54b18f3307738b9e1484c4c/crates/agent-board/src/dispatch.rs)
+  and operator commands above need the new `--caller`/`-R`, **not** a new item
+  host. The control app's [runpass.ts](https://github.com/cgwalters-forge/review/blob/a7959b377b81c84b50d303ac26081c0dc6f5ee15/src/github/runpass.ts)
+  currently builds both its poll dispatch and its run link from `TRACKER_REPO`;
+  separate these from issue reads. Its [live run sources](https://github.com/cgwalters-forge/review/blob/a7959b377b81c84b50d303ac26081c0dc6f5ee15/src/github/liveruns.ts)
+  also select which runs are visible and eligible for cancellation. Check the
+  actual repo on the run card in both cutover and rollback. [Item dispatch](https://github.com/cgwalters-forge/review/blob/a7959b377b81c84b50d303ac26081c0dc6f5ee15/src/github/itemdispatch.ts)
+  posts a plan and follows the URL in the receipt; do not convert it into a
+  second direct dispatcher. Check `src/github/chat-config.json` session source
+  separately. In [usage-config.json](https://github.com/cgwalters-forge/review/blob/a7959b377b81c84b50d303ac26081c0dc6f5ee15/src/github/usage-config.json),
+  the allowance reads the pool policy file; the cost read uses tracker's `data`
+  ref. Moving one does not move the other. Preserve old absolute run links, not just numeric IDs. Unknown
+  CLI/automation clients need an owner or a confirmed pause before cutover.
+* The [Justfile](../Justfile) checks shared `AGENT_BOARD_REV` and installs a
+  verified binary; include [.github/agent-board-install](../.github/agent-board-install)
+  provenance/release inputs, not just a SHA substitution. Preserve each
+  wrapper's literal `uses` ref, including moving refs where present. Consult
+  the [pin lifecycle work](https://github.com/cgwalters-forge/tracker/issues/1694)
+  before changing upgrade policy. Keep historical replays at their original pins.
+
+### Go/no-go and rollback checklist
+
+1. **Offline parity first.** Against the two named trees and a proposed,
+   inactive caller tree, diff workflow events, permissions, environments, refs,
+   config paths and output destinations. Run the same credential-free fixtures
+   on source and candidate with dependencies pre-fetched: `just test-config`,
+   `test-runner-profiles`, `test-poll-bounds`, `test-poll-next`,
+   `test-pass-state`, `test-supervisor-config` and `test-supervisor-workflow`
+   (each a Justfile recipe), plus CI's offline dispatch admission replay. Set
+   `AGENT_BOARD` to the verified pinned binary; a skipped binary check is not
+   parity. Run `just test-pass-config` separately as a read-only connected
+   check: the binary's `pass --check-config` needs the org listing. Compare
+   accepted and refused targets, emitted dispatch argv, predecessor selection,
+   filtered artifact contents and simulated writes/receipts. Only the reviewed
+   caller identity and new run URLs should differ. Keep both sets of checks
+   until acceptance; retire source-only caller assertions when the caller is
+   retired. Schema/policy and repository CI tests stay where their inputs live.
+   Use [agent-board fresh-deploy validation](https://github.com/cgwalters-forge/agent-board/issues/282)
+   for staging evidence and [runner-gate work](https://github.com/cgwalters-forge/tracker/issues/1490)
+   for external execution; neither is satisfied by this inventory.
+2. **Obtain separate operator approval.** Verify destination default-branch
+   rulesets, required checks, current-head approval/stale dismissal, fork sync
+   and bypass policy; protected `agent-apply`, `CGWALTERS_BOT_PAT` /
+   `SAFE_OUTPUTS_PAT`, PAT access to the Project, poll read
+   STS, wrapper owner/caller admission, broker OIDC audience/workflow identity,
+   and tailnet federation/tags/ACLs. Review the variable names in the settings
+   checklist below. Poll uses the job token for same-repo dispatch. A tracker
+   producer's `actions: write` does not grant dispatch on infra; leave it
+   paused unless a cross-repo identity is separately approved or it moves.
+   These are decisions, not verified live grants. No widening
+   of bounds or transfer of secret values is part of parity.
+3. **Quiesce tracker before allowing infra writes.** Record approved revisions,
+   trigger settings, outstanding plan/PR receipts and both repos' queued,
+   waiting-for-approval and running jobs. Freeze CLI/UI/manual dispatch and
+   reruns, report producers, scheduled and issue-comment entry points; stop
+   poll successors (including the timeout recovery path) and supervisor/train/
+   pin/shadow wake-ups. `PASS_APPLY` alone does not stop manual `apply=true`,
+   nor does changing a variable recall a running job. Drain or cancel and
+   reconcile children and pending apply jobs; re-list until neither old work
+   nor a delayed successor can write. Concurrency groups are repository-local.
+4. **Start from known state.** Record the last tracker run URLs and artifact
+   provenance before expiry: `pass-state` (one day, filtered public files only)
+   and `supervisor-health` (two days). Neither is an issue database. Never pass
+   a tracker `previous_run_id` as an infra predecessor, import raw `.state`, or
+   assume a missing health baseline means healthy. Start cold without apply
+   and with `AGENT_BOARD_PIN` off (even a preview can wake the updater),
+   compare board/issue census, pending requests, WIP, holds, pacing, cooldowns
+   and proposed actions with the last trusted receipts. Block on ambiguous or
+   duplicate work. Keep historical artifacts/check/apply in their original runs.
+5. **Accept one writer or stop.** With tracker fenced, schedules stopped and
+   `PASS_APPLY` off, use a manual dispatch on one approved test item, not an
+   applying board pass, for the canary. Require the independent check to bind
+   the allowed result to that item (one comment, no PR); if the available
+   route cannot enforce that scope, stop. Record caller/ref, policy result,
+   checked artifact, apply receipt, original issue and new run URL. Confirm
+   the comment landed once and the control app shows the destination run.
+   Separately approve the first manual applying poll **at its actual batch
+   caps**, with chaining still off. Verify its receipts and use a manual
+   preview with its `previous_run_id` to prove destination state restoration
+   without a second apply. Only then authorize the scheduled/applying chain;
+   verify one successor, no duplicate dispatches, supervisor run discovery
+   and an idle tracker through a schedule interval. Unaccepted
+   lanes stay paused. No such live evidence was collected for this checklist.
+6. **Rollback on a wrong host, missing receipt, duplicate, or state mismatch.**
+   Freeze infra producers and all manual/scheduled/chained apply paths first;
+   drain/cancel and reconcile both run lists against issue and PR receipts,
+   including writes already made. Keep both sides off if the result is unknown.
+   Restore recorded tracker routes, revisions and settings with writes still
+   off; preview against current issue state, not an old snapshot. Repeat the
+   item-scoped canary, separately authorized manual poll and preview-restore
+   sequence on tracker before resuming its chain. Verify a unique successor.
+   Leave infra inactive; preserve both run histories.
+
 ## Where an operator comment goes
 
 - On a live epic here: the next pass plans the epic again with it.
