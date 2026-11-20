@@ -377,6 +377,8 @@ key of `pass.json`'s `pr`, so the preview uses the pass's full PR policy
 rather than previewing merges the pass holds; the two lists that may name
 only followed repositories keep their agentic-job entry alone, and a `pr`
 key the recipe does not list fails the run instead of being left out.
+[docs/maintain-shadow-comparison.md](docs/maintain-shadow-comparison.md)
+compares the shadow's previews with the pass's steps for 7 to 18 November 2026.
 
 A pull request labelled `needs-human` is not touched again until the label
 is removed. A fix run can request one `add_comment` explaining why it
