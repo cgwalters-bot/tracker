@@ -408,16 +408,22 @@ jobs:
           # Threat: a recovered old run can fork an already-owned chain. Match
           # pinned pass next's branch, event/title, active statuses, creation-time
           # and ID ordering, and fail if this run is outside its 200-run bound.
-          runs='[]'
+          runs=''
           for page in 1 2; do
+            # Full run pages can exceed Linux's per-argument limit. Read one
+            # response on stdin and retain only the fields the check uses.
             listed=$(timeout 30s gh api --method GET "repos/$GITHUB_REPOSITORY/actions/workflows/poll.yml/runs" \
-              -f branch="$DEFAULT_BRANCH" -f exclude_pull_requests=true -f per_page=100 -f page="$page")
-            runs=$(jq -ce --argjson listed "$listed" '. + ($listed.workflow_runs | if type == "array" then . else error("missing workflow_runs") end)' <<< "$runs")
-            if jq -e --argjson id "$GITHUB_RUN_ID" 'any(.[]; .id == $id)' <<< "$runs" >/dev/null; then break; fi
-            if (( $(jq '.workflow_runs | length' <<< "$listed") < 100 )); then break; fi
+              -f branch="$DEFAULT_BRANCH" -f exclude_pull_requests=true -f per_page=100 -f page="$page" |
+              jq -ces 'if length == 1 and (.[0].workflow_runs | type) == "array"
+                then .[0].workflow_runs | map({id, head_branch, status, event, created_at, display_title})
+                else error("expected one response with a workflow_runs array") end')
+            runs+="$listed"$'\n'
+            if jq -e --argjson id "$GITHUB_RUN_ID" 'any(.[]; .id == $id)' <<< "$listed" >/dev/null; then break; fi
+            if (( $(jq 'length' <<< "$listed") < 100 )); then break; fi
           done
-          newer=$(jq -r --argjson id "$GITHUB_RUN_ID" --arg branch "$DEFAULT_BRANCH" '
+          newer=$(jq -rs --argjson id "$GITHUB_RUN_ID" --arg branch "$DEFAULT_BRANCH" '
             def created: .created_at | fromdateiso8601;
+            add |
             map(if (.id | type) == "number" and
               all(.head_branch, .status, .event, .created_at; type == "string") and
               (.event != "workflow_dispatch" or (.display_title | type) == "string")

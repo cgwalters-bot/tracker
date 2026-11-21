@@ -1303,8 +1303,7 @@ test-poll-next:
       console.log('skipped: set AGENT_BOARD to check the flags against the pinned CLI');
     }
     const fallback = /^ {2}next-fallback:\n([\s\S]+)$/m.exec(poll)?.[1];
-    assert.ok(fallback, 'the final fallback job');
-    assert.match(fallback, /^ {4}needs: \[pass, next\]$/m);
+    assert.match(fallback ?? '', /^ {4}needs: \[pass, next\]$/m, 'the final fallback job depends on pass and next');
     const gate = /^ {4}if: >-\n((?: {6}.*\n)+)/m.exec(fallback)[1].trim().replace(/^\$\{\{ | \}\}$/g, '');
     const product = (...lists) => lists.reduce((rows, list) => rows.flatMap(row => list.map(item => [...row, item])), [[]]);
     const results = ['success', 'failure', 'cancelled', 'skipped', ''];
@@ -1334,7 +1333,7 @@ test-poll-next:
     if (args[0] === 'api') {
       const kind = args.find(arg => arg.startsWith('repos/')).match(/\\/(jobs|annotations|runs)$/)?.[1] ?? 'start';
       if (process.env.API_FAIL === kind) { console.error('fixture API failure'); process.exit(1); }
-      const fixed = { runs: process.env[args.includes('page=2') ? 'PAGE2' : 'RUNS'], start: process.env.START || '2026-11-02T17:51:00Z' }[kind];
+      const fixed = { runs: process.env[args.includes('page=2') ? 'PAGE2' : 'RUNS']?.replaceAll('fixture-commit-message', 'x'.repeat(4096)), start: process.env.START || '2026-11-02T17:51:00Z' }[kind];
       process.stdout.write(fixed ?? require('node:child_process').execFileSync('jq', ['-r', args[args.indexOf('--jq') + 1]], { input: process.env[kind.toUpperCase()] }));
     } else { console.log(args.join(' ')); process.exit(Number(process.env.DISPATCH_EXIT || 0)); }
     `, { mode: 0o755 });
@@ -1369,7 +1368,7 @@ test-poll-next:
       assert.equal(failed.status, 1, 'dispatch failure stays visible');
       assert.deepEqual(failed.stdout.trimEnd().split('\n'), [log, dispatch], 'no retry on failure');
       assert.equal(calls().filter(args => args[0] === 'workflow').length, 1);
-      for (const env of [{ API_FAIL: 'start' }, { API_FAIL: 'runs' }, { START: 'null' }, { RUNS: '{}' }, { RUNS: '{' },
+      for (const env of [{ API_FAIL: 'start' }, { API_FAIL: 'runs' }, { START: 'null' }, { RUNS: '' }, { RUNS: '{}' }, { RUNS: '{' },
         { RUNS: rows([]) }, { RUNS: rows([{ ...me, status: null }]) }, { RUNS: rows([{ ...me, created_at: 'invalid' }]) },
         { PASS_RESULT: 'cancelled', API_FAIL: 'jobs' }, { PASS_RESULT: 'cancelled', API_FAIL: 'annotations' }]) {
         const unreadable = recover(env);
@@ -1384,8 +1383,9 @@ test-poll-next:
       }
       for (const other of [{ ...newer, status: 'completed' }, { ...newer, head_branch: 'other' }, { ...newer, display_title: 'pass' },
         { ...newer, event: 'push' }, { ...me, id: 41 }, { ...newer, created_at: '2026-11-02T17:50:59Z' }]) recovered({ RUNS: rows([other, me]) });
-      const full = Array.from({ length: 100 }, (_, i) => ({ ...newer, id: 100 + i, status: 'completed' }));
-      recovered({ RUNS: rows(full), PAGE2: rows([me]) }, undefined, 4); // second page reaches current run before dispatch
+      const full = Array.from({ length: 100 }, (_, i) => ({ ...newer, id: 100 + i, status: 'completed', head_commit: { message: 'fixture-commit-message' } })); // mock expands past 128 KiB
+      for (const [first, stop, count] of [[full[0], undefined, 4], [{ ...full[0], ...newer }, /run 43 continues the chain; not starting another/, 3]])
+        recovered({ RUNS: rows([first, ...full.slice(1)]), PAGE2: rows([me]) }, stop, count);
       assert.notEqual(recover({ RUNS: rows(full), PAGE2: rows(full) }).status, 0);
       assert.equal(calls().length, 3, 'bounded at two pages; no blind dispatch');
       // Wording from GitHub's own annotations; a pass ended by a timeout also gets "The operation was canceled."
