@@ -288,6 +288,48 @@ jobs:
           else
             echo '::warning::Could not check maintain-shadow.yml age'
           fi
+      - name: Start promote if overdue
+        # A second dispatch can replace a pending run in promote's concurrency
+        # group. Check for active runs even if the newest run has finished.
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        shell: node {0}
+        run: |
+          const { readFileSync } = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const { GITHUB_REPOSITORY: repo, DEFAULT_BRANCH: branch } = process.env;
+          const gh = args => execFileSync('gh', args, { encoding: 'utf8', timeout: 10_000 });
+          function list(filter) {
+            const { total_count: count, workflow_runs: runs } = JSON.parse(gh([
+              'api', '--method', 'GET', `repos/${repo}/actions/workflows/promote.yml/runs`, '-f', 'per_page=1', '-f', filter,
+            ]));
+            if (!Number.isSafeInteger(count) || count < 0 || !Array.isArray(runs) || runs.length !== Math.min(count, 1)) {
+              throw new Error('invalid promote run listing');
+            }
+            return runs;
+          }
+          function overdue() {
+            const [latest] = list(`branch=${branch}`);
+            if (latest === undefined) return true;
+            if (latest?.status !== 'completed') return false;
+            const created = typeof latest.created_at === 'string' ? Date.parse(latest.created_at) : NaN;
+            if (!Number.isFinite(created)) throw new Error('invalid promote run creation time');
+            return Date.now() - created > 60 * 60_000;
+          }
+          function wake() {
+            if (JSON.parse(readFileSync('.github/pass.json', 'utf8')).promote?.publish !== true || !overdue()) return;
+            for (const status of ['queued', 'waiting', 'pending', 'requested', 'in_progress']) {
+              if (list(`status=${status}`).length) return;
+            }
+            // Catch a new cron run that arrived during the status checks.
+            if (!overdue()) return;
+            console.log('Dispatching promote.yml: no active or recent run.');
+            gh(['workflow', 'run', 'promote.yml', '--repo', repo, '--ref', branch]);
+          }
+          wake();
       - name: Start the next pass an interval after this one started
         env:
           GH_TOKEN: ${{ github.token }}

@@ -423,6 +423,12 @@ does not check a `PROMOTE` variable; the command uses `promote.publish` in
 The eight-minute invocation uses the bot token and the same verified binary
 pin as the pass. Its four-write cap admits at most one whole publication,
 including the create-only branch write needed for rebasing or sign-off.
+With `promote.publish: true`, the applying pass's `next` job also dispatches
+one default-branch run if the newest run on that branch is more than 60 minutes
+old or absent and no promote run is active. The cron remains a fallback;
+failed wake checks or dispatches do not stop the pass chain. This check is
+best effort: another run can start between the final read and dispatch.
+
 A manual run may instead preview the [one-time draft-body repair](#one-time-draft-body-repair-blocked-on-the-footer-fix)
 through its `repair` input; that run writes nothing, and a scheduled run,
 which has no inputs, only ever promotes.

@@ -442,6 +442,124 @@ jobs:
             check([run], {}, 1, [dispatch], /check failed/, { DISPATCH_EXIT: '1' });
           } finally { fs.rmSync(temp, { recursive: true, force: true }); }
           console.log('ok offline restart gate, legacy and future owners, bounded reads and dispatch');
+      - name: Test overdue promotion wake
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+          const { tmpdir } = require('node:os');
+          const { join } = require('node:path');
+          const { test } = require('node:test');
+          const { runInNewContext } = require('node:vm');
+
+          const workflow = readFileSync('.github/workflows/poll.yml', 'utf8');
+          const repo = 'owner/repo';
+          const branch = 'trunk';
+          const now = Date.parse('2026-11-21T23:00:00Z');
+          const states = ['queued', 'waiting', 'pending', 'requested', 'in_progress'];
+          const runs = (...workflow_runs) => ({ total_count: workflow_runs.length, workflow_runs });
+          const latest = minutes => runs({ status: 'completed', created_at: new Date(now - minutes * 60_000).toISOString() });
+          const list = filter => ['api', '--method', 'GET', `repos/${repo}/actions/workflows/promote.yml/runs`, '-f', 'per_page=1', '-f', filter];
+          const history = list(`branch=${branch}`);
+          const active = states.map(status => list(`status=${status}`));
+          const dispatch = ['workflow', 'run', 'promote.yml', '--repo', repo, '--ref', branch];
+          const enabled = { promote: { publish: true } };
+
+          function wakeScript() {
+            const step = /^ {6}- name: Start promote if overdue\n((?: {8}.*\n)+)/m.exec(workflow)?.[1];
+            assert.ok(step, 'promote wake step exists');
+            const next = workflow.slice(workflow.indexOf('\n  next:\n'), workflow.indexOf('\n  next-fallback:\n'));
+            assert.ok(next.includes(step), 'only the next job wakes promote');
+            assert.match(step, /^ {8}continue-on-error: true$/m);
+            assert.match(step, /^ {8}timeout-minutes: 2$/m);
+            assert.match(step, /^ {10}GH_TOKEN: \$\{\{ github.token \}\}$/m);
+            assert.match(step, /^ {8}shell: node \{0\}$/m);
+            return /^ {8}run: \|\n((?: {10}.*\n)+)/m.exec(step)[1].replace(/^ {10}/gm, '');
+          }
+
+          function wake(config, responses) {
+            let calls = 0;
+            try {
+              runInNewContext(wakeScript(), {
+                Date: class extends Date { static now() { return now; } },
+                process: { env: { GITHUB_REPOSITORY: repo, DEFAULT_BRANCH: branch } },
+                console: { log() {} },
+                require(module) {
+                  if (module === 'node:fs') return { readFileSync(file) {
+                    assert.equal(file, '.github/pass.json');
+                    return JSON.stringify(config);
+                  } };
+                  assert.equal(module, 'node:child_process');
+                  return { execFileSync(command, args, options) {
+                    assert.equal(command, 'gh');
+                    assert.equal(options.timeout, 10_000);
+                    const expected = responses[calls++];
+                    assert.ok(expected, `unexpected call: ${args.join(' ')}`);
+                    assert.deepEqual([...args], expected[0]);
+                    if (expected[1] instanceof Error) throw expected[1];
+                    return JSON.stringify(expected[1]);
+                  } };
+                },
+              });
+            } finally {
+              assert.equal(calls, responses.length);
+            }
+          }
+
+          test('promote wake is off unless the caller enables publication', () => {
+            for (const config of [{}, { promote: {} }, { promote: { publish: false } }, { promote: { publish: 'true' } }]) wake(config, []);
+          });
+
+          test('promote wakes once when history is absent or the newest run is over 60 minutes old', () => {
+            for (const entry of [runs(), latest(61)]) wake(enabled, [[history, entry], ...active.map(args => [args, runs()]), [history, entry], [dispatch]]);
+            for (const age of [0, 59, 60]) wake(enabled, [[history, latest(age)]]);
+          });
+
+          test('any active promote run prevents a wake even when the newest run is old and completed', () => {
+            for (const [i, status] of states.entries()) {
+              wake(enabled, [[history, latest(61)], ...active.slice(0, i).map(args => [args, runs()]), [active[i], runs({ status })]]);
+            }
+            wake(enabled, [[history, runs({ status: 'in_progress' })]]);
+          });
+
+          test('a cron run queued during the active-run checks prevents dispatch', () => {
+            const dir = mkdtempSync(join(tmpdir(), 'poll-promote-'));
+            try {
+              mkdirSync(join(dir, '.github'));
+              writeFileSync(join(dir, '.github/pass.json'), JSON.stringify(enabled));
+              writeFileSync(join(dir, 'wake.cjs'), wakeScript());
+              writeFileSync(join(dir, 'gh'), `#!${process.execPath}
+          const fs = require('node:fs');
+          const args = process.argv.slice(2);
+          if (args[0] !== 'api') throw new Error('unexpected dispatch');
+          if (args.includes('status=waiting')) fs.writeFileSync('cron-queued', '');
+          const cronQueued = fs.existsSync('cron-queued');
+          const workflow_runs = args.includes('branch=trunk')
+            ? [cronQueued ? { status: 'queued', created_at: new Date().toISOString() }
+              : { status: 'completed', created_at: '2000-01-01T00:00:00Z' }]
+            : cronQueued && args.includes('status=queued') ? [{ status: 'queued' }] : [];
+          console.log(JSON.stringify({ total_count: workflow_runs.length, workflow_runs }));
+          `, { mode: 0o755 });
+              execFileSync(process.execPath, ['wake.cjs'], {
+                cwd: dir, env: { PATH: `${dir}:${process.env.PATH}`, GITHUB_REPOSITORY: repo, DEFAULT_BRANCH: branch },
+              });
+              assert.equal(readFileSync(join(dir, 'cron-queued'), 'utf8'), '');
+            } finally {
+              rmSync(dir, { recursive: true, force: true });
+            }
+          });
+
+          test('an unreadable check does not dispatch, and a dispatch failure is not retried', () => {
+            const apiError = new Error('fixture API failure');
+            for (const input of [apiError, {}, runs({ status: 'completed', created_at: 'invalid' })]) {
+              assert.throws(() => wake(enabled, [[history, input]]), /fixture API failure|invalid promote/);
+            }
+            assert.throws(() => wake(enabled, [[history, latest(61)], [active[0], apiError]]), apiError);
+            const checked = [[history, runs()], ...active.map(args => [args, runs()])];
+            assert.throws(() => wake(enabled, [...checked, [history, apiError]]), apiError);
+            assert.throws(() => wake(enabled, [...checked, [history, runs()], [dispatch, apiError]]), apiError);
+          });
       # Also executed by just test-pass-state; keep script growth out of Justfile.
       - name: Test pass state export
         shell: node {0}
