@@ -350,10 +350,12 @@ jobs:
           assert.throws(() => validate(env, () => ({})));
           const url = path => `https://api.github.com/repos/owner/public/${path}`;
           const allowed = ['issues', 'issues?state=all&per_page=100&page=2', 'issues/1', 'pulls', 'pulls?state=open&per_page=100',
-            'pulls/1', 'issues/1/comments?per_page=100&page=2', 'issues/comments/2', 'labels', 'issues/1/labels'];
+            'pulls/1', 'issues/1/comments?per_page=100&page=2', 'issues/comments/2', 'labels', 'issues/1/labels',
+            'issues/1#agent-board-rest-v1', 'pulls?state=open&per_page=100#agent-board-rest-v1'];
           const unsafe = ['pulls/1/reviews', 'pulls/1/reviews/2', 'pulls/1/comments', 'pulls/comments/2', 'actions/runs', 'events',
             'contents/file', 'issues/1/parent', 'issues/1/sub_issues', 'issues/1/reactions', 'issues/1/comments/2', 'issues/1/timeline',
-            'issues/1/timeline/extra', 'issues/1/../reviews', 'issues%2f1', 'issues/1#fragment', 'issues/1/'];
+            'issues/1/timeline/extra', 'issues/1/../reviews', 'issues%2f1', 'issues/1#fragment', 'issues/1/',
+            'issues/1#agent-board-rest-v2', 'pulls/1/reviews#agent-board-rest-v1', 'issues/1#agent-board-rest-v1#agent-board-rest-v1'];
           const response = { etag: 'fixture-validator', body: 'fixture response' };
           const responses = Object.fromEntries([...allowed, ...unsafe].map(path => [url(path), response]));
           for (const key of ['https://api.github.com/user/notifications', 'https://other.example/repos/owner/public/issues',
@@ -374,11 +376,12 @@ jobs:
           const state = { schema: 'agent-board/poll-state/v1', interval_seconds: 300, share_cursor: 'owner/private#1',
             authored_cursor: 'owner/private', intake_waiting: { 'owner/private#2': 'fixture' }, intake_refused: ['owner/private#3/4'],
             lock_refused: { 'owner/private#5': 'fixture' }, maintain: { fixture: 'private metadata' }, future_field: 'private metadata',
-            responses, pass_responses: responses };
+            responses, pass_responses: responses, response_scope: 'a'.repeat(64) };
           const calls = [];
           const exported = publicStates(state, living, endpoint => { calls.push(endpoint); return metadata(endpoint); });
           assert.deepEqual(exported.living, { ...living, entries: { 'Owner/Public#1': entry } });
-          assert.deepEqual(exported.state, { schema: state.schema, interval_seconds: 300,
+          assert.equal(publicStates({ ...state, response_scope: 'owner/private' }, living, metadata).state.response_scope, undefined);
+          assert.deepEqual(exported.state, { schema: state.schema, interval_seconds: 300, response_scope: 'a'.repeat(64),
             responses: Object.fromEntries(allowed.map(path => [url(path), response])),
             pass_responses: Object.fromEntries(allowed.map(path => [url(path), response])) });
           assert.equal(calls.length, 5, 'one metadata check per repository across caches and ledger');

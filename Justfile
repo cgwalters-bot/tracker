@@ -1514,13 +1514,12 @@ pass-state mode:
             Object.keys(living).some(key => !['schema', 'bot', 'entries'].includes(key)) ||
             Object.keys(living.entries).some(key => !issueRepository(key))) throw new Error('invalid status ledger');
       }
-      // Both caches contain PAT-authenticated bodies. A public repository alone
-      // is not enough: reviews can include the viewer's unpublished PENDING body.
-      // Allow only public issue/PR lists/details, issue comments and label lists.
-      // Timelines can embed private cross-references. Every other endpoint stays
-      // cold. Match the entire raw
-      // path, without URL normalization accepting extra/dot/encoded segments.
-      const repository = url => /^https:\/\/api\.github\.com\/repos\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/(?:issues(?:\/[1-9][0-9]*(?:\/(?:comments|labels))?|\/comments\/[1-9][0-9]*)?|pulls(?:\/[1-9][0-9]*)?|labels)(?:\?[^#\s]*)?$(?![\s\S])/
+      // Both caches contain PAT-authenticated bodies, and a public repository is
+      // not enough: reviews can include the viewer's unpublished PENDING body and
+      // timelines private cross-references. Allow only public issue/PR lists and
+      // details, issue comments and label lists, matching the entire raw path (no
+      // URL normalization) plus the pass's one representation tag on its keys.
+      const repository = url => /^https:\/\/api\.github\.com\/repos\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/(?:issues(?:\/[1-9][0-9]*(?:\/(?:comments|labels))?|\/comments\/[1-9][0-9]*)?|pulls(?:\/[1-9][0-9]*)?|labels)(?:\?[^#\s]*)?(?:#agent-board-rest-v1)?$(?![\s\S])/
         .exec(url)?.[1].toLowerCase();
       const caches = ['responses', 'pass_responses'];
       const repositories = new Set([...caches.flatMap(key => Object.keys(state[key] || {}).map(repository).filter(Boolean)),
@@ -1540,8 +1539,9 @@ pass-state mode:
         } catch { if (ledgerRepos.has(repo)) throw new Error('cannot verify ledger visibility'); }
       }
       // Cursors/intake/maintenance metadata can also name private repositories.
-      // Publish only the response-cache envelope, not arbitrary state fields.
-      const exported = { schema: 'agent-board/poll-state/v1',
+      // Publish only the response-cache envelope and its scope digest, without which the next pass reads cold.
+      const exported = { schema: 'agent-board/poll-state/v1', ...(typeof state.response_scope === 'string' &&
+        /^[0-9a-f]{64}$/.test(state.response_scope) && { response_scope: state.response_scope }),
         interval_seconds: Number.isSafeInteger(state.interval_seconds) ? state.interval_seconds : 300 };
       for (const key of caches) {
         // Drop entries whole: changing a body would invalidate its cached ETag.
@@ -1584,7 +1584,7 @@ pass-state mode:
           fs.mkdirSync('.state/public', { recursive: true });
           if (state !== null) fs.writeFileSync('.state/public/pass.json', JSON.stringify(exported.state) + '\n');
           if (living !== null) fs.writeFileSync('.state/public/living-status.json', JSON.stringify(exported.living) + '\n');
-          console.log('Prepared public response cache for the next pass');
+          console.log(`Prepared public state: ${['responses', 'pass_responses'].map(key => `${key} ${Object.keys(exported.state[key] || {}).length} of ${Object.keys((state || {})[key] || {}).length}`).join(', ')}, scope ${exported.state.response_scope ? 'kept' : 'absent'}`);
         } catch {
           fs.rmSync('.state/public', { recursive: true, force: true });
           console.error('Could not prepare public state; original ledger retained; refusing export');
