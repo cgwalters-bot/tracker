@@ -312,6 +312,136 @@ jobs:
           }
           main().catch(error => { console.error(error); process.exitCode = 1; })
             .finally(() => fs.rmSync(temp, { recursive: true, force: true }));
+      - name: Test scheduled pass restart
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const { spawnSync } = require('node:child_process');
+          const pin = fs.readFileSync('.github/workflows/agent-board-pin.yml', 'utf8');
+          const poll = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
+          const [header, jobs] = pin.split('\njobs:\n');
+          const [job, bump] = jobs.split('\n  bump:\n');
+          assert.match(header, /on:\n  schedule:/);
+          assert.doesNotMatch(header, /^concurrency:/m);
+          assert.match(job, /concurrency:\n      group: poll-restart\n      cancel-in-progress: false/);
+          assert.match(bump, /concurrency:\n      group: agent-board-pin\n      cancel-in-progress: false/);
+          assert.doesNotMatch(poll, /^  schedule:/m);
+          assert.match(poll, /^run-name: pass\$\{\{ inputs.apply && ' \(apply\)' \|\| '' \}\}$/m);
+          assert.match(job, /permissions:\n      actions: write\n    steps:/);
+          assert.match(job, /GH_TOKEN: \$\{\{ github.token \}\}/);
+          assert.doesNotMatch(job, /uses:|secrets\./);
+          const interval = /^  PASS_INTERVAL_MINUTES: (\d+)$/m.exec(poll)[1];
+          assert.equal(/^          PASS_INTERVAL_MINUTES: (\d+)$/m.exec(job)[1], interval);
+          const gate = /^    if: \$\{\{ (.*) \}\}$/m.exec(job)[1];
+          const repo = 'owner/repo', branch = 'release/trunk';
+          for (const event_name of ['schedule', 'workflow_dispatch']) for (const PASS_APPLY of ['', 'disabled', 'enabled']) {
+            for (const ref of [`refs/heads/${branch}`, 'refs/heads/main', `refs/tags/${branch}`]) {
+              const got = require('node:vm').runInNewContext(gate, { vars: { PASS_APPLY },
+                github: { ref, event_name, event: { repository: { default_branch: branch } } },
+                format: (template, value) => template.replace('{0}', value),
+              });
+              assert.equal(got, event_name === 'schedule' && PASS_APPLY === 'enabled' && ref === `refs/heads/${branch}`);
+            }
+          }
+          const script = job.split('        shell: node {0}\n        run: |\n')[1].replace(/^          /gm, '');
+          const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'poll-restart-'));
+          try {
+            const now = Date.parse('2026-11-21T18:00:00Z');
+            const at = ms => new Date(ms).toISOString();
+            const cutoff = now - 2 * interval * 60_000;
+            fs.writeFileSync(`${temp}/clock.cjs`, `Date.now = () => ${now};\n`);
+            fs.writeFileSync(`${temp}/restart.cjs`, script);
+            fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}
+          const fs = require('node:fs');
+          const assert = require('node:assert/strict');
+          const { execFileSync } = require('node:child_process');
+          const args = process.argv.slice(2);
+          fs.appendFileSync('calls', JSON.stringify(args) + '\\n');
+          if (args[0] === 'workflow') process.exit(Number(process.env.DISPATCH_EXIT || 0));
+          const { runs, overrides, attempts } = JSON.parse(fs.readFileSync('fixture', 'utf8'));
+          let response;
+          const attempt = new RegExp('^repos/owner/repo/actions/runs/([0-9]+/attempts/[0-9]+)/jobs[?]per_page=1$').exec(args[1]);
+          const projection = args.at(-1);
+          if (attempt) {
+            assert.deepEqual(args, ['api', args[1], '--jq', projection]);
+            assert.ok(Object.hasOwn(attempts, attempt[1]), args[1]);
+            response = attempts[attempt[1]];
+          } else {
+            const status = args.find(a => a.startsWith('status='));
+            const created = args.find(a => a.startsWith('created='));
+            assert.deepEqual(args, ['api', '--method', 'GET', 'repos/owner/repo/actions/workflows/poll.yml/runs',
+              '-f', 'branch=release/trunk', '-f', 'per_page=100', ...(status ? ['-f', status] : []),
+              ...(created ? ['-f', ${JSON.stringify('created=>=' + at(cutoff).replace('.000Z', 'Z'))}] : []), '--jq', projection]);
+            const selected = runs.filter(run => (!status || run.status === status.slice(7)) &&
+              (!created || Date.parse(run.created_at) >= Date.parse(created.slice('created=>='.length))));
+            response = overrides[status?.slice(7) ?? (created ? 'recent' : 'latest')] ??
+              { total_count: selected.length, workflow_runs: selected.slice(0, 100) };
+            if (process.env.LARGE && !status && !created) assert.ok(Buffer.byteLength(JSON.stringify(response)) > 1024 * 1024);
+          }
+          if (response === 'error') process.exit(1);
+          process.stdout.write(execFileSync('jq', ['-c', projection], { input: JSON.stringify(response) }));
+          `, { mode: 0o755 });
+            const run = { id: 42, created_at: at(cutoff - 1000), head_branch: branch,
+              event: 'workflow_dispatch', display_title: 'pass (apply)', status: 'completed' };
+            const preview = { ...run, id: 43, created_at: at(now), display_title: 'pass' };
+            const scheduled = { ...run, id: 41, event: 'schedule', display_title: 'pass' };
+            const oldPreviews = Array.from({ length: 201 }, (_, i) => ({ ...preview, id: 1000 - i, created_at: at(cutoff - 2000) }));
+            const dispatch = ['workflow', 'run', 'poll.yml', '--repo', repo, '--ref', branch, '-f', 'apply=true'];
+            function check(runs, overrides, exit, writes, reason, extra = {}, attempts = {}) {
+              fs.writeFileSync(`${temp}/calls`, '');
+              fs.writeFileSync(`${temp}/fixture`, JSON.stringify({ runs, overrides, attempts }));
+              const got = spawnSync(process.execPath, ['--require', './clock.cjs', 'restart.cjs'], { cwd: temp,
+                timeout: 10000, encoding: 'utf8', env: { PATH: `${temp}:${process.env.PATH}`, DEFAULT_BRANCH: branch,
+                  GITHUB_REPOSITORY: repo, PASS_INTERVAL_MINUTES: interval, ...extra } });
+              const calls = fs.readFileSync(`${temp}/calls`, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+              assert.equal(got.status, exit, got.error?.message ?? got.stderr);
+              assert.match(exit ? got.stderr : got.stdout, reason);
+              assert.deepEqual(calls.filter(args => args[0] === 'workflow'), writes);
+              return calls;
+            }
+            check([preview, run], {}, 0, [dispatch], /dispatch accepted/);
+            check([{ ...preview, status: 'in_progress' }, { ...scheduled, head_branch: 'other', status: 'queued' }], {}, 0, [dispatch], /dispatch accepted/);
+            check([...oldPreviews.map(r => ({ ...r, unused: 'x'.repeat(12000) })), run], {}, 0, [dispatch], /dispatch accepted/, { LARGE: '1' });
+            // Shape from stranded GitHub runs 43388110612 and 39273706807.
+            const ghost = { ...run, id: 43388110612, display_title: 'poll', status: 'queued', run_attempt: 1,
+              created_at: '2026-11-13T07:46:07Z', updated_at: '2026-11-13T07:46:07Z' };
+            const empty = { total_count: 0, jobs: [] };
+            check([run, ghost], {}, 0, [dispatch], /Ignoring stale queued poll run 43388110612.*has no jobs/, {}, { '43388110612/attempts/1': empty });
+            check([{ ...ghost, updated_at: at(now), run_attempt: 2 }], {}, 0, [], /run 43388110612 is queued/);
+            const olderScheduled = { ...ghost, id: scheduled.id, event: 'schedule', run_attempt: 2 };
+            check([olderScheduled], {}, 0, [], /run 41 is queued/, {}, { '41/attempts/2': { total_count: 2, jobs: [{ id: 55 }] } });
+            check([olderScheduled], {}, 1, [], /invalid job listing/, {}, { '41/attempts/2': { total_count: 1, jobs: [] } });
+            const ghosts = Array.from({ length: 9 }, (_, i) => ({ ...ghost, id: ghost.id - i }));
+            const attempts = Object.fromEntries(ghosts.map(row => [`${row.id}/attempts/1`, empty]));
+            const lookups = calls => calls.filter(args => args[1]?.includes('/attempts/'));
+            assert.equal(lookups(check(ghosts.slice(0, 5), {}, 0, [dispatch], /dispatch accepted/, {}, attempts)).length, 5);
+            assert.equal(lookups(check(ghosts, {}, 1, [], /job listing budget exhausted/, {}, attempts)).length, 8);
+            const newAttempt = { ...ghost, run_attempt: 2, updated_at: '2026-11-14T07:46:07Z' };
+            const latest = { total_count: 1, workflow_runs: [newAttempt] };
+            check([ghost], { latest }, 0, [], /run 43388110612 is queued/, {}, {
+              ...attempts, '43388110612/attempts/2': { total_count: 1, jobs: [{ id: 55 }] },
+            });
+            for (const status of ['queued', 'waiting', 'pending', 'requested', 'in_progress']) {
+              for (const owner of [run, scheduled, { ...run, event: 'future_trigger', display_title: 'future' }]) {
+                check([run, { ...owner, id: 44, status }], {}, 0, [], new RegExp(`run 44 is ${status}`));
+              }
+            }
+            // A run can finish or be requeued between the independent snapshots.
+            for (const owner of [run, scheduled]) {
+              check([run], { recent: { total_count: 1, workflow_runs: [{ ...owner, created_at: at(cutoff) }] } }, 0, [], /was created at or after/);
+              check([run], { latest: { total_count: 2, workflow_runs: [run, { ...owner, id: 44, status: 'queued' }] } }, 0, [], /run 44 is queued/);
+            }
+            const queued = oldPreviews.map(r => ({ ...r, status: 'queued' }));
+            assert.equal(check(queued, {}, 1, [], /queued poll run listing exceeded/).length, 1);
+            check(oldPreviews.map(r => ({ ...r, created_at: at(now) })), {}, 1, [], /recent poll run listing exceeded/);
+            check([], { recent: { total_count: 1, workflow_runs: [] } }, 1, [], /incomplete or invalid/);
+            check([], { recent: { total_count: 2, workflow_runs: [preview, preview] } }, 1, [], /invalid or repeated/);
+            check([], { recent: { total_count: 1, workflow_runs: [run] } }, 1, [], /invalid or repeated/);
+            check([], { in_progress: 'error' }, 1, [], /check failed/);
+            check([run], {}, 1, [dispatch], /check failed/, { DISPATCH_EXIT: '1' });
+          } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+          console.log('ok offline restart gate, legacy and future owners, bounded reads and dispatch');
       # Also executed by just test-pass-state; keep script growth out of Justfile.
       - name: Test pass state export
         shell: node {0}

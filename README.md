@@ -322,17 +322,30 @@ intake and maintenance metadata can name private threads, so it is not exported;
 those scans restart each pass, costing their searches/listings again and possibly
 retrying refused writes. Live thread claims still prevent duplicate intake.
 
-There are no scheduled passes. `gh workflow run poll.yml` previews and
+`poll.yml` has no schedule. `gh workflow run poll.yml` previews and
 `-f apply=true` applies one pass. While the repository variable `PASS_APPLY`
 is `enabled`, each applying pass also starts the next one
 `PASS_INTERVAL_MINUTES` after its own start, and `next-fallback` does the
-same when `next` fails; with it unset, an applying pass starts no chain. A
-chain both lose stays stopped until an applying dispatch starts another. A pass does not start the next while a newer
+same when `next` fails. The hourly `agent-board-pin.yml` schedule checks for a
+stopped chain independently of pin bumps. With `PASS_APPLY=enabled`, it
+dispatches one applying pass if none on the default branch is active or was
+created within twice the pass interval. Legacy scheduled runs count too. Each
+active-status and recent-run search must fit on one page to establish absence;
+older history need not fit. A queued attempt unchanged for over a day doesn't
+block recovery if GitHub confirms it has no jobs. The new pass does its usual
+bounded state lookup and provenance checks. Check the restart job's log
+for the decision. This is best effort: GitHub can drop the schedule, and an
+applying run can arrive between the check and dispatch.
+
+A pass does not start the next while a newer
 applying run on the default branch has not finished, so a second chain,
 say from a manually started applying pass, usually folds into the newer one; a run
 arriving during that check, or a newer run that never continues, can still
-leave two chains or none. Setting the variable to anything else, or
-cancelling the run that is waiting, ends the chain. Every pass is capped at eight agent runs, twenty
+leave two chains or none. To keep the chain stopped, unset `PASS_APPLY` before
+cancelling any waiting run. Also check for and cancel any in-flight
+`restart-pass` job, and check for a pass it may already have dispatched.
+Cancelling alone leaves scheduled recovery enabled.
+Every pass is capped at eight agent runs, twenty
 other writes and fifty Status changes (exceeding the Status cap rejects that
 stage, even in preview, until someone has reviewed it); raise them in `poll.yml`
 after observing the passes. New work goes through the board: an open issue

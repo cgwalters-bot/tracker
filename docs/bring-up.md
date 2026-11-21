@@ -8,9 +8,11 @@ it. It runs here, as `poll.yml`: a chain of `agent-board pass` runs follows
 pull requests, plans and applies the operator's epics, schedules board work
 and derives board Status (the README's "The pass"). A dispatch with
 `apply=true` writes; a plain dispatch only previews, in the run's summary.
-The repository variable `PASS_APPLY` gates only the chain: while it is
-`enabled`, each applying pass starts the next, and unsetting it stops them. A person
-at a machine with only credentials checks on it, manually dispatches work
+The repository variable `PASS_APPLY` gates the chain: while it is `enabled`,
+each applying pass starts the next and the hourly pin workflow checks for a
+stopped chain. To keep the chain stopped, follow the shutdown steps in
+[The pass](../README.md#the-pass). A person at a machine with only credentials
+checks on it, manually dispatches work
 it does not dispatch, and answers questions it cannot answer. Everything they need
 is on the forge, except for the items listed at the end.
 [cgwalters-bot/homegit](https://github.com/cgwalters-bot/homegit), whose
@@ -449,7 +451,8 @@ fails the run and gets a comment on one open "Ruleset drift" issue here;
   included, a comment reaches no pass at all.
 
 "The next pass" is the pass's cadence: every `PASS_INTERVAL_MINUTES` (45) by
-the chain in `poll.yml`, which has no schedule to restart it.
+the chain in `poll.yml`. The hourly pin workflow can restart a stopped chain
+when `PASS_APPLY` is `enabled`; see [The pass](../README.md#the-pass).
 
 ## Recovery drill
 
