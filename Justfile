@@ -1671,7 +1671,7 @@ test-needs-you-fit board="" review="":
     const { execFileSync } = require('node:child_process');
     const [board, review] = process.argv.slice(2);
     const pass = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
-    assert.deepEqual([pass.holds.repository, pass.holds.needsYou], ['cgwalters-forge/bot-ops', true]);
+    assert.deepEqual([pass.holds.repository, pass.holds.needsYou, pass.holds.requestShare], ['cgwalters-forge/bot-ops', true, 40]);
     assert.deepEqual([pass.holds.actNow, pass.holds.today, pass.holds.passView, pass.holds.approvalEvidence],
       [true, true, true, true], 'Act now and Today stay enabled with their publication prerequisites');
     // Gated by key, less its feature switches (agent-board#746).
