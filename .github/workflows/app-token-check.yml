@@ -17,11 +17,11 @@ jobs:
     environment: github-app
     permissions: {}
     steps:
-      # Pinned, not followed at main as our other actions are: this step
-      # receives the App's private key, so the code that holds it changes only
-      # by a reviewed change here.
+      # Pinned by commit with no ref comment, not followed at main as our
+      # other actions are: this step receives the App's private key, so the
+      # code that holds it changes only by a reviewed change here.
       - id: app
-        uses: cgwalters-forge/actions/app-token@59814e7302830812ae069dc4a31fe0714bf6a350 # main
+        uses: cgwalters-forge/actions/app-token@59814e7302830812ae069dc4a31fe0714bf6a350
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.APP_PRIVATE_KEY }}
