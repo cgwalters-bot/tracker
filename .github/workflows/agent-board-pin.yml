@@ -1,22 +1,143 @@
 # Proposes moving every workflow's AGENT_BOARD_REV to the newest main commit
 # with a successful verified CI artifact: `just bump-agent-board` opens or updates
 # one pull request from the bot's fork, which the review and the pass then
-# take like any bot PR. Off unless the repository variable AGENT_BOARD_PIN
-# is `enabled`. The pass (poll.yml) starts it when agent-board's main moves;
-# the schedule, which GitHub often drops, is only the fallback.
+# take like any bot PR. The bump job is off unless AGENT_BOARD_PIN is
+# `enabled`. The pass (poll.yml) starts it when agent-board's main moves;
+# the schedule is its fallback and separately checks for a stopped pass chain.
 name: agent-board-pin
 on:
   schedule:
     - cron: '41 * * * *'
   workflow_dispatch:
 permissions: {}
-# Two runs at once could each push the branch.
-concurrency:
-  group: agent-board-pin
-  cancel-in-progress: false
 jobs:
+  restart-pass:
+    # A pin bump dispatched by poll must not act as a second chain clock.
+    if: ${{ github.event_name == 'schedule' && vars.PASS_APPLY == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    concurrency:
+      group: poll-restart
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Restart a stopped pass chain
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          # Keep in step with poll.yml; CI checks both settings.
+          PASS_INTERVAL_MINUTES: 45
+        shell: node {0}
+        run: |
+          const { execFileSync } = require('node:child_process');
+          const { DEFAULT_BRANCH: branch, GITHUB_REPOSITORY: repo, PASS_INTERVAL_MINUTES } = process.env;
+          const interval = Number(PASS_INTERVAL_MINUTES);
+          const pageSize = 100;
+          const active = ['queued', 'waiting', 'pending', 'requested', 'in_progress'];
+          const queueGrace = 24 * 60 * 60_000;
+          const maxJobReads = 8;
+          const jobless = new Set();
+          const gh = args => execFileSync('gh', args, {
+            encoding: 'utf8', timeout: 15_000, stdio: ['ignore', 'pipe', 'inherit'],
+          });
+
+          function isStranded(run) {
+            // GitHub can retain queued records that never instantiated any jobs.
+            // Never age out a live job or a recent attempt, including a rerun.
+            if (run.status !== 'queued' || !(Date.now() - Date.parse(run.updated_at) > queueGrace)) return false;
+            if (!Number.isSafeInteger(run.run_attempt) || run.run_attempt < 1) {
+              throw new Error(`invalid attempt for poll run ${run.id}`);
+            }
+            // The latest page may repeat a row from the queued search. Reuse
+            // proof within this tick only while its attempt and update match.
+            const snapshot = `${run.id}/${run.run_attempt}/${run.updated_at}`;
+            if (jobless.has(snapshot)) return true;
+            if (jobless.size >= maxJobReads) throw new Error('job listing budget exhausted');
+            const endpoint = `repos/${repo}/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=1`;
+            const { total_count: count, jobs } = JSON.parse(gh(['api', endpoint, '--jq', '{total_count, jobs: (.jobs | map(.id))}']));
+            if (!Number.isSafeInteger(count) || count < 0 || !Array.isArray(jobs) || jobs.length !== Math.min(count, 1)) {
+              throw new Error(`incomplete or invalid job listing for poll run ${run.id}`);
+            }
+            if (count !== 0) return false;
+            jobless.add(snapshot);
+            console.log(`Ignoring stale queued poll run ${run.id}: attempt ${run.run_attempt} has no jobs.`);
+            return true;
+          }
+
+          function findOwner({ status, created, history } = {}) {
+            const scope = status ?? (history ? 'latest' : 'recent');
+            const { total_count: count, workflow_runs: runs } = JSON.parse(gh([
+              'api', '--method', 'GET', `repos/${repo}/actions/workflows/poll.yml/runs`,
+              '-f', `branch=${branch}`, '-f', `per_page=${pageSize}`,
+              ...(status ? ['-f', `status=${status}`] : []),
+              ...(created ? ['-f', `created=>=${created}`] : []),
+              // Ignore only the known preview, not entire classes of triggers:
+              // old schedule runs (including reruns) can still own the chain.
+              '--jq', '{total_count, workflow_runs: (.workflow_runs | map({id, head_branch, status, created_at, updated_at, run_attempt, preview: (.event == "workflow_dispatch" and .display_title == "pass")}))}',
+            ]));
+            if (!Array.isArray(runs) || !Number.isSafeInteger(count) || count < 0 ||
+                runs.length !== Math.min(pageSize, count)) {
+              throw new Error(`incomplete or invalid ${scope} poll run listing`);
+            }
+            const seen = new Set();
+            let owner;
+            for (const run of runs) {
+              if (!Number.isSafeInteger(run.id) || run.id <= 0 || seen.has(run.id) ||
+                  typeof run.head_branch !== 'string' || typeof run.status !== 'string' ||
+                  typeof run.preview !== 'boolean' || (status && run.status !== status) ||
+                  (created && !(Date.parse(run.created_at) >= Date.parse(created)))) {
+                throw new Error(`invalid or repeated ${scope} poll run`);
+              }
+              seen.add(run.id);
+              if (!owner && run.head_branch === branch && !run.preview &&
+                  (!history || run.status !== 'completed') && (created || !isStranded(run))) {
+                owner = run;
+              }
+            }
+            // A moving listing can't prove absence using offsets. The latest
+            // page is only an extra veto for visible reruns, not a history gate.
+            if (!owner && !history && runs.length < count) {
+              throw new Error(`${scope} poll run listing exceeded the one-page bound`);
+            }
+            return owner;
+          }
+
+          function restart() {
+            if (!branch || !repo || !Number.isSafeInteger(interval) || interval <= 0) {
+              throw new Error('missing branch, repository, or valid pass interval');
+            }
+            const cutoff = new Date(Date.now() - 2 * interval * 60_000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+            // An active run can be arbitrarily old. Recheck the latest page
+            // for reruns, and read recency last so a just-finished run counts.
+            for (const status of active) {
+              const owner = findOwner({ status });
+              if (owner) return console.log(`Not restarting: poll run ${owner.id} is ${owner.status}.`);
+            }
+            const live = findOwner({ history: true });
+            if (live) return console.log(`Not restarting: poll run ${live.id} is ${live.status}.`);
+            const recent = findOwner({ created: cutoff });
+            if (recent) return console.log(`Not restarting: poll run ${recent.id} was created at or after ${cutoff}.`);
+
+            // Let poll's existing bounded bootstrap discover and validate state.
+            console.log('Dispatching one applying poll run: none active or recent.');
+            gh(['workflow', 'run', 'poll.yml', '--repo', repo, '--ref', branch, '-f', 'apply=true']);
+            console.log('Applying poll dispatch accepted.');
+          }
+
+          try {
+            restart();
+          } catch (error) {
+            console.error(`Pass restart check failed: ${error.message}`);
+            process.exitCode = 1;
+          }
+
   bump:
     if: ${{ vars.AGENT_BOARD_PIN == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    # Pin runs can each push the same branch; don't queue restart behind them.
+    concurrency:
+      group: agent-board-pin
+      cancel-in-progress: false
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
