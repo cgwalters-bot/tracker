@@ -1330,11 +1330,13 @@ test-poll-next:
     try {
       fs.writeFileSync(path.join(sandbox, 'gh'), `#!${process.execPath}
     const args = process.argv.slice(2);
-    require('node:fs').appendFileSync(process.env.CALLS, JSON.stringify(args) + '\\n');
+    const fs = require('node:fs');
+    fs.appendFileSync(process.env.CALLS, JSON.stringify(args) + '\\n');
     if (args[0] === 'api') {
       const kind = args.find(arg => arg.startsWith('repos/')).match(/\\/(jobs|annotations|runs)$/)?.[1] ?? 'start';
       if (process.env.API_FAIL === kind) { console.error('fixture API failure'); process.exit(1); }
-      const fixed = { runs: process.env[args.includes('page=2') ? 'PAGE2' : 'RUNS'], start: process.env.START || '2026-11-02T17:51:00Z' }[kind];
+      const fixed = { runs: args.includes('page=2') ? process.env.PAGE2 : process.env.RUNS_FILE ? fs.readFileSync(process.env.RUNS_FILE) : process.env.RUNS,
+        start: process.env.START || '2026-11-02T17:51:00Z' }[kind];
       process.stdout.write(fixed ?? require('node:child_process').execFileSync('jq', ['-r', args[args.indexOf('--jq') + 1]], { input: process.env[kind.toUpperCase()] }));
     } else { console.log(args.join(' ')); process.exit(Number(process.env.DISPATCH_EXIT || 0)); }
     `, { mode: 0o755 });
@@ -1369,7 +1371,7 @@ test-poll-next:
       assert.equal(failed.status, 1, 'dispatch failure stays visible');
       assert.deepEqual(failed.stdout.trimEnd().split('\n'), [log, dispatch], 'no retry on failure');
       assert.equal(calls().filter(args => args[0] === 'workflow').length, 1);
-      for (const env of [{ API_FAIL: 'start' }, { API_FAIL: 'runs' }, { START: 'null' }, { RUNS: '{}' }, { RUNS: '{' },
+      for (const env of [{ API_FAIL: 'start' }, { API_FAIL: 'runs' }, { START: 'null' }, { RUNS: '' }, { RUNS: '{}' }, { RUNS: '{' },
         { RUNS: rows([]) }, { RUNS: rows([{ ...me, status: null }]) }, { RUNS: rows([{ ...me, created_at: 'invalid' }]) },
         { PASS_RESULT: 'cancelled', API_FAIL: 'jobs' }, { PASS_RESULT: 'cancelled', API_FAIL: 'annotations' }]) {
         const unreadable = recover(env);
@@ -1386,6 +1388,13 @@ test-poll-next:
         { ...newer, event: 'push' }, { ...me, id: 41 }, { ...newer, created_at: '2026-11-02T17:50:59Z' }]) recovered({ RUNS: rows([other, me]) });
       const full = Array.from({ length: 100 }, (_, i) => ({ ...newer, id: 100 + i, status: 'completed' }));
       recovered({ RUNS: rows(full), PAGE2: rows([me]) }, undefined, 4); // second page reaches current run before dispatch
+      const largePage = rows([newer, ...full.slice(1)].map(run => ({ ...run, head_commit: { message: 'x'.repeat(4096) } })));
+      assert.ok(Buffer.byteLength(largePage) > 128 * 1024, 'page exceeds Linux x86-64 single-argument limit');
+      const pagePath = path.join(sandbox, 'runs.json');
+      fs.writeFileSync(pagePath, largePage);
+      recovered({ RUNS_FILE: pagePath, PAGE2: rows([me]) }, /run 43 continues the chain; not starting another/, 3);
+      assert.deepEqual(calls().slice(1).map(args => args.at(-1)), ['page=1', 'page=2']);
+      assert.ok(calls().every(args => args[0] === 'api'), 'no dispatch when a newer run owns the chain');
       assert.notEqual(recover({ RUNS: rows(full), PAGE2: rows(full) }).status, 0);
       assert.equal(calls().length, 3, 'bounded at two pages; no blind dispatch');
       // Wording from GitHub's own annotations; a pass ended by a timeout also gets "The operation was canceled."
