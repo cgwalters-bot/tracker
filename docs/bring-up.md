@@ -4,12 +4,12 @@
 
 The coordinator picks work from the
 [board](https://github.com/orgs/cgwalters-forge/projects/1) and dispatches
-it. It runs here, as `poll.yml`: one scheduled `agent-board pass` follows
+it. It runs here, as `poll.yml`: a chain of `agent-board pass` runs follows
 pull requests, plans and applies the operator's epics, schedules board work
-and derives board Status (the README's "The pass"). Its writes are off until
-the repository variable `PASS_APPLY` is `enabled`; until then it only
-previews, in the run's summary. Once enabled, each pass starts the next;
-unsetting the variable stops them. A person
+and derives board Status (the README's "The pass"). A dispatch with
+`apply=true` writes; a plain dispatch only previews, in the run's summary.
+The repository variable `PASS_APPLY` gates only the chain: while it is
+`enabled`, each applying pass starts the next, and unsetting it stops them. A person
 at a machine with only credentials checks on it, manually dispatches work
 it does not dispatch, and answers questions it cannot answer. Everything they need
 is on the forge, except for the items listed at the end.
@@ -70,8 +70,8 @@ override them: `AGENT`, `AGENT_MODEL`, `INFERENCE_URL`,
 cgwalters' to store, and the bot never copies or prints it. The inference
 proxy and the tailnet the runs join are on a host of his, with its own policy,
 and are not brought up from here. A manual `poll.yml` run with `apply=true`
-can write even with `PASS_APPLY` unset; the variable gates scheduled apply
-and the successor chain, not that manual input.
+can write even with `PASS_APPLY` unset; the variable gates the successor
+chain, not that manual input.
 
 ## Dispatching a run
 
@@ -448,8 +448,8 @@ fails the run and gets a comment on one open "Ruleset drift" issue here;
   the thread's current state. Outside the followed repositories, bootc-dev
   included, a comment reaches no pass at all.
 
-"The next pass" is the pass's cadence: every ten minutes on the schedule,
-which GitHub may delay.
+"The next pass" is the pass's cadence: every `PASS_INTERVAL_MINUTES` (45) by
+the chain in `poll.yml`, which has no schedule to restart it.
 
 ## Recovery drill
 
@@ -666,9 +666,11 @@ mapping and tailnet configuration; it is an example, not an installer.
 Its direct tailnet call does not forward the wrappers' tailnet variables:
 adapt that action call with your own inputs or organization entry too.
 Preview by hand, then try a small explicit apply, verify receipts and a
-second idle pass in staging, and only then enable scheduling. In this
-caller `PASS_APPLY=enabled` enables scheduled writes and successor runs;
-unsetting it stops that chain but does not prevent manual `apply=true`.
+second idle pass in staging, and only then start the chain: set
+`PASS_APPLY=enabled`, run `gh workflow run poll.yml -f apply=true`, and
+check that its `next` job started a new `pass (apply)` run. There is no
+schedule; unsetting the variable stops the chain but does not prevent a
+manual `apply=true`.
 Never run two appliers against one board.
 
 ### Repository variables and secrets checklist

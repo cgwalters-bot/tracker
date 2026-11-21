@@ -1255,12 +1255,10 @@ test-poll-bounds:
       ['.github/agentic-job/fix.toml', '.github/agentic-job/midstream-fix.toml']);
     console.log('ok poll passes both fix bounds files to agent-board pass');
 
-# poll's `next` step script, run with a stub agent-board that prints its
-# arguments: the supervisor and release-train wakes are added only under
-# their variables' gates. Every flag it passes is checked against the
-# pinned CLI's help (AGENT_BOARD), which reads no token. Best-effort recovery
-# uses runner tools and makes just one dispatch attempt. Fixtures are not
-# live proof of GitHub's missing-job behavior or schedule delivery.
+# poll's `next` step with a stub agent-board that prints its arguments: wakes
+# only under their variables' gates, and every flag in the pinned CLI's help
+# (AGENT_BOARD, which reads no token). Recovery makes one dispatch attempt with
+# runner tools; fixtures are not live proof of GitHub's job behavior.
 test-poll-next:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
@@ -1268,8 +1266,8 @@ test-poll-next:
     const fs = require('node:fs');
     const path = require('node:path');
     const poll = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
-    const step = /^ {6}- name: Start the next pass .*\n((?: {8}.*\n)+)/m.exec(poll)?.[1];
-    assert.ok(step, 'the next pass step');
+    const interval = /^ {2}PASS_INTERVAL_MINUTES: (45)$/m.exec(poll)?.[1], step = /^ {6}- name: Start the next pass .*\n((?: {8}.*\n)+)/m.exec(poll)?.[1];
+    assert.ok(interval && step && poll.includes('group: \u0024{' + "{ inputs.apply && 'pass' || 'pass-preview' }}"), 'the 45-minute interval, the next pass step, and previews kept out of the applying pass group');
     assert.match(step, /^ {10}RELEASE_TRAIN: \$\{\{ vars\.RELEASE_TRAIN \}\}$/m);
     const script = /^ {8}run: \|\n((?: {10}.*\n)+)/m.exec(step)[1].replace(/^ {10}/gm, '');
     const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'poll-next-'));
@@ -1277,10 +1275,10 @@ test-poll-next:
     fs.mkdirSync(path.dirname(stub), { recursive: true });
     fs.writeFileSync(stub, '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o755 });
     const run = (env) => execFileSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
-      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, DEFAULT_BRANCH: 'main', GITHUB_RUN_ID: '42', SUPERVISOR: '', RELEASE_TRAIN: '', ...env },
+      env: { PATH: process.env.PATH, RUNNER_TEMP: temp, DEFAULT_BRANCH: 'main', GITHUB_RUN_ID: '42', SUPERVISOR: '', RELEASE_TRAIN: '', PASS_INTERVAL_MINUTES: interval, ...env },
     }).toString().trimEnd().split('\n');
     const base = ['pass', 'next', '--workflow', 'poll.yml', '--branch', 'main', '--input', 'apply=true',
-      '--input', 'previous_run_id=42', '--apply-title', 'pass (apply)', '--wait-minutes', '10'];
+      '--input', 'previous_run_id=42', '--apply-title', 'pass (apply)', '--wait-minutes', interval];
     const supervisor = ['--supervisor-workflow', 'supervisor.yml', '--supervisor-stale-minutes', '30',
       '--supervisor-input', 'prompt=', '--supervisor-input', 'session=false'];
     const train = ['--train-workflow', 'release-train.yml', '--train-stale-minutes', '60'];
@@ -1317,10 +1315,10 @@ test-poll-next:
         github: { ref, event_name: event, event: { repository: { default_branch: 'main' } } },
         inputs: { apply: applying }, format: (template, branch) => template.replace('{0}', branch),
       });
-      assert.equal(got, ['failure', 'skipped', ''].includes(result) && !cancelled &&
+      assert.equal(got, ['failure', 'skipped', '', 'cancelled'].includes(result) && !cancelled &&
         apply === 'enabled' && ref === 'refs/heads/main' && (event === 'schedule' || (event === 'workflow_dispatch' && applying)));
     }
-    assert.match(fallback, /^ {4}timeout-minutes: 12$/m);
+    assert.match(fallback, /^ {4}timeout-minutes: 55$/m);
     assert.match(fallback, /^ {4}permissions:\n {6}actions: write\n {6}checks: read\n {4}steps:/m);
     assert.doesNotMatch(fallback, /uses:|continue-on-error:|^ {2}\S/m);
     assert.equal((fallback.match(/^ {6}- /gm) ?? []).length, 1, 'one step without setup');
@@ -1347,27 +1345,27 @@ test-poll-next:
       const rows = runs => JSON.stringify({ workflow_runs: runs });
       const log = 'Recovery dependencies: pass=<> next=<skipped>';
       const callsPath = path.join(sandbox, 'calls');
-      const jobs = started => JSON.stringify({ jobs: [{ id: 7, name: 'next', started_at: 'x' }, { id: 9, name: 'pass', started_at: started }] });
+      const jobs = (started, next = 'x') => JSON.stringify({ jobs: [{ id: 7, name: 'next', started_at: next }, { id: 9, name: 'pass', started_at: started }] }), next = started => jobs('x', started);
       const recover = (env = {}) => {
         fs.writeFileSync(callsPath, '');
         return require('node:child_process').spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', recovery], {
           env: { PATH: `${sandbox}:${process.env.PATH}`, GITHUB_REPOSITORY: 'owner/repo', GITHUB_RUN_ID: '42', DEFAULT_BRANCH: 'main', PASS_RESULT: '',
-            NEXT_RESULT: 'skipped', CALLS: callsPath, NOW: '1900', RUNS: rows([me]), JOBS: jobs('2026-11-02T17:51:30Z'), ANNOTATIONS: '[]', ...env }, encoding: 'utf8',
+            NEXT_RESULT: 'skipped', CALLS: callsPath, NOW: '4000', PASS_INTERVAL_MINUTES: interval, RUNS: rows([me]), JOBS: jobs('2026-11-02T17:51:30Z'), ANNOTATIONS: '[]', ...env }, encoding: 'utf8',
         });
       };
       const calls = () => fs.readFileSync(callsPath, 'utf8').trim().split('\n').map(JSON.parse);
       const recovered = (env, stop = /workflow run poll.yml/, count) => {
         const got = recover(env), what = JSON.stringify(env);
         assert.equal(got.status, 0, got.stderr);
-        assert.equal(got.stdout.split('\n')[0], `Recovery dependencies: pass=<${env.PASS_RESULT ?? ''}> next=<skipped>`, what);
+        assert.equal(got.stdout.split('\n')[0], `Recovery dependencies: pass=<${env.PASS_RESULT ?? ''}> next=<${env.NEXT_RESULT ?? 'skipped'}>`, what);
         assert.match(got.stdout, stop, what);
         if (count) assert.equal(calls().length, count, what);
       };
-      for (const [now, delay] of [['1120', '480'], ['1600', null], ['1900', null], ['900', '600']]) {
+      for (const [now, delay] of [['3220', '480'], ['3700', null], ['4000', null], ['900', '2700']]) {
         recovered({ NOW: now }, new RegExp(`^${[log, ...(delay ? [`sleep ${delay}`] : []), dispatch].join('\n')}\n$`), 3);
         assert.deepEqual(calls().at(-1), dispatch.split(' '));
       }
-      const failed = recover({ NOW: '1900', DISPATCH_EXIT: '1' });
+      const failed = recover({ NOW: '4000', DISPATCH_EXIT: '1' });
       assert.equal(failed.status, 1, 'dispatch failure stays visible');
       assert.deepEqual(failed.stdout.trimEnd().split('\n'), [log, dispatch], 'no retry on failure');
       assert.equal(calls().filter(args => args[0] === 'workflow').length, 1);
@@ -1401,9 +1399,11 @@ test-poll-next:
         [{ ANNOTATIONS: notes("Canceling since a higher priority waiting request for 'pass' exists", lost) }, 2, ignored],
         [{ ANNOTATIONS: notes('The operation was canceled.') }, 2, ignored], [{ ANNOTATIONS: notes() }, 2, ignored],
         [{ ANNOTATIONS: JSON.stringify([{ annotation_level: 'warning', message: timeout }]) }, 2, ignored],
-        [{ JOBS: jobs(null) }, 1, /never started; not recovering/], [{ JOBS: JSON.stringify({ jobs: [] }) }, 1, /never started/]]) {
-        recovered({ PASS_RESULT: 'cancelled', ...env }, stop, count);
-        if (count > 1) assert.deepEqual(calls()[1].slice(0, 4), ['api', '--method', 'GET', 'repos/owner/repo/check-runs/9/annotations']);
+        [{ JOBS: jobs(null) }, 1, /never started; not recovering/], [{ JOBS: JSON.stringify({ jobs: [] }) }, 1, /never started/],
+        ...[[notes(timeout), 5], [notes("Canceling since a higher priority waiting request for 'pass' exists", lost), 2, ignored]].map(([ANNOTATIONS, count, stop]) =>
+          [{ PASS_RESULT: '', NEXT_RESULT: 'cancelled', ANNOTATIONS }, count, stop]), [{ PASS_RESULT: '', NEXT_RESULT: 'cancelled', JOBS: next(null) }, 1, /next job never started/]]) {
+        recovered({ PASS_RESULT: 'cancelled', JOBS: next('x'), ...env }, stop, count);
+        if (count > 1) assert.deepEqual(calls()[1].slice(0, 4), ['api', '--method', 'GET', `repos/owner/repo/check-runs/${env.NEXT_RESULT ? 7 : 9}/annotations`]);
       }
     } finally {
       fs.rmSync(sandbox, { recursive: true, force: true });

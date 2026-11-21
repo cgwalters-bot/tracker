@@ -5,17 +5,15 @@
 name: poll
 run-name: pass${{ inputs.apply && ' (apply)' || '' }}
 
-# The clock is the `next` job: each applying pass starts the next one ten
-# minutes after its own start, and `next-fallback` stands in when `next`
-# fails or GitHub never creates it, or when GitHub cancels a started pass for
-# its timeout or a lost runner. GitHub drops most `*/10` scheduled runs
-# (hours apart on 2026-11-08), so the schedule restarts a broken chain only
-# eventually, not within one interval. Its disposable response cache
+# The clock is the `next` job: each applying pass starts the next one
+# PASS_INTERVAL_MINUTES after its own start, and `next-fallback` stands in
+# when `next` fails or GitHub never creates it, or when GitHub cancels a
+# started pass for its timeout or a lost runner. There is no schedule: GitHub
+# dropped most scheduled runs, and a waiting scheduled run counts as a newer
+# chain owner, so a chain both of those lose restarts by a manual dispatch. Its disposable response cache
 # comes from a validated applying predecessor; bootstrap runs discover one.
 # Living status stays disabled until replay records have independent durability.
 on:
-  schedule:
-    - cron: '*/10 * * * *'
   workflow_dispatch:
     inputs:
       apply:
@@ -34,15 +32,21 @@ permissions: {}
 # with a review of what that revision's `pass` does.
 env:
   AGENT_BOARD_REV: 85d0bb721fd827f9c66af1dafe668d6352ede8b7
+  # Minutes from one applying pass's start to the next, for `next` and its
+  # recovery alike; a pass makes about 2,000 of the bot's hourly requests.
+  # The supervisor's usageStaleMinutes must stay above it, with slack.
+  PASS_INTERVAL_MINUTES: 45
 
 jobs:
   pass:
     if: ${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     # One pass at a time; one that is due while another runs waits for it,
     # and a group keeps only the newest waiting run. The group is the job's,
-    # not the workflow's, so `next` waiting out its ten minutes holds nothing.
+    # not the workflow's, so `next` waiting out its interval holds nothing.
+    # Previews wait in their own group: one there could otherwise replace a
+    # queued applying successor, and with no schedule the chain would stop.
     concurrency:
-      group: pass
+      group: ${{ inputs.apply && 'pass' || 'pass-preview' }}
       cancel-in-progress: false
     runs-on: ubuntu-26.04
     # The build (10), the join (3) and the pass's own bound (15, plus two
@@ -227,7 +231,7 @@ jobs:
     # arriving between the check and the dispatch, or the newer run failing
     # to continue, can still leave two chains or none. Setting PASS_APPLY to
     # anything but `enabled`, or cancelling the waiting run, ends it. While
-    # it waits, `next` keeps a hosted runner busy for up to ten minutes per
+    # it waits, `next` keeps a hosted runner busy for up to an interval per
     # pass. While RELEASE_TRAIN is `dry-run` or `apply`, `next` also starts
     # release-train.yml when its newest run is an hour old or absent, since
     # GitHub drops its hourly schedule too; the train's own gate and
@@ -244,8 +248,10 @@ jobs:
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name == 'schedule' || inputs.apply) }}
     runs-on: ubuntu-26.04
-    # The verified download, ten-minute wait and bounded keep-alive requests.
-    timeout-minutes: 30
+    # The verified download, the interval's wait, and the pinned dispatch's
+    # retries, whose backoff adds to each request's own timeout: without a
+    # schedule, a deadline that cuts them off stops the chain.
+    timeout-minutes: 120
     permissions:
       actions: write
     steps:
@@ -281,7 +287,7 @@ jobs:
           else
             echo '::warning::Could not check maintain-shadow.yml age'
           fi
-      - name: Start the next pass ten minutes after this one started
+      - name: Start the next pass an interval after this one started
         env:
           GH_TOKEN: ${{ github.token }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
@@ -300,7 +306,7 @@ jobs:
           fi
           "$RUNNER_TEMP/agent-board/bin/agent-board" pass next --workflow poll.yml \
             --branch "$DEFAULT_BRANCH" --input apply=true --input "previous_run_id=$GITHUB_RUN_ID" --apply-title 'pass (apply)' \
-            --wait-minutes 10 "${supervisor[@]}" "${train[@]}"
+            --wait-minutes "$PASS_INTERVAL_MINUTES" "${supervisor[@]}" "${train[@]}"
 
   # Best-effort recovery when `next` fails or never runs, including a missing
   # `pass`. Use only runner tools and one dispatch attempt; there is no further
@@ -314,12 +320,12 @@ jobs:
     needs: [pass, next]
     if: >-
       ${{ !cancelled() &&
-      (needs.next.result == 'failure' || needs.next.result == 'skipped' || needs.next.result == '') &&
+      (needs.next.result == 'failure' || needs.next.result == 'skipped' || needs.next.result == '' || needs.next.result == 'cancelled') &&
       vars.PASS_APPLY == 'enabled' &&
       github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
       (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.apply)) }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 12
+    timeout-minutes: 55
     # `checks: read` reads the cancelled pass job's annotations.
     permissions:
       actions: write
@@ -338,21 +344,23 @@ jobs:
           # someone stopped. GitHub's failure annotation on the started pass job
           # decides. A step can write the same text, so this is a heuristic: it
           # must be the whole message, and any cancel annotation vetoes it.
-          if [[ $PASS_RESULT == cancelled ]]; then
+          # The same holds for `next`: without a schedule, nothing else restarts the chain.
+          if [[ $PASS_RESULT == cancelled || $NEXT_RESULT == cancelled ]]; then
+            name=pass; [[ $PASS_RESULT == cancelled ]] || name=next
             job=$(timeout 30s gh api --method GET "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs" -f filter=latest \
-              --jq 'first(.jobs[] | select(.name == "pass" and .started_at != null) | .id) // empty')
-            [[ -n $job ]] || { echo 'the pass never started; not recovering'; exit 0; }
+              --jq "first(.jobs[] | select(.name == \"$name\" and .started_at != null) | .id) // empty")
+            [[ -n $job ]] || { echo "the $name job never started; not recovering"; exit 0; }
             ended=$(timeout 30s gh api --method GET "repos/$GITHUB_REPOSITORY/check-runs/$job/annotations" -f per_page=100 \
               --jq '[.[] | select(.annotation_level == "failure") | .message] |
                 any(test("^The job (running on runner .+ )?has exceeded the maximum execution time of [^ ]+( minutes)?\\.?$|^The (self-)?hosted runner: [^\n]+ lost communication with the server\\.( |$)")) and
                 (any(test("canceled by|higher priority")) | not)')
-            [[ $ended == true ]] || { echo 'the pass was cancelled, not ended by GitHub; not recovering'; exit 0; }
+            [[ $ended == true ]] || { echo "the $name job was cancelled, not ended by GitHub; not recovering"; exit 0; }
           fi
           started=$(timeout 30s gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" --jq .run_started_at)
           [[ -n $started && $started != null ]] || { echo '::error::missing run start time' >&2; exit 1; }
           started_epoch=$(date -d "$started" +%s)
-          delay=$(( started_epoch + 600 - $(date +%s) ))
-          if (( delay > 600 )); then delay=600; fi
+          delay=$(( started_epoch + PASS_INTERVAL_MINUTES * 60 - $(date +%s) ))
+          if (( delay > PASS_INTERVAL_MINUTES * 60 )); then delay=$(( PASS_INTERVAL_MINUTES * 60 )); fi
           if (( delay > 0 )); then sleep "$delay"; fi
           # Threat: a recovered old run can fork an already-owned chain. Match
           # pinned pass next's branch, event/title, active statuses, creation-time

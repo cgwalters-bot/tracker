@@ -26,7 +26,7 @@
   "unclosedWaitHours": 1,
   "paceMarginPercent": 25,
   "capacityMarginPercent": 10,
-  "usageStaleMinutes": 45,
+  "usageStaleMinutes": 75,
   "supervisorWorkflow": "supervisor.yml",
   "schedulerJob": "pass",
   "implementBranchPrefix": "dispatch/implement/agent-run-",

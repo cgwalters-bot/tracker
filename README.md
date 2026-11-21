@@ -88,7 +88,7 @@ dispatched runner.
 
 `.github/workflows/poll.yml` runs one
 [`agent-board pass`](https://github.com/cgwalters-forge/agent-board/blob/main/docs/pass.md)
-every ten minutes, with `.github/pass.json` as its configuration. A pass
+every `PASS_INTERVAL_MINUTES` (45), with `.github/pass.json` as its configuration. A pass
 follows the bot's pull requests to a fix, a merge or a person, refreshes
 the pools' usage from the inference broker and publishes the `bot-usage/v1`
 snapshot the control app reads (from agent-board#306 on), plans and applies the operator's live epics,
@@ -322,11 +322,12 @@ intake and maintenance metadata can name private threads, so it is not exported;
 those scans restart each pass, costing their searches/listings again and possibly
 retrying refused writes. Live thread claims still prevent duplicate intake.
 
-A scheduled pass only previews unless the repository variable `PASS_APPLY`
-is `enabled`. When run manually, `gh workflow run poll.yml` previews and
-`-f apply=true` applies. While `PASS_APPLY` is `enabled`, each applying pass
-starts the next one ten minutes after its own start, since GitHub drops most
-of the `*/10` schedule. A pass does not start the next while a newer
+There are no scheduled passes. `gh workflow run poll.yml` previews and
+`-f apply=true` applies one pass. While the repository variable `PASS_APPLY`
+is `enabled`, each applying pass also starts the next one
+`PASS_INTERVAL_MINUTES` after its own start, and `next-fallback` does the
+same when `next` fails; with it unset, an applying pass starts no chain. A
+chain both lose stays stopped until an applying dispatch starts another. A pass does not start the next while a newer
 applying run on the default branch has not finished, so a second chain,
 say from a manually started applying pass, usually folds into the newer one; a run
 arriving during that check, or a newer run that never continues, can still
