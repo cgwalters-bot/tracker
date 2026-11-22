@@ -605,6 +605,7 @@ for (const event_name of ['schedule', 'workflow_dispatch']) {
 assert.match(trigger, /max-parallel: 1\n      matrix:\n        repo: \[cgwalters-forge\/agentic-job, cgwalters-forge\/agent-board\]/);
 assert.match(trigger, /control app \(cgwalters-forge\/review\)/);
 assert.match(trigger, /uses: \.\/\.github\/workflows\/weekly-comparison.yml/);
+assert.match(trigger.split('\n  docs:\n')[1], /^      SAFE_OUTPUTS_PAT: \$\{\{ secrets.CGWALTERS_BOT_PAT \}\}$/m);
 assert.match(workflow, /group: weekly-comparison-\$\{\{ inputs.repo \}\}\n  cancel-in-progress: false/);
 assert.match(workflow, /task: \$\{\{ needs.brief.outputs.task \}\}/);
 assert.match(workflow, /repo: \$\{\{ inputs.repo \}\}\n      output-repo: \$\{\{ inputs.repo \}\}/);
