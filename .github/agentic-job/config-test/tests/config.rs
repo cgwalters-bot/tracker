@@ -3216,22 +3216,16 @@ fn workflows_follow_our_own_repositories_at_main_dispatch_and_review_excepted_an
     assert!(seen > 0);
 }
 
-// The release train moves this pin: the commit wherever it stands, and the
-// version after `agentic-job ` plain or escaped as in a pattern
-// (.github/release-train/config.json), so it stays in this form.
+// The release train requires the literal full wrapper reference to find this
+// fixture and move both the commit and the version on the same line.
 #[test]
 fn review_wrapper_uses_the_release_pin() {
-    let pin = r"cgwalters-review\.yml@b590d3260a18cc59ceb3eb850e62fb62ff967d37 # main, agentic-job v0\.6\.16 \(actions#67\)";
-    let pin = pin.replace('\\', "");
+    let pin = "cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@b590d3260a18cc59ceb3eb850e62fb62ff967d37 # main, agentic-job v0.6.16 (actions#67)";
     let workflow = read("../workflows/review.yml");
     let pinned = workflow.lines().any(|line| {
         let trimmed = line.trim_start();
         trimmed.len() < line.len()
-            && trimmed
-                .strip_prefix("uses: ")
-                .and_then(|uses| uses.strip_suffix(&pin))
-                .and_then(|uses| uses.strip_suffix('/'))
-                .is_some_and(|owner| !owner.is_empty() && !owner.contains(char::is_whitespace))
+            && trimmed.strip_prefix("uses: ") == Some(pin)
     });
     assert!(pinned, "review.yml does not pin {pin}");
 }
@@ -3268,14 +3262,20 @@ fn release_train_promotes_the_verified_secure_host_image() {
     assert!(in_order(&workflow, &["Provide secure-host verification tools", "Install verified agent-board", "name: One pass"]));
 }
 
-// The train reads the wrappers' pin from this repository's caller files and
-// stalls unless they hold exactly one `<wrappers>/.github/workflows/NAME.yml@`
-// commit (tracker#1369), so no other pin of the wrappers may be written there
-// in that form.
+// The train requires a discoverable wrapper reference in each configured
+// caller file: a job-level `uses:` in a workflow, the literal elsewhere. All local files must use the same commit (tracker#1369).
 #[test]
 fn release_train_callers_hold_one_wrappers_pin() {
     let train = json_file("../release-train/config.json");
-    let uses = format!("{}/.github/workflows/", train["wrappers"]["repository"].as_str().expect("wrappers.repository"));
+    let wrappers = train["wrappers"]["repository"].as_str().expect("wrappers.repository");
+    let references: Vec<_> = train["wrappers"]["files"].as_array().expect("wrappers.files")
+        .iter()
+        .map(|file| file.as_str().expect("a wrapper file name"))
+        .filter(|file| file.strip_prefix(".github/workflows/").is_some_and(|name| {
+            !name.contains('/') && (name.ends_with(".yml") || name.ends_with(".yaml"))
+        }))
+        .map(|file| format!("{wrappers}/{file}@"))
+        .collect();
     let caller = train["callers"]
         .as_array()
         .expect("callers")
@@ -3290,13 +3290,30 @@ fn release_train_callers_hold_one_wrappers_pin() {
         assert_ne!(file, ".github/forge-sync/repos.json");
         assert_ne!(file, ".github/workflows/dispatch.yml");
         let text = std::fs::read_to_string(here().join("../..").join(file)).unwrap_or_else(|e| panic!("reading {file}: {e}"));
-        for (at, _) in text.match_indices(&uses) {
-            let rest = &text[at + uses.len()..];
-            let name = rest.find(|c: char| !(c.is_ascii_alphanumeric() || "_.-".contains(c))).unwrap_or(rest.len());
-            if let Some(pin) = rest[name..].strip_prefix('@').filter(|_| rest[..name].ends_with(".yml")) {
-                pins.insert(pin.chars().take(40).collect::<String>());
+        // The train reads workflow pins from parsed `jobs.*.uses`, so a
+        // reference elsewhere in a workflow (a comment) is not found there.
+        let workflow = file.ends_with(".yml") || file.ends_with(".yaml");
+        let mut found = false;
+        for reference in &references {
+            for (at, _) in text.match_indices(reference) {
+                let line = &text[text[..at].rfind('\n').map_or(0, |n| n + 1)..at];
+                if workflow && line != "    uses: " {
+                    continue;
+                }
+                if text[..at].chars().next_back().is_some_and(|c| {
+                    !c.is_whitespace() && !"\"'`=([".contains(c)
+                }) {
+                    continue;
+                }
+                let rest = &text[at + reference.len()..];
+                let pin = rest.split(|c: char| c.is_whitespace() || "\"'`;,)]}".contains(c))
+                    .next().expect("a pin field");
+                assert!(is_commit(pin), "{file}: expected a commit after {reference}, got {pin:?}");
+                pins.insert(pin.to_owned());
+                found = true;
             }
         }
+        assert!(found, "{file}: no configured wrapper pin");
     }
     assert_eq!(pins.len(), 1, "the caller files pin the wrappers at {pins:?}");
 }
