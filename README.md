@@ -449,6 +449,13 @@ still hold. The approved branch is never overwritten: publication uses a
 create-only `bot/promote/APPROVED_OID` branch when rewriting is needed. These
 semantics live in agent-board, not a tracker-side rewrite engine.
 
+`promote.botAuthorEmails` lets replay recognize the bot's former email when
+GitHub reports no mapped author and attributes the committer to the configured
+bot or `github-actions[bot]`. An email alone is not proof of authorship. This
+does not change the current-head approval or sign-off gates: at the pin that
+introduced this setting, unsigned drafts can pass preview but still hold in
+apply, even without upstream DCO.
+
 `just test-config` checks caller plumbing offline; `just test-pass-config`
 uses the pinned binary's real validator. For a read-only live preview use
 `agent-board promote --config .github/pass.json` with `GH_TOKEN`. Policies
