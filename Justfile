@@ -1932,7 +1932,7 @@ maintain-shadow-config pass follow:
     jq -e --arg follow "$2" '
       ["reviewWorkflow", "fixPools", "toilFixPool", "conflictFixPool", "mergeAuthors", "rebaseRounds", "mergeQueue",
         "checkReruns", "unstall", "ownerBranches", "ownSpaceOnly", "foldRounds", "reviewPools",
-        "headOwners", "operatorPaths", "staleDays", "actionFirst", "agentRecovery", "fixRounds"] as $copied
+        "headOwners", "operatorPaths", "staleDays", "actionFirst", "agentRecovery", "fixRounds", "holdMissingData"] as $copied
       | ["reviewDispatchRepositories", "draftReviewRepositories", "noMerge"] as $scoped
       | (.pr // {}) as $pr
       | ($pr | keys - $copied - $scoped - ["maintainers"]) as $unknown
@@ -2027,10 +2027,10 @@ test-maintain-shadow:
       reviewPools: { ...base, pr: { reviewWorkflow: 'review.yml', reviewPools: ['claude', 'openai'] } },
       scoped: { ...base, pr: reviews },
       pools: { ...base, pr: { fixPools: ['claude'], toilFixPool: 'openai', conflictFixPool: 'claude' } },
-      off: { ...base, pr: { checkReruns: false, unstall: false, ownerBranches: false, ownSpaceOnly: false, foldRounds: false,
+      off: { ...base, pr: { checkReruns: false, unstall: false, ownerBranches: false, ownSpaceOnly: false, foldRounds: false, holdMissingData: false,
         staleDays: 0, rebaseRounds: 0, fixPools: [], mergeAuthors: [], headOwners: [], noMerge: [], operatorPaths: [],
         reviewPools: [], reviewDispatchRepositories: [], draftReviewRepositories: [], mergeQueue: {} } },
-      full: { ...today, pr: { ...today.pr, foldRounds: true, toilFixPool: 'openai', conflictFixPool: 'claude', ...reviews } },
+      full: { ...today, pr: { ...today.pr, foldRounds: true, holdMissingData: true, toilFixPool: 'openai', conflictFixPool: 'claude', ...reviews } },
       unfollowed: { ...base, pr: { reviewWorkflow: 'review.yml', reviewPools: ['claude'], reviewDispatchRepositories: ['cgwalters-forge/agent-board'] } },
       holds: { ...base, assignHolds: false, openPrCap: 1 }, handedOver: { ...today, pr: { ...today.pr, maintainers: [follow] } }, noPr: base,
     };
