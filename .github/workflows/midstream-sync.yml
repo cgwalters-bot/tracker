@@ -17,31 +17,40 @@ jobs:
     # Unset is off; activation is an operator setting, not a dispatch input.
     if: ${{ vars.MIDSTREAM_SYNC == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ubuntu-26.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     environment: agent-apply
     steps:
-      - name: Fast-forward midstream default branches
+      - name: Fast-forward midstream default branches and optionally inventory workflows
         shell: node {0}
         env:
           GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          # Unset is off: workflows on the forks are left as they are.
+          MIDSTREAM_CI: ${{ vars.MIDSTREAM_CI }}
         run: |
           const { execFileSync } = require('node:child_process');
           const { appendFileSync } = require('node:fs');
           const org = 'cgwalters-forge';
-          const deadline = Date.now() + 360000;
-          let requests = 0;
-          function api(path, body) {
+          const audit = process.env.MIDSTREAM_CI === 'enabled';
+          // The inventory has its own budget and cannot starve sync.
+          const newBudget = () => ({ requests: 650, deadline: Date.now() + 360000 });
+          let budget = newBudget();
+          function requestTimeout() {
             // Bound stalled requests and oversized org censuses, without retries.
-            const remaining = deadline - Date.now();
-            if (++requests > 650 || remaining <= 0) throw new Error('request/deadline budget exhausted');
+            const remaining = budget.deadline - Date.now();
+            if (--budget.requests < 0 || remaining <= 0) throw new Error('request/deadline budget exhausted');
+            return Math.min(20000, remaining);
+          }
+          function api(path, body) {
+            const timeout = requestTimeout();
             const args = ['api', '--hostname', 'github.com', path];
             if (body) args.push('--method', 'PATCH', '--input', '-');
             try {
-              return JSON.parse(execFileSync('gh', args, {
+              const out = execFileSync('gh', args, {
                 input: body ? JSON.stringify(body) : undefined, encoding: 'utf8',
-                timeout: Math.min(20000, remaining), maxBuffer: 8 * 1024 * 1024,
+                timeout, maxBuffer: 8 * 1024 * 1024,
                 stdio: ['pipe', 'pipe', 'pipe'],
-              }));
+              });
+              return out ? JSON.parse(out) : null;
             } catch (error) {
               // No raw response bodies in the public summary; gh's HTTP code suffices.
               const status = /HTTP (\d{3})/.exec(String(error.stderr ?? ''))?.[1];
@@ -64,7 +73,44 @@ jobs:
             if (typeof branch !== 'string' || !branch) throw new Error('missing default branch');
             return branch.split('/').map(encodeURIComponent).join('/');
           };
-          const results = [];
+          function admittedFork(name) {
+            if (!repoName(name) || name.split('/')[0] !== org) throw new Error('invalid fork identity');
+            const fork = api(`repos/${name}`);
+            if (fork.full_name !== name || !fork.fork || !fork.topics?.includes('bot-midstream') ||
+                fork.custom_properties?.origin !== 'fork') throw new Error('fork metadata changed or missing');
+            if (fork.archived || fork.disabled) throw new Error('fork is archived or disabled');
+            return fork;
+          }
+          // Inventory only: Actions metadata tells us the state, not whether a workflow
+          // is safe to run. No files are classified and no workflow is toggled.
+          function inventory(name) {
+            // The summary is public. Let GitHub enforce public access on the listing
+            // itself: visibility or ownership can change after admission.
+            if (admittedFork(name).visibility !== 'public') return ['  skipped: fork visibility is not public'];
+            const timeout = requestTimeout();
+            let listing;
+            try {
+              // No curl config, PAT, or redirects. Do not print remote errors.
+              listing = JSON.parse(execFileSync('curl', ['--disable', '--fail', '--silent', '--show-error',
+                `https://api.github.com/repos/${name}/actions/workflows?per_page=100`], {
+                encoding: 'utf8', timeout, maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'],
+              }));
+            } catch {
+              throw new Error('public workflow listing failed or timed out');
+            }
+            const workflows = listing?.workflows;
+            if (!Array.isArray(workflows) || workflows.length > 100 || listing.total_count !== workflows.length) {
+              throw new Error('workflow list incomplete or over 100');
+            }
+            return workflows.map(row => {
+              if (typeof row?.path !== 'string' || !row.path || typeof row.state !== 'string' ||
+                  !row.state || /[^a-z_]/.test(row.state)) {
+                throw new Error('invalid workflow metadata');
+              }
+              return `  ${JSON.stringify(row.path)}: ${row.state}`;
+            });
+          }
+          const results = [], verified = [];
           let failed = false;
           try {
             // Complete discovery before any write. No allowlist or cached membership.
@@ -77,11 +123,8 @@ jobs:
             for (const candidate of candidates) {
               const name = candidate.full_name;
               try {
-                if (!repoName(name) || name.split('/')[0] !== org) throw new Error('invalid fork identity');
-                const fork = api(`repos/${name}`);
-                if (fork.full_name !== name || !fork.fork || !fork.topics?.includes('bot-midstream') ||
-                    fork.custom_properties?.origin !== 'fork') throw new Error('fork metadata changed or missing');
-                if (fork.archived || fork.disabled) throw new Error('fork is archived or disabled');
+                const fork = admittedFork(name);
+                if (audit) verified.push(name);
                 const parent = fork.parent?.full_name;
                 if (!repoName(parent)) throw new Error('missing GitHub parent');
                 const upstream = api(`repos/${parent}`);
@@ -107,7 +150,29 @@ jobs:
             failed = true;
             results.push(`Census incomplete; no sync started: ${error.message}`);
           }
-          const text = `Midstream sync (observed upstream default-branch commits)\n${results.join('\n') || 'No midstream forks found.'}\n`;
-          console.log(text);
+          const heading = 'Midstream sync (observed upstream default-branch commits)';
+          console.log(`${heading}\n${results.join('\n') || 'No midstream forks found.'}`);
+          if (audit) budget = newBudget();
+          // Start at a different fork each hour so a short budget cannot starve the last ones.
+          const start = verified.length && Math.floor(Date.now() / 3600000) % verified.length;
+          // Leave room for the sync results below GitHub's 1 MiB step-summary limit.
+          let reportBytes = 512 * 1024;
+          for (const name of [...verified.slice(start), ...verified.slice(0, start)]) {
+            try {
+              if (reportBytes <= 0) throw new Error('inventory output limit reached');
+              const lines = [`${name} workflows (inventory only):`, ...inventory(name)];
+              const bytes = Buffer.byteLength(lines.join('\n')) + 1;
+              if (bytes > reportBytes) {
+                reportBytes = 0;
+                throw new Error('inventory output limit reached');
+              }
+              reportBytes -= bytes;
+              results.push(...lines);
+            } catch (error) {
+              failed = true;
+              results.push(`${name}: WORKFLOWS NOT INVENTORIED — ${error.message}`);
+            }
+          }
+          const text = `${heading}\n${results.join('\n') || 'No midstream forks found.'}\n`;
           appendFileSync(process.env.GITHUB_STEP_SUMMARY, '```text\n' + text + '```\n');
           if (failed) process.exitCode = 1;

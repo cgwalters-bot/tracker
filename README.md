@@ -653,14 +653,31 @@ parent's default branch, even when their branch names differ. The summary lists
 every selected fork as equal, fast-forwarded, or not synced with a reason; any
 refusal fails the job while allowing the remaining forks to be checked.
 
-To prevent losing fork-only commits or racing pushes, the only write is a ref
+To prevent losing fork-only commits or racing pushes, the only branch write is a ref
 update with `force=false`; the workflow never merges, resets, or bypasses rules.
 It checks equality against the observed upstream commit after each update.
 Discovery completes before writes, with at most ten 100-row pages per org list,
 100 forks, 650 requests (enough for two full censuses and six per fork), twenty seconds per request and six minutes total API
-time inside a ten-minute job. A truncated or failed census fails without writes.
+time inside a fifteen-minute job. A truncated or failed census fails without writes.
 Upstream movement after observation is picked up next run. No live sync has been
 performed as part of this implementation.
+
+With the repository variable `MIDSTREAM_CI` also `enabled` (unset is off), the
+same run inventories the workflows registered on each selected public fork. The
+job summary lists their Actions states. Workflow listings are unauthenticated, so
+the inventory cannot expose private workflows and is subject to GitHub's public
+API rate limit. It does not read workflow files, inspect effective permissions,
+or enable or disable workflows. This is preparation for [#1877](https://github.com/cgwalters-forge/tracker/issues/1877),
+not PR CI or protection against an existing workflow running on a sync push.
+
+The inventory starts after all sync attempts and rechecks fork admission, even
+for forks that did not sync. It has its own request and six-minute time budget,
+lists at most 100 workflows per fork, and reserves 512 KiB of summary space for
+inventory entries. The starting fork rotates hourly. Incomplete listings or
+read failures are reported and fail the job without undoing successful syncs.
+To sync and inventory now instead of waiting for the hour, run
+`gh workflow run midstream-sync.yml -R cgwalters-forge/tracker`. This can
+fast-forward fork branches, but it does not enable CI or replay old PR events.
 
 Both midstream caller bounds set `[github.outputs] own-branch-repos` to
 `["cgwalters-forge/*"]`, trusting org CI for own-branch pushes without committing
