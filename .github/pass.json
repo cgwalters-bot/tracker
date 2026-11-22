@@ -3,6 +3,7 @@
   "bot": "cgwalters-bot",
   "dispatchRepo": "cgwalters-forge/tracker",
   "dispatchWorkflow": "dispatch.yml",
+  "fixBounds": ["agentic-job/fix.toml", "agentic-job/midstream-fix.toml"],
   "follow": [
     {"org": "cgwalters-forge", "forks": true},
     "bootc-dev/bootc",
