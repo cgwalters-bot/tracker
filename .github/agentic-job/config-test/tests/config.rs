@@ -3173,7 +3173,15 @@ fn the_pass_repairs_questions_within_existing_revisit_bounds() {
         pass["revisit"],
         json!({"perPass": 1, "afterDays": 14, "heldAfterDays": 7, "repairQuestions": true})
     );
-    assert!(matches!(pass.get("operatorQuestionsOnly"), None | Some(Value::Bool(false))));
+}
+
+#[test]
+fn the_pass_does_not_opt_into_operator_questions_only_at_the_current_pin() {
+    let pass = json_file("../pass.json");
+    assert!(
+        matches!(pass.get("operatorQuestionsOnly"), None | Some(Value::Bool(false))),
+        "do not enable operatorQuestionsOnly until it honors reserved domains and preserves manual pauses"
+    );
 }
 
 #[test]

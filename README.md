@@ -222,7 +222,14 @@ decision and options or give evidence for releasing the hold through existing
 policy. Scheduling repair does not clear a hold or grant approval. Repairs
 share the single revisit slot, inherited triage pools, existing candidate
 scope, 14-day ordinary and 7-day held revisit timing, cooldown and pass caps.
-`operatorQuestionsOnly` and the operator-domain policy are unchanged.
+
+Keep `operatorQuestionsOnly` off for now. The current agent-board pin
+recognizes bot questions only in the architecture domain in this mode, and
+can clear a manually applied `needs-human` pause without operator approval.
+Before enabling it, the pass must honor all configured reserved domains for
+trusted, concrete questions and filter needs-you separately from releasing
+holds. Cleanup of placeholder holds must be limited to holds the pass can
+prove it owns.
 
 For a read-only comparison, run the workflow-pinned `agent-board pass` with
 the two `poll.yml` fix bounds and its existing caps, without `--apply`. Use
