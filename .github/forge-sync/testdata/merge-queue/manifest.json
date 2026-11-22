@@ -1,0 +1,10 @@
+{
+  "review_workflow": "review.yml",
+  "review_call": "cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@1111111111111111111111111111111111111111",
+  "merge_queue": true,
+  "repos": [
+    { "repo": "example/synced", "exempt": { "review": "fixture", "dependabot": "fixture", "justfile": "fixture" } },
+    { "repo": "example/exempt", "exempt": { "review": "fixture", "dependabot": "fixture", "justfile": "fixture", "merge_queue": "main has not been created yet" } },
+    { "repo": "example/unexplained", "exempt": { "review": "fixture", "dependabot": "fixture", "justfile": "fixture", "merge_queue": " \t" } }
+  ]
+}

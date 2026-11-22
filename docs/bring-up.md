@@ -457,6 +457,66 @@ review and dismisses stale approvals on push. A repository without it
 fails the run and gets a comment on one open "Ruleset drift" issue here;
 `just check-review-gate` runs the same check locally.
 
+### First-party merge queues
+
+Without a queue, the coordinator cannot enqueue an eligible pull request and
+may fall back to a direct rebase merge instead of letting GitHub check the
+merge group. The [organization ruleset design](rulesets/cgwalters-forge-first-party-merge-queue.json)
+shows the intended policy: the default branch of repositories with the custom
+property `origin=first-party`, no bypass actors, and an all-green `REBASE`
+queue. This matches the existing queues and the forge's rebase convention,
+including rebase-only `actions`.
+
+**Do not import this JSON as an organization ruleset.** GitHub documents
+`merge_queue` as repository-level only in its [ruleset documentation source](https://github.com/github/docs/blob/main/content/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets.md),
+and omits it from the [organization create/update request schema](https://docs.github.com/en/rest/orgs/rules).
+The control app's `apply_org_ruleset` can read the reviewed JSON and preserve
+the property condition, but it writes to the organization ruleset endpoint,
+which doesn't support this rule. The JSON is a reference for the desired org
+policy and the source of the repository-level body below, not a deployable
+org policy.
+
+1. As an operator with organization property read and repository administration
+   access, list the targets from the property's values, not repository search:
+
+   ```sh
+   gh api --paginate orgs/cgwalters-forge/properties/values --jq \
+     '.[] | select(any(.properties[]; .property_name == "origin" and .value == "first-party")) | .repository_full_name'
+   ```
+
+   Confirm each repository's property and default branch; skip forks, mirrors,
+   and repositories where the default branch doesn't exist yet. Check that
+   rebase merging is enabled and that the required CI checks report on
+   `merge_group` before enabling the queue, or queued PRs can stall.
+2. Leave any existing working queue in place. Where a queue is missing, use
+   the reviewed JSON without its organization-only property condition to
+   create a separate repository ruleset. This leaves existing approval, CI,
+   and other branch rules intact. Substitute the repository you're applying to:
+
+   ```sh
+   jq 'del(.conditions.repository_property)' docs/rulesets/cgwalters-forge-first-party-merge-queue.json |
+     gh api -X POST repos/cgwalters-forge/REPO/rulesets --input -
+   ```
+
+3. Read `gh api repos/cgwalters-forge/REPO/rules/branches/BRANCH` for that
+   default branch and confirm an effective `merge_queue` rule with `REBASE`.
+   Verify that a queued PR runs its required checks and merges. If the new
+   rule blocks merges unexpectedly, disable just the new ruleset and check
+   which protections remain; do not replace the existing CI or approval rules.
+
+For the repositories in [the forge-sync manifest](../.github/forge-sync/repos.json),
+`just forge-sync` checks whether `main` exists and has a queue, whether enabled
+by classic branch protection or a ruleset. Try it locally with
+`FORGE_SYNC_MERGE_QUEUE=true just forge-sync --json`. The scheduled check ships
+off: after rollout, set `merge_queue` to `true` in `.github/forge-sync/repos.json`.
+It makes one read-only GraphQL query per non-exempt repository (20-second
+timeout) and distinguishes a read error from a missing branch or queue.
+An `exempt.merge_queue` entry needs a nonblank reason and only suppresses this
+report; it doesn't change any GitHub settings. The report is a presence
+check, not a test of merge method or CI readiness. The rollout includes
+first-party repositories outside that manifest (such as `.github` and
+`workflow-compiler`); those repositories are not monitored by this check.
+
 ## Moving this deployment to infra
 
 **Tracker remains the only deployment writer. Infra is offline-only as
