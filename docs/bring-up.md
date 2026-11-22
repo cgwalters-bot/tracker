@@ -996,15 +996,27 @@ without that declared input GitHub refuses the dispatch with HTTP 422.
 The contract's optional `base` input is for stacked plans; do not enable
 those unless your chosen caller supports it too.
 
-Before a PR-producing run, create the caller's protected apply environment
-(here `agent-apply`), restrict it to the protected default branch and
-explicitly forward `SAFE_OUTPUTS_PAT`. A repository/organization secret
-can have a deployment-chosen stored name (here `CGWALTERS_BOT_PAT`) mapped
-to `SAFE_OUTPUTS_PAT`; an environment-only secret must be stored and
-forwarded as `SAFE_OUTPUTS_PAT`. Follow workflow's **The apply job and its
-token** for fork permissions/scopes. Keep fork Actions off and forks free
-of secrets. Never pass this token to the agent or check. Status helpers may
-also use the explicitly forwarded token, outside apply's environment gate.
+Before provisioning a PR-producing writer, review and pin the workflow and
+its executable dependencies as in the [credential cutover plan](credentials.md#plan).
+For cross-repository status, require a pin that supports independent status
+with the legacy apply writer. The dispatch pin described in the plan lacks
+this feature: supplying `STATUS_TOKEN` alone doesn't enable it, and role
+mode also changes apply to `PUSH_TOKEN` and `PUBLICATION_TOKEN`. Do not copy
+the writer to a caller-visible secret to keep status working.
+
+Create a fresh apply environment for the writer, restricted to the protected
+default branch. Require an unbypassable gate that checks the reviewed caller
+SHA, not just the branch, and verify that it rejects a pre-cutover revision
+before adding the secret on an existing installation. Use an automated gate
+for unattended workflows. Store the legacy writer as `SAFE_OUTPUTS_PAT` only
+in that environment, and configure the apply job to declare it.
+Keep an explicit `SAFE_OUTPUTS_PAT: ${{ secrets.SAFE_OUTPUTS_PAT }}`
+mapping at each call boundary to apply: it passes the name, but the calling
+job cannot read the environment value. Give cross-repository status its own
+narrow credential. Verify apply separately, and check that finish edits the
+comment created by start before retiring any shared secret. Follow workflow's
+**The apply job and its token** for fork permissions/scopes. Keep fork Actions
+off and forks free of secrets. Never pass the writer to the agent or check.
 
 Inspect policy admission, the agent artifact, the independent check report
 and `applied.json`, not just a green dispatch. Check runs on a separate

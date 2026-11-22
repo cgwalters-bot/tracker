@@ -31,7 +31,9 @@ The [control app](https://github.com/cgwalters-forge/review) is a UI for the sam
 
 [docs/bring-up.md](docs/bring-up.md) says how to start a coordinator on a
 fresh machine from credentials alone, how to dispatch a run and where its
-state is. [docs/operator-notes.md](docs/operator-notes.md) is the log of
+state is. [docs/credentials.md](docs/credentials.md) lists the
+organization's GitHub credentials and the plan to scope them.
+[docs/operator-notes.md](docs/operator-notes.md) is the log of
 cgwalters' instructions.
 
 ## Review drafts
@@ -121,16 +123,21 @@ to the operator's Octo STS hostname (HTTPS, no scheme or path) only after the
 App installation and the org-level policy below are deployed. Leave the
 variable unset to retain the PAT for this step. With it set, minting is capped
 at one minute, the read/dispatch step at two minutes; exchange failure or an
-empty minted token never falls back to the PAT. Unset the variable to roll back.
+empty minted token never falls back to the PAT. Unset the variable to roll back
+to the PAT used by `One pass` (the environment writer after the cutover).
 The separate existing `AGENT_BOARD_PIN=enabled` gate still controls the step.
 
 The policy belongs in **cgwalters-forge/.github**, not tracker, at
 `.github/chainguard/tracker-poll-reads.sts.yaml`. It is an external prerequisite,
-not a policy deployed by this patch. Before activation, confirm the repository's
-actual OIDC subject form (name-only versus immutable IDs) and substitute that
-exact subject if needed. Do not broaden the subject to accommodate a mismatch.
-The additional claims bind this grant to the exact caller, workflow and main
-branch, not just any job with a repository subject:
+not a policy deployed by this patch. The example below is for `pass` without
+an environment. After the [writer cutover](docs/credentials.md#plan) moves
+`pass` into a protected environment, GitHub's default name-based subject is
+`repo:cgwalters-forge/tracker:environment:<environment-name>`, not the branch
+subject. Before activation, confirm the actual OIDC subject (including any
+immutable IDs) and match it exactly. Keep the separate exact `ref` and
+`workflow_ref` constraints: the environment subject doesn't include the
+branch. The additional claims bind the grant to the exact caller, workflow
+and main branch:
 
 ```yaml
 issuer: https://token.actions.githubusercontent.com
@@ -147,7 +154,7 @@ repositories:
   - tracker
 ```
 
-Verify a main-branch run with the enabled variable before retiring any secret:
+Verify a main-branch run before leaving the exchange enabled:
 the exchange and both reads must succeed, the dispatch must still use the job
 token, and a non-main/workflow-mismatched identity must be refused. Offline
 coverage is `cargo test --locked --manifest-path .github/agentic-job/config-test/Cargo.toml poll_read_sts`.
@@ -196,14 +203,15 @@ No workflow outside tracker names `CGWALTERS_BOT_PAT`, and none anywhere names
 installed org, repository or environment secrets, and non-default branches were
 not searched. A secret exposed to all repositories is still available to any
 workflow added on any branch (tracker#1619), which is why the scope should be
-restricted. Each `SAFE_OUTPUTS_PAT` value is an environment secret owned by its
-caller and is migrated separately. The trust-policy PR, mixed-read routing,
-writer identity compatibility and secret restriction are follow-up slices of
-#1679.
+restricted. `SAFE_OUTPUTS_PAT` is an input name in these workflows, not
+evidence that a caller stores the value in an environment. The trust-policy
+PR, mixed-read routing and writer identity compatibility are follow-up slices
+of #1679.
 
-**Repositories still needing `CGWALTERS_BOT_PAT`: tracker only.** After the
-operator confirms in settings that no other repository or environment depends
-on the org secret, restrict it to selected repositories: tracker.
+**`CGWALTERS_BOT_PAT` is restricted to tracker** (verified 22 November 2026).
+That still exposes it to tracker workflows outside protected environments;
+follow the [credential cutover plan](docs/credentials.md#plan) to separate
+apply from status and retire the org secret.
 
 Scheduling is top-down (`topDown: true`): P0 epic groups are considered before
 unrelated parent discovery spends the request budget. To keep already-held
