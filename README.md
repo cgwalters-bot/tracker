@@ -400,6 +400,24 @@ cannot safely change the pull request, without a push (opt-in in
 `.github/agentic-job/fix.toml`); the unchanged head is what stops the fix
 rounds.
 
+Text-only fixes ([#1846](https://github.com/cgwalters-forge/tracker/issues/1846))
+remain off in both fix bounds. The [pinned wrapper](https://github.com/cgwalters-forge/actions/blob/a2fac2ea949255e1e901b8225d566a44f28c1e94/.github/workflows/cgwalters-agentic-job.yml)
+does not request `update_pull_request`. Do not add the generic output to its
+fix list: [check](https://github.com/cgwalters-forge/agentic-job/blob/2b937aaac81da06d8bff5f317e58df6ad7063e1e/crates/safe-outputs/src/check/mod.rs#L492-L513)
+checks the repository and explicit number, not that the number is the fix PR,
+and [apply](https://github.com/cgwalters-forge/agentic-job/blob/2b937aaac81da06d8bff5f317e58df6ad7063e1e/.github/workflows/apply.yml#L563)
+uses `target: "*"`. That would let a misdirected run edit a sibling or
+human-authored PR, or publish stale text against a new head.
+
+Before enabling, agentic-job must bind the checked request to the trusted
+fix repository, PR number, bot author, and pinned head, allowing at most one
+title/body-only request without a push. Apply must reread the open PR and
+refuse a moved head or wrong author before writing; GitHub's text update is
+not a force-with-lease. Test a valid text-only update and refusals for another
+PR, wrong author, moved head, draft/ref changes, and a push in the same hand-back
+before pinning the updated wrapper and opting the two fix bounds in. The fix
+profile describes the guarded output, not a fallback API write.
+
 Apply opens complete work ready for review (`ready_when_complete` in
 `dispatch.toml` and `fix.toml`), except on a midstream fork: a repository
 with the `bot-midstream` topic whose main tracks upstream (#336).

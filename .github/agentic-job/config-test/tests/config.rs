@@ -2810,6 +2810,31 @@ fn blocked_fixes_can_explain_themselves_without_a_push_or_extra_write_authority(
 }
 
 #[test]
+fn text_only_fixes_require_explicit_handback_permission() {
+    // Until agentic-job can bind a text update to the fix PR and head, neither
+    // route may admit the generic repository-scoped update.
+    for file in ["fix.toml", "midstream-fix.toml"] {
+        assert!(
+            output_entries(&outputs(file))
+                .iter()
+                .all(|(kind, _)| *kind != "update_pull_request"),
+            "{file}"
+        );
+    }
+
+    let fix = profile("fix");
+    for rule in [
+        "leave the working tree and pinned head unchanged",
+        "Only if the run's trusted hand-back brief explicitly allows `update_pull_request`",
+        "with only the changed `title` and/or `body`",
+        "Include no push",
+        "If the output is not allowed, explain the blocker rather than editing through the forge API or manufacturing a commit",
+    ] {
+        assert!(fix.contains(rule), "{rule}");
+    }
+}
+
+#[test]
 fn fix_profile_bounds_scope_and_checkpoints_recoverable_work() {
     // Prompt contracts, not proof that a runner obeys them or avoids timeouts.
     let fix = profile("fix");
