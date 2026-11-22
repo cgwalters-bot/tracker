@@ -260,8 +260,8 @@ Already dispatched triage is not undone: inspect its receipts and outcomes
 under the existing policy. Keep the holds and approval boundaries intact.
 
 Applying passes hand their
-disposable `.state/pass.json` cache and, when present, `.state/living-status.json` ledger
-to the next pass as the one-day `pass-state` artifact. Both chain dispatches supply `previous_run_id`; restore validates that
+disposable `.state/pass.json` cache to the next pass as the one-day `pass-state` artifact.
+Both chain dispatches supply `previous_run_id`; restore validates that
 exact run's repository, workflow, default branch, applying invocation and finished
 `pass` job. Schedule/bootstrap runs without an explicit predecessor search at most
 100 poll runs on the default branch for the newest earlier applying invocation,
@@ -278,32 +278,15 @@ Each repository must also be currently readable as public. Entries outside this
 allowlist are dropped whole, with their validators; repository visibility alone
 does not make a PAT-authenticated response public. Visibility checks cost one
 request per distinct allowlisted repository, capped at 100 repositories and
-90 seconds, shared with the living-status ledger's repository checks. Cache and
-ledger bodies are never printed.
+90 seconds. Cache bodies are never printed. Missing cache state only costs reads.
 
-`livingStatus` remains disabled until its machine records and replay guards have
-storage independent of the expiring artifact chain. Runner-local preservation is
-not a durable backup. When enabled later, pass-owned plans, dispatch notices and
-apply receipts can edit one status comment per issue; the pinned renderer already
-shows prose before the machine-plan fence, not raw JSON.
-
-Export leaves the original ledger unchanged and writes filtered copies beneath
-`.state/public/`. Only confirmed private entries are omitted from the public
-ledger; unreadable or mismatched metadata, a deadline, exceeded repository bound
-or invalid ledger fails export loudly without deleting the source ledger. The
-upload runs only after successful export and names only the two public files,
-never the source state directory. Retained replay records are unchanged so their
-status references still match. Historical comment cleanup remains off; review
-preview candidates before enabling it in a later change.
-
-Missing cache state only costs reads. Missing or stale living-status state instead
-refuses work on adopted issues when GitHub's status reference cannot be reconciled;
-it must never be treated as permission to dispatch or apply again. Restore the
-durable ledger before continuing those issues. The one-day artifact chain is not
-a long-term backup: a cold bootstrap, expired artifact, visibility-check failure
-or failed export may require ledger recovery. GitHub is authoritative for comment
-identity and ownership, but cannot reconstruct machine records from prose alone.
-Agentic-job's separate run-result comment is not yet integrated with this status.
+`livingStatus` remains disabled in hosted poll. Its replay ledger can contain
+private metadata even for a public issue, so it is not part of `pass-state` or
+any other public artifact. Enable it only with access-controlled durable storage
+that restores the latest replay state under the applying-job lock. Unlike a cache
+miss, a missing or stale ledger makes adopted issues refuse work: GitHub's comment
+prose cannot reconstruct the machine records. Runner-local state is not a backup.
+Historical comment cleanup remains off pending review of preview candidates.
 
 Reviews (including pending reviews), timelines (which can embed private
 cross-references), review comments, Actions runs/jobs/variables,

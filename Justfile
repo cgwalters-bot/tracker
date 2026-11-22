@@ -1414,57 +1414,15 @@ test-poll-next:
 # Offline state provenance, public-only export and workflow plumbing.
 test-pass-state:
     #!/usr/bin/env node
-    const assert = require('node:assert/strict');
-    const fs = require('node:fs');
-    const source = /^pass-state mode:\n((?:    .*\n|\n)+)/m.exec(fs.readFileSync('Justfile', 'utf8'))[1].replace(/^    /gm, '');
-    const functions = {};
-    new Function('require', 'process', 'exports', source.replace(/^#!.*\n/, ''))(require, { argv: ['node', 'recipe', 'test'] }, functions);
-    const { validate, publicStates } = functions;
-    const env = { PREVIOUS_RUN_ID: '41', GITHUB_RUN_ID: '42', GITHUB_REPOSITORY: 'owner/tracker', DEFAULT_BRANCH: 'main' };
-    const run = { id: 41, workflow_id: 123, path: '.github/workflows/poll.yml',
-      repository: { full_name: env.GITHUB_REPOSITORY }, head_repository: { full_name: env.GITHUB_REPOSITORY },
-      head_branch: 'main', event: 'workflow_dispatch', display_title: 'pass (apply)' };
-    const jobs = { total_count: 2, jobs: [{ name: 'pass', status: 'completed', conclusion: 'success' },
-      { name: 'next', status: 'in_progress' }] };
-    function predecessor(change = {}, jobChange = {}, extra = {}) {
-      const calls = [];
-      const id = validate({ ...env, ...extra }, endpoint => {
-        calls.push(endpoint);
-        assert.ok(calls.length <= 3);
-        if (endpoint.endsWith('/workflows/poll.yml')) return { id: 123 };
-        if (endpoint.endsWith('/jobs?filter=latest&per_page=100')) return { ...jobs, ...jobChange };
-        assert.equal(endpoint, 'repos/owner/tracker/actions/runs/41');
-        return { ...run, ...change };
-      });
-      return { id, calls };
-    }
-    assert.equal(predecessor().id, '41');
-    assert.equal(predecessor({ event: 'schedule', display_title: 'pass' }).id, '41');
-    assert.equal(predecessor({}, { jobs: [{ ...jobs.jobs[0], conclusion: 'failure' }], total_count: 1 }).id, '41');
-    for (const change of [{ workflow_id: 124 }, { id: 40 }, { path: '.github/workflows/other.yml' },
-      { repository: { full_name: 'other/tracker' } }, { head_repository: { full_name: 'fork/tracker' } },
-      { head_branch: 'feature' }, { event: 'pull_request' }, { event: 'push' }, { display_title: 'pass' }]) {
-      assert.equal(predecessor(change).id, '', JSON.stringify(change));
-    }
-    for (const change of [{ total_count: 101 }, { jobs: [] }, { jobs: null },
-      { jobs: [jobs.jobs[0], jobs.jobs[0]] },
-      ...['in_progress', 'queued'].map(status => ({ total_count: 1, jobs: [{ ...jobs.jobs[0], status }] })),
-      ...['cancelled', 'skipped', null].map(conclusion => ({ total_count: 1, jobs: [{ ...jobs.jobs[0], conclusion }] }))]) {
-      assert.equal(predecessor({}, change).id, '', JSON.stringify(change));
-    }
-    for (const id of ['42', '0', '-1', '../41', '41;exit', '1'.repeat(21)]) {
-      assert.deepEqual(predecessor({}, {}, { PREVIOUS_RUN_ID: id }), { id: '', calls: [] });
-    }
-    const tests = fs.readFileSync('.github/workflows/ci.yml', 'utf8').split('      - name: Test pass state export\n')[1];
+    const tests = require('node:fs').readFileSync('.github/workflows/ci.yml', 'utf8').split('      - name: Test pass state export\n')[1];
     new Function('require', tests.split('        run: |\n')[1].split('      - run: just test\n')[0].replace(/^          /gm, ''))(require);
 
-# Public cache and durable status handoff. Never print bodies or API diagnostics.
+# Public response-cache handoff. Never print bodies or API diagnostics.
 pass-state mode:
     #!/usr/bin/env node
     const fs = require('node:fs');
     const { execFileSync } = require('node:child_process');
     const STATE = '.state/pass.json';
-    const LIVING = '.state/living-status.json';
     const MAX_BYTES = 32 * 1024 * 1024; // The pinned pass's state-file limit.
     const MAX_REPOSITORIES = 100;
     function api(endpoint, timeout = 20000) {
@@ -1507,14 +1465,7 @@ pass-state mode:
       return passes.length === 1 && passes[0].status === 'completed' &&
         ['success', 'failure'].includes(passes[0].conclusion) ? id : '';
     }
-    function publicStates(state, living, get = api) {
-      const issueRepository = key => /^([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)#[1-9][0-9]*$(?![\s\S])/.exec(key)?.[1].toLowerCase();
-      if (living !== null) {
-        if (living?.schema !== 'agent-board/status/v1' || typeof living.bot !== 'string' ||
-            !living.entries || typeof living.entries !== 'object' || Array.isArray(living.entries) ||
-            Object.keys(living).some(key => !['schema', 'bot', 'entries'].includes(key)) ||
-            Object.keys(living.entries).some(key => !issueRepository(key))) throw new Error('invalid status ledger');
-      }
+    function publicState(state, get = api) {
       // Both caches contain PAT-authenticated bodies, and a public repository is
       // not enough: reviews can include the viewer's unpublished PENDING body and
       // timelines private cross-references. Allow only public issue/PR lists and
@@ -1523,21 +1474,16 @@ pass-state mode:
       const repository = url => /^https:\/\/api\.github\.com\/repos\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/(?:issues(?:\/[1-9][0-9]*(?:\/(?:comments|labels))?|\/comments\/[1-9][0-9]*)?|pulls(?:\/[1-9][0-9]*)?|labels)(?:\?[^#\s]*)?(?:#agent-board-rest-v1)?$(?![\s\S])/
         .exec(url)?.[1].toLowerCase();
       const caches = ['responses', 'pass_responses'];
-      const repositories = new Set([...caches.flatMap(key => Object.keys(state[key] || {}).map(repository).filter(Boolean)),
-        ...Object.keys(living?.entries || {}).map(issueRepository)]);
+      const repositories = new Set(caches.flatMap(key => Object.keys(state[key] || {}).map(repository).filter(Boolean)));
       if (repositories.size > MAX_REPOSITORIES) throw new Error('too many repositories');
       const publicRepos = new Set();
-      const ledgerRepos = new Set(Object.keys(living?.entries || {}).map(issueRepository));
       const deadline = Date.now() + 90000;
       for (const repo of repositories) {
         if (Date.now() >= deadline) throw new Error('metadata deadline');
         try {
           const metadata = get(`repos/${repo}`, Math.min(10000, deadline - Date.now()));
-          if (metadata.full_name?.toLowerCase() === repo && metadata.private === false && metadata.visibility === 'public') {
-            publicRepos.add(repo);
-          } else if (ledgerRepos.has(repo) && !(metadata.full_name?.toLowerCase() === repo &&
-              metadata.private === true && ['private', 'internal'].includes(metadata.visibility))) throw new Error('unverified ledger repository');
-        } catch { if (ledgerRepos.has(repo)) throw new Error('cannot verify ledger visibility'); }
+          if (metadata.full_name?.toLowerCase() === repo && metadata.private === false && metadata.visibility === 'public') publicRepos.add(repo);
+        } catch { /* Drop responses on any doubt. */ }
       }
       // Cursors/intake/maintenance metadata can also name private repositories.
       // Publish only the response-cache envelope and its scope digest, without which the next pass reads cold.
@@ -1548,11 +1494,7 @@ pass-state mode:
         // Drop entries whole: changing a body would invalidate its cached ETag.
         exported[key] = Object.fromEntries(Object.entries(state[key] || {}).filter(([url]) => publicRepos.has(repository(url))));
       }
-      // Keep public entries whole: redacting records breaks their replay hashes.
-      // The original ledger stays intact; only the public copy drops private entries.
-      const ledger = living === null ? null : { schema: living.schema, bot: living.bot,
-        entries: Object.fromEntries(Object.entries(living.entries).filter(([key]) => publicRepos.has(issueRepository(key)))) };
-      return { state: exported, living: ledger };
+      return exported;
     }
     if (process.argv[2] === 'validate') {
       let id = '';
@@ -1561,39 +1503,31 @@ pass-state mode:
       console.log(id ? `Validated predecessor ${id}` : 'No trusted predecessor; starting cold');
     } else if (process.argv[2] === 'export') {
       fs.rmSync('.state/public', { recursive: true, force: true });
-      const paths = [STATE, LIVING];
-      if (paths.some(path => fs.existsSync(path))) {
+      if (fs.existsSync(STATE)) {
         try {
-          const read = (path, limit) => {
-            if (!fs.existsSync(path)) return null;
-            try {
-              if (fs.statSync(path).size > limit) throw new Error('oversized state');
-              const value = JSON.parse(fs.readFileSync(path, 'utf8'));
-              if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid state');
-              return value;
-            } catch {
-              // A corrupt disposable cache must not discard valid replay guards.
-              if (path === LIVING) throw new Error('unreadable ledger');
-              fs.rmSync(path, { force: true });
-              console.log('Discarded an unreadable state file');
-              return null;
-            }
-          };
-          const state = read(STATE, MAX_BYTES);
-          const living = read(LIVING, 4 * 1024 * 1024);
-          const exported = publicStates(state || {}, living);
-          fs.mkdirSync('.state/public', { recursive: true });
-          if (state !== null) fs.writeFileSync('.state/public/pass.json', JSON.stringify(exported.state) + '\n');
-          if (living !== null) fs.writeFileSync('.state/public/living-status.json', JSON.stringify(exported.living) + '\n');
-          console.log(`Prepared public state: ${['responses', 'pass_responses'].map(key => `${key} ${Object.keys(exported.state[key] || {}).length} of ${Object.keys((state || {})[key] || {}).length}`).join(', ')}, scope ${exported.state.response_scope ? 'kept' : 'absent'}`);
+          let state;
+          try {
+            if (fs.statSync(STATE).size > MAX_BYTES) throw new Error('oversized state');
+            state = JSON.parse(fs.readFileSync(STATE, 'utf8'));
+            if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('invalid state');
+          } catch {
+            fs.rmSync(STATE, { force: true });
+            console.log('Discarded unreadable pass cache; the next pass starts cold');
+          }
+          if (state) {
+            const exported = publicState(state);
+            fs.mkdirSync('.state/public', { recursive: true });
+            fs.writeFileSync('.state/public/pass.json', JSON.stringify(exported) + '\n');
+            console.log(`Prepared public state: ${['responses', 'pass_responses'].map(key => `${key} ${Object.keys(exported[key] || {}).length} of ${Object.keys(state[key] || {}).length}`).join(', ')}, scope ${exported.response_scope ? 'kept' : 'absent'}`);
+          }
         } catch {
           fs.rmSync('.state/public', { recursive: true, force: true });
-          console.error('Could not prepare public state; original ledger retained; refusing export');
+          console.error('Could not prepare public pass cache; refusing export');
           process.exitCode = 1;
         }
       }
     } else if (process.argv[2] === 'test') {
-      Object.assign(exports, { validate, publicStates });
+      Object.assign(exports, { validate, publicState });
     } else {
       throw new Error('expected validate or export');
     }

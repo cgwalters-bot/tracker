@@ -761,7 +761,7 @@ retained shadow before relying on its comparisons.
    lanes. Record the denial checks and
    the drain/reconciliation results.
 5. **Start from known state.** Record the last tracker run URLs and artifact
-   provenance before expiry: `pass-state` (one day, filtered public files only)
+   provenance before expiry: `pass-state` (one day, filtered public cache only)
    and `supervisor-health` (two days). Neither is an issue database. Never pass
    a tracker `previous_run_id` as an infra predecessor, import raw `.state`, or
    assume a missing health baseline means healthy. For a deliberate cold
