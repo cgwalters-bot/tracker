@@ -849,6 +849,11 @@ Missing callers are drift, not silently exempted. Legacy-shaped YAML in the
 offline fixtures still exercises the generic exact-job comparison; the real
 manifest and `just test-forge-sync` require the ordinary caller.
 
+Merge queue reporting is off by default. Try it without changing the manifest:
+`FORGE_SYNC_MERGE_QUEUE=true just forge-sync --json`. `--json` writes one report
+with `failed` (repository names) and `drift` (details) to stdout; drift still
+exits nonzero.
+
 This source check neither starts reviews nor certifies live admission,
 author coverage, checked publication or merge provenance. Ordinary reviews
 remain off by default. Do not merge #1500's scheduling activation before its
