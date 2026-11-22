@@ -717,6 +717,7 @@ fn promote_caller_settings_and_policy_records() {
     // and the parent's default branch, these as of 2026-11-15.
     assert_eq!(config["promote"], json!({
         "onApproval": true, "publish": true,
+        "botAuthorEmails": ["agentic-job@users.noreply.github.com"],
         "signoff": { "name": "Colin Walters", "email": "walters@verbum.org" },
         "policyRepository": "cgwalters-forge/tracker", "policyPath": "upstream-policy",
     }));
