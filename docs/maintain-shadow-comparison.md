@@ -249,3 +249,119 @@ when the pass later lists agentic-job there, the shadow keeps previewing
 pass.json's policy cut to agentic-job instead of falling silent, though the
 pass then has no step there to compare it with. The shadow still runs as a dry
 run with the job token and publishes only its job summary.
+
+## Overlap cap replay, 22 November 2026: not reached, unverified
+
+This follows up the open pull request cap, which the section above left "Not
+covered". The cap does not hold back a merge-ready head: at the pin it turns
+only a `fix`, `rebase`, `continue`, `update` or `run rerun` step into a wait
+([poll.rs:9570-9580](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/poll.rs#L9570-L9580)).
+The question is whether the generated single-repo configuration makes a younger
+pull request that would otherwise take such an action, say an in-bounds `fix`
+or `update`, wait with `open-pr-cap: land ... first; overlapping paths` behind
+an older one that shares a path, as the central pass would, while a disjoint one
+eligible for the same action takes it. Answering it takes three previews of the
+same input: the central pass, `poll --dry-run` with the generated
+configuration, and the same configuration without `openPrCap` as a negative
+control, which must take the baseline action for both pull requests. Dropping
+`openPrCap` also drops the merge-queue "ahead in queue" wait for an approved
+head
+([poll.rs:9441-9455](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/poll.rs#L9441-L9455)),
+and a conflicting rebase meets that wait before the cap, so neither pull
+request may be approved for merge or need a conflict rebase. None of the three
+reached the cap decision, so the question stays unverified.
+
+The pin was agent-board `77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0`, the single
+`AGENT_BOARD_REV` across `.github/workflows` (`just agent-board-pin`). It was
+installed with its attestation and checksums checked by `RUNNER_TEMP=/tmp/rt
+just build-agent-board 77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0`. Today `just
+maintain-shadow-config .github/pass.json cgwalters-forge/agentic-job` gives
+`assignHolds: true` and `openPrCap: 12`.
+
+**The cap is not armed below its value.** `pressure_ahead`
+([poll.rs:10060-10072](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/poll.rs#L10060-L10072))
+counts the repository's open bot pull requests, parked ones included. While
+that count is below `openPrCap`, it returns before it reads any older pull
+request's paths. agentic-job had 11 such pull requests at 05:57 UTC (above) and
+at the runs below, so at today's cap of 12 no ordering of readiness or overlap
+could reach the gate.
+At the historical cap of 6, the same 11 would have armed it. That is why a
+replay at 12 cannot speak to the 22 waits of 15 and 16 November, which happened
+under 6.
+
+**No deterministic replay was possible.** At the pin, only `agent-board pass`
+records and replays (`--record`, `--replay`;
+[pass.rs:10799](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/pass.rs#L10799)).
+`agent-board poll`, which the shadow runs, has neither. Its `--snapshot`
+replaces only the board read, and its client reads only
+`https://api.github.com/`
+([github.rs:29](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/github.rs#L29),
+[:707](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/github.rs#L707)).
+Pointing `HTTPS_PROXY` at a closed port changed a 401 to `GitHub transport
+failed`. This showed that the client attempted to use the proxy, not that a
+fake origin could answer its requests. The client verifies TLS using platform
+trust ([github.rs:800-813](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/github.rs#L800-L813)).
+A local fake origin remains an untested option; it would need isolated TLS
+trust and a dummy token. A central replay alone does not exercise the generated
+configuration, so none was built.
+
+**Live state did not reach the gate either.** Two read-only runs with the job
+token and fresh state ran from 11:15:17 to 11:15:37 UTC, with the shadow's own
+flags:
+
+```sh
+just maintain-shadow-config .github/pass.json cgwalters-forge/agentic-job > shadow.json
+jq 'del(.openPrCap)' shadow.json > nocap.json
+for c in shadow nocap; do
+  agent-board poll --dry-run --config $c.json --follow cgwalters-forge/agentic-job --state $c-state.json \
+    --fix-bounds .github/agentic-job/fix.toml --fix-bounds .github/agentic-job/midstream-fix.toml
+done
+```
+
+Both made the same decisions on the same 11 heads:
+
+- 5 were skipped as `labelled needs-human`: #3333, #4401, #4410, #4423 and #4506.
+- 6 were skipped as `operator review pending` on a pass stop marker: #4302,
+  #4399, #4402, #4472, #4507 and #4532.
+
+Identical output shows only that the gate was not reached; it is not evidence of
+agreement. No central preview ran. It would read the whole board, and on live
+state it could not reach the gate anyway.
+
+The closest existing evidence is agent-board's library test
+[`open_pr_cap_keeps_landing_work_and_serializes_oldest_paths`](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/poll/recovery_tests.rs#L8).
+It decides shared and disjoint paths at caps 1 to 3, and with no cap, under
+both the pass's policy and a standalone `openPrCap`. It runs on a synthetic
+fake rather than the built CLI with the generated file.
+
+Closing this needs either replay support for `poll` and a shared fixture that
+covers reads from all three previews (including reads unique to the cap-off
+run), or live previews with identical decision inputs. A pass recording alone
+may miss requests: replay rejects unrecorded reads
+([pass.rs:10823-10828](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/pass.rs#L10823-L10828)).
+For either approach, use:
+
+- at least 12 open bot pull requests on agentic-job;
+- a younger pull request that is not parked and would otherwise take a
+  cap-eligible action, behind an older one that is not parked and shares a
+  path;
+- a disjoint control eligible for the same action, with no shared path with
+  any older, non-parked bot pull request;
+- fewer than `pressure::OLDER_LIMIT` older bot pull requests for each
+  candidate, counting parked ones, and complete changed-file lists as read by
+  the cap for both candidates and every older peer either would compare
+  against. A truncated or unknown list or a scan cutoff can produce the same
+  wait without finding a shared path
+  ([poll.rs:10076-10104](https://github.com/cgwalters-forge/agent-board/blob/77fbe82e35bdce0d1580d78f0cf7c88e0098bdd0/crates/board-forge/src/poll.rs#L10076-L10104));
+- the same decision inputs in the central preview and both shadow runs, not
+  just the same heads: holds, labels and checks can change without a push.
+
+With those inputs confirmed, require both cap-on previews to report an
+`open-pr-cap` wait for the overlapping candidate naming the expected older PR
+(the first one with a shared path). The disjoint control must take the baseline
+action in both cap-on previews, and both candidates must take it with
+`openPrCap` removed.
+
+`AGENT_BOARD=/tmp/rt/agent-board/bin/agent-board just test-maintain-shadow`
+passed with the pinned CLI. It checks that the generated configurations decode
+and that out-of-bound holds are refused, not the cap decision.
