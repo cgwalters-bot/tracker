@@ -186,10 +186,10 @@ with `claude-opus-5-5`, `opencode` with `praxis/gpt-6.1-sol`, `vibe` with
 apply. Any other value fails the run before it starts. A pool may also say
 what its provider allows per period, so tools can pace runs when the
 provider reports no quota: `allowance` is `amount` in `currency` per
-`period`, which is `calendar-month` (`mistral`: 300 USD). Nothing in this
-repository enforces it. Every pool has a `tier`, 1 (`claude`, `openai`,
-`fable`) or 2 (`mistral`); `"auto": false` keeps `fable`, whose allowance
-is separate, for manual dispatch. The pass paces its runs on the pools
+`period`, which is `calendar-month` (`mistral`: 300 USD). Declaring an
+allowance does not make it a pacing window. Every pool has a `tier`, 1
+(`claude`, `openai`, `fable`) or 2 (`mistral`); `"auto": false` keeps `fable`,
+whose allowance is separate, for manual dispatch. The pass paces its runs on the pools
 `.github/pass.json` names, and alternates fix rounds between its
 `pr.fixPools`, except that a first round that is only toil goes to
 `pr.toilFixPool`. The run applies
@@ -198,6 +198,34 @@ item. `gh run watch RUN -R cgwalters-forge/tracker --exit-status` waits
 for a run and fails unless it succeeds; `gh run view RUN -R
 cgwalters-forge/tracker --json jobs -q '.jobs[] | select(.conclusion ==
 "failure") | .name'` names its failed jobs.
+
+### Mistral triage rollout
+
+Mistral remains manual. The [dispatch wrapper](https://github.com/cgwalters-forge/actions/blob/a2fac2ea949255e1e901b8225d566a44f28c1e94/.github/workflows/cgwalters-agentic-job.yml)
+pins agentic-job v0.6.16, which contains v0.6.3. In the reused
+[hosted triage](https://github.com/cgwalters-forge/tracker/actions/runs/44424357279),
+the previous wrapper pin used the same agentic-job release. Vibe's startup
+log names `zai-glm-5-3`, and the [published result](https://github.com/cgwalters-forge/tracker/issues/1758#issuecomment-6995358830)
+correctly diagnosed the apt download deadline in the `packages` stage and
+identified separate error-reporting work. Its advice to re-pin for the mirror
+fix was stale: v0.6.16 already contains that fix. No new trial was dispatched.
+
+The [pinned pass's usage reader](https://github.com/cgwalters-forge/agent-board/blob/8eba8a193aad9e7ac137297fb8f24079cdcdc7c8/crates/board-forge/src/pass/usage.rs)
+publishes Mistral's broker-lifetime request and token counters, not a current
+calendar-month spend window. The [hosted pass](https://github.com/cgwalters-forge/tracker/actions/runs/45034110724)
+reported paced usage only for Claude and OpenAI. Adding `pools.mistral` would
+produce a `no-reading` hold, not a usable pace. Do not bypass this by treating
+missing usage as zero. Before enabling triage, verify that the pass consumes a
+current USD usage window against the existing $300 monthly allowance and holds
+on missing usage. Keep the configured 1000-AIC run budget and the wrapper's
+400-request cap. The request cap bounds Vibe when its model is unpriced; the
+AIC setting alone is not proof of a dollar cutoff. Keep sessions on their
+existing pools: the pinned pass draws session pools from `triagePools`, so
+adding Mistral there alone would not be triage-only.
+
+Rollback after any activation: restore `triagePools` to `["openai", "claude"]`
+and remove `pools.mistral` from `.github/pass.json`. This is already the current
+configuration; rollback leaves manual dispatch and the pool limits intact.
 
 ### gh-agentic-workflows upgrade handoff (#258)
 
