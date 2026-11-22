@@ -3220,7 +3220,7 @@ fn workflows_follow_our_own_repositories_at_main_dispatch_and_review_excepted_an
 // fixture and move both the commit and the version on the same line.
 #[test]
 fn review_wrapper_uses_the_release_pin() {
-    let pin = "cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@b590d3260a18cc59ceb3eb850e62fb62ff967d37 # main, agentic-job v0.6.16 (actions#67)";
+    let pin = "cgwalters-forge/actions/.github/workflows/cgwalters-review.yml@c8cd562edc4c342b888a5a9344f87a584d5bb614 # main, agentic-job v0.6.16 (actions#67)";
     let workflow = read("../workflows/review.yml");
     let pinned = workflow.lines().any(|line| {
         let trimmed = line.trim_start();

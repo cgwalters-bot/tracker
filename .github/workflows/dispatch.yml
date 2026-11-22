@@ -238,7 +238,7 @@ jobs:
     if: ${{ inputs.kind == 'review' }}
     # Immutable wrapper from actions#217 (runner-only, agentic-job 427ce22),
     # not a release tag.
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@c8cd562edc4c342b888a5a9344f87a584d5bb614
     permissions:
       contents: read
       issues: write
@@ -445,7 +445,7 @@ jobs:
     if: ${{ inputs.kind != 'review' }}
     # actions#309 accepts base and still uses agentic-job v0.6.16. The
     # release train does not move this commit pin (agent-board#1087).
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@a2fac2ea949255e1e901b8225d566a44f28c1e94
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@c8cd562edc4c342b888a5a9344f87a584d5bb614
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:
