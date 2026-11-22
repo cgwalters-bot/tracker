@@ -1791,10 +1791,12 @@ forge-sync manifest=".github/forge-sync/repos.json" extra="":
     if [[ $json ]]; then jq -nc --argjson drift "$report" '{$drift, failed: $ARGS.positional}' --args -- "${failed[@]}"; fi
     [[ ${#failed[@]} -eq 0 ]]
 
-# The runner configuration's checks; those that run `agentic-job` skip where
-# it is not installed. The build goes outside the source tree.
-test-config:
-    cargo test --locked --manifest-path .github/agentic-job/config-test/Cargo.toml --target-dir "{{ env('CARGO_TARGET_DIR', cache_directory() / 'tracker-config-test') }}"
+# Runner configuration checks, with optional `agentic-job` probes.
+test-config: (_test-config "")
+test-dispatch-pool: (_test-config "dispatch_pool")
+
+_test-config filter:
+    cargo test --locked --manifest-path .github/agentic-job/config-test/Cargo.toml --target-dir "{{ env('CARGO_TARGET_DIR', cache_directory() / 'tracker-config-test') }}" -- {{ quote(filter) }}
 
 # The shipped supervisor settings through the binary supervisor.yml pins
 # (AGENT_BOARD, from build-supervisor-agent-board): a cap the executor
@@ -1818,11 +1820,8 @@ test-supervisor-config:
       --supervisor-config .github/supervisor/config.json --pools .github/agentic-job/pools.json --health "$health")
     [[ $out == act=false ]]
 
-# pass.json and its config-relative fixBounds, through the pinned binary's
-# `pass --check-config` (agent-board#756), which reads only the org listing: a
-# setting the pass refuses would otherwise fail every pass after the merge
-# (#1403). It runs on every pull request, so a pin move that tightens the
-# checks is caught too. The pin is the poll's: agent-board-pin keeps one.
+# Check pass.json and config-relative fixBounds with the pinned poll binary.
+# `pass --check-config` reads org listings, not live pacing or allowance data.
 test-pass-config:
     #!/usr/bin/env bash
     set -euo pipefail

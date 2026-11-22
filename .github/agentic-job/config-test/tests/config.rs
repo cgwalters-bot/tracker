@@ -3054,7 +3054,7 @@ fn fix_profile_preserves_independent_review_and_replacement_series_safety() {
 }
 
 #[test]
-fn pools_has_what_dispatch_reads_and_a_well_formed_allowance() {
+fn dispatch_pool_settings_have_what_dispatch_reads_and_a_well_formed_allowance() {
     let pools = pools();
     for (name, pool) in &pools {
         for key in ["agent", "model", "budget"] {
@@ -3077,6 +3077,8 @@ fn pools_has_what_dispatch_reads_and_a_well_formed_allowance() {
         assert!(currency.len() == 3 && currency.chars().all(|c| c.is_ascii_uppercase()), "{name}.allowance.currency");
         assert_eq!(allowance.get("period"), Some(&json!("calendar-month")));
     }
+    assert_eq!(pools["mistral"]["agent"], "vibe");
+    assert_eq!(pools["mistral"]["model"], "zai-glm-5-3");
     assert_eq!(pools["mistral"]["budget"], "1000");
     assert_eq!(pools["mistral"]["allowance"], json!({ "amount": 300, "currency": "USD", "period": "calendar-month" }));
 }
@@ -3120,7 +3122,7 @@ fn heredoc_task(composed: &str) -> Option<&str> {
 }
 
 #[test]
-fn dispatch_gives_an_agent_without_skills_the_full_implement_profile() {
+fn dispatch_pool_selection_gives_an_agent_without_skills_the_full_implement_profile() {
     let dispatch = dispatch();
     let index = |s: &str| dispatch.find(s).map_or(-1, |i| i as i64);
     assert!(index("- name: Resolve the pool") < index("- name: Put the profile before the task"));
@@ -3412,6 +3414,51 @@ fn the_pass_does_not_opt_into_operator_questions_only_at_the_current_pin() {
         matches!(pass.get("operatorQuestionsOnly"), None | Some(Value::Bool(false))),
         "do not enable operatorQuestionsOnly until it honors reserved domains and preserves manual pauses"
     );
+}
+
+#[test]
+fn dispatch_pool_mistral_reaches_the_triage_wrapper() {
+    let dispatch = dispatch();
+    let (profile, run) = dispatch.split_once("\n  run:\n").expect("ordinary wrapper job");
+    assert!(has_lines(profile, &[
+        "      agent: ${{ steps.pool.outputs.agent }}",
+        "      model: ${{ steps.pool.outputs.model }}",
+        "      budget: ${{ steps.pool.outputs.budget }}",
+    ]));
+    assert!(has_lines(run, &[
+        "      agent: ${{ needs.profile.outputs.agent }}",
+        "      model: ${{ needs.profile.outputs.model }}",
+        "      budget: ${{ needs.profile.outputs.budget || '500' }}",
+    ]));
+
+    // AGENT_BOARD can point to the verified dispatch pin, as for test-pass-config.
+    let Some(agent_board) = std::env::var_os("AGENT_BOARD").filter(|path| !path.is_empty()) else {
+        return;
+    };
+    let output = Command::new(agent_board)
+        .args(["pools", "resolve", "--kind", "triage", "--pool", "mistral", "--pools"])
+        .arg(here().join("pools.json"))
+        .output()
+        .expect("run agent-board pools resolve");
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(String::from_utf8(output.stdout).unwrap(),
+        "agent=vibe\nmodel=zai-glm-5-3\nbudget=1000\nskilled=false\n");
+}
+
+#[test]
+fn dispatch_pool_mistral_stays_manual_until_monthly_pacing_is_available() {
+    let pass = json_file("../pass.json");
+    // A manual pool and an allowance in pools.json do not give pass a usage
+    // window. Do not enable automatic triage while that allowance is unmetered.
+    assert_eq!(pass["triagePools"], json!(["openai", "claude"]));
+    assert!(pass["pools"].get("mistral").is_none());
+
+    for pools in [&pass["planPools"], &pass["pr"]["fixPools"]] {
+        assert!(!pools.as_array().expect("pool list").contains(&json!("mistral")));
+    }
+    for key in ["toilFixPool", "conflictFixPool"] {
+        assert_ne!(pass["pr"][key], "mistral", "pr.{key}");
+    }
 }
 
 #[test]
