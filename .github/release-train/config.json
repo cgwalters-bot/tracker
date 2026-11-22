@@ -8,6 +8,7 @@
   "tracking": "cgwalters-forge/tracker",
   "threshold": 5,
   "intervalHours": 24,
+  "requestLimit": 1000,
   "labels": {
     "urgent": "P0",
     "breaking": "breaking",

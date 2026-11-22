@@ -3230,6 +3230,12 @@ fn review_wrapper_uses_the_release_pin() {
     assert!(pinned, "review.yml does not pin {pin}");
 }
 
+#[test]
+fn release_train_uses_the_configured_request_budget() {
+    let train = json_file("../release-train/config.json");
+    assert_eq!(train["requestLimit"], 1000);
+}
+
 // Caller-only deployment of agent-board's existing verified image stage.
 #[test]
 fn release_train_promotes_the_verified_secure_host_image() {
