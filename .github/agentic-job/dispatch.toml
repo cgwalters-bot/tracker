@@ -59,7 +59,17 @@ missing_data = { max = 1 }
 # same review gate as agentic-job's. Callers use actions at @main, not a release,
 # so a merge there takes effect at once. Its workflows are under `.github/`;
 # while it was unlisted, no run could change them.
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool"]
+# The rest of the organization's public non-fork repositories, by the
+# operator's direction (2026-11-22, tracker#1867: "we MUST be able to work on
+# changes to .github"), rest on 25084478 alone: forge-infra (its image
+# mirror, forge-infra#9, was refused), atomic-linux-sandbox, the site
+# cgwalters-forge.github.io, the organization's .github, secure-host,
+# workflow-compiler and base-images. A new repository is added here by name
+# once `just review-gate` passes on its main's rules; those without a review
+# workflow wait for the operator's approval, as misctool does.
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool",
+  "cgwalters-forge/forge-infra", "cgwalters-forge/atomic-linux-sandbox", "cgwalters-forge/cgwalters-forge.github.io", "cgwalters-forge/.github",
+  "cgwalters-forge/secure-host", "cgwalters-forge/workflow-compiler", "cgwalters-forge/base-images"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 # And every other name on agentic-job's default protected list, by the
 # operator's decision (21 Oct): a blocked manifest or lockfile meant a run

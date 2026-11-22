@@ -35,7 +35,9 @@ max_patch_files = 10
 # Primary exceptions only, under dispatch.toml's existing review gates and
 # operator decisions. The secondary table above deliberately has none.
 [unprotected_files]
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome"]
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome",
+  "cgwalters-forge/forge-infra", "cgwalters-forge/atomic-linux-sandbox", "cgwalters-forge/cgwalters-forge.github.io", "cgwalters-forge/.github",
+  "cgwalters-forge/secure-host", "cgwalters-forge/workflow-compiler", "cgwalters-forge/base-images"]
 files = ["AGENTS.md", "README.md", "package.json", "bun.lockb",
   "bunfig.toml", "deno.json", "deno.jsonc", "deno.lock", "global.json",
   "NuGet.Config", "Directory.Packages.props", "mix.exs", "mix.lock",
