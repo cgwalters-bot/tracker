@@ -2801,7 +2801,9 @@ fn blocked_fixes_can_explain_themselves_without_a_push_or_extra_write_authority(
     let fix = profile("fix");
     for rule in [
         "leave the working tree unchanged",
+        "Check this run's admitted safe outputs: if `add_comment` is admitted",
         "one `add_comment` safe output with a `body`",
+        "Otherwise put the same explanation in `outcome.json` for the operator without requesting publication",
         "Do not request `push_to_pull_request_branch` or write a replacement series when there is no change to push",
         "Do not invent a patch",
     ] {
@@ -2867,8 +2869,9 @@ fn fix_profile_preserves_independent_review_and_replacement_series_safety() {
         "list the rest as left open",
         "Re-run the checks as above and review again",
         "stop after a pass with no blocker or after three passes",
-        "says in one line how many review passes ran and what the last one left open",
-        "if you cannot start a subagent, it says that no review ran",
+        "In one line, say how many review passes ran and what the last one left open",
+        "that no review ran if you could not start a subagent",
+        "one `add_comment` beside the push if admitted, or in `outcome.json` if not",
     ] {
         assert!(fix.contains(rule), "{rule}");
     }
