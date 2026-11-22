@@ -97,6 +97,20 @@ midstream fork, by `midstream.toml` and `midstream-fix.toml` instead.
 dispatch.toml and midstream.toml admit the organization's repositories
 by their live metadata; the fix bounds still name theirs.
 
+For an implement run using `dispatch.toml`, `-f base=dispatch/…` can select an
+existing branch in the target repository. Leave it out to start from `main`.
+Other dispatch kinds do not accept the override, and midstream and secondary
+bounds still limit the base to `main`.
+
+This does not enable same-repository PR heads. The wrapper with actions#309
+still uses agentic-job v0.6.16, which rejects the new in-repo setting. Once the
+wrapper pins a release containing [agentic-job#4509](https://github.com/cgwalters-forge/agentic-job/pull/4509),
+set `own-branch-repos = ["cgwalters-forge/*"]` and `in-repo-pull-requests = true`
+under `[github.outputs]` in `.github/agentic-job/dispatch.toml`. Before opting
+in, verify the bot's upstream write access is scoped by a ruleset to
+`dispatch/**` and that the admitted repositories trust their CI to run bot
+branch commits. Repositories with a `.github` exemption still use fork heads.
+
 For a staged implement issue, add `-f issue_repo=cgwalters-forge/tracker`:
 `N` then names the issue there, while `repo` remains the checkout and PR
 target. Empty or omitted `issue_repo` keeps the same-repository behavior.

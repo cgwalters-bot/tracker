@@ -1106,7 +1106,7 @@ test-review-caller:
     assert.deepEqual(withBlock.trim().split('\n').map(line => line.trim().split(':')[0]), ['kind', 'repo', 'item', 'head', 'pool', 'task']);
     for (const key of ['repo', 'item', 'head', 'pool']) assert.ok(withBlock.includes(`${key}: ${expression(`inputs.${key}`)}`));
     assert.doesNotMatch(review.replace(/^ *#.*$/gm, ''), /secrets:|inherit|SAFE_OUTPUTS_PAT|INFERENCE_API_KEY|AGENT_MODEL|pools\.json|needs\.profile/);
-    assert.match(job('run'), /cgwalters-agentic-job.yml@c8cd562edc4c342b888a5a9344f87a584d5bb614/);
+    assert.match(job('run'), /cgwalters-agentic-job.yml@a2fac2ea949255e1e901b8225d566a44f28c1e94/);
     assert.match(job('run'), /SAFE_OUTPUTS_PAT: \$\{\{ secrets.CGWALTERS_BOT_PAT \}\}/);
     assert.match(dispatch, /      head:\n[^]*?        type: string\n        default: ''/);
     const gateJob = job('review-gate');

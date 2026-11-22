@@ -1486,7 +1486,7 @@ fn dispatch_forwards_optional_issue_repository_without_redirecting_work() {
     // Keep this dispatch-only pin separate from the review release train's
     // literal wrapper references, which it scans and rewrites in this file.
     let wrapper = "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml";
-    assert!(has_line(run, &format!("    uses: {wrapper}@c8cd562edc4c342b888a5a9344f87a584d5bb614")));
+    assert!(has_line(run, &format!("    uses: {wrapper}@a2fac2ea949255e1e901b8225d566a44f28c1e94")));
     for line in [
         "      repo: ${{ inputs.repo }}",
         "      item: ${{ inputs.item }}",
@@ -1511,15 +1511,34 @@ fn dispatch_forwards_optional_issue_repository_without_redirecting_work() {
 }
 
 #[test]
-fn agentic_job_policy_checks_plain_and_staged_issue_repositories() {
+fn dispatch_forwards_optional_base_and_review_refuses_it() {
+    let workflow = dispatch();
+    let input = workflow.split_once("      base:\n").unwrap().1.split_once("      head:\n").unwrap().0;
+    assert!(input.contains("        type: string\n        default: ''\n"));
+    let run = workflow.split_once("\n  run:\n").unwrap().1.split_once("\n  # Threat:").unwrap().0;
+    assert!(has_line(run, "      base: ${{ inputs.base }}"));
+    let gate = workflow.split_once("\n  review-gate:\n").unwrap().1.split_once("\n  review:\n").unwrap().0;
+    assert!(has_line(gate, "          HAS_BASE: ${{ inputs.base != '' }}"));
+    let script = step_script("Validate dormant review route");
+    let head = "a".repeat(40);
+    let check = |has_base| run_step(&script, &[
+        ("ACTIVATION", "enabled"), ("HEAD", &head), ("CONFIG", "hosted"),
+        ("EFFORT", ""), ("ISSUE_REPO", ""), ("HAS_BASE", has_base),
+    ]);
+    assert!(check("false").is_ok());
+    assert!(check("true").unwrap_err().contains("base requires kind implement"));
+}
+
+#[test]
+fn agentic_job_policy_checks_dispatch_bases_and_issue_repositories() {
     if !agentic_job_installed() {
         return;
     }
-    let compile = |source: &str| {
+    let compile = |base: &str, source: &str| {
         let bounds = path_of("dispatch.toml");
         let mut args = vec![
             "policy", "--allow", &bounds, "--repo", "cgwalters-forge/agent-board",
-            "--clone-url", "https://github.com/cgwalters-forge/agent-board", "--base", "main",
+            "--clone-url", "https://github.com/cgwalters-forge/agent-board", "--base", base,
             "--kind", "branch", "--outputs", "create_pull_request,noop,missing_tool,missing_data",
             "--max-outputs", "3", "--output-repo", "cgwalters-forge/agent-board",
         ];
@@ -1528,19 +1547,25 @@ fn agentic_job_policy_checks_plain_and_staged_issue_repositories() {
         }
         agentic_job(&args)
     };
-    for source in ["", "cgwalters-forge/tracker"] {
-        let result = compile(source);
-        assert!(result.status.success(), "{source}: {}", String::from_utf8_lossy(&result.stderr));
+    for (base, source) in [("main", ""), ("main", "cgwalters-forge/tracker"), ("dispatch/test", "")] {
+        let result = compile(base, source);
+        assert!(result.status.success(), "{base} {source}: {}", String::from_utf8_lossy(&result.stderr));
         let policy: Value = serde_json::from_slice(&result.stdout).unwrap();
         assert_eq!(policy["repo"], "cgwalters-forge/agent-board");
         assert_eq!(policy["clone_url"], "https://github.com/cgwalters-forge/agent-board");
-        assert_eq!(policy["base"], "main");
+        assert_eq!(policy["base"], base);
         assert_eq!(policy["safe_outputs"]["create_pull_request"]["ready_when_complete"], true);
     }
+    let result = compile("release", "");
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(!result.status.success(), "release must not be admitted");
+    assert!(result.stdout.is_empty(), "refusal releases no policy");
+    assert!(stderr.contains("base \"release\" is not within the bounds"), "{stderr}");
+
     // Neither another owner nor an unlisted repository in our owner gains
     // issue/reporting authority merely by being named in a dispatch input.
     for source in ["other/tracker", "cgwalters-forge/not-admitted", "cgwalters-forge/tracker/extra"] {
-        let result = compile(source);
+        let result = compile("main", source);
         assert!(!result.status.success(), "{source}");
         assert!(result.stdout.is_empty(), "refusal releases no policy");
     }
@@ -1752,11 +1777,12 @@ fn misctool_is_a_dispatch_and_fix_target_with_matching_workflow_edit_bounds() {
 #[test]
 fn secondary_bounds_are_independent_and_preserve_primary_scope() {
     let mut expected = toml_file("dispatch.toml");
+    expected.insert("bases".into(), toml::Value::Array(vec!["main".into()]));
     expected.get_mut("unprotected_files").unwrap()["repos"].as_array_mut().unwrap().retain(|r| r.as_str() != Some("cgwalters-forge/misctool"));
     expected.get_mut("github").unwrap()["outputs"]["create_pull_request"].as_table_mut().unwrap().remove("ready_when_complete");
     let mut actual = toml_file("implement-secondary.toml");
     let secondary = actual.get_mut("github").unwrap().as_table_mut().unwrap().remove("secondary_pull_request").unwrap();
-    assert_eq!(actual, expected, "only draft readiness and misctool exclusion differ from primary bounds");
+    assert_eq!(actual, expected, "only base scope, draft readiness and misctool exclusion differ from primary bounds");
     assert_eq!(secondary, toml::from_str::<toml::Table>(r#"
 repo = "cgwalters-forge/misctool"
 base = "main"
@@ -2478,9 +2504,9 @@ fn agentic_job_checks_recovery_obsolete_and_replan_outcomes() {
 }
 
 // Midstream forks (the `bot-midstream` topic) take dispatch.toml's and
-// fix.toml's bounds without `ready_when_complete`, so their pull requests
-// stay drafts (#336); dispatch.yml picks them by kind and by the target's
-// live metadata, against midstream.toml's rule.
+// fix.toml's bounds without stacking or `ready_when_complete`, so their pull
+// requests stay drafts (#336); dispatch.yml picks them by kind and by the
+// target's live metadata, against midstream.toml's rule.
 #[test]
 fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_picks_them() {
     let uncommented = |text: &str| drop_lines(text, |l| l.starts_with('#'));
@@ -2514,7 +2540,8 @@ fn the_midstream_bounds_are_the_others_without_ready_when_complete_and_dispatch_
         assert!(!text.contains("ready_when_complete"), "{midstream}");
         assert!(text.contains("own-branch-repos = [\"cgwalters-forge/*\"]"), "{midstream}");
         assert!(!read(base).contains("own-branch-repos"), "{base} must not inherit midstream CI trust");
-        assert_eq!((head(midstream), entries(midstream)), (head(base), entries(base)), "{midstream}");
+        let expected_head = head(base).replace("bases = [\"main\", \"dispatch/**\"]", "bases = [\"main\"]");
+        assert_eq!((head(midstream), entries(midstream)), (expected_head, entries(base)), "{midstream}");
         // Disjoint, or dispatch.yml's choice would decide which bounds hold.
         for repo in REPOS {
             assert!(!(admits(midstream, repo) && admits(base, repo)), "{} in {midstream} and {base}", repo.name);
@@ -3005,7 +3032,7 @@ fn workflows_follow_our_own_repositories_at_main_dispatch_and_review_excepted_an
             let dispatch_wrapper = file == "dispatch.yml"
                 && uses.split_once('@')
                     .is_some_and(|(path, pin)| path == "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml"
-                        && matches!(pin, "ba6c56925e63551fd4373fbeb23456a2f4a316da" | "c8cd562edc4c342b888a5a9344f87a584d5bb614"));
+                        && matches!(pin, "ba6c56925e63551fd4373fbeb23456a2f4a316da" | "a2fac2ea949255e1e901b8225d566a44f28c1e94"));
             // These callers compose the harness directly: policy/check/apply and the
             // actions must run at one immutable source revision. Its workflow
             // test checks that all six pins agree.
