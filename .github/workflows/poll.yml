@@ -13,7 +13,7 @@ run-name: pass${{ inputs.apply && ' (apply)' || '' }}
 # chain owner. A lost chain can restart from the scheduled pin workflow or a
 # manual dispatch. Its disposable response cache comes from a validated
 # applying predecessor; bootstrap runs discover one.
-# Living status stays disabled until replay records have independent durability.
+# Living status stays disabled until replay records have access-controlled durable storage.
 on:
   workflow_dispatch:
     inputs:
@@ -152,7 +152,7 @@ jobs:
             --fix-bounds .github/agentic-job/midstream-fix.toml \
             --max-dispatch 20 --max-writes 60 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
       # Threat: raw state includes private usage/holds comments and status records.
-      # Export only allowed responses and ledger entries in public repositories.
+      # Export only allowed responses in public repositories; never replay records.
       - name: Prepare public pass state
         id: state
         if: >-
@@ -169,9 +169,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: pass-state
-          path: |
-            .state/public/pass.json
-            .state/public/living-status.json
+          path: .state/public/pass.json
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: ignore

@@ -570,11 +570,42 @@ jobs:
           const source = /^pass-state mode:\n((?:    .*\n|\n)+)/m.exec(fs.readFileSync('Justfile', 'utf8'))[1].replace(/^    /gm, '').replace(/^#!.*\n/, '');
           const functions = {};
           new Function('require', 'process', 'exports', source)(require, { argv: ['node', 'recipe', 'test'] }, functions);
-          const { publicStates, validate } = functions;
+           const { publicState, validate } = functions;
           const env = { GITHUB_RUN_ID: '42', GITHUB_REPOSITORY: 'owner/tracker', DEFAULT_BRANCH: 'main' };
           const prior = { id: 41, workflow_id: 123, path: '.github/workflows/poll.yml', head_branch: 'main',
             repository: { full_name: env.GITHUB_REPOSITORY }, head_repository: { full_name: env.GITHUB_REPOSITORY },
             event: 'workflow_dispatch', display_title: 'pass (apply)' };
+          const jobs = { total_count: 2, jobs: [{ name: 'pass', status: 'completed', conclusion: 'success' },
+            { name: 'next', status: 'in_progress' }] };
+          function predecessor(change = {}, jobChange = {}, extra = {}) {
+            const calls = [];
+            const id = validate({ ...env, PREVIOUS_RUN_ID: '41', ...extra }, endpoint => {
+              calls.push(endpoint);
+              assert.ok(calls.length <= 3);
+              if (endpoint.endsWith('/workflows/poll.yml')) return { id: 123 };
+              if (endpoint.endsWith('/jobs?filter=latest&per_page=100')) return { ...jobs, ...jobChange };
+              assert.equal(endpoint, 'repos/owner/tracker/actions/runs/41');
+              return { ...prior, ...change };
+            });
+            return { id, calls };
+          }
+          assert.equal(predecessor().id, '41');
+          assert.equal(predecessor({ event: 'schedule', display_title: 'pass' }).id, '41');
+          assert.equal(predecessor({}, { jobs: [{ ...jobs.jobs[0], conclusion: 'failure' }], total_count: 1 }).id, '41');
+          for (const change of [{ workflow_id: 124 }, { id: 40 }, { path: '.github/workflows/other.yml' },
+            { repository: { full_name: 'other/tracker' } }, { head_repository: { full_name: 'fork/tracker' } },
+            { head_branch: 'feature' }, { event: 'pull_request' }, { event: 'push' }, { display_title: 'pass' }]) {
+            assert.equal(predecessor(change).id, '', JSON.stringify(change));
+          }
+          for (const change of [{ total_count: 101 }, { jobs: [] }, { jobs: null },
+            { jobs: [jobs.jobs[0], jobs.jobs[0]] },
+            ...['in_progress', 'queued'].map(status => ({ total_count: 1, jobs: [{ ...jobs.jobs[0], status }] })),
+            ...['cancelled', 'skipped', null].map(conclusion => ({ total_count: 1, jobs: [{ ...jobs.jobs[0], conclusion }] }))]) {
+            assert.equal(predecessor({}, change).id, '', JSON.stringify(change));
+          }
+          for (const id of ['42', '0', '-1', '../41', '41;exit', '1'.repeat(21)]) {
+            assert.deepEqual(predecessor({}, {}, { PREVIOUS_RUN_ID: id }), { id: '', calls: [] });
+          }
           // Empty input (schedule or manual bootstrap) discovers, then revalidates,
           // exactly the same predecessor that an explicit dispatch would restore.
           for (const event of ['schedule', 'workflow_dispatch']) {
@@ -610,14 +641,8 @@ jobs:
             ...['private', 'unknown', 'mismatch', 'hidden'].map(repo => `https://api.github.com/repos/owner/${repo}/issues`)]) responses[key] = response;
           responses[url('pulls/1/reviews')] = { etag: 'pending-validator', body: [{ state: 'PENDING', body: 'unpublished review' }] };
           responses[url('issues/1/timeline')] = { etag: 'private-cross-reference', body: 'private source issue' };
-          const entry = { id: 30, records: [{ body: 'Plan.\n```agent-board-plan\n{}\n```',
-            url: 'https://github.com/owner/public/issues/1#issuecomment-30', author: { login: 'bot' },
-            editor: null, lastEditedAt: null, createdAt: '2026-11-01T00:00:00Z' }],
-            published: 'fixture-reference', prose: {}, references: { 30: 'fixture-reference' }, pulls: [], minimized: [] };
-          const living = { schema: 'agent-board/status/v1', bot: 'bot', entries: { 'Owner/Public#1': entry,
-            'owner/private#2': { ...entry, prose: { 'Current plan': 'private metadata' } } } };
-          const metadata = endpoint => {
-            if (endpoint.endsWith('/unknown')) throw new Error('API outage');
+           const metadata = endpoint => {
+             if (endpoint.endsWith('/unknown')) throw new Error('API outage');
             return { full_name: endpoint.endsWith('/mismatch') ? 'other/repo' : endpoint.slice(6),
               private: endpoint.endsWith('/private'), visibility: /private|hidden/.test(endpoint) ? 'private' : 'public' };
           };
@@ -626,22 +651,18 @@ jobs:
             lock_refused: { 'owner/private#5': 'fixture' }, maintain: { fixture: 'private metadata' }, future_field: 'private metadata',
             responses, pass_responses: responses, response_scope: 'a'.repeat(64) };
           const calls = [];
-          const exported = publicStates(state, living, endpoint => { calls.push(endpoint); return metadata(endpoint); });
-          assert.deepEqual(exported.living, { ...living, entries: { 'Owner/Public#1': entry } });
-          assert.equal(publicStates({ ...state, response_scope: 'owner/private' }, living, metadata).state.response_scope, undefined);
-          assert.deepEqual(exported.state, { schema: state.schema, interval_seconds: 300, response_scope: 'a'.repeat(64),
+           const exported = publicState(state, endpoint => { calls.push(endpoint); return metadata(endpoint); });
+           assert.equal(publicState({ ...state, response_scope: 'owner/private' }, metadata).response_scope, undefined);
+           assert.deepEqual(exported, { schema: state.schema, interval_seconds: 300, response_scope: 'a'.repeat(64),
             responses: Object.fromEntries(allowed.map(path => [url(path), response])),
             pass_responses: Object.fromEntries(allowed.map(path => [url(path), response])) });
-          assert.equal(calls.length, 5, 'one metadata check per repository across caches and ledger');
+           assert.equal(calls.length, 5, 'one metadata check per repository across both caches');
           assert.doesNotMatch(JSON.stringify(exported), /private metadata|unpublished review|pending-validator|private-cross-reference/);
-          for (const bad of [{ ...living, schema: 'unknown' }, { ...living, entries: [] },
-            { ...living, entries: { 'not-an-issue': entry } }, { ...living, extra: 'private metadata' }]) assert.throws(() => publicStates({}, bad, metadata));
-          assert.equal(publicStates({}, null, metadata).living, null);
           const poll = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
           const config = JSON.parse(fs.readFileSync('.github/pass.json', 'utf8'));
           assert.equal(config.topDown, true); assert.equal(config.state, '.state/pass.json');
-          assert.equal(config.livingStatus, undefined, 'do not adopt living comments without independently durable replay state');
-          assert.notEqual(config.cleanupHistory, true);
+           assert.equal(Object.hasOwn(config, 'livingStatus'), false, 'hosted poll must not enable living status');
+          assert.notEqual(config.cleanupHistory, true, 'cleanupHistory waits for reviewed preview candidates');
           assert.match(poll, /PREVIOUS_RUN_ID: \$\{\{ inputs.previous_run_id \}\}/);
           const restore = poll.split('      - name: Restore pass state\n')[1].split('      - name: One pass\n')[0];
           assert.match(restore, /if: steps.predecessor.outputs.run-id != ''/);
@@ -649,41 +670,42 @@ jobs:
           assert.match(restore, /name: pass-state\n          path: .state/);
           assert.match(restore, /continue-on-error: true/);
           assert.match(restore, /if: steps.restore.outcome == 'failure'\n        run: rm -rf .state/);
+           assert.doesNotMatch(poll, /living-status|pass-state restore/);
+          assert.doesNotMatch(poll.split('      - name: One pass\n')[1].split('        run: |\n')[0], /\n        if:/);
           const publish = poll.split('      - name: Prepare public pass state\n')[1].split('      # GitHub drops')[0];
-          for (const text of ["github.event_name == 'schedule' && vars.PASS_APPLY == 'enabled'",
+          for (const text of ["github.event_name == 'schedule' && vars.PASS_APPLY == 'enabled'", "(steps.pass.outcome == 'success' || steps.pass.outcome == 'failure')",
             "github.event_name == 'workflow_dispatch' && inputs.apply", "steps.state.outcome == 'success'", 'run: just pass-state export']) assert.ok(publish.includes(text));
-          assert.match(publish, /path: \|\n            .state\/public\/pass.json\n            .state\/public\/living-status.json\n          include-hidden-files: true\n          retention-days: 1/);
+          assert.match(publish, /name: pass-state\n          path: .state\/public\/pass.json\n          include-hidden-files: true\n          retention-days: 1\n/);
           assert.doesNotMatch(poll, /actions\/cache@/);
           for (const action of ['download', 'upload']) assert.match(poll, new RegExp(`uses: actions/${action}-artifact@[0-9a-f]{40} # v`));
           const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'pass-state-'));
           const read = path => fs.readFileSync(`${temp}/.state/${path}`, 'utf8');
           const write = (path, value) => fs.writeFileSync(`${temp}/.state/${path}`, typeof value === 'string' ? value : JSON.stringify(value));
-          const run = extra => spawnSync(process.execPath, ['-e', source, 'recipe', 'export'], { cwd: temp, encoding: 'utf8',
-            env: { PATH: `${temp}:${process.env.PATH}`, ...extra } });
+           const run = () => spawnSync(process.execPath, ['-e', source, 'recipe', 'export'], { cwd: temp, encoding: 'utf8',
+             env: { PATH: `${temp}:${process.env.PATH}` } });
           try {
             execFileSync('bash', ['-ec', /Prepare state directory\n        run: (.*)\n/.exec(restore)[1]], { cwd: temp });
-            fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}\nif(process.env.METADATA_FAIL)process.exit(1);const repo=process.argv[3].slice(6);console.log(JSON.stringify({full_name:process.env.MISMATCH?'other/repo':repo,private:repo==='owner/private',visibility:repo==='owner/private'?'private':'public'}));\n`, { mode: 0o755 });
-            for (const cache of [state, null, '{private fixture', ' '.repeat(32 * 1024 * 1024 + 1)]) {
-              fs.rmSync(`${temp}/.state/pass.json`, { force: true });
-              if (cache !== null) write('pass.json', cache);
-              write('living-status.json', living); const before = read('living-status.json');
-              const got = run(); assert.equal(got.status, 0, got.stderr);
-              assert.equal(read('living-status.json'), before, 'original ledger is never the filtered public copy');
-              assert.deepEqual(JSON.parse(read('public/living-status.json')), exported.living);
-              assert.doesNotMatch(got.stdout + got.stderr, /private fixture|private metadata|fixture-reference/);
-            }
-            // Both destructive paths from review, plus invalid/oversized ledger and identity mismatch.
-            const overflow = { responses: Object.fromEntries(Array.from({ length: 101 }, (_, n) => [url('issues').replace('public', `repo${n}`), {}])) };
-            for (const [ledger, cache, extra] of [[living, {}, { METADATA_FAIL: '1' }], [living, overflow, {}],
-              [living, {}, { MISMATCH: '1' }], ['{private ledger fixture', {}, {}], [' '.repeat(4 * 1024 * 1024 + 1), {}, {}]]) {
-              write('living-status.json', ledger); write('pass.json', cache); const before = read('living-status.json');
-              const got = run(extra); assert.equal(got.status, 1); assert.match(got.stderr, /original ledger retained; refusing export/);
-              assert.equal(read('living-status.json'), before, 'failure preserves every original ledger byte');
-              assert.equal(fs.existsSync(`${temp}/.state/public`), false, 'no partial or stale public artifact on failure');
-              assert.doesNotMatch(got.stdout + got.stderr, /private ledger fixture|fixture-reference|private metadata/);
+             fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}\nconsole.log(JSON.stringify((${metadata.toString()})(process.argv[3])));\n`, { mode: 0o755 });
+             const ledger = { schema: 'agent-board/status/v1', bot: 'bot', entries: { 'owner/public#1':
+               { id: 30, records: [{ body: 'private ledger fixture' }], pulls: [] } } };
+             write('living-status.json', ledger);
+             const overflow = { responses: Object.fromEntries(Array.from({ length: 101 }, (_, n) => [url('issues').replace('public', `repo${n}`), {}])) };
+             for (const [cache, status] of [[state, 0], [{}, 0], [null, 0], ['{private cache fixture', 0],
+               [' '.repeat(32 * 1024 * 1024 + 1), 0], [overflow, 1]]) {
+               fs.rmSync(`${temp}/.state/pass.json`, { force: true });
+               if (cache !== null) write('pass.json', cache);
+               const got = run(); assert.equal(got.status, status, got.stderr);
+               assert.equal(read('living-status.json'), JSON.stringify(ledger), 'export never changes replay records');
+               if (cache && typeof cache === 'object' && status === 0) {
+                 assert.deepEqual(fs.readdirSync(`${temp}/.state/public`), ['pass.json']);
+                 assert.deepEqual(JSON.parse(read('public/pass.json')), publicState(cache, metadata));
+               } else {
+                 assert.equal(fs.existsSync(`${temp}/.state/public`), false, 'no partial or stale public artifact');
+               }
+               assert.doesNotMatch(got.stdout + got.stderr, /private (?:cache fixture|ledger fixture|metadata)/);
             }
           } finally { fs.rmSync(temp, { recursive: true, force: true }); }
-          console.log('ok trusted scheduled predecessor discovery, public-only export and non-destructive ledger failures');
+           console.log('ok predecessor provenance, cache-only export and workflow wiring');
       - run: just test
         env:
           AGENT_BOARD: ${{ runner.temp }}/agent-board/bin/agent-board
