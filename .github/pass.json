@@ -25,7 +25,7 @@
   "board": {"owner": "cgwalters-forge", "project": 1},
   "epics": {"focus": "cgwalters-forge/tracker#1671", "repository": "cgwalters-forge/tracker", "inWorkRepositories": true, "maxAppliesPerPass": 3, "heldPlanHours": 24},
   "wip": 20,
-  "openPrCap": 6,
+  "openPrCap": 12,
   "topDown": true,
   "requestShare": 60,
   "reserveOperator": true,
