@@ -32,7 +32,7 @@ permissions: {}
 # a revision reviewed here, never agent-board's moving branch: move it only
 # with a review of what that revision's `pass` does.
 env:
-  AGENT_BOARD_REV: 16648c24a555ef58494f6fe9c87b17e10e1615e4
+  AGENT_BOARD_REV: 244a883bab062d96214523a6237804c52aa33973
   # Minutes from one applying pass's start to the next, for `next` and its
   # recovery alike; a pass makes about 2,000 of the bot's hourly requests.
   # The supervisor's usageStaleMinutes must stay above it, with slack.

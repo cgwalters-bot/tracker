@@ -10,7 +10,7 @@ on:
 permissions: {}
 # The agent-board commit that resolves the pool, reviewed here as poll.yml's.
 env:
-  AGENT_BOARD_REV: 16648c24a555ef58494f6fe9c87b17e10e1615e4
+  AGENT_BOARD_REV: 244a883bab062d96214523a6237804c52aa33973
 concurrency:
   group: retro
   cancel-in-progress: false
