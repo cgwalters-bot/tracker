@@ -4,6 +4,12 @@
 # token performs only the dispatch requests agent-board admits and logs
 # each in the supervisor log issue. The agent and the executor are off until
 # SUPERVISOR is preview or apply; only apply executes requests.
+# SUPERVISOR_HANDBACK=artifact keeps the agent's requests off the issue until
+# admitted. Leave it unset until we have same-run download provenance, ledger
+# continuity across two runs, refusal on missing ledger and ledger persistence
+# after a write failure. For rollback, drain in-flight artifact executors and
+# keep write caps at zero for one day after the last possible artifact write:
+# the comment log cannot account for the ledger's writes.
 name: supervisor
 # Its own crons start it; an applying poll also starts a prompt-less health
 # pass when enabled and no run on the default branch is newer than thirty
@@ -263,6 +269,7 @@ jobs:
       repo: ${{ needs.health.outputs.repo }}
       item: ${{ needs.health.outputs.item }}
       kind: research
+      research-artifact-only: ${{ vars.SUPERVISOR_HANDBACK == 'artifact' }}
       config: .github/agentic-job/supervisor.toml
       agent: ${{ needs.health.outputs.agent }}
       model: ${{ needs.health.outputs.model }}
@@ -302,7 +309,10 @@ jobs:
   # Runs no agent-produced code: it parses the requests as data.
   execute:
     needs: [health, agent]
-    if: ${{ (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') && needs.agent.outputs.result-url != '' }}
+    if: >-
+      (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') &&
+      ((vars.SUPERVISOR_HANDBACK != 'artifact' && needs.agent.outputs.result-url != '') ||
+       (vars.SUPERVISOR_HANDBACK == 'artifact' && needs.agent.outputs.research-status == 'ready'))
     # Health passes run outside supervisor-agent, so keep the executor's cap
     # census and reservation serialized across both groups.
     concurrency:
@@ -314,6 +324,7 @@ jobs:
     permissions:
       contents: read
       issues: read
+      actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -335,7 +346,7 @@ jobs:
       # Preview has no bot token and never calls execute, which always writes
       # its log even for a refused batch. List the proposed comment only.
       - name: Preview requests without applying
-        if: ${{ vars.SUPERVISOR == 'preview' }}
+        if: ${{ vars.SUPERVISOR == 'preview' && vars.SUPERVISOR_HANDBACK != 'artifact' }}
         timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
@@ -345,7 +356,7 @@ jobs:
             --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
             --result-url "$RESULT_URL"
       - name: Perform the validated requests
-        if: ${{ vars.SUPERVISOR == 'apply' }}
+        if: ${{ vars.SUPERVISOR == 'apply' && vars.SUPERVISOR_HANDBACK != 'artifact' }}
         timeout-minutes: 8
         env:
           # PAT: it logs on private cgwalters-forge/operator, writes items in other repositories and posts the org Projects v2 status.
@@ -357,5 +368,147 @@ jobs:
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise execute \
             --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
             --pools .github/agentic-job/pools.json --result-url "$RESULT_URL" \
+             ${PROFILE_COMMIT:+--profile-commit "$PROFILE_COMMIT"} \
+             | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Verify and stage artifact hand-back
+        id: handback
+        if: ${{ vars.SUPERVISOR_HANDBACK == 'artifact' }}
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEEDS_LEDGER: ${{ vars.SUPERVISOR == 'apply' }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          HANDBACK_REPO: ${{ needs.agent.outputs.handback-repository }}
+          HANDBACK_RUN: ${{ needs.agent.outputs.handback-run-id }}
+          HANDBACK_ATTEMPT: ${{ needs.agent.outputs.handback-run-attempt }}
+          PRODUCER: ${{ needs.agent.outputs.handback-agent-job }}
+          REQUESTS_ID: ${{ needs.agent.outputs.safe-outputs-artifact-id }}
+          REQUESTS_DIGEST: ${{ needs.agent.outputs.safe-outputs-artifact-digest }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, io, json, os, re, subprocess, tempfile, zipfile
+          from pathlib import Path
+
+          env = os.environ
+          repo, run, attempt = (env['GITHUB_' + k] for k in ('REPOSITORY', 'RUN_ID', 'RUN_ATTEMPT'))
+          api = f'repos/{repo}/actions'
+          mib = 1024 * 1024
+
+          def require(condition, error):
+              if not condition:
+                  raise SystemExit(error)
+
+          def get(path):
+              return json.loads(subprocess.check_output(['gh', 'api', f'{api}/{path}']))
+
+          def own(info):
+              return (info['path'] == '.github/workflows/supervisor.yml'
+                      and (info['head_repository'] or {}).get('full_name') == repo
+                      and info['head_branch'] == env['DEFAULT_BRANCH']
+                      and info['event'] in ('schedule', 'workflow_dispatch', 'issue_comment'))
+
+          def listed(path, key):
+              page = get(path)
+              require(page['total_count'] == len(page[key]), f'Incomplete {key} listing')
+              return page[key]
+
+          def jobs(run_id, run_attempt):
+              return listed(f'runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100', 'jobs')
+
+          def stage(directory, artifact_id, run_id, digest, member, limit):
+              require(isinstance(digest, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', digest), 'Invalid artifact digest')
+              info = get(f'artifacts/{artifact_id}')
+              require(info['id'] == artifact_id and info['workflow_run']['id'] == run_id
+                      and info['expired'] is False and info['digest'] == digest,
+                      'Artifact metadata does not match the expected run and digest')
+              # Bound attacker-controlled downloads and decompress only the one
+              # expected member, to a fixed destination, never archive paths.
+              with subprocess.Popen(['gh', 'api', f'{api}/artifacts/{artifact_id}/zip'], stdout=subprocess.PIPE) as download:
+                  data = download.stdout.read(4 * mib + 1)
+                  if len(data) > 4 * mib:
+                      download.kill()
+                      raise SystemExit('Artifact archive exceeds 4 MiB')
+                  require(download.wait() == 0, 'Artifact download failed')
+              require('sha256:' + hashlib.sha256(data).hexdigest() == digest, 'Artifact download digest mismatch')
+              with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                  matches = [entry for entry in archive.infolist() if entry.filename == member]
+                  require(len(matches) == 1 and matches[0].file_size <= limit, f'Missing, duplicate or oversized {member}')
+                  (directory / member).write_bytes(archive.read(matches[0]))
+
+          # Partial reruns can report outputs from an earlier producer; bind
+          # both the checked identity and the producer to this latest attempt.
+          require((env['HANDBACK_REPO'], env['HANDBACK_RUN'], env['HANDBACK_ATTEMPT']) == (repo, run, attempt),
+                  'Hand-back identity is not this repository, run and attempt')
+          current = get(f'runs/{run}')
+          require(own(current) and current['id'] == int(run) and current['run_attempt'] == int(attempt)
+                  and current['head_sha'] == env['GITHUB_SHA'] and current['run_number'] == int(env['GITHUB_RUN_NUMBER']),
+                  'Hand-back is not for the latest attempt of this supervisor run')
+          require(any(str(job['id']) == env['PRODUCER'] and job['run_attempt'] == int(attempt)
+                      and job['conclusion'] == 'success' for job in jobs(run, attempt)),
+                  'Hand-back producer is absent from this attempt or did not succeed')
+          require(re.fullmatch(r'[1-9][0-9]*', env['REQUESTS_ID']), 'Invalid hand-back artifact ID')
+          directory = Path(tempfile.mkdtemp(prefix='supervisor-handback-', dir=env['RUNNER_TEMP']))
+          stage(directory, int(env['REQUESTS_ID']), int(run), 'sha256:' + env['REQUESTS_DIGEST'], 'outputs.jsonl', mib)
+
+          with open(env['GITHUB_OUTPUT'], 'a') as out:
+              if env['NEEDS_LEDGER'] == 'true':
+                  # The name is only a discovery key. Do not take a different
+                  # workflow's artifact or fall back from an invalid ledger.
+                  # The locked agent has no artifact upload credential; the
+                  # wrapper's uploads use its own fixed dispatch prefix.
+                  candidates = []
+                  for artifact in listed('artifacts?name=supervisor-executor-ledger&per_page=100', 'artifacts'):
+                      run_id = artifact['workflow_run']['id']
+                      if run_id == int(run):
+                          continue
+                      prior = get(f'runs/{run_id}')
+                      if own(prior) and prior['run_number'] < current['run_number']:
+                          candidates.append((prior['run_number'], run_id, artifact))
+                  require(candidates, 'No prior supervisor executor ledger')
+                  number, run_id, artifact = max(candidates, key=lambda candidate: candidate[0])
+                  require(sum(candidate[0] == number for candidate in candidates) == 1,
+                          'Ambiguous prior supervisor executor ledger')
+                  require(any(job['name'] == 'execute' and any(step['name'] == 'Upload executor ledger'
+                              and step['conclusion'] == 'success' for step in job['steps']) for job in jobs(run_id, 1)),
+                          'Prior run did not upload a ledger from its executor')
+                  stage(directory, artifact['id'], run_id, artifact['digest'], 'ledger.json', 2 * mib)
+                  (directory / 'next').mkdir()
+                  print(f'ledger-run={run_id}', file=out)
+              print(f'directory={directory}', file=out)
+          PY
+      - name: Preview artifact requests without applying
+        if: ${{ vars.SUPERVISOR == 'preview' && vars.SUPERVISOR_HANDBACK == 'artifact' }}
+        timeout-minutes: 2
+        env:
+          REQUESTS_DIR: ${{ steps.handback.outputs.directory }}
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise preview \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --requests "$REQUESTS_DIR/outputs.jsonl"
+      - name: Perform the validated artifact requests
+        id: execute-artifact
+        if: ${{ vars.SUPERVISOR == 'apply' && vars.SUPERVISOR_HANDBACK == 'artifact' }}
+        timeout-minutes: 8
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.CGWALTERS_BOT_PAT }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PROFILE_COMMIT: ${{ needs.health.outputs.profile-commit }}
+          REQUESTS_DIR: ${{ steps.handback.outputs.directory }}
+          LEDGER_RUN: ${{ steps.handback.outputs.ledger-run }}
+        run: |
+          "$RUNNER_TEMP/agent-board/bin/agent-board" supervise execute \
+            --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
+            --pools .github/agentic-job/pools.json --requests "$REQUESTS_DIR/outputs.jsonl" \
+            --ledger "$REQUESTS_DIR/ledger.json" --ledger-run "$LEDGER_RUN" \
+            --ledger-out "$REQUESTS_DIR/next/ledger.json" \
             ${PROFILE_COMMIT:+--profile-commit "$PROFILE_COMMIT"} \
             | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Upload executor ledger
+        if: ${{ !cancelled() && (steps.execute-artifact.outcome == 'success' || steps.execute-artifact.outcome == 'failure') }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: supervisor-executor-ledger
+          path: ${{ steps.handback.outputs.directory }}/next/ledger.json
+          retention-days: 2
+          if-no-files-found: error

@@ -1035,6 +1035,18 @@ deployment sets the repository variables `OPERATOR` and
 `SUPERVISOR_REQUESTS_ISSUE` to its `operator` and `agent.requests.issue`,
 since that gate runs before checkout; unset, they default to this one's.
 
+Leave `SUPERVISOR_HANDBACK` unset to use the comment path. The optional
+`artifact` value makes research return checked artifact identity instead of
+posting the agent's requests. Both preview and apply read the same-run
+requests artifact; only apply needs a prior trusted executor ledger. Apply
+refuses a missing ledger, including on the first run or after all ledgers
+expire. Before activation, separately review a bootstrap and recovery procedure
+that produces the initial ledger from this workflow's trusted executor, with
+write caps at zero. Do not seed it from agent output. The wrapper does not
+support interactive sessions in artifact mode. The trigger still shows
+comment-log usage as a hint; in artifact mode only the executor's ledger
+accounts for artifact-path writes.
+
 ```sh
 gh workflow run supervisor.yml -R cgwalters-forge/tracker \
   -f prompt="close what triage found done in agent-board"

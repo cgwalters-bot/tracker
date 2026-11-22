@@ -560,6 +560,145 @@ jobs:
             assert.throws(() => wake(enabled, [...checked, [history, apiError]]), apiError);
             assert.throws(() => wake(enabled, [...checked, [history, runs()], [dispatch, apiError]]), apiError);
           });
+      # Also executed by just test-supervisor-workflow, with local mock artifacts.
+      - name: Test supervisor artifact hand-back
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const { execFileSync, spawnSync } = require('node:child_process');
+          const { createHash } = require('node:crypto');
+          const { runInNewContext } = require('node:vm');
+          const workflow = fs.readFileSync('.github/workflows/supervisor.yml', 'utf8');
+          const execute = workflow.split('\n  execute:\n')[1];
+          const gate = /    if: >-\n((?: {6}.*\n)+)/.exec(execute)[1];
+          const input = /research-artifact-only: \$\{\{ (.*?) \}\}/.exec(workflow)[1];
+          const guard = name => new RegExp(`- name: ${name}\n(?: +id: .*\n)? +if: [$][{][{] (.*?) [}][}]`).exec(execute)[1];
+          for (const [handback, status, url, commentPath, artifactPath] of [
+            ['', '', 'comment', true, false], ['', 'ready', '', false, false],
+            ['artifact', 'ready', '', false, true], ['artifact', 'unavailable', 'comment', false, false],
+            ['artifact', '', 'comment', false, false],
+          ]) {
+            for (const mode of ['preview', 'apply']) {
+              const context = { vars: { SUPERVISOR: mode, SUPERVISOR_HANDBACK: handback },
+                needs: { agent: { outputs: { 'result-url': url, 'research-status': status } } } };
+              const evaluate = expression => runInNewContext(expression.replace(/outputs\.([\w-]+)/g, 'outputs["$1"]'), context);
+              assert.equal(evaluate(input), handback === 'artifact');
+              assert.equal(evaluate(gate), commentPath || artifactPath);
+              for (const [name, expected] of [
+                ['Preview requests without applying', commentPath && mode === 'preview'],
+                ['Perform the validated requests', commentPath && mode === 'apply'],
+                ['Verify and stage artifact hand-back', artifactPath],
+                ['Preview artifact requests without applying', artifactPath && mode === 'preview'],
+                ['Perform the validated artifact requests', artifactPath && mode === 'apply'],
+              ]) assert.equal(evaluate(gate) && evaluate(guard(name)), expected, name);
+            }
+          }
+          assert.match(execute, /group: supervisor-execute\n +cancel-in-progress: false/);
+          assert.match(execute, /shell: bash[^]*?--ledger-out "\$REQUESTS_DIR\/next\/ledger\.json"/);
+          assert.match(execute, /name: supervisor-executor-ledger\n +path: .*\/next\/ledger\.json/);
+          const upload = guard('Upload executor ledger').replaceAll('steps.execute-artifact', 'steps["execute-artifact"]');
+          for (const outcome of ['success', 'failure', 'skipped']) {
+            assert.equal(runInNewContext(upload, { cancelled: () => false, steps: { 'execute-artifact': { outcome } } }), outcome !== 'skipped');
+          }
+
+          const script = /python3 - <<'PY'\n([^]*?)          PY/.exec(execute)[1].replace(/^ {10}/gm, '');
+          const temp = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'supervisor-handback-'));
+          const repo = 'owner/tracker', api = `repos/${repo}/actions/`;
+          const makeZip = (name, text) => execFileSync('python3', ['-c',
+            'import sys, zipfile; z = zipfile.ZipFile(sys.stdout.buffer, "w"); z.writestr(sys.argv[1], sys.argv[2]); z.close()', name, text]);
+          const requests = '{"type":"add_comment","body":"request data"}\n';
+          const ledger = JSON.stringify({ schema: 'agent-board/supervisor-ledger/v1', runNumber: 41, blockedUntil: null, entries: [] }) + '\n';
+          const requestsZip = makeZip('outputs.jsonl', requests), ledgerZip = makeZip('ledger.json', ledger);
+          const artifact = (id, run, zip) => ({ id, workflow_run: { id: run }, expired: false, digest: 'sha256:' + createHash('sha256').update(zip).digest('hex') });
+          const original = artifact(90, 42, requestsZip), prior = artifact(89, 41, ledgerZip), older = artifact(88, 40, ledgerZip);
+          const run = (id, n = id, path = '.github/workflows/supervisor.yml') => ({ id, path, head_repository: { full_name: repo },
+            head_branch: 'main', event: 'schedule', head_sha: 'fixture', run_number: n, run_attempt: 1 });
+          const page = (key, entries) => ({ total_count: entries.length, [key]: entries });
+          const currentJobs = 'runs/42/attempts/1/jobs?per_page=100';
+          const ledgerList = 'artifacts?name=supervisor-executor-ledger&per_page=100';
+          const routes = {
+            'runs/42': run(42), 'runs/41': run(41), 'runs/40': run(40), 'runs/39': run(39, 50, '.github/workflows/other.yml'),
+            [currentJobs]: page('jobs', [{ id: 100, run_attempt: 1, conclusion: 'success' }]),
+            'artifacts/90': original, 'artifacts/90/zip': requestsZip.toString('base64'),
+            [ledgerList]: page('artifacts', [older, artifact(87, 39, ledgerZip), prior]),
+            'runs/41/attempts/1/jobs?per_page=100': page('jobs', [{ name: 'execute', conclusion: 'failure', steps: [{ name: 'Upload executor ledger', conclusion: 'success' }] }]),
+            'artifacts/89': prior, 'artifacts/89/zip': ledgerZip.toString('base64'),
+          };
+          try {
+            fs.writeFileSync(`${temp}/gh`, `#!/usr/bin/env node
+          const fs = require('node:fs');
+          const url = process.argv[3];
+          if (process.argv[2] !== 'api' || !url.startsWith(${JSON.stringify(api)})) process.exit(2);
+          const reply = JSON.parse(fs.readFileSync(process.env.FIXTURE))[url.slice(${api.length})];
+          if (reply === undefined) throw new Error('Unexpected request: ' + url);
+          process.stdout.write(typeof reply === 'string' ? Buffer.from(reply, 'base64') : JSON.stringify(reply));
+          `, { mode: 0o700 });
+            const probe = (overrides = {}, mode = 'apply', extraEnv = {}) => {
+              const fixture = `${temp}/fixture.json`, output = `${temp}/output`;
+              fs.writeFileSync(fixture, JSON.stringify({ ...routes, ...overrides }));
+              fs.writeFileSync(output, '');
+              const result = spawnSync('python3', ['-c', script], { encoding: 'utf8', env: {
+                PATH: `${temp}:${process.env.PATH}`, FIXTURE: fixture, RUNNER_TEMP: temp, GITHUB_OUTPUT: output,
+                GITHUB_REPOSITORY: repo, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1', GITHUB_SHA: 'fixture',
+                GITHUB_RUN_NUMBER: '42', DEFAULT_BRANCH: 'main', NEEDS_LEDGER: String(mode === 'apply'), HANDBACK_REPO: repo, HANDBACK_RUN: '42',
+                HANDBACK_ATTEMPT: '1', PRODUCER: '100', REQUESTS_ID: '90', REQUESTS_DIGEST: original.digest.slice(7), ...extraEnv,
+              } });
+              return { ...result, outputs: Object.fromEntries(fs.readFileSync(output, 'utf8').trim().split('\n').filter(Boolean).map(line => line.split('='))) };
+            };
+            const ready = probe();
+            assert.equal(ready.status, 0, ready.stderr);
+            assert.equal(ready.outputs['ledger-run'], '41');
+            assert.equal(fs.readFileSync(`${ready.outputs.directory}/outputs.jsonl`, 'utf8'), requests);
+            assert.equal(fs.readFileSync(`${ready.outputs.directory}/ledger.json`, 'utf8'), ledger);
+            assert.ok(fs.statSync(`${ready.outputs.directory}/next`).isDirectory());
+
+            // The real shell pipeline must surface a failure even when the
+            // executor already wrote the ledger and tee succeeds.
+            const perform = /id: execute-artifact\n[^]*?run: \|\n((?: {10}.*\n)+)/.exec(execute)[1].replace(/^ {10}/gm, '');
+            fs.mkdirSync(`${temp}/agent-board/bin`, { recursive: true });
+            fs.writeFileSync(`${temp}/agent-board/bin/agent-board`, `#!/usr/bin/env node
+          const assert = require('node:assert/strict');
+          const args = process.argv.slice(2);
+          const value = key => args[args.indexOf(key) + 1];
+          assert.deepEqual(args.slice(0, 2), ['supervise', 'execute']);
+          assert.equal(value('--requests'), process.env.REQUESTS_DIR + '/outputs.jsonl');
+          assert.equal(value('--ledger'), process.env.REQUESTS_DIR + '/ledger.json');
+          assert.equal(value('--ledger-run'), '41');
+          require('node:fs').writeFileSync(value('--ledger-out'), 'reserved');
+          process.exit(7);
+          `, { mode: 0o700 });
+            const failedWrite = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', perform], { encoding: 'utf8', env: {
+              PATH: process.env.PATH, RUNNER_TEMP: temp, REQUESTS_DIR: ready.outputs.directory, LEDGER_RUN: ready.outputs['ledger-run'],
+              GITHUB_STEP_SUMMARY: `${temp}/summary`,
+            } });
+            assert.equal(failedWrite.status, 7, failedWrite.stderr);
+            assert.equal(fs.readFileSync(`${ready.outputs.directory}/next/ledger.json`, 'utf8'), 'reserved');
+
+            const preview = probe({ [ledgerList]: undefined }, 'preview');
+            assert.equal(preview.status, 0, preview.stderr);
+            assert.equal(preview.outputs['ledger-run'], undefined);
+            assert.notEqual(preview.outputs.directory, ready.outputs.directory);
+            for (const [changes, error, extra] of [
+              [{ 'runs/42': { ...run(42), run_attempt: 2 }, 'runs/42/attempts/2/jobs?per_page=100':
+                page('jobs', [{ id: 99, run_attempt: 2, conclusion: 'success' }]) }, /producer is absent/, { GITHUB_RUN_ATTEMPT: '2', HANDBACK_ATTEMPT: '2' }],
+              [{ 'runs/42': { ...run(42), run_attempt: 2 } }, /not for the latest attempt/],
+              [{}, /not this repository, run and attempt/, { HANDBACK_ATTEMPT: '2' }],
+              [{ 'artifacts/90': artifact(90, 41, requestsZip) }, /metadata does not match/],
+              [{ 'artifacts/90': artifact(90, 42, ledgerZip) }, /metadata does not match/],
+              [{ 'artifacts/90/zip': ledgerZip.toString('base64') }, /download digest mismatch/],
+              [{ [ledgerList]: page('artifacts', []) }, /No prior supervisor executor ledger/],
+              [{ 'artifacts/89': { ...prior, expired: true } }, /metadata does not match/],
+            ]) {
+              const result = probe(changes, 'apply', extra);
+              assert.notEqual(result.status, 0);
+              assert.match(result.stderr, error);
+              assert.deepEqual(result.outputs, {});
+            }
+          } finally {
+            fs.rmSync(temp, { recursive: true, force: true });
+          }
+          console.log('ok supervisor workflow routing, same-run artifact verification and ledger continuity');
       # Also executed by just test-pass-state; keep script growth out of Justfile.
       - name: Test pass state export
         shell: node {0}
