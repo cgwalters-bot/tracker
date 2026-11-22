@@ -218,7 +218,8 @@ fn midstream_sync_only_fast_forwards_and_reports_every_refusal() {
     assert!(workflow.contains("vars.MIDSTREAM_SYNC == 'enabled' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)"));
     assert!(workflow.contains("permissions: {}"));
     assert!(workflow.contains("cancel-in-progress: false"));
-    assert!(workflow.contains("timeout-minutes: 10"));
+    assert!(workflow.contains("timeout-minutes: 15"));
+    assert!(workflow.contains("MIDSTREAM_CI: ${{ vars.MIDSTREAM_CI }}"));
     assert!(workflow.contains("environment: agent-apply"));
     let script = workflow.split_once("        run: |\n").unwrap().1.lines()
         .map(|line| line.strip_prefix("          ").unwrap_or(line))
@@ -228,20 +229,42 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const script = require('node:fs').readFileSync(0, 'utf8');
 const old = 'a'.repeat(40), target = 'b'.repeat(40);
-function run(mode) {
-  let writes = [], calls = 0, summary = '', state = old;
-  const process = { env: { GITHUB_STEP_SUMMARY: 'summary' }, exitCode: 0 };
-  const names = mode === 'multiple' ? ['blocked', 'ok'] : ['ok'];
+ const workflows = [
+   { path: '.github/workflows/tests.yml', state: 'disabled_manually' },
+   { path: '.github/workflows/release.yml', state: 'active' },
+   { path: '.github/workflows/gone.yml', state: 'deleted' },
+   { path: 'dynamic/github-code-scanning/codeql', state: 'active' },
+ ];
+ function run(mode) {
+   let writes = [], reads = [], calls = 0, summary = '', log = '', now = 0;
+   const refs = new Map();
+   const process = { env: { GITHUB_STEP_SUMMARY: 'summary', MIDSTREAM_CI: mode.startsWith('ci') ? 'enabled' : undefined }, exitCode: 0 };
+   const names = mode === 'multiple' ? ['blocked', 'ok'] : mode === 'ci-budget' ? ['ok', 'later'] : ['ok'];
   const rows = names.map(name => ({ full_name: `cgwalters-forge/${name}`, topics: ['bot-midstream'] }));
   rows.push({ full_name: 'cgwalters-forge/not-midstream', topics: [] });
   rows.push({ full_name: 'cgwalters-forge/not-fork', topics: ['bot-midstream'] });
-  const api = (command, args, options) => {
-    calls++;
-    assert.equal(command, 'gh');
-    assert.deepEqual(Array.from(args.slice(0, 3)), ['api', '--hostname', 'github.com']);
-    assert.ok(options.timeout > 0 && options.timeout <= 20000);
-    assert.equal(options.maxBuffer, 8 * 1024 * 1024);
-    const path = args[3];
+   const api = (command, args, options) => {
+     calls++;
+     assert.ok(options.timeout > 0 && options.timeout <= 20000);
+     assert.equal(options.maxBuffer, 8 * 1024 * 1024);
+     if (command === 'curl') {
+       const url = args[4];
+       assert.match(url, /^https:\/\/api\.github\.com\/repos\/cgwalters-forge\/[^/]+\/actions\/workflows\?per_page=100$/);
+       assert.deepEqual(Array.from(args), ['--disable', '--fail', '--silent', '--show-error', url]);
+       reads.push(url);
+       if (mode === 'ci-list-fail') throw Error('HTTP 404');
+       if (mode === 'ci-budget') now += 360000;
+       const rows = mode === 'ci-output' ? Array(100).fill({ path: 'a'.repeat(6000), state: 'active' }) : workflows;
+       return JSON.stringify({ total_count: mode === 'ci-overflow' ? 101 : rows.length, workflows: rows });
+     }
+     assert.equal(command, 'gh');
+     assert.deepEqual(Array.from(args.slice(0, 3)), ['api', '--hostname', 'github.com']);
+     const path = args[3];
+     if (!path.includes('/git/refs/heads/')) {
+       assert.equal(args.length, 4, 'only default-branch ref updates may write');
+       assert.equal(options.input, undefined);
+       reads.push(path);
+     }
     let result;
     if (path.startsWith('orgs/cgwalters-forge/properties/values?')) {
       if (mode === 'census-fail') throw Error('unavailable');
@@ -254,24 +277,30 @@ function run(mode) {
       result = mode === 'fork-overflow' ? Array(101).fill(rows[0]) : rows;
     }
     else if (path === 'repos/upstream/project') result = { default_branch: 'trunk' };
-    else if (path === 'repos/upstream/project/git/ref/heads/trunk') result = { object: { sha: target } };
+     else if (path === 'repos/upstream/project/git/ref/heads/trunk') result = { object: { sha: target } };
     else if (/^repos\/cgwalters-forge\/[^/]+$/.test(path)) {
-      result = { full_name: path.slice(6), fork: true, topics: ['bot-midstream'], custom_properties: { origin: 'fork' },
+       result = { full_name: path.slice(6), fork: true, visibility: 'public', topics: ['bot-midstream'], custom_properties: { origin: 'fork' },
         default_branch: 'forge/main', parent: { full_name: 'upstream/project' } };
       if (mode === 'missing-parent') delete result.parent;
-      if (mode === 'archived') result.archived = true;
-      if (mode === 'changed-metadata') result.custom_properties.origin = 'native';
+       if (mode === 'archived') result.archived = true;
+       if (mode.endsWith('changed-metadata')) result.custom_properties.origin = 'native';
+       if (mode === 'ci-opted-out' && reads.filter(endpoint => endpoint === path).length > 1) result.topics = [];
+       if (reads.filter(endpoint => endpoint === path).length > 1) {
+         if (mode === 'ci-private') result.visibility = 'private';
+         if (mode === 'ci-visibility-missing') delete result.visibility;
+       }
     } else if (path.includes('/git/refs/heads/forge/main')) {
       const body = JSON.parse(options.input);
       assert.deepEqual(body, { sha: target, force: false });
       assert.deepEqual(Array.from(args.slice(4)), ['--method', 'PATCH', '--input', '-']);
       writes.push(path);
-      if (['diverged', 'protected', 'multiple'].includes(mode) && (mode !== 'multiple' || path.includes('/blocked/'))) {
+      if (['diverged', 'ci-diverged', 'protected', 'multiple'].includes(mode) && (mode !== 'multiple' || path.includes('/blocked/'))) {
         const error = Error('refused'); error.stderr = 'HTTP 422'; throw error;
       }
-      state = mode === 'race' ? old : target;
-      result = { object: { sha: state } };
-    } else if (path.includes('/git/ref/heads/forge/main')) result = { object: { sha: mode === 'equal' ? target : state } };
+       const sha = mode === 'race' ? old : target;
+       refs.set(path.replace('/git/refs/', '/git/ref/'), sha);
+       result = { object: { sha } };
+     } else if (path.includes('/git/ref/heads/forge/main')) result = { object: { sha: mode === 'equal' ? target : refs.get(path) ?? old } };
     else throw Error(`unexpected endpoint: ${path}`);
     return JSON.stringify(result);
   };
@@ -279,13 +308,47 @@ function run(mode) {
     if (name === 'node:child_process') return { execFileSync: api };
     if (name === 'node:fs') return { appendFileSync(path, text) { summary += text; } };
     throw Error(name);
-  }, process, console: { log() {} } });
-  return { writes, calls, summary, status: process.exitCode };
-}
+   }, process, console: { log(text) { log += text; } }, Buffer, Date: { now: () => now } });
+   assert.ok(!reads.some(path => path.startsWith('repos/') && path.includes('/actions/')), 'no PAT workflow reads');
+   return { writes, reads, calls, summary, log, status: process.exitCode };
+ }
+ // Report GitHub's state verbatim without reading files or toggling workflows.
+ {
+   const result = run('ci');
+   assert.equal(result.status, 0, result.summary);
+   for (const line of [
+     'ok: fast-forwarded', 'ok workflows (inventory only):',
+     ...workflows.map(({path, state}) => `  ${JSON.stringify(path)}: ${state}\n`),
+   ]) assert.ok(result.summary.includes(line), `${line}\n${result.summary}`);
+   assert.ok(!result.log.includes('.github/workflows/'), result.log);
+ }
+ for (const mode of ['ci-private', 'ci-visibility-missing']) {
+   const result = run(mode);
+   assert.equal(result.status, 0, result.summary);
+   assert.ok(result.summary.includes('skipped: fork visibility is not public'), result.summary);
+   assert.ok(!result.reads.some(path => path.includes('/actions/')), result.reads);
+ }
+ for (const mode of ['ci-list-fail', 'ci-overflow', 'ci-output', 'ci-opted-out']) {
+   const result = run(mode);
+   assert.equal(result.status, 1, mode);
+   assert.ok(result.summary.includes('ok: fast-forwarded') && result.summary.includes('ok: WORKFLOWS NOT INVENTORIED'), result.summary);
+   if (mode === 'ci-opted-out') assert.ok(!result.reads.some(path => path.includes('/actions/')), result.reads);
+   if (mode === 'ci-list-fail') assert.ok(result.summary.includes('public workflow listing failed or timed out'), result.summary);
+ }
+ // A deadline in the inventory cannot prevent the later fork's sync.
+ {
+   const result = run('ci-budget');
+   assert.equal(result.writes.length, 2, result.summary);
+   assert.equal(result.summary.split(` to ${target}\n`).length, 3, result.summary);
+   assert.ok(result.summary.includes('later: WORKFLOWS NOT INVENTORIED — request/deadline budget exhausted'), result.summary);
+ }
+ assert.ok(run('ci-diverged').summary.includes('ok workflows (inventory only):'));
+ assert.ok(!run('ci-changed-metadata').reads.some(path => path.includes('/actions/')));
 for (const mode of ['normal', 'pages', 'equal']) {
   const result = run(mode);
   assert.equal(result.status, 0, result.summary);
-  assert.equal(result.writes.length, mode === 'equal' ? 0 : 1);
+   assert.equal(result.writes.length, mode === 'equal' ? 0 : 1);
+   assert.ok(!result.reads.some(path => path.includes('/actions/')));
   assert.ok(result.summary.includes(target));
 }
 for (const mode of ['diverged', 'protected', 'race', 'missing-parent', 'archived', 'changed-metadata', 'census-fail', 'repos-fail', 'fork-overflow', 'overflow', 'multiple']) {
