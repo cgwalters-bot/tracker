@@ -1262,13 +1262,13 @@ test-poll-bounds:
 # runner tools; fixtures are not live proof of GitHub's job behavior.
 test-poll-next:
     #!/usr/bin/env node
-    const assert = require('node:assert/strict');
+    const assert = require('node:assert/strict'), fs = require('node:fs');
     const { execFileSync } = require('node:child_process');
-    const fs = require('node:fs');
     const path = require('node:path');
     const poll = fs.readFileSync('.github/workflows/poll.yml', 'utf8');
     const interval = /^ {2}PASS_INTERVAL_MINUTES: (45)$/m.exec(poll)?.[1], step = /^ {6}- name: Start the next pass .*\n((?: {8}.*\n)+)/m.exec(poll)?.[1];
     assert.ok(interval && step && poll.includes('group: \u0024{' + "{ inputs.apply && 'pass' || 'pass-preview' }}"), 'the 45-minute interval, the next pass step, and previews kept out of the applying pass group');
+    assert.deepEqual(JSON.parse(fs.readFileSync('.github/pass.json', 'utf8')).requestWindow, { passMinutes: Number(interval), floor: 1 }, 'requestWindow matches the poll cadence, and a floor of 1 holds no pass the share alone would run');
     assert.match(step, /^ {10}RELEASE_TRAIN: \$\{\{ vars\.RELEASE_TRAIN \}\}$/m);
     const script = /^ {8}run: \|\n((?: {10}.*\n)+)/m.exec(step)[1].replace(/^ {10}/gm, '');
     const temp = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'poll-next-'));
