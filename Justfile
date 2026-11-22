@@ -1244,15 +1244,16 @@ test-review-wrapper actions:
     assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim(), 'ba6c56925e63551fd4373fbeb23456a2f4a316da');
     execFileSync('node', ['--test', '.github/workflows/cgwalters-agentic-job.test.mjs'], { cwd, stdio: 'inherit' });
 
-# poll must pass both of the fix bounds files dispatch selects per target.
+# poll must flag both fix bounds files dispatch selects per target, the same as
+# pass.json's fixBounds: its config copy in RUNNER_TEMP cannot resolve those.
 test-poll-bounds:
     #!/usr/bin/env node
-    const assert = require('node:assert/strict');
-    const poll = require('node:fs').readFileSync('.github/workflows/poll.yml', 'utf8');
+    const assert = require('node:assert/strict'), { readFileSync } = require('node:fs');
+    const poll = readFileSync('.github/workflows/poll.yml', 'utf8'), { fixBounds } = JSON.parse(readFileSync('.github/pass.json', 'utf8'));
     const command = /"\$AGENT_BOARD" pass .*\\\n(?: {12}.*\\\n)* {12}.*\n/.exec(poll)?.[0];
     assert.ok(command, 'the agent-board pass command');
-    assert.deepEqual([...command.matchAll(/--fix-bounds (\S+)/g)].map(m => m[1]),
-      ['.github/agentic-job/fix.toml', '.github/agentic-job/midstream-fix.toml']);
+    assert.deepEqual(fixBounds, ['agentic-job/fix.toml', 'agentic-job/midstream-fix.toml'], 'pass.json fixBounds');
+    assert.deepEqual([...command.matchAll(/--fix-bounds (\S+)/g)].map(m => m[1]), fixBounds.map(f => `.github/${f}`));
     console.log('ok poll passes both fix bounds files to agent-board pass');
 
 # poll's `next` step with a stub agent-board that prints its arguments: wakes
@@ -1988,7 +1989,7 @@ test-supervisor-config:
       --supervisor-config .github/supervisor/config.json --pools .github/agentic-job/pools.json --health "$health")
     [[ $out == act=false ]]
 
-# pass.json and the fix bounds poll.yml passes, through the pinned binary's
+# pass.json and its config-relative fixBounds, through the pinned binary's
 # `pass --check-config` (agent-board#756), which reads only the org listing: a
 # setting the pass refuses would otherwise fail every pass after the merge
 # (#1403). It runs on every pull request, so a pin move that tightens the
@@ -1997,8 +1998,7 @@ test-pass-config:
     #!/usr/bin/env bash
     set -euo pipefail
     if [[ -z ${AGENT_BOARD:-} ]]; then echo 'skipped: set AGENT_BOARD to the built binary'; exit 0; fi
-    "$AGENT_BOARD" pass --check-config --config .github/pass.json \
-      --fix-bounds .github/agentic-job/fix.toml --fix-bounds .github/agentic-job/midstream-fix.toml
+    "$AGENT_BOARD" pass --check-config --config .github/pass.json
 
 # Validate against the actor that will consume the config, not a moving head.
 build-supervisor-agent-board:
