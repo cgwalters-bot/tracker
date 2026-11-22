@@ -414,6 +414,39 @@ PR, wrong author, moved head, draft/ref changes, and a push in the same hand-bac
 before pinning the updated wrapper and opting the two fix bounds in. The fix
 profile describes the guarded output, not a fallback API write.
 
+Leave `pr.holdMissingData` unset in the applying pass. The pinned board only
+recognizes the legacy failure annotation from the exact dispatch attempt on an
+unchanged PR head. The current fix caller can report `missing_data` with no
+push as a successful `blocked` run, which that detector misses (#1571).
+
+To preview the legacy detector without changing the checked-in policy, run
+this from the tracker root with the workflow's pinned `agent-board` and a
+read-only GitHub credential:
+
+```sh
+(
+  set -eu
+  preview=$(mktemp -d)
+  trap 'rm -rf "$preview"' EXIT
+  follow=cgwalters-forge/agentic-job
+  jq '.pr.holdMissingData = true' .github/pass.json > "$preview/pass.json"
+  just maintain-shadow-config "$preview/pass.json" "$follow" > "$preview/poll.json"
+  agent-board poll --dry-run --config "$preview/poll.json" \
+    --state "$preview/state.json" --follow "$follow" \
+    --fix-bounds .github/agentic-job/fix.toml \
+    --fix-bounds .github/agentic-job/midstream-fix.toml
+)
+```
+
+If the job or check-run annotations cannot be read completely, the preview
+defers the whole PR without a hold decision, even if it would otherwise take
+an ordinary recovery step. A persistent read error keeps deferring it. Look
+for the PR's error in the log, including `incomplete missing-data jobs`,
+`incomplete missing-data annotations`, or an API error on either endpoint.
+Before interpreting a hosted preview with this option as a policy comparison,
+confirm the shadow job's own token can read the exact attempt's jobs and the
+apply check run's annotations. The scheduled shadow does not opt in.
+
 Apply opens complete work ready for review (`ready_when_complete` in
 `dispatch.toml` and `fix.toml`), except on a midstream fork: a repository
 with the `bot-midstream` topic whose main tracks upstream (#336).
