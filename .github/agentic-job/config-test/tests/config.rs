@@ -2119,18 +2119,31 @@ fn bcvk_and_ostree_are_midstream_targets_that_are_never_merged_into() {
     }
 }
 
+/// The midstream forks whose `.github` edits the profile for KIND admits.
+/// ostree is named for implement only, until tracker#1869 admits it by a
+/// metadata rule (#1876): apply refuses any push to a head outside its own
+/// fork while the bounds exempt `.github`, so fixes to ostree's existing
+/// same-repository pull requests would stop.
+fn midstream_workflow_forks(kind: &str) -> &'static [&'static str] {
+    match kind {
+        "create_pull_request" => &["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/ostree"],
+        "push_to_pull_request_branch" => &["cgwalters-forge/gh-agentic-workflows"],
+        _ => unreachable!("{kind}"),
+    }
+}
+
 #[test]
-fn gh_agentic_workflows_has_the_only_midstream_workflow_exception_and_is_never_merged_into() {
+fn gh_agentic_workflows_shares_the_only_midstream_workflow_exceptions_and_is_never_merged_into() {
     let repo = "cgwalters-forge/gh-agentic-workflows";
     for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
         assert!(admits(name, known(repo)), "{name}");
     }
     assert!(!has_line_starting(&read("comment.toml"), "[unprotected_files]"));
-    for name in ["midstream.toml", "midstream-fix.toml"] {
+    for (name, kind) in [("midstream.toml", "create_pull_request"), ("midstream-fix.toml", "push_to_pull_request_branch")] {
         let table = toml_file(name);
         let exception = table["unprotected_files"].as_table().expect("workflow exception");
         assert_eq!(exception.len(), 2, "{name}: no protected filename exceptions");
-        assert_eq!(strings(&exception["repos"], name), [repo]);
+        assert_eq!(strings(&exception["repos"], name), midstream_workflow_forks(kind));
         assert_eq!(strings(&exception["dot_folders"], name), [".github"]);
     }
     for name in ["dispatch.toml", "fix.toml"] {
@@ -2177,7 +2190,7 @@ fn review_gate_discovers_and_deduplicates_all_implement_and_fix_exceptions() {
 }
 
 #[test]
-fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
+fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_forks() {
     if !agentic_job_installed() {
         return;
     }
@@ -2196,7 +2209,7 @@ fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
             }
             let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).expect("policy JSON");
             let bound = &policy["safe_outputs"][kind];
-            let expected = if repo == "cgwalters-forge/gh-agentic-workflows" { json!([".github"]) } else { Value::Null };
+            let expected = if midstream_workflow_forks(kind).contains(&repo.as_str()) { json!([".github"]) } else { Value::Null };
             assert_eq!(bound["unprotected_dot_folders"], expected, "{repo} {file}: no other fork may edit protected dot folders");
             assert_eq!(bound["protect_top_level_dot_folders"], true, "{repo} {file}");
             assert_eq!(bound["protected_files_policy"], "blocked", "{repo} {file}");
@@ -2215,7 +2228,7 @@ fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
 
 /// Exercise the existing collector and independent patch checker, not a local
 /// approximation of protected-path matching. Only an ordinary source file and
-/// the admitted fork's or a listed first-party repository's workflow may pass.
+/// an admitted fork's or a listed first-party repository's workflow may pass.
 fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str, listed: bool) {
     let dir = temp_path("path-check");
     let out = dir.join("out");
@@ -2239,7 +2252,7 @@ fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str, lis
         let patch = format!("From {} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: {head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test workflow admission\n\n---\ndiff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+test\n", "1".repeat(40));
         std::fs::write(out.join("aw-dispatch-x.patch"), patch).unwrap();
         let result = check();
-        let accepted = path == "src/test.txt" || ((listed || repo == "cgwalters-forge/gh-agentic-workflows") && path == ".github/workflows/test.yml");
+        let accepted = path == "src/test.txt" || ((listed || midstream_workflow_forks(kind).contains(&repo)) && path == ".github/workflows/test.yml");
         assert_eq!(result.status.success(), accepted, "{repo} {kind} {path}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
         if repo == "cgwalters-forge/ostree" && path == "src/test.txt" && kind == "create_pull_request" {
             // The collector accepts the boolean, but check must refuse an

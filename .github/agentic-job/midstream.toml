@@ -33,10 +33,12 @@ noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
 
-# Prevent unreviewed workflow edits from landing: this fork's effective main
+# Prevent unreviewed workflow edits from landing: these forks' effective main
 # rules require an approval and dismiss stale approvals on push (25084478,
-# rechecked 2026-11-05). check-review-gate monitors it. This admission itself
-# must receive tracker's required review before taking effect (#258).
+# rechecked 2026-11-05, ostree's 2026-11-18). check-review-gate monitors
+# them. This admission itself must receive tracker's required review before
+# taking effect (#258). ostree is named for its CI change only until #1869
+# admits it by a metadata rule; midstream-fix.toml says why not for fixes.
 [unprotected_files]
-repos = ["cgwalters-forge/gh-agentic-workflows"]
+repos = ["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/ostree"]
 dot_folders = [".github"]

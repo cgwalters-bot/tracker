@@ -206,9 +206,10 @@ To prevent staged changes from advancing an upstream-tracking fork main,
 and fix bounds: PRs stay draft, and the pass follows them for fix rounds
 but `pr.noMerge` prohibits merging into the fork. It is not an ordinary
 ready-when-complete target. After #1312's target admission, the separately
-reviewed workflow-edit admission permits only this exact repository's
-`.github/` in `midstream.toml` and `midstream-fix.toml`. Protected root
-filenames and all other midstream forks' protected paths remain blocked.
+reviewed workflow-edit admission permits this exact repository's
+`.github/` in `midstream.toml` and `midstream-fix.toml`; ostree's is in
+`midstream.toml` only (below). Protected root filenames and all other
+midstream forks' protected paths remain blocked.
 This tracker PR must receive the existing required review before its
 exception takes effect.
 
@@ -244,20 +245,34 @@ the board schedule, not the legacy follow list. Implement PRs stay drafts
 and fixes cannot mark them ready, so staged work does not advance the
 upstream-tracking default branch through this lane.
 
-Repository admission does not authorize workflow edits. To prevent a run
-from changing privileged CI, ostree remains outside `unprotected_files` in
-both profiles; #1239's current workflow-admission plan excludes it. Before
-dispatching work that needs a workflow change, obtain separate reviewed
-authorization for the exact target and paths, audit privileged triggers and
-secret exposure on the fork, and verify current-head review with stale
-approvals dismissed. Do not route around the patch check.
+Repository admission alone does not authorize workflow edits. The temporary
+`.github/` exception for ostree in `midstream.toml` applies only to new
+implement drafts, pending #1869. Such a patch may rewrite any workflow, not
+just add a job. Protected filenames and `runner-profiles.json` stay refused.
+
+Before pushing, apply disables Actions in the bot-owned head repository and
+reads the setting back. That prevents the branch push from running workflows
+in that repository. It does not stop `pull_request` CI on
+`cgwalters-forge/ostree` from running the edited workflow before merge review.
+Before dispatching, audit the base repository's privileged triggers
+(`pull_request_target`, `workflow_run`) and secret exposure; privileged jobs
+must not execute PR code. Ruleset 25084478 requires approving review to land
+on the fork's `main`, and drafts reach upstream only by promotion.
+
+`midstream-fix.toml` does not exempt ostree: with `.github/` exempted, apply
+refuses any push to a head outside the bot's own fork, including source-only
+fixes to same-repository PRs. Updating the existing
+[ostree#10](https://github.com/cgwalters-forge/ostree/pull/10) with the AL2023
+job remains separate work under #1876. An authorized maintainer should
+review the workflow change and update that PR's head through the normal
+maintainer process, not through a Tracker fix run or a replacement draft.
 
 On 18 November 2026, read-only GitHub API checks confirmed the public fork
 of `ostreedev/ostree` has default branch `main`, topic `bot-midstream` and
 custom property `origin=fork`. The effective branch rules report org ruleset
 25084478 requiring one approval and dismissing stale approvals on push.
 The separate legacy branch-protection endpoint returned HTTP 403. The daily
-`check-review-gate` covers workflow-exempt repositories, not ostree.
+`check-review-gate` covers workflow-exempt repositories, now including ostree.
 
 The original handoff described the fork as issues-disabled; the API now
 reports issues enabled, but no issue for the Debian 32-bit DNS failure was

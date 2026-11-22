@@ -30,6 +30,8 @@ missing_data = { max = 1 }
 
 # The same reviewed, repository-scoped workflow admission as midstream.toml;
 # no protected filenames or other midstream repositories are exempted (#258).
+# Not ostree's (#1876): with `.github` exempted, apply refuses a push to any
+# head outside its own fork, so fixes to ostree's existing pull requests stop.
 [unprotected_files]
 repos = ["cgwalters-forge/gh-agentic-workflows"]
 dot_folders = [".github"]
