@@ -2009,13 +2009,12 @@ build-supervisor-agent-board:
     {{ just_executable() }} build-agent-board "$rev"
 
 # The agent-board.json of maintain-shadow.yml's poll: pass.json's operator,
-# bot and dispatch settings and its whole `pr` policy, following only FOLLOW.
-# The pinned poll takes every `pr` key of the pinned pass at its top level
-# under the same name (agent-board docs/poll.md, Configuration), so each is
-# copied with its value, except the lists where only FOLLOW matters (noMerge
-# holds organization rules), which keep its name alone. A key in neither list
-# fails the run: a key the pass gains must be placed here, never dropped
-# unseen, or the preview would compare a different policy (#1362).
+# bot, dispatch, assignHolds and openPrCap and its whole `pr` policy, following
+# only FOLLOW, each copied as the pinned poll reads them all under the same
+# names (agent-board docs/poll.md, Configuration). Lists where only FOLLOW
+# matters (noMerge holds organization rules) keep its name alone. The pass's
+# `maintainers` handover to the maintainer this previews is never copied, or the
+# shadow would step aside too. A key in no list fails, never dropped (#1362).
 maintain-shadow-config pass follow:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -2025,11 +2024,11 @@ maintain-shadow-config pass follow:
         "headOwners", "operatorPaths", "staleDays", "actionFirst", "agentRecovery", "fixRounds"] as $copied
       | ["reviewDispatchRepositories", "draftReviewRepositories", "noMerge"] as $scoped
       | (.pr // {}) as $pr
-      | ($pr | keys - $copied - $scoped) as $unknown
+      | ($pr | keys - $copied - $scoped - ["maintainers"]) as $unknown
       | if $unknown != [] then
           "maintain-shadow-config: pr key(s) \($unknown | join(", ")) not in its lists; add each the pinned poll reads to the Justfile recipe\n" | halt_error
         else . end
-      | ({operator, bot, dispatchRepo, dispatchWorkflow} | with_entries(select(.value != null))) + {follow: [$follow]}
+      | ({operator, bot, dispatchRepo, dispatchWorkflow, assignHolds, openPrCap} | with_entries(select(.value != null))) + {follow: [$follow]}
       + ($pr | with_entries(select(.key | IN($copied[]))))
       + ($pr | with_entries(select(.key | IN($scoped[]))
           | .value |= map(select(type == "string" and ascii_downcase == ($follow | ascii_downcase)))))' "$1"
@@ -2094,12 +2093,10 @@ test-maintain-shadow:
       fs.rmSync(temp, { recursive: true, force: true });
     }
     console.log('ok poll next wakes the shadow only when enabled and stale; failures warn without breaking the chain');
-    // Each fixture's own `pr` keys set what its config must hold, not the
-    // generator's lists: every key is copied with its value, or, for the two
-    // lists the pinned poll lets name only followed repositories, cut to the
-    // follow entry as the poll compares it, and a key the generator does not
-    // know fails naming it (#1362). The pinned pass has no `pr` key the pinned
-    // poll refuses, so nothing is left out on purpose.
+    // Each fixture's own keys set its config, not the generator's lists:
+    // assignHolds, openPrCap and every `pr` key but `maintainers` are copied
+    // if present, the lists the poll lets name only followed repositories are
+    // cut to the follow entry, and a key the generator does not know fails.
     const follow = 'cgwalters-forge/agentic-job';
     const scoped = ['reviewDispatchRepositories', 'draftReviewRepositories', 'noMerge'];
     const dir = fs.mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'shadow-config-'));
@@ -2124,19 +2121,21 @@ test-maintain-shadow:
         reviewPools: [], reviewDispatchRepositories: [], draftReviewRepositories: [], mergeQueue: {} } },
       full: { ...today, pr: { ...today.pr, foldRounds: true, toilFixPool: 'openai', conflictFixPool: 'claude', ...reviews } },
       unfollowed: { ...base, pr: { reviewWorkflow: 'review.yml', reviewPools: ['claude'], reviewDispatchRepositories: ['cgwalters-forge/agent-board'] } },
-      noPr: base,
+      holds: { ...base, assignHolds: false, openPrCap: 1 }, handedOver: { ...today, pr: { ...today.pr, maintainers: [follow] } }, noPr: base,
     };
     const configs = {};
     for (const [name, pass] of Object.entries(fixtures)) {
       const got = generate(pass);
       assert.equal(got.status, 0, `${name}: ${got.stderr}`);
-      const expected = { operator: pass.operator, bot: pass.bot, dispatchRepo: pass.dispatchRepo,
-        dispatchWorkflow: pass.dispatchWorkflow, follow: [follow] };
-      for (const [key, value] of Object.entries(pass.pr ?? {})) {
+      const { operator, bot, dispatchRepo, dispatchWorkflow, assignHolds, openPrCap } = pass;
+      const expected = { operator, bot, dispatchRepo, dispatchWorkflow, assignHolds, openPrCap, follow: [follow] };
+      for (const [key, value] of Object.entries(pass.pr ?? {}).filter(([key]) => key !== 'maintainers')) {
         expected[key] = scoped.includes(key) ? value.filter((r) => typeof r === 'string' && r.toLowerCase() === follow.toLowerCase()) : value;
       }
-      assert.deepEqual(configs[name] = JSON.parse(got.stdout), expected, name);
+      assert.deepEqual(configs[name] = JSON.parse(got.stdout), JSON.parse(JSON.stringify(expected)), name);
     }
+    assert.deepEqual([typeof configs.today.assignHolds, typeof configs.today.openPrCap, configs.holds.assignHolds], ['boolean', 'number', false]);
+    assert.ok(!('assignHolds' in configs.noPr) && !('openPrCap' in configs.noPr) && !('maintainers' in configs.handedOver));
     assert.deepEqual(configs.scoped.reviewDispatchRepositories, [follow.toUpperCase()]);
     assert.deepEqual(configs.scoped.draftReviewRepositories, [follow]);
     assert.deepEqual(configs.unfollowed.reviewDispatchRepositories, []);
@@ -2154,15 +2153,16 @@ test-maintain-shadow:
       console.log('ok the pinned agent-board poll takes every flag maintain-shadow passes');
       // The pinned poll decodes its config before it needs a token, so with
       // none each generated config either fails decoding, naming the key, or
-      // gets as far as asking for one.
+      // gets as far as asking for one; it, not the generator, bounds the holds.
       const { GH_TOKEN, GITHUB_TOKEN, ...env } = process.env;
-      for (const [name, config] of Object.entries(configs)) {
+      for (const [name, config, expected] of [...Object.entries(configs).map(([name, config]) => [name, config, /authentication required/]),
+        ['capZero', { ...configs.holds, openPrCap: 0 }, /openPrCap must be 1 to/], ['holdsText', { ...configs.holds, assignHolds: 'yes' }, /assignHolds is not a/]]) {
         fs.writeFileSync(`${dir}/${name}.json`, JSON.stringify(config));
         const got = spawnSync(process.env.AGENT_BOARD, ['poll', '--dry-run', '--config', `${dir}/${name}.json`, '--follow', follow],
           { encoding: 'utf8', env });
-        assert.match(got.stderr, /authentication required/, `${name}: ${got.stderr}`);
+        assert.match(got.stderr, expected, `${name}: ${got.stderr}`);
       }
-      console.log('ok the pinned agent-board poll decodes every generated config');
+      console.log('ok the pinned agent-board poll decodes every generated config and refuses out-of-bound holds');
     } else {
       console.log('skipped: set AGENT_BOARD to check the flags and the generated configs against the pinned CLI');
     }

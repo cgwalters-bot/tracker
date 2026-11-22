@@ -1,6 +1,7 @@
 # A shadow of the pass for agentic-job (tracker#1356, step 1): `agent-board
-# poll --dry-run` on agentic-job alone, with pass.json's operator, bot and
-# whole `pr` policy, cut to agentic-job (`just maintain-shadow-config`). It takes
+# poll --dry-run` on agentic-job alone, with pass.json's operator, bot, dispatch,
+# assignHolds and openPrCap settings and its `pr` policy except the `maintainers`
+# handover, cut to agentic-job (`just maintain-shadow-config`). It takes
 # no step and writes only its job summary, to be compared with what the pass
 # (poll.yml) actually did there. With repository variable MAINTAIN_SHADOW
 # `enabled`, poll.yml's `next` starts it when its newest default-branch run
