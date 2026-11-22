@@ -42,8 +42,7 @@
       "repository": "cgwalters-forge/agent-board",
       "fork": "cgwalters-bot/agent-board",
       "files": [
-        ".github/workflows/review.yml",
-        ".github/agentic-job/test_review.py"
+        ".github/workflows/review.yml"
       ]
     }
   ]
