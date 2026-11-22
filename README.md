@@ -632,6 +632,25 @@ acceptance blocker. Roll back by unsetting `MISCTOOL_SECONDARY`; cancel or
 inspect outstanding runs separately, and inspect a pushed orphan branch
 before retrying a failed publication.
 
+### Endpoint-redacted replay (offline only)
+
+A run's hand-back replaces the inference endpoint with `<inference-address>`,
+so a patch that deletes or keeps base lines containing it does not apply
+([#1638](https://github.com/cgwalters-forge/tracker/issues/1638)). agentic-job
+v0.6.16, which dispatch.yml's wrapper pins, can recover those old-side bytes
+([endpoint-redacted patch replay](https://github.com/cgwalters-forge/agentic-job/blob/2b937aaac81da06d8bff5f317e58df6ad7063e1e/docs/safe-outputs.md#endpoint-redacted-patch-replay)).
+
+With the pinned binary on `PATH`, `just test-config` exercises capture,
+check and `replay-trial` using a local clone, a synthetic `.test` endpoint
+and temporary replay-enabled policy and runner configurations. The test
+checks the reconstructed tree against the original change and checks
+that ordinary patches and the deployed configuration do not replay.
+
+Hosted dispatch still uses gh-aw. The pinned native publisher rejects bot
+actors and labeled pull requests, even for ordinary patches that pass
+check. A future rollout needs a publisher that preserves those cases and
+a stage-scoped end-to-end publication canary for bot and human dispatches.
+
 ### Midstream default-branch sync
 
 `midstream-sync.yml` runs hourly and on manual dispatch, only when the repository

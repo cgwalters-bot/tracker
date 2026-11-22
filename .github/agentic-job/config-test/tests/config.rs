@@ -1929,6 +1929,135 @@ fn check_secondary_batch(policy: &Value) {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+/// A synthetic endpoint-redacted deletion through the trusted capture, check
+/// and apply's replay trial, with test-only opt-ins against a local repository:
+/// no forge, inference or credentials. The address is a reserved test name,
+/// never a deployment's.
+#[test]
+fn agentic_job_replays_a_redacted_endpoint_deletion_and_leaves_ordinary_patches_alone() {
+    if !agentic_job_installed() {
+        return;
+    }
+    const ADDRESS: &str = "inference.example.test:8443";
+    const PLACEHOLDER: &str = "<inference-address>";
+    const PATCH: &str = "aw-agent-run-7.patch";
+    // A literal in dispatch.toml; matching it needs no organization metadata.
+    const TARGET: &str = "cgwalters-forge-stage/board-test";
+    let dir = temp_path("replay");
+    let repo = dir.join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let write_toml = |name: &str, table: &toml::Table| {
+        let path = dir.join(name);
+        std::fs::write(&path, toml::to_string(table).unwrap()).unwrap();
+        path.to_string_lossy().into_owned()
+    };
+    let mut bounds = toml_file("dispatch.toml");
+    bounds.insert("native_handlers".into(), toml::Value::Array(vec!["create_pull_request".into()]));
+    let replay_bounds = write_toml("replay-bounds.toml", &bounds);
+    let mut runner = toml_file("hosted.toml");
+    runner["commit"].as_table_mut().unwrap().insert("replay-redacted-endpoints".into(), true.into());
+    let replay_runner = write_toml("replay-runner.toml", &runner);
+    let git = |args: &[&str]| {
+        let out = Command::new("git").arg("-C").arg(&repo)
+            .args(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "-c", "core.hooksPath=/dev/null"])
+            .args(args).env("GIT_CONFIG_NOSYSTEM", "1").env("GIT_CONFIG_GLOBAL", "/dev/null").output().unwrap();
+        assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        String::from_utf8(out.stdout).unwrap().trim().to_owned()
+    };
+    git(&["init", "-q", "-b", "main"]);
+    std::fs::write(repo.join("endpoint.txt"), format!("before\nurl={ADDRESS}\nafter\n")).unwrap();
+    std::fs::write(repo.join("README.md"), "hello\n").unwrap();
+    git(&["add", "."]);
+    git(&["commit", "-qm", "Base"]);
+    let base = git(&["rev-parse", "HEAD"]);
+    // The change as the producer made it, then as its hand-back carries it.
+    let change = |edit: &dyn Fn()| {
+        edit();
+        git(&["add", "-A"]);
+        git(&["commit", "-qm", "Change"]);
+        let tree = git(&["rev-parse", "HEAD^{tree}"]);
+        let raw = git(&["format-patch", "--stdout", "--no-renames", "-1"]) + "\n";
+        git(&["reset", "-q", "--hard", &base]);
+        let (first, rest) = raw.split_once('\n').unwrap();
+        (format!("{first}\nX-GH-AW-Base-Commit: {base}\n{rest}").replace(ADDRESS, PLACEHOLDER), tree)
+    };
+    let deletion = change(&|| std::fs::remove_file(repo.join("endpoint.txt")).unwrap());
+    let ordinary = change(&|| std::fs::write(repo.join("README.md"), "hello\nworld\n").unwrap());
+    assert!(deletion.0.contains(&format!("-url={PLACEHOLDER}")) && !ordinary.0.contains(PLACEHOLDER));
+    let clone_url = format!("file://{}", repo.display());
+    let run = |args: &[&str]| {
+        let out = agentic_job(args);
+        let logs = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+        assert!(!logs.contains(ADDRESS), "agentic-job {args:?} logged the endpoint: {logs}");
+        (out.status.success(), logs)
+    };
+    let ordinary_bounds = path_of("dispatch.toml");
+    let ordinary_runner = path_of("hosted.toml");
+    for (case, (bounds, runner, (patch, tree), replays)) in [
+        (&replay_bounds, &replay_runner, &deletion, true),
+        (&replay_bounds, &replay_runner, &ordinary, false),
+        (&ordinary_bounds, &ordinary_runner, &ordinary, false),
+        // The current route neither replays nor repairs: apply's plain trial
+        // of the placeholder would fail as before.
+        (&ordinary_bounds, &ordinary_runner, &deletion, false),
+    ].into_iter().enumerate() {
+        let work = dir.join(format!("case-{case}"));
+        let (out, checked) = (work.join("out"), work.join("checked"));
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::create_dir_all(&checked).unwrap();
+        let path = |name: &str| work.join(name).to_string_lossy().into_owned();
+        let policy = agentic_job_ok(&["policy", "--allow", bounds, "--repo", TARGET,
+            "--clone-url", &format!("https://github.com/{TARGET}"), "--kind", "branch",
+            "--outputs", "create_pull_request,noop,missing_tool,missing_data", "--max-outputs", "3",
+            "--base", "main", "--output-repo", TARGET]);
+        let mut policy: Value = serde_json::from_str(&policy).unwrap();
+        assert_eq!(policy["native_handlers"] == json!(["create_pull_request"]), bounds == &replay_bounds, "{bounds}");
+        assert_eq!(policy["safe_outputs"]["create_pull_request"]["ready_when_complete"], true, "{bounds}");
+        // Only the fetch moves to the local fixture, as agentic-job's own tests do.
+        policy["clone_url"] = json!(clone_url);
+        std::fs::write(path("policy.json"), policy.to_string()).unwrap();
+        let config = agentic_job_ok(&["config", "--from", runner, "--repo", TARGET,
+            "--string", "agent.name=fake", "--integer", "limits.timeout-minutes=75", "--boolean", "limits.uncapped=true",
+            "--string", &format!("inference.url=https://{ADDRESS}/v1"), "--string", "inference.register=github-oidc",
+            "--string", "inference.audience=test"]);
+        std::fs::write(path("config.toml"), config).unwrap();
+        assert!(run(&["capture-base-secrets", "--config", &path("config.toml"), "--policy", &path("policy.json"),
+            "--run-id", "7", "--output", &path("public-base.json")]).0);
+        std::fs::write(out.join(PATCH), patch).unwrap();
+        std::fs::write(out.join("base.json"), json!({"repo": TARGET, "ref": "main", "commit": base}).to_string()).unwrap();
+        std::fs::write(out.join("outputs.jsonl"), json!({"type": "create_pull_request", "title": "Change", "body": "Test.", "branch": "agent-run-7"}).to_string() + "\n").unwrap();
+        let outputs = out.to_string_lossy();
+        let report = checked.join("report.json");
+        assert!(run(&["collect", "--policy", &path("policy.json"), "--outputs", &outputs, "--collected", &path("collected.json")]).0);
+        let (ok, logs) = run(&["check", "--policy", &path("policy.json"), "--outputs", &outputs, "--collected", &path("collected.json"),
+            "--run-id", "7", "--base-secret-evidence", &path("public-base.json"), "--report", &report.to_string_lossy()]);
+        assert!(ok, "case {case}: {logs}");
+        let checked_report: Value = serde_json::from_str(&std::fs::read_to_string(&report).unwrap()).unwrap();
+        assert_eq!(!checked_report["patch"]["replay"].is_null(), replays, "case {case}: {checked_report}");
+        std::fs::copy(path("policy.json"), checked.join("policy.json")).unwrap();
+        std::fs::copy(out.join(PATCH), checked.join(PATCH)).unwrap();
+        for entry in std::fs::read_dir(&work).unwrap().chain(std::fs::read_dir(&checked).unwrap()) {
+            let entry = entry.unwrap().path();
+            if entry.is_file() && entry.file_name().unwrap() != "config.toml" {
+                assert!(!std::fs::read_to_string(&entry).unwrap().contains(ADDRESS), "case {case}: {}", entry.display());
+            }
+        }
+        if replays {
+            // Apply's independent trial makes the producer's own tree, the one check bound.
+            assert_eq!(checked_report["patch"]["replay"]["tree"], json!(tree));
+            let (ok, logs) = run(&["replay-trial", "--checked", &checked.to_string_lossy()]);
+            assert!(ok, "{logs}");
+            assert_eq!(logs, format!("tree={tree}\n"));
+            // A checked patch changed after check is refused.
+            let mut tampered = patch.as_bytes().to_vec();
+            tampered.push(b'\n');
+            std::fs::write(checked.join(PATCH), tampered).unwrap();
+            assert!(!run(&["replay-trial", "--checked", &checked.to_string_lossy()]).0);
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 // forge-infra (#812) is followed and a target, but no run may edit its
 // `.github/` or protected files until a per-repository ruleset is on its
 // main; for now the organization's ruleset is its only gate.
