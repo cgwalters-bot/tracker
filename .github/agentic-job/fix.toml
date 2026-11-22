@@ -85,8 +85,13 @@ missing_data = { max = 1 }
 # also lets them edit AGENTS.md there.
 [unprotected_files]
 # The same list as dispatch.toml's;
-# the precondition for listing a repository is in its comment.
-repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool"]
+# the precondition for listing a repository is in its comment. Without it a
+# fix round cannot repair a `.github` blocker, and the pull request loops
+# until a person edits it (tracker#1861, atomic-linux-sandbox#88). A fix
+# reaches a name missing from `repos` above only by `own_author`.
+repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board", "cgwalters-forge/tracker", "cgwalters-forge/review", "cgwalters-forge/actions", "cgwalters-forge/agenthome", "cgwalters-forge/misctool",
+  "cgwalters-forge/forge-infra", "cgwalters-forge/atomic-linux-sandbox", "cgwalters-forge/cgwalters-forge.github.io", "cgwalters-forge/.github",
+  "cgwalters-forge/secure-host", "cgwalters-forge/workflow-compiler", "cgwalters-forge/base-images"]
 # README.md too: a docs run there is refused otherwise (cgwalters-forge/agent-board#49).
 # And every other name on agentic-job's default protected list, by the
 # operator's decision (21 Oct): a blocked manifest or lockfile meant a run

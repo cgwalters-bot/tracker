@@ -2059,18 +2059,17 @@ fn agentic_job_replays_a_redacted_endpoint_deletion_and_leaves_ordinary_patches_
     std::fs::remove_dir_all(dir).unwrap();
 }
 
-// forge-infra (#812) is followed and a target, but no run may edit its
-// `.github/` or protected files until a per-repository ruleset is on its
-// main; for now the organization's ruleset is its only gate.
+// forge-infra (#812) is followed and a target, and since tracker#1867 its
+// `.github/` is editable on the organization's ruleset alone, as in every
+// first-party repository; dispatch and fix list the same names.
 #[test]
-fn forge_infra_is_a_followed_target_without_unprotected_files() {
+fn forge_infra_is_a_followed_target_with_unprotected_files() {
     let repo = "cgwalters-forge/forge-infra";
     for name in ["dispatch.toml", "fix.toml", "comment.toml"] {
         assert!(admits(name, known(repo)), "{name}");
     }
-    for name in ["dispatch.toml", "fix.toml"] {
-        assert!(!lists(name)[1].iter().any(|r| r == repo), "{name}");
-    }
+    assert_eq!(lists("dispatch.toml")[1], lists("fix.toml")[1]);
+    assert!(lists("dispatch.toml")[1].iter().any(|r| r == repo));
     let follow = json_file("../poll/agent-board.json")["follow"].clone();
     assert!(follow.as_array().expect("agent-board.json's follow").contains(&json!(repo)));
 }
@@ -2209,15 +2208,15 @@ fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
                 assert_eq!(bound["draft"], true, "{repo} {file}");
             }
             assert_ne!(bound["ready_when_complete"], true, "{repo} {file}");
-            check_midstream_paths(&policy, &repo, kind, &head);
+            check_midstream_paths(&policy, &repo, kind, &head, false);
         }
     }
 }
 
 /// Exercise the existing collector and independent patch checker, not a local
 /// approximation of protected-path matching. Only an ordinary source file and
-/// the admitted fork's workflow may pass.
-fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str) {
+/// the admitted fork's or a listed first-party repository's workflow may pass.
+fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str, listed: bool) {
     let dir = temp_path("path-check");
     let out = dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
@@ -2234,13 +2233,13 @@ fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str) {
     let check = || agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
     collect(&item);
     for path in ["src/test.txt", ".github/workflows/test.yml", ".github/agentic-job/runner-profiles.json", ".other/test.txt", "AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
-        if repo == "cgwalters-forge/tracker" && !path.contains('/') {
-            continue; // Tracker's existing filename exemptions are unchanged.
+        if listed && !path.contains('/') {
+            continue; // Listed repositories' filename exemptions are unchanged.
         }
         let patch = format!("From {} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: {head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test workflow admission\n\n---\ndiff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+test\n", "1".repeat(40));
         std::fs::write(out.join("aw-dispatch-x.patch"), patch).unwrap();
         let result = check();
-        let accepted = path == "src/test.txt" || (["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/tracker"].contains(&repo) && path == ".github/workflows/test.yml");
+        let accepted = path == "src/test.txt" || ((listed || repo == "cgwalters-forge/gh-agentic-workflows") && path == ".github/workflows/test.yml");
         assert_eq!(result.status.success(), accepted, "{repo} {kind} {path}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
         if repo == "cgwalters-forge/ostree" && path == "src/test.txt" && kind == "create_pull_request" {
             // The collector accepts the boolean, but check must refuse an
@@ -2257,27 +2256,33 @@ fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str) {
     std::fs::remove_dir_all(dir).unwrap();
 }
 
+// A listed first-party repository's workflow is admitted for implement and
+// fix (tracker#1867); an unlisted target's is not, and runner-profiles.json
+// stays refused in both.
 #[test]
-fn runner_map_edits_are_refused_even_with_tracker_workflow_exemption() {
+fn runner_map_edits_are_refused_even_with_first_party_workflow_exemption() {
     if !agentic_job_installed() {
         return;
     }
-    let repo = "cgwalters-forge/tracker";
     let head = "0".repeat(40);
-    for (file, kind) in [("dispatch.toml", "create_pull_request"), ("fix.toml", "push_to_pull_request_branch")] {
-        let file_path = path_of(file);
-        let mut args = vec!["policy", "--allow", &file_path, "--repo", repo,
-            "--clone-url", "https://github.com/cgwalters-forge/tracker", "--kind", "branch",
-            "--outputs", kind, "--max-outputs", "3", "--base"];
-        if kind == "create_pull_request" {
-            args.push("main");
-        } else {
-            args.extend(["dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", repo]);
+    for (repo, listed) in [("cgwalters-forge/tracker", true), ("cgwalters-forge/forge-infra", true), ("cgwalters-bot/praxis-credential-broker", false)] {
+        assert_eq!(lists("dispatch.toml")[1].iter().any(|r| r == repo), listed, "{repo}");
+        for (file, kind) in [("dispatch.toml", "create_pull_request"), ("fix.toml", "push_to_pull_request_branch")] {
+            let file_path = path_of(file);
+            let clone_url = format!("https://github.com/{repo}");
+            let mut args = vec!["policy", "--allow", &file_path, "--repo", repo,
+                "--clone-url", &clone_url, "--kind", "branch",
+                "--outputs", kind, "--max-outputs", "3", "--base"];
+            if kind == "create_pull_request" {
+                args.push("main");
+            } else {
+                args.extend(["dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", repo]);
+            }
+            let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).unwrap();
+            assert_eq!(policy["safe_outputs"][kind]["protected_paths"], json!([".github/agentic-job/runner-profiles.json"]));
+            // Reuse the real collector/checker, with a normal workflow positive control.
+            check_midstream_paths(&policy, repo, kind, &head, listed);
         }
-        let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).unwrap();
-        assert_eq!(policy["safe_outputs"][kind]["protected_paths"], json!([".github/agentic-job/runner-profiles.json"]));
-        // Reuse the real collector/checker, with a normal workflow positive control.
-        check_midstream_paths(&policy, repo, kind, &head);
     }
 }
 
