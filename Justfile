@@ -1534,7 +1534,7 @@ pass-state mode:
 
 # supervisor.yml's folded concurrency group and health `if`, evaluated as
 # JavaScript on events: a run the gate skips gets a group of its own
-# (#803), and a session dispatch, prompt or not, is an agent run.
+# (#803), and a session dispatch, prompt or not, is an agent run. Also probe artifact transport.
 test-supervisor-workflow:
     #!/usr/bin/env node
     const assert = require('node:assert/strict');
@@ -1585,7 +1585,7 @@ test-supervisor-workflow:
     assert.match(workflow, /^ {10}PROMPT: \$\{\{ inputs\.prompt \|\| \(inputs\.session && 'session' \|\| ''\) \}\}$/m);
     assert.match(workflow, /^ {6}session: \$\{\{ needs\.health\.outputs\.session == 'true' \}\}\n {6}idle-minutes: \$\{\{ needs\.health\.outputs\.idle \}\}$/m);
     assert.match(workflow, /"idle=\\\(\.idleMinutes\)"' \.github\/agentic-job\/session\.json/);
-    console.log('ok supervisor concurrency groups and health gate, sessions included');
+    eval(/name: Test supervisor artifact hand-back\n +shell: node \{0\}\n +run: \|\n((?: {10}.*\n|\n)+)/.exec(fs.readFileSync('.github/workflows/ci.yml', 'utf8'))[1]);
 
 # The needs-you publication the pin's approval-preserving fit (agent-board#722)
 # serves keeps its settings: the private holds issue with `holds.needsYou`,
