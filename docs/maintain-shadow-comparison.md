@@ -194,3 +194,58 @@ checks, conflicts and checkpoints agreed on every head both sides saw. The
 differences are the pass's holds and recovery that live outside the `pr`
 policy the shadow copies, plus the pass's request budget, which starved
 agentic-job for four days while the shadow had 41 steps ready for it.
+
+## Same-head replay with the hold settings, 22 November 2026
+
+`just maintain-shadow-config` now also copies pass.json's top-level
+`assignHolds` and `openPrCap` (today `true` and `12`), which the pinned poll
+(agent-board `cfba79e`, the same pin as poll.yml; standalone support since
+agent-board `f7a090f6`) reads with the pass's bounds. To check the first two
+causes above on live state rather than from the old logs, the pinned
+`agent-board poll --dry-run` ran twice on cgwalters-forge/agentic-job, 05:57:30
+to 05:57:53 UTC, with fresh state files and a read-only token: once with the generated
+configuration minus those two keys (the old shadow) and once with it. Both read
+the same 11 open bot pull requests on the same heads.
+
+| Pull request, head | Old shadow | New shadow |
+|---|---|---|
+| [#4302](https://github.com/cgwalters-forge/agentic-job/pull/4302) `06189190` | fix: needs-human was removed, so the rounds start again | skip: operator review pending (pass stop for older head `01352759`) |
+| [#4399](https://github.com/cgwalters-forge/agentic-job/pull/4399) `c14ea602` | the same fix | skip: operator review pending (pass stop for current head) |
+| [#4402](https://github.com/cgwalters-forge/agentic-job/pull/4402) `2294ebda` | needs-human: review job failed again after a rerun | the same skip |
+| [#4472](https://github.com/cgwalters-forge/agentic-job/pull/4472) `d0698169` | the same fix | the same skip |
+| [#4507](https://github.com/cgwalters-forge/agentic-job/pull/4507) `d48b7e84` | the same fix | the same skip |
+
+The other six were labelled `needs-human` and skipped by both. The old
+shadow totalled 4 fix rounds and 4 pull requests in flight, the new one none.
+Each new skip reads `operator review pending; requester unknown` (the
+read-only token cannot tell who requested the review) and rests on a pass stop
+marker: for the current head on four, for the older head `01352759` on #4302
+(for example
+[#4507](https://github.com/cgwalters-forge/agentic-job/pull/4507#issuecomment-7074478744),
+04:58 UTC). That matches the pass's own hold, so on these heads the
+review-request hold cause is closed.
+
+Not covered: the open pull request cap. The approved search found 10 and admitted
+none, and no pull request was ready to rebase, continue or enqueue behind an
+overlapping older one, so neither run reached `openPrCap`. The 22 historical
+cap differences are attributed to the missing key at the then-current value 6
+(now 12), unverified: a replay at 12 need not reproduce the 15 to 16 November
+waits, and none counts as closed until a replay finds an overlapping pull
+request ready to step.
+
+Agent recovery is unchanged: main's pass.json still has no `pr.agentRecovery`,
+and the shadow copies that key only when it is set. That the 17 November
+recovery runs came from a pass not configured by the checked-in file is
+inferred from this absence and from the pass running outside Actions those days
+(above), and a shadow cannot preview them from this file. Rolling out
+missing-data and recovery handling belongs to
+[tracker#1571](https://github.com/cgwalters-forge/tracker/issues/1571), not here.
+
+Other writers remain. poll.yml applies again (dispatched runs every 45 minutes,
+the latest at 05:39 UTC) and still follows agentic-job, because pass.json has no
+`pr.maintainers`. The shadow never copies `maintainers`: copied, it would hand
+agentic-job over to the very maintainer it previews and take no step there. So
+when the pass later lists agentic-job there, the shadow keeps previewing
+pass.json's policy cut to agentic-job instead of falling silent, though the
+pass then has no step there to compare it with. The shadow still runs as a dry
+run with the job token and publishes only its job summary.
