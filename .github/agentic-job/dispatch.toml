@@ -19,7 +19,8 @@
 # target would need a dispatch workflow and agent job in bot-ops itself.
 hosts = ["github.com"]
 repos = [{ org = "cgwalters-forge", forks = false }, "cgwalters-forge-stage/board-test", "cgwalters-bot/praxis-credential-broker"]
-bases = ["main"]
+# Stacked implement runs may target a dispatch branch, not arbitrary release branches.
+bases = ["main", "dispatch/**"]
 max_outputs = 3
 max_patch_bytes = 1048576
 max_patch_files = 50

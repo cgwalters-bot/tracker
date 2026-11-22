@@ -53,6 +53,10 @@ on:
         type: choice
         options: [implement, triage, research, session, review, fix]
         required: true
+      base:
+        description: "Implement only: optional dispatch/ branch in the target repository, subject to the bounds; empty uses main"
+        type: string
+        default: ''
       head:
         description: "Review only: required exact lowercase 40-hex expected PR head"
         type: string
@@ -217,6 +221,7 @@ jobs:
           EFFORT: ${{ inputs.effort }}
           CONFIG: ${{ inputs.config }}
           ISSUE_REPO: ${{ inputs.issue_repo }}
+          HAS_BASE: ${{ inputs.base != '' }}
         run: |
           node -e '
           if (process.env.ACTIVATION !== "enabled") throw Error("ordinary reviews are disabled");
@@ -224,6 +229,8 @@ jobs:
           if (process.env.EFFORT || process.env.CONFIG !== "hosted") throw Error("review configuration belongs to REVIEW_POOLS");
           // Prevent foreign issue context from being silently attributed to the reviewed PR.
           if (process.env.ISSUE_REPO) throw Error("issue_repo is not for review or fix");
+          // Do not silently review a different base than the dispatcher requested.
+          if (process.env.HAS_BASE === "true") throw Error("base requires kind implement");
           '
 
   review:
@@ -436,10 +443,9 @@ jobs:
   run:
     needs: profile
     if: ${{ inputs.kind != 'review' }}
-    # actions' main at agentic-job v0.6.16, pinned by commit: a branch ref
-    # would let a same-named tag in actions change what this runs. The
-    # release train does not move this pin (agent-board#1087): move it by hand.
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@c8cd562edc4c342b888a5a9344f87a584d5bb614
+    # actions#309 accepts base and still uses agentic-job v0.6.16. The
+    # release train does not move this commit pin (agent-board#1087).
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@a2fac2ea949255e1e901b8225d566a44f28c1e94
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:
@@ -457,6 +463,7 @@ jobs:
       # the wrapper uses it only for issue context, reporting and closing links.
       item-repo: ${{ inputs.issue_repo }}
       kind: ${{ inputs.kind }}
+      base: ${{ inputs.base }}
       agent: ${{ needs.profile.outputs.agent }}
       model: ${{ needs.profile.outputs.model }}
       budget: ${{ needs.profile.outputs.budget || '500' }}
