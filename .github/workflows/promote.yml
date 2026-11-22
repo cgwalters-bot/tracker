@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  AGENT_BOARD_REV: 8eba8a193aad9e7ac137297fb8f24079cdcdc7c8
+  AGENT_BOARD_REV: 7abb06c911c27699e9cbb44d59d04d865e906d74
 
 jobs:
   promote:
