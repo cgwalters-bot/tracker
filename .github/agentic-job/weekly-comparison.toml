@@ -5,6 +5,7 @@ repos = ["cgwalters-forge/agentic-job", "cgwalters-forge/agent-board"]
 bases = ["main"]
 max_outputs = 1
 max_patch_bytes = 65536
+# Keep comparison updates to at most two files, not broad documentation rewrites.
 max_patch_files = 2
 
 [github.outputs]

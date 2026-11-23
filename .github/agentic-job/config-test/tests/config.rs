@@ -1792,6 +1792,35 @@ fn misctool_is_a_dispatch_and_fix_target_with_matching_workflow_edit_bounds() {
 }
 
 #[test]
+fn general_bounds_keep_the_byte_limit_and_a_high_file_ceiling() {
+    for file in [
+        "dispatch.toml",
+        "fix.toml",
+        "midstream.toml",
+        "midstream-fix.toml",
+        "recovery.toml",
+        "session.toml",
+        "implement-secondary.toml",
+        "comment.toml",
+    ] {
+        let bounds = toml_file(file);
+        assert_eq!(bounds["max_patch_files"].as_integer(), Some(10_000), "{file}");
+        assert_eq!(
+            bounds["max_patch_bytes"].as_integer(),
+            Some(1_048_576),
+            "{file}"
+        );
+    }
+    for (file, cap) in [("soak.toml", 1), ("weekly-comparison.toml", 2)] {
+        assert_eq!(
+            toml_file(file)["max_patch_files"].as_integer(),
+            Some(cap),
+            "{file}"
+        );
+    }
+}
+
+#[test]
 fn secondary_bounds_are_independent_and_preserve_primary_scope() {
     let mut expected = toml_file("dispatch.toml");
     expected.insert("bases".into(), toml::Value::Array(vec!["main".into()]));

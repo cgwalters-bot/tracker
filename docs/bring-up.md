@@ -97,6 +97,15 @@ midstream fork, by `midstream.toml` and `midstream-fix.toml` instead.
 dispatch.toml and midstream.toml admit the organization's repositories
 by their live metadata; the fix bounds still name theirs.
 
+These dispatch and fix bounds, along with the recovery, session, comment,
+and secondary-enabled implement bounds, retain a 1 MiB patch limit to
+catch runaway patches. They set `max_patch_files` to 10,000 so the old
+50-file ceiling does not block wide patches. The pinned agentic-job v0.6.16
+requires the field; upstream main accepts its omission since
+[`acb499b`](https://github.com/cgwalters-forge/agentic-job/commit/acb499b459cc755b8254dc48eff55e437c2f6b2d).
+The soak and weekly comparison caps and the optional misctool secondary PR's
+10-file cap still apply.
+
 For an implement run using `dispatch.toml`, `-f base=dispatch/…` can select an
 existing branch in the target repository. Leave it out to start from `main`.
 Other dispatch kinds do not accept the override, and midstream and secondary
