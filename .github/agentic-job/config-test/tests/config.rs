@@ -1488,7 +1488,7 @@ fn dispatch_forwards_optional_issue_repository_without_redirecting_work() {
     // Keep this dispatch-only pin separate from the review release train's
     // literal wrapper references, which it scans and rewrites in this file.
     let wrapper = "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml";
-    assert!(has_line(run, &format!("    uses: {wrapper}@a2fac2ea949255e1e901b8225d566a44f28c1e94")));
+    assert!(has_line(run, &format!("    uses: {wrapper}@1f423605a61b2144407adf9278b23ae9194dba08")));
     for line in [
         "      repo: ${{ inputs.repo }}",
         "      item: ${{ inputs.item }}",
@@ -1529,6 +1529,21 @@ fn dispatch_forwards_optional_base_and_review_refuses_it() {
     ]);
     assert!(check("false").is_ok());
     assert!(check("true").unwrap_err().contains("base requires kind implement"));
+}
+
+#[test]
+fn dispatch_forwards_the_trusted_fix_comment_decision() {
+    let workflow = dispatch();
+    let profile = workflow.split_once("\n  profile:\n").unwrap().1.split_once("\n  run:\n").unwrap().0;
+    let step = profile.split_once("      - name: Resolve the fix comment opt-in\n").unwrap().1;
+    assert!(has_line(step, "        if: inputs.kind == 'fix'"));
+    assert!(has_line(step, "          REPO: ${{ inputs.repo }}"));
+    assert!(has_line(step, "          ITEM: ${{ inputs.item }}"));
+    assert!(has_line(step, "          FIX_ALLOW: ${{ steps.bounds.outputs.fix-allow }}"));
+    assert!(has_line(step, "          GH_TOKEN: ${{ github.token }}"));
+    assert!(has_line(profile, "      fix-comment: ${{ steps.fix-comment.outputs.enabled }}"));
+    let run = workflow.split_once("\n  run:\n").unwrap().1.split_once("\n  # Threat:").unwrap().0;
+    assert!(has_line(run, "      fix-comment: ${{ needs.profile.outputs.fix-comment == 'true' }}"));
 }
 
 #[test]
@@ -2940,7 +2955,8 @@ fn blocked_fixes_can_explain_themselves_without_a_push_or_extra_write_authority(
         "will not push, or will push but leave a blocker",
         "only if the trusted hand-back brief explicitly allows `add_comment` for this pull request, request one `add_comment` safe output with a `body`",
         "one plain sentence",
-        "Without a push or that comment, request one `noop` if allowed; if not, use the run report alone",
+        "Without a push, request one `noop` if allowed, beside that comment if there is one; if not, use the run report alone",
+        "Name the blocker in the `noop` `message`",
         "the pinned head without a push or the apply-replayed tip with a push",
         "replay the exact hand-back mails on their base",
         "If the trusted hand-back brief does not allow `add_comment` or you cannot establish the exact SHA, record the blocker in the run report instead",
@@ -3271,7 +3287,7 @@ fn workflows_follow_our_own_repositories_at_main_dispatch_and_review_excepted_an
             let dispatch_wrapper = file == "dispatch.yml"
                 && uses.split_once('@')
                     .is_some_and(|(path, pin)| path == "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml"
-                        && matches!(pin, "ba6c56925e63551fd4373fbeb23456a2f4a316da" | "a2fac2ea949255e1e901b8225d566a44f28c1e94"));
+                         && pin == "1f423605a61b2144407adf9278b23ae9194dba08");
             // These callers compose the harness directly: policy/check/apply and the
             // actions must run at one immutable source revision. Its workflow
             // test checks that all six pins agree.

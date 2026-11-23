@@ -71,6 +71,161 @@ jobs:
           persist-credentials: false
       - name: Build the immutable admission policy
         run: cargo build --locked --manifest-path admission-policy/Cargo.toml -p agentic-job --target-dir "$RUNNER_TEMP/admission-policy-target"
+      - name: Test bounded fix comment publication
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs');
+          const { join } = require('node:path');
+          const { tmpdir } = require('node:os');
+          const { execFileSync, spawnSync } = require('node:child_process');
+          const { runInNewContext } = require('node:vm');
+          const workflow = fs.readFileSync('.github/workflows/dispatch.yml', 'utf8');
+          const run = workflow.split('\n  run:\n')[1].split('\n  admission-receipt:\n')[0];
+          const [, path, pin] = /uses: cgwalters-forge\/actions\/(\.github\/workflows\/cgwalters-agentic-job\.yml)@([a-f0-9]{40})/.exec(run);
+          const wrapper = execFileSync('git', ['-C', process.env.ADMISSION_ACTIONS || 'admission-actions', 'show', `${pin}:${path}`], { encoding: 'utf8' });
+          const step = /- name: Resolve the fix comment opt-in[^]*?        run: \|\n((?: {10}.*\n|\n)+)/.exec(workflow)[1].replace(/^ {10}/gm, '');
+          const policyJob = wrapper.split('\n  policy:\n')[1].split('\n  register:\n')[0];
+          const policyOutputs = /^      outputs: \$\{\{ (.*) \}\}$/m.exec(policyJob)[1];
+          const commentTarget = /^      comment-target: \$\{\{ (.*) \}\}$/m.exec(policyJob)[1];
+          const advisory = wrapper.split('\n  advisory:\n')[1].split('\n  apply:\n')[0];
+          const guard = /    if: >-\n      \$\{\{ ([^]*?) \}\}/.exec(advisory)[1];
+          const verify = /          script: \|\n((?: {12}.*\n)+)/.exec(advisory)[1].replace(/^ {12}/gm, '');
+          const applyCheck = /      check: >-\n        \$\{\{ ([^]*?) \}\}/.exec(wrapper.split('\n  apply:\n')[1])[1];
+          const evaluate = (expr, context) => runInNewContext(expr.replace(/\.([\w]+(?:-[\w]+)+)/g, "['$1']"), context);
+          const temp = fs.mkdtempSync(join(tmpdir(), 'fix-comment-'));
+          const file = name => join(temp, name);
+          const env = { HOME: temp, PATH: `${temp}:${process.env.PATH}` };
+          const cli = (...args) => spawnSync('agentic-job', args, { env, encoding: 'utf8', timeout: 10000 });
+          const ok = result => {
+            assert.ifError(result.error);
+            assert.equal(result.status, 0, result.stderr);
+            return result.stdout;
+          };
+          const bot = 'cgwalters-bot', botId = 17814078, tracker = 'cgwalters-forge/tracker', pr = '7', branch = 'bot/offline';
+          const head = 'a'.repeat(40), banner = 'Fix run report:';
+          const bounds = name => `.github/agentic-job/${name}.toml`;
+          try {
+            fs.writeFileSync(file('gh'), `#!${process.execPath}
+          const assert = require('node:assert/strict');
+          const { env, argv } = process;
+          assert.deepEqual(argv.slice(2), ['api', 'repos/' + env.REPO.toLowerCase() + '/pulls/' + env.ITEM]);
+          require('node:fs').writeFileSync(env.GITHUB_OUTPUT + '.lookup', '');
+          process.stdout.write(env.FIXTURE);
+          `, { mode: 0o700 });
+            function optIn(repo, allow, author, expectedLookup, { item = pr, number = 7, fullName = repo, state = 'open', id = author === bot ? botId : 1 } = {}) {
+              fs.writeFileSync(file('output'), '');
+              fs.rmSync(file('output.lookup'), { force: true });
+              const got = ok(spawnSync('bash', ['-eo', 'pipefail', '-c', step], { encoding: 'utf8', timeout: 10000,
+                env: { ...env, REPO: repo, ITEM: item, FIX_ALLOW: allow, GITHUB_OUTPUT: file('output'),
+                  FIXTURE: JSON.stringify({ number, state, base: { repo: { full_name: fullName } }, user: { login: author, id } }) } }));
+              assert.equal(got, '');
+              assert.equal(fs.existsSync(file('output.lookup')), expectedLookup, repo);
+              return fs.readFileSync(file('output'), 'utf8');
+            }
+            const noGrant = file('no-grant.toml');
+            fs.writeFileSync(noGrant, fs.readFileSync(bounds('fix'), 'utf8').replace('add_comment = { max = 1 }\n', ''));
+            assert.equal(optIn(tracker, noGrant, bot, false), 'enabled=false\n');
+            for (const override of [{ item: '7?x=1' }, { number: 8 }, { fullName: 'cgwalters-forge/actions' }, { state: 'closed' }, { id: 1 }]) {
+              assert.equal(optIn(tracker, bounds('fix'), bot, !override.item, override), 'enabled=false\n');
+            }
+            for (const [repo, name, author, lookup, enabled] of [
+              [tracker, 'fix', bot, true, true],
+              [tracker, 'fix', 'human', true, false],
+              ['cgwalters-forge/ostree', 'midstream-fix', bot, true, true],
+              ['bootc-dev/bootc', 'fix', bot, false, false],
+              ['bootc-dev/bootc', 'fix', 'human', false, false],
+              ['ostreedev/ostree', 'fix', bot, false, false],
+            ]) {
+              const allow = bounds(name);
+              assert.equal(optIn(repo, allow, author, lookup), `enabled=${enabled}\n`, repo);
+              const inputs = { kind: 'fix', item: pr, 'fix-comment': enabled };
+              const list = evaluate(policyOutputs, { inputs });
+              const policy = JSON.parse(ok(cli('policy', '--allow', allow, '--repo', repo, '--output-repo', repo,
+                '--clone-url', `https://github.com/${repo}`, '--kind', 'branch', '--base', branch, '--head', head,
+                '--pull-request', pr, '--pull-author', author, '--outputs', list, '--max-outputs', '3')));
+              assert.equal(policy.safe_outputs.push_to_pull_request_branch.target, pr);
+              assert.equal(Object.hasOwn(policy.safe_outputs, 'add_comment'), enabled);
+              fs.writeFileSync(file('policy.json'), JSON.stringify(policy));
+              const out = file('out'), checked = file('advisory'), collected = join(checked, 'agent_output.json');
+              const comment = { type: 'add_comment', body: `${banner}\n\nHuman action is needed.` };
+              const noop = { type: 'noop', message: 'Blocked: human action is needed.' };
+              const jsonl = requests => [requests].flat().map(item => JSON.stringify(item) + '\n').join('');
+              if (enabled) {
+                // The producer: the runner's session only ends a no-patch fix on a reasoned noop.
+                const home = file('home'), work = join(home, 'work');
+                fs.rmSync(home, { recursive: true, force: true });
+                fs.mkdirSync(join(home, '.config/agentic-job'), { recursive: true });
+                fs.mkdirSync(join(home, 'out'));
+                execFileSync('git', ['init', '-q', work]);
+                execFileSync('git', ['-C', work, '-c', 'user.name=Test', '-c', 'user.email=test@example.test', 'commit', '-q', '--allow-empty', '-m', 'Test']);
+                const base = execFileSync('git', ['-C', work, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+                fs.writeFileSync(join(home, '.config/agentic-job/handback.json'), JSON.stringify({ host_isolation: 'managed',
+                  public_base: { patches: {}, secrets: {}, key_blocks: [] }, policy, checkout: work, base, run_id: '7',
+                  commit: { author: 'Test <test@example.test>', trailers: [], format: false } }));
+                fs.writeFileSync(join(home, 'out/outcome.json'), JSON.stringify({ summary: 'Blocked.', tests: [], stopped_early: 'blocked',
+                  checkpoint: { complete: true, done: 'Nothing.', left: 'Human action.', next: 'Ask a human.' } }));
+                for (const [requests, status] of [[comment, 1], [[comment, noop], 0]]) {
+                  fs.writeFileSync(join(home, 'out/safe-outputs.jsonl'), jsonl(requests));
+                  const got = spawnSync('agentic-job', ['handback', 'check'], { cwd: work, env: { ...env, HOME: home }, encoding: 'utf8', timeout: 10000 });
+                  assert.ifError(got.error);
+                  assert.equal(got.status, status, got.stdout + got.stderr);
+                }
+              }
+              for (const [request, expected] of [
+                [enabled ? [comment, noop] : comment, enabled ? 'publish' : 'Unexpected output type'],
+                ...(enabled ? [
+                  [{ ...comment, item_number: 8 }, 'outside the caller\'s fixed item'],
+                  [{ ...comment, repo: 'cgwalters-forge/actions' }, 'which is not the policy\'s'],
+                  [{ ...comment, body: '/command' }, 'banner'],
+                ] : []),
+                [{ type: 'push_to_pull_request_branch', branch, message: 'Test push' }, 'publish'],
+              ]) {
+                for (const dir of [out, checked]) {
+                  fs.rmSync(dir, { recursive: true, force: true });
+                  fs.mkdirSync(dir);
+                }
+                fs.writeFileSync(join(out, 'outputs.jsonl'), jsonl(request));
+                if (request.type === 'push_to_pull_request_branch') {
+                  fs.writeFileSync(join(out, 'base.json'), JSON.stringify({ repo, ref: branch, commit: head }));
+                  fs.writeFileSync(join(out, 'aw-bot-offline.patch'), `From ${'b'.repeat(40)} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: ${head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test\n\n---\ndiff --git a/test.txt b/test.txt\nnew file mode 100644\n--- /dev/null\n+++ b/test.txt\n@@ -0,0 +1 @@\n+test\n`);
+                }
+                const args = ['--policy', file('policy.json'), '--outputs', out, '--collected', collected];
+                const collect = cli('collect', ...args);
+                const check = collect.status === 0 ? cli('check', ...args, '--run-id', '7',
+                  '--comment-repo', repo, '--comment-target', evaluate(commentTarget, { inputs })) : collect;
+                if (!['publish', 'banner'].includes(expected)) {
+                  assert.ifError(check.error);
+                  assert.notEqual(check.status, 0, JSON.stringify(request));
+                  assert.ok(check.stderr.includes(expected), check.stderr);
+                  continue;
+                }
+                ok(check);
+                const needs = { target: { outputs: { 'item-kind': 'pull-request' } },
+                  check: { result: 'success', outputs: { 'artifact-id': '123' } },
+                  advisory: { result: 'skipped', outputs: { 'artifact-id': '' } } };
+                assert.equal(evaluate(guard, { inputs, needs }), enabled);
+                if (enabled) {
+                  const context = { require, process: { env: { RUNNER_TEMP: temp, PROFILE: 'fix', BANNER: banner, ARTIFACT_ID: '123' } },
+                    core: { setOutput: (name, value) => { needs.advisory.outputs[name] = value; } } };
+                  if (expected === 'banner') {
+                    assert.throws(() => runInNewContext(verify, context), /banner and a blank line/);
+                    needs.advisory.result = 'failure';
+                  } else {
+                    runInNewContext(verify, context);
+                    needs.advisory.result = 'success';
+                  }
+                }
+                const apply = () => JSON.parse(evaluate(applyCheck, { inputs, needs, toJSON: JSON.stringify }));
+                if (expected === 'publish') assert.deepEqual(apply(), needs.check);
+                else assert.equal(apply().result, 'failure');
+                if (enabled && expected === 'publish') {
+                  needs.advisory.outputs['artifact-id'] = '456';
+                  assert.equal(apply().result, 'failure', 'apply cannot take another artifact');
+                }
+              }
+            }
+          } finally { fs.rmSync(temp, { recursive: true, force: true }); }
       # Keep replay inline: deployment scripts and Justfile may only shrink.
       - name: Required offline dispatch admission replay
         shell: node {0}

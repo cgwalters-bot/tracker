@@ -1,7 +1,7 @@
 {
   "_comment": "The forge-native repositories and the checks each must pass (#544/#1171/#1871). Each needs review_workflow with jobs.review calling exactly review_call, a .github/dependabot.yml with a daily github-actions update, and a root Justfile. The review call is immutable because a moving wrapper could change the only gate on workflow changes without review here. The ordinary non-review job may still follow main. Each also needs a renovate.json or .github/renovate.json whose extends lists renovate_preset, the runner-label preset cgwalters-forge/actions publishes. With merge_queue enabled, main must have an effective merge_queue rule. A repository is exempt from review, dependabot, justfile, renovate or merge_queue only through an entry in its exempt object whose value is the reason. just forge-sync reports drift; it never changes settings or enables reviews. PR 1500 owns the paced scheduling rollout; missing dispatch callers reported here must be installed before that rollout.",
   "review_workflow": "dispatch.yml",
-  "review_call": "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da",
+  "review_call": "cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@1f423605a61b2144407adf9278b23ae9194dba08",
   "renovate_preset": "github>cgwalters-forge/actions//renovate/runners",
   "merge_queue": false,
   "repos": [
