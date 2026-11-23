@@ -19,7 +19,7 @@ repos = [{ org = "cgwalters-forge", forks = true, topics = ["bot-midstream"], pr
 bases = ["main"]
 max_outputs = 3
 max_patch_bytes = 1048576
-max_patch_files = 50
+max_patch_files = 10000
 # A misled run must not change the caller's execution destinations.
 protected = [".github/agentic-job/runner-profiles.json"]
 

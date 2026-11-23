@@ -23,7 +23,9 @@ repos = [{ org = "cgwalters-forge", forks = false }, "cgwalters-forge-stage/boar
 bases = ["main", "dispatch/**"]
 max_outputs = 3
 max_patch_bytes = 1048576
-max_patch_files = 50
+# Remove this and the other general max_patch_files keys when the callers pin
+# an agentic-job release whose policy accepts their absence (main already does).
+max_patch_files = 10000
 # A misled run must not change the caller's execution destinations.
 protected = [".github/agentic-job/runner-profiles.json"]
 
