@@ -2937,11 +2937,30 @@ fn blocked_fixes_can_explain_themselves_without_a_push_or_extra_write_authority(
     for rule in [
         "leave the working tree unchanged",
         "one `add_comment` safe output with a `body`",
+        "will not push, or will push but leave a blocker",
+        "one plain sentence",
+        "the pinned head without a push or the apply-replayed tip with a push",
+        "replay the exact hand-back mails on their base",
+        "If the trusted hand-back brief does not allow `add_comment` or you cannot establish the exact SHA, record the blocker in the run report instead",
+        "`narrow_text`, `split`, `close_superseded`, `rebase`, `needs_permission`, or `operator_question`",
         "Do not request `push_to_pull_request_branch` or write a replacement series when there is no change to push",
         "Do not invent a patch",
     ] {
         assert!(fix.contains(rule), "{rule}");
     }
+    let example = fix.split_once("\n```agent-board-recommendation\n").unwrap().1;
+    let example: Value = serde_json::from_str(example.split_once("\n```\n").unwrap().0).unwrap();
+    assert_eq!(
+        example,
+        json!({
+            "schema": "agent-board/recommendation/v1",
+            "pr": 123,
+            "head": "a".repeat(40),
+            "action": "narrow_text",
+            "reason": "The PR description claims work this patch no longer does.",
+            "detail": {}
+        })
+    );
 }
 
 #[test]
