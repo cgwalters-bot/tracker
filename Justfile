@@ -1411,7 +1411,7 @@ test-poll-next:
     }
     console.log('ok offline fallback guards, dependency fixtures, bounded wait/listing, newer-run ownership and visible API failures; not live GitHub proof');
 
-# Offline state provenance, public-only export and workflow plumbing.
+# Offline state provenance, public cursor export and encrypted response caching.
 test-pass-state:
     #!/usr/bin/env node
     const tests = require('node:fs').readFileSync('.github/workflows/ci.yml', 'utf8').split('      - name: Test pass state export\n')[1];
@@ -1420,94 +1420,12 @@ test-pass-state:
 # Public pass handoff. Never print bodies or API diagnostics.
 pass-state mode:
     #!/usr/bin/env node
-    const fs = require('node:fs');
-    const { execFileSync } = require('node:child_process');
-    const STATE = '.state/pass.json';
-    const MAX_BYTES = 32 * 1024 * 1024; // The pinned pass's state-file limit.
-    function api(endpoint, timeout = 20000) {
-      return JSON.parse(execFileSync('gh', ['api', endpoint], {
-        timeout, maxBuffer: MAX_BYTES, stdio: ['ignore', 'pipe', 'pipe'],
-      }));
-    }
-    function validate(env = process.env, get = api) {
-      let id = env.PREVIOUS_RUN_ID;
-      const root = `repos/${env.GITHUB_REPOSITORY}/actions`;
-      if (!id) {
-        // Bound discovery, then apply the same provenance gate as explicit dispatches.
-        const listed = get(`${root}/workflows/poll.yml/runs?branch=${encodeURIComponent(env.DEFAULT_BRANCH)}&per_page=100`).workflow_runs;
-        if (!Array.isArray(listed) || listed.length > 100) throw new Error('invalid run listing');
-        const previous = listed.filter(run => /^[1-9][0-9]{0,19}$/.test(String(run.id)) &&
-          BigInt(run.id) < BigInt(env.GITHUB_RUN_ID) && run.head_branch === env.DEFAULT_BRANCH &&
-          (run.event === 'schedule' || (run.event === 'workflow_dispatch' && run.display_title === 'pass (apply)')) &&
-          run.conclusion !== 'cancelled').sort((a, b) => BigInt(a.id) > BigInt(b.id) ? -1 : 1)[0];
-        if (!previous) return '';
-        id = String(previous.id);
-      }
-      if (!/^[1-9][0-9]{0,19}$/.test(id) || id === env.GITHUB_RUN_ID) return '';
-      const run = get(`${root}/runs/${id}`);
-      const workflow = get(`${root}/workflows/poll.yml`);
-      if (String(run.id) !== id || run.workflow_id !== workflow.id ||
-          run.path !== '.github/workflows/poll.yml' ||
-          run.repository?.full_name !== env.GITHUB_REPOSITORY ||
-          run.head_repository?.full_name !== env.GITHUB_REPOSITORY ||
-          run.head_branch !== env.DEFAULT_BRANCH ||
-          !(run.event === 'schedule' ||
-            (run.event === 'workflow_dispatch' && run.display_title === 'pass (apply)'))) return '';
-      // Require the state-writing job to have finished, not the whole workflow.
-      const jobs = get(`${root}/runs/${id}/jobs?filter=latest&per_page=100`);
-      if (!Array.isArray(jobs.jobs) || jobs.total_count !== jobs.jobs.length ||
-          jobs.jobs.length > 100) return '';
-      const passes = jobs.jobs.filter(job => job.name === 'pass');
-      return passes.length === 1 && passes[0].status === 'completed' &&
-        ['success', 'failure'].includes(passes[0].conclusion) ? id : '';
-    }
-    function publicState(state, get = api) {
-      // Repository cursors can name private threads. Verify visibility before export.
-      // The holds summary cursor names a private operator hold, even for a public issue.
-      const cursors = ['follow', 'share', 'action_first', 'scan', 'authored'].map(name => `${name}_cursor`);
-      const cursorRepo = value => typeof value === 'string' && /^([\w.-]+\/[\w.-]+)(?:#[1-9][0-9]*)?$/.exec(value)?.[1].toLowerCase();
-      const repositories = new Set(cursors.map(key => cursorRepo(state[key])).filter(Boolean));
-      const publicRepos = new Set();
-      const deadline = Date.now() + 90000;
-      for (const repo of repositories) {
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) break;
-        try {
-          const metadata = get(`repos/${repo}`, Math.min(10000, remaining));
-          if (metadata.full_name?.toLowerCase() === repo && metadata.private === false && metadata.visibility === 'public') publicRepos.add(repo);
-        } catch { /* Drop cursors on any doubt. */ }
-      }
-      const { response_scope, interval_seconds } = state;
-      const handoff = { schema: 'agent-board/poll-state/v1',
-        interval_seconds: Number.isInteger(interval_seconds) && interval_seconds >= 300 && interval_seconds <= 21600 ? interval_seconds : 300 };
-      if (typeof response_scope === 'string' && /^[0-9a-f]{64}$/.test(response_scope)) handoff.response_scope = response_scope;
-      for (const key of cursors) if (publicRepos.has(cursorRepo(state[key]))) handoff[key] = state[key];
-      return handoff;
-    }
-    if (process.argv[2] === 'validate') {
-      let id = '';
-      try { id = validate(); } catch { /* Missing provenance starts cold. */ }
-      fs.appendFileSync(process.env.GITHUB_OUTPUT, `run-id=${id}\n`);
-      console.log(id ? `Validated predecessor ${id}` : 'No trusted predecessor; starting cold');
-    } else if (process.argv[2] === 'export') {
-      const output = '.state/public';
-      fs.rmSync(output, { recursive: true, force: true });
-      try {
-        if (fs.statSync(STATE).size > MAX_BYTES) throw new Error();
-        const state = JSON.parse(fs.readFileSync(STATE, 'utf8'));
-        if (state?.schema !== 'agent-board/poll-state/v1') throw new Error();
-        const handoff = publicState(state);
-        fs.mkdirSync(output);
-        fs.writeFileSync(`${output}/pass.json`, JSON.stringify(handoff) + '\n');
-      } catch {
-        fs.rmSync(output, { recursive: true, force: true });
-        console.log('Could not prepare public pass state; the next pass starts cold');
-      }
-    } else if (process.argv[2] === 'test') {
-      Object.assign(exports, { validate, publicState });
-    } else {
-      throw new Error('expected validate or export');
-    }
+    const source = require('node:fs').readFileSync('.github/workflows/poll.yml', 'utf8')
+      .split('      - name: Validate predecessor\n')[1].split('        run: |\n')[1]
+      .split('\n      - name: Restore pass state\n')[0].replace(/^          /gm, '');
+    const runner = { exports: {} };
+    new Function('require', 'module', source)(require, runner);
+    runner.exports.main(process.argv[2]);
 
 # supervisor.yml's folded concurrency group and health `if`, evaluated as
 # JavaScript on events: a run the gate skips gets a group of its own

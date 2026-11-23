@@ -51,8 +51,11 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-26.04
     # The build (10), the join (3) and the pass's own bound (15, plus two
-    # to finish its writes), with room for checkout and setup.
-    timeout-minutes: 40
+    # to finish its writes), with room for checkout, setup and optional caching.
+    timeout-minutes: 46
+    env:
+      # Actions comparisons are case-insensitive; pass the same boolean to Node.
+      PASS_RESPONSE_CACHE_ENABLED: ${{ vars.PASS_RESPONSE_CACHE == 'enabled' && 'true' || 'false' }}
     # `actions: write` starts dispatch.yml and review.yml runs with the job
     # token; the identity token is the tailnet join's.
     permissions:
@@ -102,7 +105,8 @@ jobs:
           base=${base%/v1}
           jq --arg base "$base" 'if $base == "" then . else .usage.url = "\($base)/usage" end' \
             .github/pass.json > "$RUNNER_TEMP/pass.json"
-      # Validate the named or discovered applying run after its pass job ends.
+      # A forged cached body could steer scheduling even with a valid ETag.
+      # Accept handoff metadata only from a validated applying predecessor.
       - name: Validate predecessor
         id: predecessor
         timeout-minutes: 2
@@ -110,7 +114,266 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PREVIOUS_RUN_ID: ${{ inputs.previous_run_id }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: just pass-state validate
+        shell: node {0}
+        run: |
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+          const { createHmac, createCipheriv, createDecipheriv, randomBytes } = require('node:crypto');
+
+          const STATE = '.state/pass.json';
+          const RESPONSES = '.state/pass-responses.enc';
+          const HANDOFF = '.state/handoff/pass.json';
+          const SCHEMA = 'agent-board/poll-state/v1';
+          const MAX_BYTES = 32 * 1024 * 1024; // The pinned pass's state-file limit.
+          const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
+          const RUN_ID = /^[1-9][0-9]{0,19}$/;
+          const SHA256 = /^[0-9a-f]{64}$/;
+          const MAPS = ['responses', 'pass_responses'];
+          const cacheKey = (id, attempt) => RUN_ID.test(id) && RUN_ID.test(attempt) ? `pass-responses-${id}-${attempt}` : '';
+          const NONCE_BYTES = 12;
+          const TAG_BYTES = 16;
+          const MAX_CIPHERTEXT_BYTES = MAX_BYTES + NONCE_BYTES + TAG_BYTES;
+           const cacheContext = (key, scope) => Buffer.from(`${key}\n${scope}`);
+
+          function api(endpoint, timeout = 20000) {
+            return JSON.parse(execFileSync('gh', ['api', endpoint], {
+              timeout, maxBuffer: MAX_BYTES, stdio: ['ignore', 'pipe', 'pipe'],
+            }));
+          }
+
+          function validate(env = process.env, get = api) {
+            let id = env.PREVIOUS_RUN_ID;
+            const root = `repos/${env.GITHUB_REPOSITORY}/actions`;
+            if (!id) {
+              const listed = get(`${root}/workflows/poll.yml/runs?branch=${encodeURIComponent(env.DEFAULT_BRANCH)}&per_page=100`).workflow_runs;
+              if (!Array.isArray(listed) || listed.length > 100) throw new Error('invalid run listing');
+              const previous = listed.filter(run => RUN_ID.test(String(run.id)) &&
+                BigInt(run.id) < BigInt(env.GITHUB_RUN_ID) && run.head_branch === env.DEFAULT_BRANCH &&
+                (run.event === 'schedule' || (run.event === 'workflow_dispatch' && run.display_title === 'pass (apply)')) &&
+                run.conclusion !== 'cancelled').sort((a, b) => BigInt(a.id) > BigInt(b.id) ? -1 : 1)[0];
+              if (!previous) return null;
+              id = String(previous.id);
+            }
+            if (!RUN_ID.test(id) || id === env.GITHUB_RUN_ID) return null;
+            const run = get(`${root}/runs/${id}`);
+            const workflow = get(`${root}/workflows/poll.yml`);
+            if (String(run.id) !== id || run.workflow_id !== workflow.id ||
+                run.path !== '.github/workflows/poll.yml' ||
+                run.repository?.full_name !== env.GITHUB_REPOSITORY ||
+                run.head_repository?.full_name !== env.GITHUB_REPOSITORY ||
+                run.head_branch !== env.DEFAULT_BRANCH ||
+                !(run.event === 'schedule' ||
+                  (run.event === 'workflow_dispatch' && run.display_title === 'pass (apply)'))) return null;
+            // Require the state-writing job to have finished, not the whole workflow.
+            const key = cacheKey(id, run.run_attempt);
+            const jobs = get(key ? `${root}/runs/${id}/attempts/${run.run_attempt}/jobs?per_page=100` :
+              `${root}/runs/${id}/jobs?filter=latest&per_page=100`);
+            if (!Array.isArray(jobs.jobs) || jobs.total_count !== jobs.jobs.length || jobs.jobs.length > 100) return null;
+            const passes = jobs.jobs.filter(job => job.name === 'pass');
+            return passes.length === 1 && passes[0].status === 'completed' &&
+              ['success', 'failure'].includes(passes[0].conclusion) ? { id, key } : null;
+          }
+
+          function publicState(state, get = api) {
+            // Repository cursors can name private threads, including holds on public issues.
+            const cursors = ['follow', 'share', 'action_first', 'scan', 'authored'].map(name => `${name}_cursor`);
+            const cursorRepo = value => typeof value === 'string' && /^([\w.-]+\/[\w.-]+)(?:#[1-9][0-9]*)?$/.exec(value)?.[1].toLowerCase();
+            const repositories = new Set(cursors.map(key => cursorRepo(state[key])).filter(Boolean));
+            const publicRepos = new Set();
+            const deadline = Date.now() + 90000;
+            for (const repo of repositories) {
+              const remaining = deadline - Date.now();
+              if (remaining <= 0) break;
+              try {
+                const metadata = get(`repos/${repo}`, Math.min(10000, remaining));
+                if (metadata.full_name?.toLowerCase() === repo && metadata.private === false && metadata.visibility === 'public') publicRepos.add(repo);
+              } catch { /* Drop cursors on any doubt. */ }
+            }
+            const { response_scope, interval_seconds } = state;
+            const handoff = { schema: SCHEMA,
+              interval_seconds: Number.isInteger(interval_seconds) && interval_seconds >= 300 && interval_seconds <= 21600 ? interval_seconds : 300 };
+            if (typeof response_scope === 'string' && SHA256.test(response_scope)) handoff.response_scope = response_scope;
+            for (const key of cursors) if (publicRepos.has(cursorRepo(state[key]))) handoff[key] = state[key];
+            return handoff;
+          }
+
+          function checkCache(env, get = api) {
+            const key = env.RESPONSE_CACHE_KEY;
+            if (!key) return '';
+            const ref = `refs/heads/${env.DEFAULT_BRANCH}`;
+            // Prefix results and multiple archive versions are ambiguous.
+            const listing = get(`repos/${env.GITHUB_REPOSITORY}/actions/caches?key=${key}&ref=${encodeURIComponent(ref)}&per_page=1`);
+            const entries = listing.actions_caches;
+            if (listing.total_count !== 1 || !Array.isArray(entries) || entries.length !== 1) return '';
+            const [entry] = entries;
+            return entry?.key === key && entry.ref === ref && Number.isSafeInteger(entry.size_in_bytes) &&
+              entry.size_in_bytes > 0 && entry.size_in_bytes <= MAX_ARCHIVE_BYTES ? key : '';
+          }
+
+          function readBounded(file, limit = MAX_BYTES, min = 1) {
+            const stats = fs.lstatSync(file);
+            if (!stats.isFile() || stats.size < min || stats.size > limit) throw new Error('invalid state file size or type');
+            return fs.readFileSync(file);
+          }
+
+          function parseState(data) {
+            const state = JSON.parse(data);
+            if (state?.schema !== SCHEMA) throw new Error('invalid state schema');
+            return state;
+          }
+
+          function prepareState(restored) {
+            fs.mkdirSync('.state', { recursive: true });
+            if (restored !== 'success') return;
+            try {
+              const { responses, pass_responses, response_cache, response_cache_key, ...state } = parseState(readBounded(HANDOFF));
+              fs.writeFileSync(STATE, JSON.stringify(state));
+            } catch { /* Bad handoff: start without cursors. */ }
+          }
+
+          function encryptionKey(env) {
+            if (env.PASS_CACHE_KEY) return createHmac('sha256', env.PASS_CACHE_KEY).update('pass-response-cache-dedicated-v1').digest();
+            if (!env.PASS_RESPONSE_CACHE_PAT) throw new Error('missing cache credential');
+            return createHmac('sha256', env.PASS_RESPONSE_CACHE_PAT).update('pass-response-cache-v1').digest();
+          }
+
+          // The state was validated as JSON. Find its top-level response members
+          // without reserializing sealed entries; latin1 gives byte offsets even
+          // when strings contain multibyte UTF-8. Only these spans are encrypted.
+          function responseMembers(raw) {
+            const text = raw.toString('latin1');
+            const members = new Map();
+            let start, depth = 0;
+            for (let i = 0; i < text.length; i++) {
+              const c = text[i];
+              if (c === '"') {
+                while (text[++i] !== '"') if (text[i] === '\\') i++;
+              } else if (c === '{' || c === '[') {
+                if (depth++ === 0) start = i + 1;
+              } else {
+                if (depth === 1 && (c === ',' || c === '}')) {
+                  // The pinned serializer emits these field names literally.
+                  const name = /^\s*"(responses|pass_responses)"\s*:/.exec(text.slice(start, i))?.[1];
+                  if (name) members.set(name, raw.subarray(start, i));
+                  start = i + 1;
+                }
+                if (c === '}' || c === ']') depth--;
+              }
+            }
+            return [...members.values()];
+          }
+
+          function exportCache(raw, state, scope, env, key) {
+            if (!MAPS.some(map => Object.keys(state[map] ?? {}).length)) return;
+            const members = responseMembers(raw);
+            if (!members.length) return;
+
+            // Fork PR jobs can read default-branch caches but lack the secret.
+            // Bind to the attempt and scope; store nonce | tag | ciphertext.
+            const nonce = randomBytes(NONCE_BYTES);
+            const cipher = createCipheriv('aes-256-gcm', encryptionKey(env), nonce);
+            cipher.setAAD(cacheContext(key, scope));
+            const data = Buffer.concat(members.flatMap((member, i) => i === 0 ? [member] : [Buffer.from(','), member]));
+            const ciphertext = Buffer.concat([cipher.update(data), cipher.final()]);
+            fs.writeFileSync(RESPONSES, Buffer.concat([nonce, cipher.getAuthTag(), ciphertext]), { flag: 'wx', mode: 0o600 });
+            return true;
+          }
+
+          function exportState(env) {
+            const output = '.state/public';
+            fs.rmSync(output, { recursive: true, force: true });
+            fs.rmSync(RESPONSES, { force: true });
+            let handoff;
+            try {
+              const raw = readBounded(STATE);
+              const state = parseState(raw);
+              handoff = publicState(state);
+              const key = cacheKey(env.GITHUB_RUN_ID, env.GITHUB_RUN_ATTEMPT);
+              if (env.PASS_RESPONSE_CACHE_ENABLED === 'true' && key && handoff.response_scope) {
+                try {
+                  if (exportCache(raw, state, handoff.response_scope, env, key)) handoff.response_cache_key = key;
+                } catch { console.log('Could not encrypt pass responses; the next pass reads cold'); }
+              }
+              fs.mkdirSync(output);
+              fs.writeFileSync(`${output}/pass.json`, JSON.stringify(handoff) + '\n');
+            } catch {
+              fs.rmSync(output, { recursive: true, force: true });
+              console.log('Could not prepare public pass state; the next pass starts cold');
+              return;
+            }
+            if (handoff.response_cache_key) {
+              try { fs.appendFileSync(env.GITHUB_OUTPUT, 'cache-ready=true\n'); }
+              catch { console.log('Could not signal response cache readiness; the next pass reads cold'); }
+            }
+          }
+
+          function prepareCache(env) {
+            let key = '';
+            try {
+              // A rerun can leave an older cursor artifact behind.
+              if (parseState(readBounded(HANDOFF)).response_cache_key === env.RESPONSE_CACHE_KEY) key = checkCache(env);
+              if (key) {
+                // The cache action does not restrict tar members to its path input.
+                // Never let an archive write a path in the privileged checkout.
+                const guard = fs.mkdtempSync(`${env.RUNNER_TEMP}/pass-cache-`);
+                fs.writeFileSync(`${guard}/tar`, `#!/bin/sh
+          [ "$PASS_CACHE_EXTRACT" = 1 ] || exec /usr/bin/tar "$@"
+          case "$1" in -tf) exit 0 ;; -xf) ;; *) exit 1 ;; esac
+          dest="$GITHUB_WORKSPACE/${RESPONSES}"
+          tmp=$(mktemp "$dest.XXXXXX") || exit 1
+          trap 'rm -f -- "$tmp"' EXIT
+          if /usr/bin/prlimit --fsize=${MAX_CIPHERTEXT_BYTES}:${MAX_CIPHERTEXT_BYTES} -- /usr/bin/tar "$@" \\
+            --no-recursion --occurrence=1 --to-stdout -- '${RESPONSES}' > "$tmp" 2>/dev/null; then
+            mv -T -- "$tmp" "$dest"
+          else exit 1; fi
+          `, { mode: 0o755 });
+                fs.appendFileSync(env.GITHUB_PATH, `${guard}\n`);
+              }
+            } catch { key = ''; }
+            fs.appendFileSync(env.GITHUB_OUTPUT, `key=${key}\n`);
+            if (!key) console.log('No eligible response cache; using cold reads');
+          }
+
+          function mergeCache(env) {
+            try {
+              if (env.CACHE_HIT !== 'true') return;
+              const state = parseState(readBounded(STATE));
+              const header = NONCE_BYTES + TAG_BYTES;
+              const data = readBounded(RESPONSES, MAX_CIPHERTEXT_BYTES, header + 1);
+              if (!state.response_scope) return;
+              const decipher = createDecipheriv('aes-256-gcm', encryptionKey(env), data.subarray(0, NONCE_BYTES), { authTagLength: TAG_BYTES });
+              decipher.setAAD(cacheContext(env.RESPONSE_CACHE_KEY, state.response_scope));
+              decipher.setAuthTag(data.subarray(NONCE_BYTES, header));
+              // Only splice members after authentication succeeds.
+              const members = Buffer.concat([decipher.update(data.subarray(header)), decipher.final()]);
+              const cursors = Buffer.from(JSON.stringify(state));
+              const encoded = Buffer.concat([cursors.subarray(0, -1), Buffer.from(','), members, Buffer.from('}')]);
+              if (encoded.length > MAX_BYTES) throw new Error('merged state exceeds size limit');
+              fs.writeFileSync(`${STATE}.tmp`, encoded);
+              fs.renameSync(`${STATE}.tmp`, STATE);
+            } catch { console.log('Rejected response cache; using cold reads'); }
+            finally { fs.rmSync(RESPONSES, { force: true }); }
+          }
+
+          function main(mode, env = process.env) {
+            switch (mode) {
+              case 'validate': {
+                let predecessor;
+                try { predecessor = validate(env); } catch { /* Missing provenance starts cold. */ }
+                const { id = '', key = '' } = predecessor ?? {};
+                fs.appendFileSync(env.GITHUB_OUTPUT, `run-id=${id}\nresponse-key=${key}\n`);
+                console.log(id ? `Validated predecessor ${id}` : 'No trusted predecessor; starting cold');
+                break;
+              }
+              case 'prepare': prepareState(env.RESTORED); break;
+              case 'export': exportState(env); break;
+              case 'check-cache': prepareCache(env); break;
+              case 'merge-cache': mergeCache(env); break;
+              default: throw new Error('Unknown pass-state mode; expected validate, prepare, export, check-cache, or merge-cache');
+            }
+          }
+          if (require.main === module) main(process.argv[2] || 'validate');
+          module.exports = { main, validate, publicState, checkCache };
       - name: Restore pass state
         id: restore
         if: steps.predecessor.outputs.run-id != ''
@@ -126,14 +389,38 @@ jobs:
         timeout-minutes: 1
         env:
           RESTORED: ${{ steps.restore.outcome }}
-        run: |
-          mkdir -p .state
-          src=.state/handoff/pass.json
-          [[ $RESTORED == success && -f $src && $(stat -c %s "$src") -le 33554432 ]] || exit 0
-          # Older artifacts may contain response bodies. Always start with cold reads.
-          jq -ces 'select(length == 1) | .[0] | select(.schema == "agent-board/poll-state/v1") |
-            del(.responses, .pass_responses, .response_cache)' "$src" > .state/pass.tmp 2>/dev/null || exit 0
-          mv .state/pass.tmp .state/pass.json
+        run: just pass-state prepare
+      - name: Check response cache size
+        id: cache-check
+        if: env.PASS_RESPONSE_CACHE_ENABLED == 'true' && steps.restore.outcome == 'success'
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESPONSE_CACHE_KEY: ${{ steps.predecessor.outputs.response-key }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: just pass-state check-cache
+      - name: Restore pass responses
+        id: responses
+        if: steps.cache-check.outcome == 'success' && steps.cache-check.outputs.key != ''
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        env:
+          PASS_CACHE_EXTRACT: '1'
+        with:
+          path: .state/pass-responses.enc
+          key: ${{ steps.cache-check.outputs.key }}
+      - name: Validate restored responses
+        if: ${{ !cancelled() && steps.cache-check.outcome != 'skipped' }}
+        continue-on-error: true
+        timeout-minutes: 1
+        env:
+          CACHE_HIT: ${{ steps.responses.outcome == 'success' && steps.responses.outputs.cache-hit == 'true' }}
+          RESPONSE_CACHE_KEY: ${{ steps.cache-check.outputs.key }}
+          PASS_CACHE_KEY: ${{ steps.responses.outputs.cache-hit == 'true' && secrets.PASS_CACHE_KEY || '' }}
+          PASS_RESPONSE_CACHE_PAT: ${{ steps.responses.outputs.cache-hit == 'true' && secrets.PASS_CACHE_KEY == '' && secrets.CGWALTERS_BOT_PAT || '' }}
+        run: just pass-state merge-cache
       - name: One pass
         id: pass
         timeout-minutes: 18
@@ -165,11 +452,14 @@ jobs:
           ${{ !cancelled() && (steps.pass.outcome == 'success' || steps.pass.outcome == 'failure') &&
           ((github.event_name == 'schedule' && vars.PASS_APPLY == 'enabled') ||
           (github.event_name == 'workflow_dispatch' && inputs.apply)) }}
-        timeout-minutes: 2
+        timeout-minutes: 3
         env:
           GH_TOKEN: ${{ github.token }}
+          PASS_CACHE_KEY: ${{ env.PASS_RESPONSE_CACHE_ENABLED == 'true' && secrets.PASS_CACHE_KEY || '' }}
+          PASS_RESPONSE_CACHE_PAT: ${{ env.PASS_RESPONSE_CACHE_ENABLED == 'true' && secrets.PASS_CACHE_KEY == '' && secrets.CGWALTERS_BOT_PAT || '' }}
         run: just pass-state export
       - name: Upload pass state
+        id: publish-state
         if: ${{ !cancelled() && steps.state.outcome == 'success' }}
         timeout-minutes: 2
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -179,6 +469,14 @@ jobs:
           include-hidden-files: true
           retention-days: 1
           if-no-files-found: ignore
+      - name: Save pass responses
+        if: ${{ !cancelled() && steps.publish-state.outcome == 'success' && steps.state.outputs.cache-ready == 'true' }}
+        continue-on-error: true
+        timeout-minutes: 2
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .state/pass-responses.enc
+          key: pass-responses-${{ github.run_id }}-${{ github.run_attempt }}
       # GitHub drops agent-board-pin.yml's hourly runs too, so the pass starts
       # it when agent-board's head is not the pin and has no pin PR yet (the
       # title is the one `just bump-agent-board` gives it); the pin workflow

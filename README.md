@@ -268,9 +268,9 @@ Already dispatched triage is not undone: inspect its receipts and outcomes
 under the existing policy. Keep the holds and approval boundaries intact.
 
 Applying passes hand off cursors, the interval and response scope in the
-one-day `pass-state` artifact. Each pass starts with cold reads: response
-bodies and their validators are not carried between passes, even from older
-artifacts. Previews never publish state.
+one-day `pass-state` artifact. Response bodies and validators never go in
+the artifact, and restores ignore them in older artifacts. Previews never
+publish state.
 Both chain dispatches supply `previous_run_id`; restore validates that
 exact run's repository, workflow, default branch, applying invocation and finished
 `pass` job. Schedule/bootstrap runs without an explicit predecessor search at most
@@ -295,9 +295,28 @@ miss, a missing or stale ledger makes adopted issues refuse work: GitHub's comme
 prose cannot reconstruct the machine records. Runner-local state is not a backup.
 Historical comment cleanup remains off pending review of preview candidates.
 
-Cold reads lose the rate-limit and body-transfer savings of authenticated 304s.
-The cost depends on the threads and pages visited; within-pass caching, its
-agent-board cap and request bounds are unchanged.
+To recover the bot rate-limit savings of authenticated 304s,
+set tracker's Actions variable `PASS_RESPONSE_CACHE` to `enabled`; unset is
+off. Applying passes cache encrypted response maps, including private responses.
+Set the Actions secret `PASS_CACHE_KEY` to an independent, randomly generated
+secret before opting in. If it is unset, the cache key is derived from the bot
+PAT. Previews can restore but cannot save. The restore preflights the predecessor
+attempt's exact key and default-branch ref and skips listed archives over 64 MiB.
+The restore step has a two-minute timeout and extracts only the expected ciphertext
+member, whose size is checked before decryption. A miss, authentication failure or
+key change leaves the cursors intact and reads cold.
+
+The one-day retention applies to the `pass-state` artifact, not the cache.
+Fork PR jobs can retain copies of the ciphertext. Someone with a copy and the
+secret used to encrypt it (the dedicated key, or the old PAT for a fallback
+cache) can decrypt it offline, even after deletion, rotation or PAT revocation.
+With a dedicated key, a PAT leak alone cannot decrypt those caches.
+
+After redaction, a visibility change or suspected key exposure, unset
+`PASS_RESPONSE_CACHE` and let in-flight passes finish. In **Actions → Caches**,
+filter for `pass-responses-` and delete all matching entries. Rotate any exposed
+credential before re-enabling. Unsetting the variable does not delete existing
+caches; purging does not recall downloaded copies.
 
 `poll.yml` has no schedule. `gh workflow run poll.yml` previews and
 `-f apply=true` applies one pass. While the repository variable `PASS_APPLY`
