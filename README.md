@@ -398,28 +398,47 @@ key the recipe does not list fails the run instead of being left out.
 compares the shadow's previews with the pass's steps for 7 to 18 November 2026.
 
 A pull request labelled `needs-human` is not touched again until the label
-is removed. A fix run can request one `add_comment` explaining why it
-cannot safely change the pull request, without a push (opt-in in
-`.github/agentic-job/fix.toml`); the unchanged head is what stops the fix
-rounds.
+is removed. The pinned wrapper's fix output list does not include
+`add_comment`, even where the bounds list it. A blocked fix explains what
+needs human action in the run report and requests a `noop`, without a push;
+the unchanged head is what stops the fix rounds. It can request a comment
+instead of `noop` only if its trusted hand-back brief grants a comment on
+that pull request.
 
 Text-only fixes ([#1846](https://github.com/cgwalters-forge/tracker/issues/1846))
-remain off in both fix bounds. The [pinned wrapper](https://github.com/cgwalters-forge/actions/blob/a2fac2ea949255e1e901b8225d566a44f28c1e94/.github/workflows/cgwalters-agentic-job.yml)
-does not request `update_pull_request`. Do not add the generic output to its
-fix list: [check](https://github.com/cgwalters-forge/agentic-job/blob/2b937aaac81da06d8bff5f317e58df6ad7063e1e/crates/safe-outputs/src/check/mod.rs#L492-L513)
-checks the repository and explicit number, not that the number is the fix PR,
-and [apply](https://github.com/cgwalters-forge/agentic-job/blob/2b937aaac81da06d8bff5f317e58df6ad7063e1e/.github/workflows/apply.yml#L563)
-uses `target: "*"`. That would let a misdirected run edit a sibling or
-human-authored PR, or publish stale text against a new head.
+would let a run correct stale descriptions after earlier fixes narrowed the
+diff, as in agentic-job [#4302](https://github.com/cgwalters-forge/agentic-job/pull/4302),
+[#4399](https://github.com/cgwalters-forge/agentic-job/pull/4399) and
+[#4506](https://github.com/cgwalters-forge/agentic-job/pull/4506), without a new head.
+They remain off in `fix.toml` and `midstream-fix.toml`. The [pinned wrapper's
+fix list](https://github.com/cgwalters-forge/actions/blob/a2fac2ea949255e1e901b8225d566a44f28c1e94/.github/workflows/cgwalters-agentic-job.yml#L616)
+does not request `update_pull_request`. Adding the generic output to the list
+and bounds would let a misdirected run edit a sibling or human-authored PR:
+[check](https://github.com/cgwalters-forge/agentic-job/blob/2b937aaac81da06d8bff5f317e58df6ad7063e1e/crates/safe-outputs/src/check/mod.rs#L492-L513)
+does not compare its number to the fix PR, and [apply](https://github.com/cgwalters-forge/agentic-job/blob/2b937aaac81da06d8bff5f317e58df6ad7063e1e/.github/workflows/apply.yml#L563)
+uses `target: "*"`.
 
-Before enabling, agentic-job must bind the checked request to the trusted
-fix repository, PR number, bot author, and pinned head, allowing at most one
-title/body-only request without a push. Apply must reread the open PR and
-refuse a moved head or wrong author before writing; GitHub's text update is
-not a force-with-lease. Test a valid text-only update and refusals for another
-PR, wrong author, moved head, draft/ref changes, and a push in the same hand-back
-before pinning the updated wrapper and opting the two fix bounds in. The fix
-profile describes the guarded output, not a fallback API write.
+The proposed opt-in is `github.outputs.push_to_pull_request_branch.allow_pr_text_update = true`
+in the selected fix bounds, absent by default. This is not a supported key
+yet. Agentic-job should derive the scoped `update_pull_request` from the push
+policy, reusing the output type and the configured `own_author` (even in
+listed repositories). Check should allow one title and/or body replacement,
+with no push, only at the policy's repository and PR number. Apply must use
+that checked target, not the wildcard handler. Refuse a closed PR, wrong
+author, moved head or changes to the title/body being replaced. Check and
+apply must reject newly introduced issue-closing directives, comparing the
+replacement against the trusted original text. Preserve
+reserved workflow markers from the trusted PR rather than accepting them
+from the agent. A read before GitHub's write can detect changes but cannot
+prevent a racing push or text edit. Keep both routes off unless the write can
+enforce the expected head and original text. Test the allowed edit and the
+scope, field, count, new closing directive and concurrent-change refusals
+before repinning and opting in. A text-only edit does not trigger the automatic
+review in `review.yml`. Before enabling this for poll-started fixes, test
+that poll distinguishes a trusted applied text update from a blocked fix at
+the same head, requests a fresh review of the edited text, and waits for a
+verdict bound to that title and body at that SHA. Neither apply success nor
+a verdict for the previous text at the same SHA can satisfy that gate.
 
 Leave `pr.holdMissingData` unset in the applying pass. The pinned board only
 recognizes the legacy failure annotation from the exact dispatch attempt on an

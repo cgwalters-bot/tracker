@@ -2935,10 +2935,12 @@ fn blocked_fixes_can_explain_themselves_without_a_push_or_extra_write_authority(
     assert!(has_line(&read("fix.toml"), "max_outputs = 3"));
     let fix = profile("fix");
     for rule in [
-        "leave the working tree unchanged",
-        "one `add_comment` safe output with a `body`",
+        "leave the working tree and pinned head unchanged",
+        "Explain the blocker, what you checked, and what a human must do in the run report",
         "will not push, or will push but leave a blocker",
+        "only if the trusted hand-back brief explicitly allows `add_comment` for this pull request, request one `add_comment` safe output with a `body`",
         "one plain sentence",
+        "Without a push or that comment, request one `noop` if allowed; if not, use the run report alone",
         "the pinned head without a push or the apply-replayed tip with a push",
         "replay the exact hand-back mails on their base",
         "If the trusted hand-back brief does not allow `add_comment` or you cannot establish the exact SHA, record the blocker in the run report instead",
@@ -2965,27 +2967,82 @@ fn blocked_fixes_can_explain_themselves_without_a_push_or_extra_write_authority(
 
 #[test]
 fn text_only_fixes_require_explicit_handback_permission() {
-    // Until agentic-job can bind a text update to the fix PR and head, neither
-    // route may admit the generic repository-scoped update.
     for file in ["fix.toml", "midstream-fix.toml"] {
-        assert!(
-            output_entries(&outputs(file))
-                .iter()
-                .all(|(kind, _)| *kind != "update_pull_request"),
-            "{file}"
-        );
+        let bounds: toml::Table = toml::from_str(&read(file)).unwrap_or_else(|e| panic!("{file}: {e}"));
+        let outputs = bounds["github"]["outputs"].as_table().expect("GitHub outputs");
+        assert!(!outputs.contains_key("update_pull_request"), "{file} must not grant generic PR updates");
     }
 
     let fix = profile("fix");
     for rule in [
-        "leave the working tree and pinned head unchanged",
+        "match the text to the diff at the pinned head",
+        "Leave the working tree and pinned head unchanged",
         "Only if the run's trusted hand-back brief explicitly allows `update_pull_request`",
-        "with only the changed `title` and/or `body`",
+        "only the changed `title` and/or `body` as replacement text",
+        "leave reserved workflow markers to apply",
         "Include no push",
-        "If the output is not allowed, explain the blocker rather than editing through the forge API or manufacturing a commit",
+        "use the blocked-fix hand-back below and describe the needed text correction in the run report",
+        "do not edit through the forge API or manufacture a commit",
+        "record review passes and remaining findings in the run report, not in the pull request text",
     ] {
         assert!(fix.contains(rule), "{rule}");
     }
+}
+
+#[test]
+fn agentic_job_accepts_only_noop_of_the_default_off_text_fix_handbacks() {
+    if !agentic_job_installed() {
+        return;
+    }
+    let head = "1".repeat(40);
+    let dir = temp_path("fix-text-check");
+    let out = dir.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    let policy_path = dir.join("policy.json");
+    let collected = dir.join("collected.json");
+    for (file, repo) in [("fix.toml", "cgwalters-forge/tracker"), ("midstream-fix.toml", "cgwalters-forge/composefs-rs")] {
+        let path = path_of(file);
+        let clone_url = format!("https://github.com/{repo}");
+        let args = [
+            "policy", "--allow", &path, "--repo", repo, "--clone-url", &clone_url,
+            "--kind", "branch", "--max-outputs", "3", "--base", "bot/text-fix",
+            "--pull-request", "7", "--head", &head, "--pull-author", "cgwalters-bot", "--output-repo", repo,
+        ];
+        let mut request = args.to_vec();
+        request.extend(["--outputs", "push_to_pull_request_branch,noop,missing_tool,missing_data"]);
+        let policy: Value = serde_json::from_str(&agentic_job_ok(&request)).expect("policy JSON");
+        for denied in ["update_pull_request", "add_comment"] {
+            assert!(policy["safe_outputs"].get(denied).is_none(), "{file}: {denied}");
+        }
+
+        *request.last_mut().unwrap() = "push_to_pull_request_branch,noop,missing_tool,missing_data,update_pull_request";
+        let refused = agentic_job(&request);
+        assert!(!refused.status.success(), "{file} accepted a repository-scoped update");
+        let error = String::from_utf8_lossy(&refused.stderr);
+        assert!(error.contains("output type \"update_pull_request\" is not within the bounds"), "{file}: {error}");
+
+        // Check must refuse even an otherwise valid same-PR update that reaches it.
+        std::fs::write(&policy_path, policy.to_string()).unwrap();
+        let cli_args = |command| [command, "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()];
+        let item = json!({"type": "update_pull_request", "repo": repo, "pull_request_number": 7, "title": "Narrowed scope"});
+        std::fs::write(out.join("outputs.jsonl"), format!("{item}\n")).unwrap();
+        std::fs::write(&collected, json!({"items": [item], "errors": []}).to_string()).unwrap();
+        let checked = agentic_job(&cli_args("check"));
+        let error = String::from_utf8_lossy(&checked.stderr);
+        assert!(!checked.status.success() && error.contains("an output of type \"update_pull_request\", which the policy does not allow"), "{file}: {error}");
+
+        let comment = json!({"type": "add_comment", "body": "The title needs a human edit."});
+        std::fs::write(out.join("outputs.jsonl"), format!("{comment}\n")).unwrap();
+        let refused = agentic_job(&cli_args("collect"));
+        let error = String::from_utf8_lossy(&refused.stderr);
+        assert!(!refused.status.success() && error.contains("Unexpected output type 'add_comment'"), "{file}: {error}");
+
+        let noop = json!({"type": "noop", "message": "The title needs a human edit."});
+        std::fs::write(out.join("outputs.jsonl"), format!("{noop}\n")).unwrap();
+        agentic_job_ok(&cli_args("collect"));
+        agentic_job_ok(&cli_args("check"));
+    }
+    std::fs::remove_dir_all(dir).unwrap();
 }
 
 #[test]
@@ -3042,12 +3099,12 @@ fn fix_profile_preserves_independent_review_and_replacement_series_safety() {
         "Once the fix is done and its checks pass, review it before handing it back",
         "the whole replacement series as one diff against the pull request's base, and none of your reasoning",
         "the diff-reviewer subagent if one is installed, otherwise a general subagent told to argue against the change",
-        "Fix the blockers in what your fix changed, folding each into the commit it corrects and changing nothing else",
+        "Fix the blockers in what your fix changed, folding each into the commit it corrects for a code fix and changing nothing else",
         "list the rest as left open",
         "Re-run the checks as above and review again",
         "stop after a pass with no blocker or after three passes",
-        "says in one line how many review passes ran and what the last one left open",
-        "if you cannot start a subagent, it says that no review ran",
+        "record in the run report how many review passes ran and what the last one left open (or that no review ran)",
+        "Include that line in one `add_comment` beside the push only if the trusted hand-back brief explicitly allows `add_comment` for this pull request",
     ] {
         assert!(fix.contains(rule), "{rule}");
     }
