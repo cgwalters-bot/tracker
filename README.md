@@ -267,26 +267,25 @@ verify the next applying pass uses that revision. Ordinary revisits continue.
 Already dispatched triage is not undone: inspect its receipts and outcomes
 under the existing policy. Keep the holds and approval boundaries intact.
 
-Applying passes hand their
-disposable `.state/pass.json` cache to the next pass as the one-day `pass-state` artifact.
+Applying passes hand off cursors, the interval and response scope in the
+one-day `pass-state` artifact. Each pass starts with cold reads: response
+bodies and their validators are not carried between passes, even from older
+artifacts. Previews never publish state.
 Both chain dispatches supply `previous_run_id`; restore validates that
 exact run's repository, workflow, default branch, applying invocation and finished
 `pass` job. Schedule/bootstrap runs without an explicit predecessor search at most
 100 poll runs on the default branch for the newest earlier applying invocation,
-then subject it to the same provenance checks. No shared cache or latest-by-name
-artifact lookup is used. Missing, unreadable or untrusted predecessors start cold.
-Previews never upload state.
+then subject it to the same provenance checks. Missing, unreadable or untrusted
+predecessors start without saved cursors.
 
-A forged cached body could steer scheduling despite a valid ETag, so only that
-trusted predecessor is accepted. Raw state can also include private usage/holds
-comments or unpublished reviews even in public repositories. Before uploading,
-the caller keeps both caches' entries only for public issue/PR lists and details,
-issue comment lists/details, and repository/issue label lists.
-Each repository must also be currently readable as public. Entries outside this
-allowlist are dropped whole, with their validators; repository visibility alone
-does not make a PAT-authenticated response public. Visibility checks cost one
-request per distinct allowlisted repository, capped at 100 repositories and
-90 seconds. Cache bodies are never printed. Missing cache state only costs reads.
+Raw state can include private usage/holds comments or unpublished reviews even
+in public repositories. Export keeps repository and thread cursors only for
+repositories still readable as public, with one visibility check per distinct
+cursor repository and a 90-second deadline. Action-first PR decision progress is
+only partially retained: the per-repository positions are not exported, so some
+repositories may restart their decision lists. Notification, operator search,
+and hold-summary checkpoints can disclose private activity, so those scans
+still restart each pass. Intake and maintenance records are not exported.
 
 `livingStatus` remains disabled in hosted poll. Its replay ledger can contain
 private metadata even for a public issue, so it is not part of `pass-state` or
@@ -296,22 +295,9 @@ miss, a missing or stale ledger makes adopted issues refuse work: GitHub's comme
 prose cannot reconstruct the machine records. Runner-local state is not a backup.
 Historical comment cleanup remains off pending review of preview candidates.
 
-Reviews (including pending reviews), timelines (which can embed private
-cross-references), review comments, Actions runs/jobs/variables,
-repository contents, events, issue parent/sub-issue relations and every other
-endpoint remain uncached between passes, as do all private reads. Each requested
-page/detail on those paths starts with a full GET rather than a conditional GET
-that could return 304: for example, reading reviews on N PRs costs the sum of
-their review pages in full requests per pass. This does not add a round trip
-versus revalidation, but loses the authenticated 304 rate-limit saving and body
-transfer saving. Counts depend on the threads and pages visited; there is no
-fixed extra request count per pass. Existing within-pass caching and request
-bounds are unchanged.
-
-Only the schema, interval and filtered response maps are handed off. Cursor,
-intake and maintenance metadata can name private threads, so it is not exported;
-those scans restart each pass, costing their searches/listings again and possibly
-retrying refused writes. Live thread claims still prevent duplicate intake.
+Cold reads lose the rate-limit and body-transfer savings of authenticated 304s.
+The cost depends on the threads and pages visited; within-pass caching, its
+agent-board cap and request bounds are unchanged.
 
 `poll.yml` has no schedule. `gh workflow run poll.yml` previews and
 `-f apply=true` applies one pass. While the repository variable `PASS_APPLY`

@@ -11,7 +11,7 @@ run-name: pass${{ inputs.apply && ' (apply)' || '' }}
 # started pass for its timeout or a lost runner. There is no schedule: GitHub
 # dropped most scheduled runs, and a waiting scheduled run counts as a newer
 # chain owner. A lost chain can restart from the scheduled pin workflow or a
-# manual dispatch. Its disposable response cache comes from a validated
+# manual dispatch. Its public cursor state comes from a validated
 # applying predecessor; bootstrap runs discover one.
 # Living status stays disabled until replay records have access-controlled durable storage.
 on:
@@ -102,8 +102,7 @@ jobs:
           base=${base%/v1}
           jq --arg base "$base" 'if $base == "" then . else .usage.url = "\($base)/usage" end' \
             .github/pass.json > "$RUNNER_TEMP/pass.json"
-      # Threat: a forged cached body can steer scheduling even with a valid
-      # ETag. Validate the named or discovered applying run after its pass job ends.
+      # Validate the named or discovered applying run after its pass job ends.
       - name: Validate predecessor
         id: predecessor
         timeout-minutes: 2
@@ -122,12 +121,19 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ steps.predecessor.outputs.run-id }}
           name: pass-state
-          path: .state
-      - name: Start cold after an unreadable artifact
-        if: steps.restore.outcome == 'failure'
-        run: rm -rf .state
+          path: .state/handoff
       - name: Prepare state directory
-        run: mkdir -p .state
+        timeout-minutes: 1
+        env:
+          RESTORED: ${{ steps.restore.outcome }}
+        run: |
+          mkdir -p .state
+          src=.state/handoff/pass.json
+          [[ $RESTORED == success && -f $src && $(stat -c %s "$src") -le 33554432 ]] || exit 0
+          # Older artifacts may contain response bodies. Always start with cold reads.
+          jq -ces 'select(length == 1) | .[0] | select(.schema == "agent-board/poll-state/v1") |
+            del(.responses, .pass_responses, .response_cache)' "$src" > .state/pass.tmp 2>/dev/null || exit 0
+          mv .state/pass.tmp .state/pass.json
       - name: One pass
         id: pass
         timeout-minutes: 18
@@ -152,7 +158,7 @@ jobs:
             --fix-bounds .github/agentic-job/midstream-fix.toml \
             --max-dispatch 20 --max-writes 60 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
       # Threat: raw state includes private usage/holds comments and status records.
-      # Export only allowed responses in public repositories; never replay records.
+      # The artifact is readable outside this job; filter before publishing.
       - name: Prepare public pass state
         id: state
         if: >-
