@@ -1,4 +1,5 @@
 {
+  "pace": {"overrides": [{"pool": "openai", "mode": "speed", "factor": 5, "until": "2026-11-24T00:00:00Z", "reason": "operator: openai burst before a banked reset"}]},
   "operator": "cgwalters",
   "bot": "cgwalters-bot",
   "dispatchRepo": "cgwalters-forge/tracker",
