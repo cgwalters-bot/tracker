@@ -201,7 +201,7 @@ cgwalters-forge/tracker --json jobs -q '.jobs[] | select(.conclusion ==
 
 ### Mistral triage rollout
 
-Mistral remains manual. The [dispatch wrapper](https://github.com/cgwalters-forge/actions/blob/a2fac2ea949255e1e901b8225d566a44f28c1e94/.github/workflows/cgwalters-agentic-job.yml)
+Mistral remains manual. The [Mistral rollout wrapper pin](https://github.com/cgwalters-forge/actions/blob/a2fac2ea949255e1e901b8225d566a44f28c1e94/.github/workflows/cgwalters-agentic-job.yml)
 pins agentic-job v0.6.16, which contains v0.6.3. In the reused
 [hosted triage](https://github.com/cgwalters-forge/tracker/actions/runs/44424357279),
 the previous wrapper pin used the same agentic-job release. Vibe's startup

@@ -1101,12 +1101,12 @@ test-review-caller:
     assert.match(job('review'), /^    needs: review-gate$/m);
     assert.match(job('run'), /^    needs: profile$/m);
     const review = job('review');
-    assert.match(review, /^    uses: cgwalters-forge\/actions\/\.github\/workflows\/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da$/m);
+    assert.match(review, /^    uses: cgwalters-forge\/actions\/\.github\/workflows\/cgwalters-agentic-job.yml@1f423605a61b2144407adf9278b23ae9194dba08$/m);
     const withBlock = review.split('    with:\n')[1].split('    #')[0];
     assert.deepEqual(withBlock.trim().split('\n').map(line => line.trim().split(':')[0]), ['kind', 'repo', 'item', 'head', 'pool', 'task']);
     for (const key of ['repo', 'item', 'head', 'pool']) assert.ok(withBlock.includes(`${key}: ${expression(`inputs.${key}`)}`));
     assert.doesNotMatch(review.replace(/^ *#.*$/gm, ''), /secrets:|inherit|SAFE_OUTPUTS_PAT|INFERENCE_API_KEY|AGENT_MODEL|pools\.json|needs\.profile/);
-    assert.match(job('run'), /cgwalters-agentic-job.yml@a2fac2ea949255e1e901b8225d566a44f28c1e94/);
+    assert.match(job('run'), /cgwalters-agentic-job.yml@1f423605a61b2144407adf9278b23ae9194dba08/);
     assert.match(job('run'), /SAFE_OUTPUTS_PAT: \$\{\{ secrets.CGWALTERS_BOT_PAT \}\}/);
     assert.match(dispatch, /      head:\n[^]*?        type: string\n        default: ''/);
     const gateJob = job('review-gate');
@@ -1239,7 +1239,7 @@ test-review-caller:
 test-review-wrapper actions:
     #!/usr/bin/env bash
     set -euo pipefail; cd -- "$1"
-    [[ $(git rev-parse HEAD) == ba6c56925e63551fd4373fbeb23456a2f4a316da ]] || { echo 'expected the actions checkout at the review pin (ba6c569)' >&2; exit 1; }
+    [[ $(git rev-parse HEAD) == 1f423605a61b2144407adf9278b23ae9194dba08 ]] || { echo 'expected the actions checkout at the review pin (1f42360)' >&2; exit 1; }
     target=$(mktemp -d); trap 'rm -rf -- "$target"' EXIT
     node --test .github/workflows/cgwalters-agentic-job.test.mjs
     cargo test --locked --manifest-path lint/Cargo.toml --target-dir "$target" --test review_wrapper

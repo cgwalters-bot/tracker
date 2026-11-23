@@ -236,9 +236,8 @@ jobs:
   review:
     needs: review-gate
     if: ${{ inputs.kind == 'review' }}
-    # Immutable wrapper from actions#217 (runner-only, agentic-job 427ce22),
-    # not a release tag.
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@ba6c56925e63551fd4373fbeb23456a2f4a316da
+    # Immutable wrapper, not a release tag.
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@1f423605a61b2144407adf9278b23ae9194dba08
     permissions:
       contents: read
       issues: write
@@ -265,6 +264,7 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      pull-requests: read
     outputs:
       task: ${{ steps.compose.outputs.task }}
       agent: ${{ steps.pool.outputs.agent }}
@@ -274,6 +274,7 @@ jobs:
       config: ${{ steps.config.outputs.config }}
       allow: ${{ steps.bounds.outputs.allow }}
       fix-allow: ${{ steps.bounds.outputs.fix-allow }}
+      fix-comment: ${{ steps.fix-comment.outputs.enabled }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -282,6 +283,8 @@ jobs:
             .github/agentic-job/profiles
             .github/agentic-job/pools.json
             .github/agentic-job/midstream.toml
+            .github/agentic-job/fix.toml
+            .github/agentic-job/midstream-fix.toml
             .github/agent-board-install
             Justfile
       # A GitHub release outage must not stop the job: build the same just
@@ -412,6 +415,42 @@ jobs:
           fix=$dir/fix.toml
           [[ $MIDSTREAM == true ]] && fix=$dir/midstream-fix.toml
           printf 'allow=%s\nfix-allow=%s\n' "$allow" "$fix" >> "$GITHUB_OUTPUT"
+      # Comment publication is internal to cgwalters-forge, not the push
+      # allowlist (in particular, D17 keeps bootc-dev fixes push-only).
+      # The policy's own_author exception is not an author check for listed repos.
+      - name: Resolve the fix comment opt-in
+        id: fix-comment
+        if: inputs.kind == 'fix'
+        env:
+          REPO: ${{ inputs.repo }}
+          ITEM: ${{ inputs.item }}
+          FIX_ALLOW: ${{ steps.bounds.outputs.fix-allow }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, re, subprocess, tomllib
+
+          BOT_ID = 17814078  # cgwalters-bot; account ID, not a reusable login.
+
+          def enabled():
+              repo, item = os.environ['REPO'].lower(), os.environ['ITEM']
+              if not re.fullmatch(r'cgwalters-forge/[a-z0-9_.-]+', repo) or not re.fullmatch(r'[1-9][0-9]{0,9}', item):
+                  return False
+              with open(os.environ['FIX_ALLOW'], 'rb') as f:
+                  bounds = tomllib.load(f)
+              if repo not in {name.lower() for name in bounds['repos']} or bounds['github']['outputs'].get('add_comment', {}).get('max') != 1:
+                  return False
+              try:
+                  pull = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repo}/pulls/{item}'], timeout=10))
+                  return (str(pull['number']) == item and pull['state'] == 'open'
+                          and pull['base']['repo']['full_name'].lower() == repo
+                          and pull['user']['id'] == BOT_ID)
+              except (subprocess.SubprocessError, OSError, ValueError, KeyError, TypeError, AttributeError):
+                  # Missing or invalid metadata removes comment authority, not push authority.
+                  return False
+
+          print(f'enabled={str(enabled()).lower()}')
+          PY
       - name: Put the profile before the task
         id: compose
         env:
@@ -443,9 +482,9 @@ jobs:
   run:
     needs: profile
     if: ${{ inputs.kind != 'review' }}
-    # actions#309 accepts base and still uses agentic-job v0.6.16. The
+    # actions#324 adds the fix comment opt-in. The
     # release train does not move this commit pin (agent-board#1087).
-    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@a2fac2ea949255e1e901b8225d566a44f28c1e94
+    uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@1f423605a61b2144407adf9278b23ae9194dba08
     # The most any job of the wrapper has: its agent job takes the reads and
     # the identity token, its policy and apply calls the comment writes.
     permissions:
@@ -486,6 +525,7 @@ jobs:
       # The wrapper's fixed max-outputs is 3 (no caller input): with secondary
       # bounds, two draft PRs share that ceiling with one ancillary request.
       fix-allow: ${{ needs.profile.outputs.fix-allow }}
+      fix-comment: ${{ needs.profile.outputs.fix-comment == 'true' }}
     # The bot's token, an organization secret, named and never inherited.
     # The wrapper hands it to apply, in the environment above, and to the
     # status comment on an item of another repository; to nothing else.

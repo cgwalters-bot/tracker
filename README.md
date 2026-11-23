@@ -398,12 +398,15 @@ key the recipe does not list fails the run instead of being left out.
 compares the shadow's previews with the pass's steps for 7 to 18 November 2026.
 
 A pull request labelled `needs-human` is not touched again until the label
-is removed. The pinned wrapper's fix output list does not include
-`add_comment`, even where the bounds list it. A blocked fix explains what
-needs human action in the run report and requests a `noop`, without a push;
-the unchanged head is what stops the fix rounds. It can request a comment
-instead of `noop` only if its trusted hand-back brief grants a comment on
-that pull request.
+is removed. At admission, dispatch opts into `fix-comment` only on the bot's
+own open PRs in `cgwalters-forge`, when the selected fix bounds explicitly
+list the repository and grant one comment. `bootc-dev` and PRs admitted only by
+`own_author` keep push-only fix authority. A blocked fix reports what needs
+human action without pushing. If its trusted hand-back brief grants
+`add_comment`, it can ask for one comment on the PR, starting with
+`Fix run report:` on its own line and a blank line. It requests a reasoned
+`noop` either way, since agentic-job v0.6.16 does not count a comment alone
+as a fix hand-back. The unchanged head stops the fix rounds.
 
 Text-only fixes ([#1846](https://github.com/cgwalters-forge/tracker/issues/1846))
 would let a run correct stale descriptions after earlier fixes narrowed the
@@ -411,7 +414,7 @@ diff, as in agentic-job [#4302](https://github.com/cgwalters-forge/agentic-job/p
 [#4399](https://github.com/cgwalters-forge/agentic-job/pull/4399) and
 [#4506](https://github.com/cgwalters-forge/agentic-job/pull/4506), without a new head.
 They remain off in `fix.toml` and `midstream-fix.toml`. The [pinned wrapper's
-fix list](https://github.com/cgwalters-forge/actions/blob/a2fac2ea949255e1e901b8225d566a44f28c1e94/.github/workflows/cgwalters-agentic-job.yml#L616)
+fix list](https://github.com/cgwalters-forge/actions/blob/1f423605a61b2144407adf9278b23ae9194dba08/.github/workflows/cgwalters-agentic-job.yml#L632)
 does not request `update_pull_request`. Adding the generic output to the list
 and bounds would let a misdirected run edit a sibling or human-authored PR:
 [check](https://github.com/cgwalters-forge/agentic-job/blob/2b937aaac81da06d8bff5f317e58df6ad7063e1e/crates/safe-outputs/src/check/mod.rs#L492-L513)
@@ -777,11 +780,11 @@ nonempty `pool` and a task hint to the base repository's default-branch
 `review OWNER/REPO#ITEM HEAD (POOL)`. The caller requires a lowercase 40-hex head
 only for reviews, rejects effort/config overrides for reviews, and routes
 review/non-review jobs mutually exclusively. Non-review profile, ordinary
-`pools.json`/`AGENT`/`AGENT_MODEL` fallback and moving-main wrapper call stay as
-before; reviews never enter those jobs.
+`pools.json`/`AGENT`/`AGENT_MODEL` fallback stay as before; reviews never
+enter those jobs.
 
 The separate literal ordinary-wrapper call pins
-[actions at `ba6c569`](https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/.github/workflows/cgwalters-agentic-job.yml).
+[actions at `1f42360`](https://github.com/cgwalters-forge/actions/blob/1f423605a61b2144407adf9278b23ae9194dba08/.github/workflows/cgwalters-agentic-job.yml).
 It receives only kind/repo/item/head/pool and a fixed task hint, no apply PAT or
 provider key. The wrapper owns trusted `REVIEW_POOLS` resolution (explicit
 agent/model and optional base-owned config, no ordinary fallback), fixed
@@ -796,9 +799,9 @@ layer, not in a second tracker pool resolver.
 exclusive jobs, malformed/missing head, expected-head forwarding, exact title,
 and unchanged non-review/legacy contracts. It does **not** prove stale-head
 rejection or checked submission. Immutable wrapper boundary tests are
-[cgwalters-agentic-job.test.mjs](https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/.github/workflows/cgwalters-agentic-job.test.mjs)
+[cgwalters-agentic-job.test.mjs](https://github.com/cgwalters-forge/actions/blob/1f423605a61b2144407adf9278b23ae9194dba08/.github/workflows/cgwalters-agentic-job.test.mjs)
 (including missing/unknown pool, head/admission and pre-submit checks) and
-[review_wrapper.rs](https://github.com/cgwalters-forge/actions/blob/ba6c56925e63551fd4373fbeb23456a2f4a316da/lint/tests/review_wrapper.rs)
+[review_wrapper.rs](https://github.com/cgwalters-forge/actions/blob/1f423605a61b2144407adf9278b23ae9194dba08/lint/tests/review_wrapper.rs)
 (credential, immutable dependency and checked-publication boundaries).
 `just test-review-wrapper PATH` runs both suites from a read-only checkout at
 that exact SHA. It needs Node and Cargo, and Cargo may fetch locked dependencies
@@ -902,7 +905,7 @@ including actions and agentic-job: defining a legacy review wrapper locally
 is no longer an exemption from installing the ordinary caller. `review_pin`
 is replaced by `review_workflow = dispatch.yml` and the full `review_call`
 at the same immutable actions revision as tracker's `dispatch.yml` review
-job, `ba6c56925e63551fd4373fbeb23456a2f4a316da`.
+job, `1f423605a61b2144407adf9278b23ae9194dba08`.
 
 The concrete threat is a moving review wrapper changing the workflow gate
 without a reviewed pin update. `just forge-sync` reads the selected workflow
