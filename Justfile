@@ -1417,14 +1417,13 @@ test-pass-state:
     const tests = require('node:fs').readFileSync('.github/workflows/ci.yml', 'utf8').split('      - name: Test pass state export\n')[1];
     new Function('require', tests.split('        run: |\n')[1].split('      - run: just test\n')[0].replace(/^          /gm, ''))(require);
 
-# Public response-cache handoff. Never print bodies or API diagnostics.
+# Public pass handoff. Never print bodies or API diagnostics.
 pass-state mode:
     #!/usr/bin/env node
     const fs = require('node:fs');
     const { execFileSync } = require('node:child_process');
     const STATE = '.state/pass.json';
     const MAX_BYTES = 32 * 1024 * 1024; // The pinned pass's state-file limit.
-    const MAX_REPOSITORIES = 100;
     function api(endpoint, timeout = 20000) {
       return JSON.parse(execFileSync('gh', ['api', endpoint], {
         timeout, maxBuffer: MAX_BYTES, stdio: ['ignore', 'pipe', 'pipe'],
@@ -1434,8 +1433,7 @@ pass-state mode:
       let id = env.PREVIOUS_RUN_ID;
       const root = `repos/${env.GITHUB_REPOSITORY}/actions`;
       if (!id) {
-        // Bootstrap/schedule use the same provenance gate as explicit dispatches.
-        // Bound discovery; never accept an artifact merely because its name fits.
+        // Bound discovery, then apply the same provenance gate as explicit dispatches.
         const listed = get(`${root}/workflows/poll.yml/runs?branch=${encodeURIComponent(env.DEFAULT_BRANCH)}&per_page=100`).workflow_runs;
         if (!Array.isArray(listed) || listed.length > 100) throw new Error('invalid run listing');
         const previous = listed.filter(run => /^[1-9][0-9]{0,19}$/.test(String(run.id)) &&
@@ -1445,7 +1443,6 @@ pass-state mode:
         if (!previous) return '';
         id = String(previous.id);
       }
-      // Input is data, never a URL/path or shell fragment.
       if (!/^[1-9][0-9]{0,19}$/.test(id) || id === env.GITHUB_RUN_ID) return '';
       const run = get(`${root}/runs/${id}`);
       const workflow = get(`${root}/workflows/poll.yml`);
@@ -1456,8 +1453,7 @@ pass-state mode:
           run.head_branch !== env.DEFAULT_BRANCH ||
           !(run.event === 'schedule' ||
             (run.event === 'workflow_dispatch' && run.display_title === 'pass (apply)'))) return '';
-      // The next job may still be running. Require the state-writing job, not
-      // the whole workflow, to have finished. Refuse truncated job listings.
+      // Require the state-writing job to have finished, not the whole workflow.
       const jobs = get(`${root}/runs/${id}/jobs?filter=latest&per_page=100`);
       if (!Array.isArray(jobs.jobs) || jobs.total_count !== jobs.jobs.length ||
           jobs.jobs.length > 100) return '';
@@ -1466,35 +1462,27 @@ pass-state mode:
         ['success', 'failure'].includes(passes[0].conclusion) ? id : '';
     }
     function publicState(state, get = api) {
-      // Both caches contain PAT-authenticated bodies, and a public repository is
-      // not enough: reviews can include the viewer's unpublished PENDING body and
-      // timelines private cross-references. Allow only public issue/PR lists and
-      // details, issue comments and label lists, matching the entire raw path (no
-      // URL normalization) plus the pass's one representation tag on its keys.
-      const repository = url => /^https:\/\/api\.github\.com\/repos\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+)\/(?:issues(?:\/[1-9][0-9]*(?:\/(?:comments|labels))?|\/comments\/[1-9][0-9]*)?|pulls(?:\/[1-9][0-9]*)?|labels)(?:\?[^#\s]*)?(?:#agent-board-rest-v1)?$(?![\s\S])/
-        .exec(url)?.[1].toLowerCase();
-      const caches = ['responses', 'pass_responses'];
-      const repositories = new Set(caches.flatMap(key => Object.keys(state[key] || {}).map(repository).filter(Boolean)));
-      if (repositories.size > MAX_REPOSITORIES) throw new Error('too many repositories');
+      // Repository cursors can name private threads. Verify visibility before export.
+      // The holds summary cursor names a private operator hold, even for a public issue.
+      const cursors = ['follow', 'share', 'action_first', 'scan', 'authored'].map(name => `${name}_cursor`);
+      const cursorRepo = value => typeof value === 'string' && /^([\w.-]+\/[\w.-]+)(?:#[1-9][0-9]*)?$/.exec(value)?.[1].toLowerCase();
+      const repositories = new Set(cursors.map(key => cursorRepo(state[key])).filter(Boolean));
       const publicRepos = new Set();
       const deadline = Date.now() + 90000;
       for (const repo of repositories) {
-        if (Date.now() >= deadline) throw new Error('metadata deadline');
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) break;
         try {
-          const metadata = get(`repos/${repo}`, Math.min(10000, deadline - Date.now()));
+          const metadata = get(`repos/${repo}`, Math.min(10000, remaining));
           if (metadata.full_name?.toLowerCase() === repo && metadata.private === false && metadata.visibility === 'public') publicRepos.add(repo);
-        } catch { /* Drop responses on any doubt. */ }
+        } catch { /* Drop cursors on any doubt. */ }
       }
-      // Cursors/intake/maintenance metadata can also name private repositories.
-      // Publish only the response-cache envelope and its scope digest, without which the next pass reads cold.
-      const exported = { schema: 'agent-board/poll-state/v1', ...(typeof state.response_scope === 'string' &&
-        /^[0-9a-f]{64}$/.test(state.response_scope) && { response_scope: state.response_scope }),
-        interval_seconds: Number.isSafeInteger(state.interval_seconds) ? state.interval_seconds : 300 };
-      for (const key of caches) {
-        // Drop entries whole: changing a body would invalidate its cached ETag.
-        exported[key] = Object.fromEntries(Object.entries(state[key] || {}).filter(([url]) => publicRepos.has(repository(url))));
-      }
-      return exported;
+      const { response_scope, interval_seconds } = state;
+      const handoff = { schema: 'agent-board/poll-state/v1',
+        interval_seconds: Number.isInteger(interval_seconds) && interval_seconds >= 300 && interval_seconds <= 21600 ? interval_seconds : 300 };
+      if (typeof response_scope === 'string' && /^[0-9a-f]{64}$/.test(response_scope)) handoff.response_scope = response_scope;
+      for (const key of cursors) if (publicRepos.has(cursorRepo(state[key]))) handoff[key] = state[key];
+      return handoff;
     }
     if (process.argv[2] === 'validate') {
       let id = '';
@@ -1502,29 +1490,18 @@ pass-state mode:
       fs.appendFileSync(process.env.GITHUB_OUTPUT, `run-id=${id}\n`);
       console.log(id ? `Validated predecessor ${id}` : 'No trusted predecessor; starting cold');
     } else if (process.argv[2] === 'export') {
-      fs.rmSync('.state/public', { recursive: true, force: true });
-      if (fs.existsSync(STATE)) {
-        try {
-          let state;
-          try {
-            if (fs.statSync(STATE).size > MAX_BYTES) throw new Error('oversized state');
-            state = JSON.parse(fs.readFileSync(STATE, 'utf8'));
-            if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('invalid state');
-          } catch {
-            fs.rmSync(STATE, { force: true });
-            console.log('Discarded unreadable pass cache; the next pass starts cold');
-          }
-          if (state) {
-            const exported = publicState(state);
-            fs.mkdirSync('.state/public', { recursive: true });
-            fs.writeFileSync('.state/public/pass.json', JSON.stringify(exported) + '\n');
-            console.log(`Prepared public state: ${['responses', 'pass_responses'].map(key => `${key} ${Object.keys(exported[key] || {}).length} of ${Object.keys(state[key] || {}).length}`).join(', ')}, scope ${exported.response_scope ? 'kept' : 'absent'}`);
-          }
-        } catch {
-          fs.rmSync('.state/public', { recursive: true, force: true });
-          console.error('Could not prepare public pass cache; refusing export');
-          process.exitCode = 1;
-        }
+      const output = '.state/public';
+      fs.rmSync(output, { recursive: true, force: true });
+      try {
+        if (fs.statSync(STATE).size > MAX_BYTES) throw new Error();
+        const state = JSON.parse(fs.readFileSync(STATE, 'utf8'));
+        if (state?.schema !== 'agent-board/poll-state/v1') throw new Error();
+        const handoff = publicState(state);
+        fs.mkdirSync(output);
+        fs.writeFileSync(`${output}/pass.json`, JSON.stringify(handoff) + '\n');
+      } catch {
+        fs.rmSync(output, { recursive: true, force: true });
+        console.log('Could not prepare public pass state; the next pass starts cold');
       }
     } else if (process.argv[2] === 'test') {
       Object.assign(exports, { validate, publicState });
