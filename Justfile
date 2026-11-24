@@ -1445,7 +1445,7 @@ test-supervisor-workflow:
     const { issue } = JSON.parse(fs.readFileSync('.github/supervisor/config.json', 'utf8')).agent.requests;
     const comment = { user: { login: operator } };
     const requests = { number: issue, locked: true };
-    const dispatch = (inputs, ref) => ({ event_name: 'workflow_dispatch', inputs: { prompt: '', session: false, ...inputs }, ref });
+    const dispatch = (inputs, ref) => ({ event_name: 'workflow_dispatch', inputs: { prompt: '', session: false, ...inputs }, ref }), artifactApply = { SUPERVISOR: 'apply', SUPERVISOR_HANDBACK: 'artifact' };
     for (const [event, expected] of [
       [{ event_name: 'issue_comment', event: { comment, issue: requests } }, 'supervisor-agent'],
       [{ event_name: 'issue_comment', event: { comment, issue: { ...requests, locked: false } } }, 'supervisor-ignored-42'],
@@ -1456,6 +1456,8 @@ test-supervisor-workflow:
       [dispatch({}), 'supervisor-health'],
       [dispatch({}, 'refs/heads/other'), 'supervisor-ignored-42'],
       [dispatch({ session: true }), 'supervisor-agent'],
+      [dispatch({ bootstrap: true }), 'supervisor-refused-42'], [{ ...dispatch({ bootstrap: true }), vars: artifactApply, actor: 'outsider' }, 'supervisor-refused-42'],
+      [{ ...dispatch({ bootstrap: true }), vars: artifactApply }, 'supervisor-agent'], [{ ...dispatch({ bootstrap: true, prompt: 'x' }), vars: artifactApply }, 'supervisor-refused-42'], [{ ...dispatch({ bootstrap: true, session: true }), vars: artifactApply }, 'supervisor-refused-42'],
       [dispatch({ session: true, prompt: 'look at #1' }), 'supervisor-agent'],
       [dispatch({ session: true }, 'refs/heads/other'), 'supervisor-ignored-42'],
       [{ event_name: 'schedule', event: { schedule: '*/15 * * * *' } }, 'supervisor-health'],
@@ -1464,10 +1466,10 @@ test-supervisor-workflow:
       const context = {
         format: (f, ...a) => f.replace(/\{(\d+)\}/g, (_, i) => a[i]),
         fromJSON: JSON.parse,
-        vars: {},
+        vars: event.vars ?? {},
         inputs: event.inputs ?? {},
         github: {
-          event_name: event.event_name, run_id: 42, ref: event.ref ?? 'refs/heads/main',
+          event_name: event.event_name, run_id: 42, ref: event.ref ?? 'refs/heads/main', triggering_actor: event.actor ?? operator,
           event: { repository: { default_branch: 'main' }, ...event.event },
         },
       };
@@ -1475,9 +1477,7 @@ test-supervisor-workflow:
       assert.equal(got, expected, JSON.stringify(event));
       assert.equal(vm.runInNewContext(gate, context), !got.startsWith('supervisor-ignored-'), JSON.stringify(event));
     }
-    // A session is an explicit request to `due`, and reaches the wrapper
-    // with session.json's idle timeout.
-    assert.match(workflow, /^ {10}PROMPT: \$\{\{ inputs\.prompt \|\| \(inputs\.session && 'session' \|\| ''\) \}\}$/m);
+    assert.match(workflow, /^ {10}PROMPT: \$\{\{ inputs\.prompt \|\| \(inputs\.session && 'session' \|\| \(inputs\.bootstrap && 'bootstrap' \|\| ''\)\) \}\}$/m);
     assert.match(workflow, /^ {6}session: \$\{\{ needs\.health\.outputs\.session == 'true' \}\}\n {6}idle-minutes: \$\{\{ needs\.health\.outputs\.idle \}\}$/m);
     assert.match(workflow, /"idle=\\\(\.idleMinutes\)"' \.github\/agentic-job\/session\.json/);
     eval(/name: Test supervisor artifact hand-back\n +shell: node \{0\}\n +run: \|\n((?: {10}.*\n|\n)+)/.exec(fs.readFileSync('.github/workflows/ci.yml', 'utf8'))[1]);

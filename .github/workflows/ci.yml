@@ -728,33 +728,55 @@ jobs:
           const execute = workflow.split('\n  execute:\n')[1];
           const gate = /    if: >-\n((?: {6}.*\n)+)/.exec(execute)[1];
           const input = /research-artifact-only: \$\{\{ (.*?) \}\}/.exec(workflow)[1];
+          const agentGate = /\n  agent:\n[^]*?\n    if: \$\{\{ (.*?) \}\}/.exec(workflow)[1];
+          const reject = /- name: Reject bootstrap outside artifact apply\n +if: \$\{\{ (.*?) \}\}\n +run: \|\n +echo .*\n +exit 1/.exec(workflow.split('\n      - uses: actions/checkout')[0])[1];
           const guard = name => new RegExp(`- name: ${name}\n(?: +id: .*\n)? +if: [$][{][{] (.*?) [}][}]`).exec(execute)[1];
           for (const [handback, status, url, commentPath, artifactPath] of [
             ['', '', 'comment', true, false], ['', 'ready', '', false, false],
             ['artifact', 'ready', '', false, true], ['artifact', 'unavailable', 'comment', false, false],
             ['artifact', '', 'comment', false, false],
           ]) {
-            for (const mode of ['preview', 'apply']) {
-              const context = { vars: { SUPERVISOR: mode, SUPERVISOR_HANDBACK: handback },
-                needs: { agent: { outputs: { 'result-url': url, 'research-status': status } } } };
-              const evaluate = expression => runInNewContext(expression.replace(/outputs\.([\w-]+)/g, 'outputs["$1"]'), context);
+            for (const mode of ['', 'preview', 'apply']) for (const bootstrap of [false, true]) {
+              // A bootstrap's agent is skipped, whatever its outputs would be.
+              const agent = { result: bootstrap ? 'skipped' : 'success', outputs: { 'result-url': url, 'research-status': status } };
+              const context = { vars: { SUPERVISOR: mode, SUPERVISOR_HANDBACK: handback }, github: { triggering_actor: 'cgwalters' }, cancelled: () => false,
+                inputs: { bootstrap, prompt: '', session: false }, needs: { health: { result: 'success', outputs: { act: 'true' } }, agent } };
+              const evaluate = (expression, changes = {}) => runInNewContext(expression.replace(/outputs\.([\w-]+)/g, 'outputs["$1"]'), { ...context, ...changes });
+              const refused = bootstrap && !(mode === 'apply' && handback === 'artifact');
+              const viaComment = !bootstrap && commentPath, viaArtifact = bootstrap || artifactPath;
+              const enabled = mode !== '' && !refused && (viaComment || viaArtifact);
+              assert.equal(evaluate(reject), refused);
+              // Only the operator bootstraps, with no prompt or session to drop.
+              assert.equal(evaluate(reject, { github: { triggering_actor: 'other' } }), bootstrap);
+              assert.equal(evaluate(reject, { inputs: { bootstrap, prompt: 'do it', session: false } }), bootstrap);
+              assert.equal(evaluate(reject, { inputs: { bootstrap, prompt: '', session: true } }), bootstrap);
               assert.equal(evaluate(input), handback === 'artifact');
-              assert.equal(evaluate(gate), commentPath || artifactPath);
+              assert.equal(evaluate(agentGate), mode !== '' && !bootstrap);
+              assert.equal(evaluate(gate), enabled);
+              // Nothing executes after a failed health job, or a failed agent.
+              assert.equal(evaluate(gate, { needs: { ...context.needs, health: { result: 'failure' } } }), false);
+              assert.equal(evaluate(gate, { needs: { ...context.needs, agent: { ...agent, result: 'failure' } } }), bootstrap && enabled);
               for (const [name, expected] of [
-                ['Preview requests without applying', commentPath && mode === 'preview'],
-                ['Perform the validated requests', commentPath && mode === 'apply'],
-                ['Verify and stage artifact hand-back', artifactPath],
-                ['Preview artifact requests without applying', artifactPath && mode === 'preview'],
-                ['Perform the validated artifact requests', artifactPath && mode === 'apply'],
-              ]) assert.equal(evaluate(gate) && evaluate(guard(name)), expected, name);
+                ['Preview requests without applying', viaComment && mode === 'preview'],
+                ['Perform the validated requests', viaComment && mode === 'apply'],
+                ['Verify and stage artifact hand-back', viaArtifact],
+                ['Preview artifact requests without applying', viaArtifact && mode === 'preview'],
+                ['Perform the validated artifact requests', viaArtifact && mode === 'apply'],
+              ]) assert.equal(evaluate(gate) && evaluate(guard(name)), enabled && expected, name);
             }
           }
           assert.match(execute, /group: supervisor-execute\n +cancel-in-progress: false/);
-          assert.match(execute, /shell: bash[^]*?--ledger-out "\$REQUESTS_DIR\/next\/ledger\.json"/);
+          assert.match(execute, /shell: bash[^]*?next=\$REQUESTS_DIR\/next\/ledger\.json\n[^]*?--ledger-out "\$next"/);
           assert.match(execute, /name: supervisor-executor-ledger\n +path: .*\/next\/ledger\.json/);
           const upload = guard('Upload executor ledger').replaceAll('steps.execute-artifact', 'steps["execute-artifact"]');
           for (const outcome of ['success', 'failure', 'skipped']) {
             assert.equal(runInNewContext(upload, { cancelled: () => false, steps: { 'execute-artifact': { outcome } } }), outcome !== 'skipped');
+          }
+          // Only the operator's dispatch with the input bootstraps.
+          const bootstrap = /BOOTSTRAP: \$\{\{ (.*?) \}\}/.exec(execute)[1];
+          for (const [event_name, inputs, expected] of [['workflow_dispatch', { bootstrap: true }, true],
+            ['workflow_dispatch', { bootstrap: false }, false], ['schedule', {}, false], ['issue_comment', {}, false]]) {
+            assert.equal(Boolean(runInNewContext(bootstrap, { github: { event_name }, inputs })), expected, event_name);
           }
 
           const script = /python3 - <<'PY'\n([^]*?)          PY/.exec(execute)[1].replace(/^ {10}/gm, '');
@@ -767,36 +789,62 @@ jobs:
           const requestsZip = makeZip('outputs.jsonl', requests), ledgerZip = makeZip('ledger.json', ledger);
           const artifact = (id, run, zip) => ({ id, workflow_run: { id: run }, expired: false, digest: 'sha256:' + createHash('sha256').update(zip).digest('hex') });
           const original = artifact(90, 42, requestsZip), prior = artifact(89, 41, ledgerZip), older = artifact(88, 40, ledgerZip);
+          // An hour ago, so that it stays inside the three-day lookback.
+          const created = new Date(Math.floor(Date.now() / 1000) * 1000 - 3600000).toISOString().replace('.000Z', 'Z');
           const run = (id, n = id, path = '.github/workflows/supervisor.yml') => ({ id, path, head_repository: { full_name: repo },
-            head_branch: 'main', event: 'schedule', head_sha: 'fixture', run_number: n, run_attempt: 1 });
+            head_branch: 'main', event: 'schedule', head_sha: 'fixture', run_number: n, run_attempt: 1, conclusion: 'success', created_at: created });
           const page = (key, entries) => ({ total_count: entries.length, [key]: entries });
           const currentJobs = 'runs/42/attempts/1/jobs?per_page=100';
-          const ledgerList = 'artifacts?name=supervisor-executor-ledger&per_page=100';
+          // The mock below logs each window of the lookback and replaces the
+          // newest, which ends at this run's creation, the older ones, and the
+          // one of runs created since.
+          const runList = 'workflows/supervisor.yml/runs?branch=main&created=SINCE&per_page=100&page=1';
+          const olderList = runList.replace('SINCE', 'OLDER'), newerList = runList.replace('SINCE', 'NEWER');
+          const runPage2 = runList.replace(/&page=1$/, '&page=2');
+          const ledgers = id => `runs/${id}/artifacts?name=supervisor-executor-ledger&per_page=100`;
+          // The first attempt's execute job and its upload step's conclusion.
+          const executeJob = conclusion => ({ name: 'execute', run_attempt: 1, conclusion: 'failure',
+            steps: [{ name: 'Upload executor ledger', conclusion }] });
+          const priorJobs = 'runs/41/attempts/1/jobs?per_page=100';
+          const foreign = run(39, 41, '.github/workflows/other.yml');
           const routes = {
-            'runs/42': run(42), 'runs/41': run(41), 'runs/40': run(40), 'runs/39': run(39, 50, '.github/workflows/other.yml'),
+            'runs/42': run(42),
             [currentJobs]: page('jobs', [{ id: 100, run_attempt: 1, conclusion: 'success' }]),
             'artifacts/90': original, 'artifacts/90/zip': requestsZip.toString('base64'),
-            [ledgerList]: page('artifacts', [older, artifact(87, 39, ledgerZip), prior]),
-            'runs/41/attempts/1/jobs?per_page=100': page('jobs', [{ name: 'execute', conclusion: 'failure', steps: [{ name: 'Upload executor ledger', conclusion: 'success' }] }]),
+            // A newer run, and a skipped one whose artifacts are not read.
+            [runList]: page('workflow_runs', [run(43), run(42), { ...run(38, 41.5), conclusion: 'skipped' }, foreign, run(41), run(40)]),
+            [olderList]: page('workflow_runs', []),
+            [newerList]: page('workflow_runs', [run(44), { ...run(45), conclusion: 'skipped' }, run(43), run(42), foreign]),
+            [ledgers(43)]: page('artifacts', []), [ledgers(44)]: page('artifacts', []),
+            [ledgers(39)]: page('artifacts', [artifact(87, 39, ledgerZip)]), [ledgers(40)]: page('artifacts', [older]),
+            [ledgers(41)]: page('artifacts', [prior]),
+            [priorJobs]: page('jobs', [executeJob('success')]),
             'artifacts/89': prior, 'artifacts/89/zip': ledgerZip.toString('base64'),
           };
           try {
             fs.writeFileSync(`${temp}/gh`, `#!/usr/bin/env node
           const fs = require('node:fs');
-          const url = process.argv[3];
+          let url = process.argv[3];
           if (process.argv[2] !== 'api' || !url.startsWith(${JSON.stringify(api)})) process.exit(2);
+          url = url.replace(/created=([^&.]*)[.][.]([^&]*)/, (_, since, until) => {
+            fs.appendFileSync(process.env.WINDOWS, decodeURIComponent(since) + ' ' + decodeURIComponent(until) + '\\n');
+            return decodeURIComponent(until) === ${JSON.stringify(created)} ? 'created=SINCE'
+              : decodeURIComponent(since) === ${JSON.stringify(created)} ? 'created=NEWER' : 'created=OLDER';
+          });
           const reply = JSON.parse(fs.readFileSync(process.env.FIXTURE))[url.slice(${api.length})];
           if (reply === undefined) throw new Error('Unexpected request: ' + url);
           process.stdout.write(typeof reply === 'string' ? Buffer.from(reply, 'base64') : JSON.stringify(reply));
           `, { mode: 0o700 });
+            const windows = `${temp}/windows`;
             const probe = (overrides = {}, mode = 'apply', extraEnv = {}) => {
               const fixture = `${temp}/fixture.json`, output = `${temp}/output`;
               fs.writeFileSync(fixture, JSON.stringify({ ...routes, ...overrides }));
               fs.writeFileSync(output, '');
+              fs.writeFileSync(windows, '');
               const result = spawnSync('python3', ['-c', script], { encoding: 'utf8', env: {
-                PATH: `${temp}:${process.env.PATH}`, FIXTURE: fixture, RUNNER_TEMP: temp, GITHUB_OUTPUT: output,
+                PATH: `${temp}:${process.env.PATH}`, FIXTURE: fixture, WINDOWS: windows, RUNNER_TEMP: temp, GITHUB_OUTPUT: output,
                 GITHUB_REPOSITORY: repo, GITHUB_RUN_ID: '42', GITHUB_RUN_ATTEMPT: '1', GITHUB_SHA: 'fixture',
-                GITHUB_RUN_NUMBER: '42', DEFAULT_BRANCH: 'main', NEEDS_LEDGER: String(mode === 'apply'), HANDBACK_REPO: repo, HANDBACK_RUN: '42',
+                GITHUB_RUN_NUMBER: '42', DEFAULT_BRANCH: 'main', NEEDS_LEDGER: String(mode === 'apply'), BOOTSTRAP: 'false', HANDBACK_REPO: repo, HANDBACK_RUN: '42',
                 HANDBACK_ATTEMPT: '1', PRODUCER: '100', REQUESTS_ID: '90', REQUESTS_DIGEST: original.digest.slice(7), ...extraEnv,
               } });
               return { ...result, outputs: Object.fromEntries(fs.readFileSync(output, 'utf8').trim().split('\n').filter(Boolean).map(line => line.split('='))) };
@@ -817,20 +865,67 @@ jobs:
           const args = process.argv.slice(2);
           const value = key => args[args.indexOf(key) + 1];
           assert.deepEqual(args.slice(0, 2), ['supervise', 'execute']);
+          assert.equal(value('--supervisor-config'), '.github/supervisor/config.json');
           assert.equal(value('--requests'), process.env.REQUESTS_DIR + '/outputs.jsonl');
           assert.equal(value('--ledger'), process.env.REQUESTS_DIR + '/ledger.json');
           assert.equal(value('--ledger-run'), '41');
           require('node:fs').writeFileSync(value('--ledger-out'), 'reserved');
           process.exit(7);
           `, { mode: 0o700 });
-            const failedWrite = spawnSync('bash', ['-e', '-o', 'pipefail', '-c', perform], { encoding: 'utf8', env: {
-              PATH: process.env.PATH, RUNNER_TEMP: temp, REQUESTS_DIR: ready.outputs.directory, LEDGER_RUN: ready.outputs['ledger-run'],
-              GITHUB_STEP_SUMMARY: `${temp}/summary`,
+            const runExecutor = (staged, bootstrap = 'false', runnerTemp = temp) => spawnSync('bash', ['-e', '-o', 'pipefail', '-c', perform], { encoding: 'utf8', env: {
+              PATH: process.env.PATH, RUNNER_TEMP: runnerTemp, REQUESTS_DIR: staged.outputs.directory, LEDGER_RUN: staged.outputs['ledger-run'] ?? '', BOOTSTRAP: bootstrap,
+              GITHUB_RUN_NUMBER: '42', GITHUB_STEP_SUMMARY: `${temp}/summary`,
             } });
+            const nextLedger = staged => `${staged.outputs.directory}/next/ledger.json`;
+            const failedWrite = runExecutor(ready);
             assert.equal(failedWrite.status, 7, failedWrite.stderr);
-            assert.equal(fs.readFileSync(`${ready.outputs.directory}/next/ledger.json`, 'utf8'), 'reserved');
+            assert.equal(fs.readFileSync(nextLedger(ready), 'utf8'), 'reserved');
 
-            const preview = probe({ [ledgerList]: undefined }, 'preview');
+            // Without a ledger, disjoint windows of at most 12 hours cover the three days.
+            probe({ [runList]: page('workflow_runs', [run(42)]) });
+            const spans = fs.readFileSync(windows, 'utf8').trim().split('\n').map(line => line.split(' ').map(Date.parse));
+            assert.equal(spans[0][1], Date.parse(created));
+            spans.forEach(([since, until], i) => assert.ok(since <= until && until - since <= 12 * 3600000
+              && (i === 0 || until === spans[i - 1][0] - 1000), JSON.stringify(spans)));
+            const days = (Date.now() - spans.at(-1)[0]) / 86400000;
+            assert.ok(days > 2.99 && days < 3.01, String(days));
+
+            // Without a prior ledger, only a bootstrap proceeds. It has no
+            // agent hand-back, reads no earlier run and runs no executor:
+            // it writes an empty ledger that blocks writes for 36 hours, also
+            // in place of a surviving ledger.
+            const unread = { [runList]: undefined, [olderList]: undefined, [ledgers(41)]: undefined, 'artifacts/90': undefined };
+            const noAgent = { BOOTSTRAP: 'true', HANDBACK_REPO: '', HANDBACK_RUN: '', HANDBACK_ATTEMPT: '', PRODUCER: '', REQUESTS_ID: '', REQUESTS_DIGEST: '' };
+            for (const changes of [{ [runList]: page('workflow_runs', [run(42), foreign]) },
+              { [ledgers(41)]: page('artifacts', [{ ...prior, expired: true }]) }]) {
+              assert.match(probe(changes).stderr, /No prior supervisor executor ledger; dispatch with bootstrap/);
+            }
+            const started = probe(unread, 'apply', noAgent);
+            assert.equal(started.status, 0, started.stderr);
+            assert.equal(started.outputs['ledger-run'], undefined);
+            assert.ok(!fs.existsSync(`${started.outputs.directory}/outputs.jsonl`));
+            const before = Date.now();
+            const bootstrapped = runExecutor(started, 'true', `${temp}/no-executor`);
+            assert.equal(bootstrapped.status, 0, bootstrapped.stderr);
+            const held = JSON.parse(fs.readFileSync(nextLedger(started), 'utf8'));
+            assert.deepEqual(held, { ...JSON.parse(ledger), runNumber: 42, blockedUntil: held.blockedUntil });
+            assert.match(held.blockedUntil, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.000Z$/);
+            const hours = (Date.parse(held.blockedUntil) - before) / 3600000;
+            assert.ok(hours > 35.9 && hours < 36.1, held.blockedUntil);
+            // The ledger on page 2, in an older window, or on page 1 of a
+            // window too large to list; a rerun, which the executor refuses
+            // before it opens a ledger, leaves the first attempt's upload.
+            for (const changes of [{ [runList]: { total_count: 3, workflow_runs: [run(42)] },
+              [runPage2]: { total_count: 3, workflow_runs: [run(41)] } },
+              { [runList]: page('workflow_runs', [run(42)]), [olderList]: page('workflow_runs', [run(41)]) },
+              { [runList]: { total_count: 1001, workflow_runs: [run(42), run(41)] } },
+              { [runList]: page('workflow_runs', [run(42), { ...run(41), conclusion: 'failure', run_attempt: 2 }]) },
+              { [runList]: page('workflow_runs', [run(42), { ...run(41), conclusion: 'skipped', run_attempt: 2 }]) }]) {
+              const found = probe(changes);
+              assert.equal(found.outputs['ledger-run'], '41', found.stderr);
+            }
+
+            const preview = probe({ [runList]: undefined }, 'preview');
             assert.equal(preview.status, 0, preview.stderr);
             assert.equal(preview.outputs['ledger-run'], undefined);
             assert.notEqual(preview.outputs.directory, ready.outputs.directory);
@@ -842,8 +937,37 @@ jobs:
               [{ 'artifacts/90': artifact(90, 41, requestsZip) }, /metadata does not match/],
               [{ 'artifacts/90': artifact(90, 42, ledgerZip) }, /metadata does not match/],
               [{ 'artifacts/90/zip': ledgerZip.toString('base64') }, /download digest mismatch/],
-              [{ [ledgerList]: page('artifacts', []) }, /No prior supervisor executor ledger/],
+              [{ [runList]: page('workflow_runs', [run(42)]) }, /No prior supervisor executor ledger/],
               [{ 'artifacts/89': { ...prior, expired: true } }, /metadata does not match/],
+              // Discovery refuses rather than falls back.
+              [{ [runList]: { total_count: 5, workflow_runs: [run(42)] }, [runPage2]: { total_count: 5, workflow_runs: [] } },
+                /Incomplete workflow_runs/],
+              // A run deleted while paging, or one listed twice.
+              [{ [runList]: { total_count: 3, workflow_runs: [run(42)] }, [runPage2]: { total_count: 2, workflow_runs: [run(41)] } },
+                /Incomplete workflow_runs/],
+              [{ [runList]: { total_count: 3, workflow_runs: [run(42), foreign] }, [runPage2]: { total_count: 3, workflow_runs: [foreign] } },
+                /Incomplete workflow_runs/],
+              // Ten full pages without a ledger cannot prove there is none.
+              [Object.fromEntries(Array.from({ length: 10 }, (_, n) => [runList.replace(/1$/, n + 1), { total_count: 1001,
+                workflow_runs: Array.from({ length: 100 }, (_, i) => ({ ...foreign, id: 1000 + 100 * n + i })) }])),
+                /Too many supervisor runs/],
+              [{ [runList]: page('workflow_runs', [run(42)]), [olderList]: { total_count: 1, workflow_runs: [] } }, /Incomplete workflow_runs/],
+              [{ [runList]: page('workflow_runs', [run(42), run(40), run(41)]), [ledgers(40)]: page('artifacts', []) },
+                /unordered prior supervisor runs/],
+              [{ [ledgers(41)]: page('artifacts', [prior, prior]) }, /Ambiguous prior supervisor executor ledger/],
+              // A newer run that executed first would be the next run's ledger.
+              [{ [ledgers(44)]: page('artifacts', [artifact(86, 44, ledgerZip)]) }, /newer supervisor run already uploaded/],
+              [{ ...unread, [ledgers(44)]: page('artifacts', [artifact(86, 44, ledgerZip)]) }, /newer supervisor run already uploaded/, noAgent],
+              [{ ...unread, [newerList]: page('workflow_runs', [run(43), run(42)]), [ledgers(43)]: page('artifacts', [artifact(86, 43, ledgerZip)]) },
+                /newer supervisor run already uploaded/, noAgent],
+              // Only a bootstrap's first attempt, of this run, writes a ledger.
+              [{ ...unread, 'runs/42': { ...run(42), run_attempt: 2 } }, /only in its first attempt/, { ...noAgent, GITHUB_RUN_ATTEMPT: '2' }],
+              [{ ...unread, 'runs/42': { ...run(42), head_branch: 'other' } }, /not for the latest attempt/, noAgent],
+              [{ [priorJobs]: page('jobs', [executeJob('failure')]) }, /did not upload a ledger/],
+              [{ [priorJobs]: page('jobs', [executeJob('skipped')]) }, /did not upload a ledger/],
+              [{ 'artifacts/89/zip': requestsZip.toString('base64') }, /download digest mismatch/],
+              [{ [ledgers(41)]: page('artifacts', [artifact(87, 39, ledgerZip)]), 'artifacts/87': artifact(87, 39, ledgerZip) },
+                /metadata does not match/],
             ]) {
               const result = probe(changes, 'apply', extra);
               assert.notEqual(result.status, 0);

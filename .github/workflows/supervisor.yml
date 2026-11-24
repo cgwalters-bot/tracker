@@ -5,11 +5,11 @@
 # each in the supervisor log issue. The agent and the executor are off until
 # SUPERVISOR is preview or apply; only apply executes requests.
 # SUPERVISOR_HANDBACK=artifact keeps the agent's requests off the issue until
-# admitted. Leave it unset until we have same-run download provenance, ledger
-# continuity across two runs, refusal on missing ledger and ledger persistence
-# after a write failure. For rollback, drain in-flight artifact executors and
-# keep write caps at zero for one day after the last possible artifact write:
-# the comment log cannot account for the ledger's writes.
+# admitted. The README gives its activation order, starting with a bootstrap
+# dispatch, and the hosted evidence to collect. For rollback, drain in-flight
+# artifact executors and keep write caps at zero for one day after the last
+# possible artifact write: the comment log cannot account for the ledger's
+# writes.
 name: supervisor
 # Its own crons start it; an applying poll also starts a prompt-less health
 # pass when enabled and no run on the default branch is newer than thirty
@@ -39,6 +39,12 @@ on:
         type: choice
         options: [claude, openai, mistral]
         default: claude
+      # The operator's start or recovery of SUPERVISOR_HANDBACK=artifact; it
+      # runs neither the agent nor the executor.
+      bootstrap:
+        description: Start or replace the executor ledger with an empty one that performs no request and blocks writes
+        type: boolean
+        default: false
 permissions: {}
 # The agent-board commit both jobs install: the executor receives the bot's
 # token, so it runs only a revision reviewed here, never agent-board's
@@ -60,8 +66,10 @@ env:
 # group of its own: in a shared group it would evict a pending run and then
 # do nothing (#803). That first branch is the negation of health's `if`;
 # change both together. A prompt-less dispatch is a health pass too: in
-# supervisor-agent it would evict a prompt. A session dispatch, prompt or
-# not, is an agent run in supervisor-agent, so health passes keep running
+# supervisor-agent it would evict a prompt. The operator's artifact/apply
+# bootstrap joins supervisor-agent like a prompt; one the health job refuses
+# gets its own group, with the same predicate as that refusal. A session
+# dispatch, prompt or not, uses supervisor-agent, so health passes keep running
 # beside it and none evicts it; it holds that group for up to its idle
 # timeout after each turn and its turn limit, while later prompts and
 # comments wait (one of them pending) behind it.
@@ -72,8 +80,11 @@ concurrency:
     (github.event.comment.user.login == (vars.OPERATOR || 'cgwalters') &&
     github.event.issue.number == fromJSON(vars.SUPERVISOR_REQUESTS_ISSUE || '656') && github.event.issue.locked == true &&
     !github.event.issue.pull_request))) && format('supervisor-ignored-{0}', github.run_id)) ||
+    ((inputs.bootstrap && !(vars.SUPERVISOR == 'apply' && vars.SUPERVISOR_HANDBACK == 'artifact' && github.triggering_actor == (vars.OPERATOR || 'cgwalters') &&
+    inputs.prompt == '' && !inputs.session)) &&
+    format('supervisor-refused-{0}', github.run_id)) ||
     ((github.event.schedule == '*/15 * * * *' ||
-    (github.event_name == 'workflow_dispatch' && inputs.prompt == '' && !inputs.session)) && 'supervisor-health') ||
+    (github.event_name == 'workflow_dispatch' && inputs.prompt == '' && !inputs.session && !inputs.bootstrap)) && 'supervisor-health') ||
     'supervisor-agent' }}
   cancel-in-progress: false
 jobs:
@@ -118,6 +129,11 @@ jobs:
       # checks the same text the agent read.
       profile-commit: ${{ steps.compose.outputs.profile_commit || steps.session.outputs.profile_commit }}
     steps:
+      - name: Reject bootstrap outside artifact apply
+        if: ${{ inputs.bootstrap && !(vars.SUPERVISOR == 'apply' && vars.SUPERVISOR_HANDBACK == 'artifact' && github.triggering_actor == (vars.OPERATOR || 'cgwalters') && inputs.prompt == '' && !inputs.session) }}
+        run: |
+          echo '::error::bootstrap requires the operator, SUPERVISOR=apply and SUPERVISOR_HANDBACK=artifact, and takes no prompt or session'
+          exit 1
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -156,13 +172,13 @@ jobs:
       # health is always true; daily marks a request or a due sweep. Without
       # read (the lookup failed), only an explicit request sweeps (#814).
       # `due` reads only whether a dispatch's prompt is empty, so a session
-      # with none is passed one: it is an explicit request too.
+      # or bootstrap with none is passed one: it is an explicit request too.
       - name: Whether a pass is due
         id: due
         timeout-minutes: 1
         env:
           EVENT: ${{ github.event_name }}
-          PROMPT: ${{ inputs.prompt || (inputs.session && 'session' || '') }}
+          PROMPT: ${{ inputs.prompt || (inputs.session && 'session' || (inputs.bootstrap && 'bootstrap' || '')) }}
           READ: ${{ steps.previous.outputs.read }}
         run: |
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise due --event "$EVENT" --prompt "$PROMPT" \
@@ -220,7 +236,7 @@ jobs:
       # Operator comments also reach an active agent through watch-item; a
       # prompt has no other way in, so its operator must see it was dropped.
       - name: Fail a manual prompt the trigger declined
-        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.prompt != '' || inputs.session) && steps.trigger.outputs.act != 'true' && (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') }}
+        if: ${{ github.event_name == 'workflow_dispatch' && (inputs.prompt != '' || inputs.session || inputs.bootstrap) && steps.trigger.outputs.act != 'true' && (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') }}
         run: |
           echo "::error::The trigger declined this prompt or session, most likely because another supervisor agent run is active. Repeat it when that run ends."
           exit 1
@@ -256,7 +272,7 @@ jobs:
   # which posts that comment, as for every dispatch.
   agent:
     needs: health
-    if: ${{ (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') && needs.health.outputs.act == 'true' }}
+    if: ${{ (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') && needs.health.outputs.act == 'true' && !inputs.bootstrap }}
     uses: cgwalters-forge/actions/.github/workflows/cgwalters-agentic-job.yml@main
     permissions:
       contents: read
@@ -306,20 +322,25 @@ jobs:
           endpoint="wss://agentic-job-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT.$DOMAIN/"
           gh issue comment "$ISSUE" --repo "$REPO" --body "⏳ [$GITHUB_WORKFLOW]($RUN_URL) is running. Session: after the task's turn the operator attaches at \`$endpoint\`, once the agent job's summary shows it served."
 
-  # Runs no agent-produced code: it parses the requests as data.
+  # Runs no agent-produced code: it parses the requests as data. A bootstrap,
+  # which the health job admits, has no agent and waits on none.
   execute:
     needs: [health, agent]
     if: >-
+      !cancelled() && needs.health.result == 'success' &&
       (vars.SUPERVISOR == 'preview' || vars.SUPERVISOR == 'apply') &&
-      ((vars.SUPERVISOR_HANDBACK != 'artifact' && needs.agent.outputs.result-url != '') ||
-       (vars.SUPERVISOR_HANDBACK == 'artifact' && needs.agent.outputs.research-status == 'ready'))
+      ((inputs.bootstrap && vars.SUPERVISOR == 'apply' && vars.SUPERVISOR_HANDBACK == 'artifact') ||
+       (!inputs.bootstrap && needs.agent.result == 'success' &&
+        ((vars.SUPERVISOR_HANDBACK != 'artifact' && needs.agent.outputs.result-url != '') ||
+         (vars.SUPERVISOR_HANDBACK == 'artifact' && needs.agent.outputs.research-status == 'ready'))))
     # Health passes run outside supervisor-agent, so keep the executor's cap
     # census and reservation serialized across both groups.
     concurrency:
       group: supervisor-execute
       cancel-in-progress: false
     runs-on: ubuntu-26.04
-    timeout-minutes: 20
+    # Setup just (2 + 10), build (10), staging (6), execution (8), upload (3), plus checkout and cleanup.
+    timeout-minutes: 45
     environment: agent-apply
     permissions:
       contents: read
@@ -333,10 +354,12 @@ jobs:
       # stop the job: build the same just from crates.io instead.
       - id: just
         continue-on-error: true
+        timeout-minutes: 2
         uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
         with:
           just-version: 1.58.0
       - if: steps.just.outcome == 'failure'
+        timeout-minutes: 10
         run: cargo install --locked --version 1.58.0 just && echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - name: Install verified agent-board at the pinned revision
         env:
@@ -346,7 +369,7 @@ jobs:
       # Preview has no bot token and never calls execute, which always writes
       # its log even for a refused batch. List the proposed comment only.
       - name: Preview requests without applying
-        if: ${{ vars.SUPERVISOR == 'preview' && vars.SUPERVISOR_HANDBACK != 'artifact' }}
+        if: ${{ !inputs.bootstrap && vars.SUPERVISOR == 'preview' && vars.SUPERVISOR_HANDBACK != 'artifact' }}
         timeout-minutes: 2
         env:
           GH_TOKEN: ${{ github.token }}
@@ -356,7 +379,7 @@ jobs:
             --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
             --result-url "$RESULT_URL"
       - name: Perform the validated requests
-        if: ${{ vars.SUPERVISOR == 'apply' && vars.SUPERVISOR_HANDBACK != 'artifact' }}
+        if: ${{ !inputs.bootstrap && vars.SUPERVISOR == 'apply' && vars.SUPERVISOR_HANDBACK != 'artifact' }}
         timeout-minutes: 8
         env:
           # PAT: it logs on private cgwalters-forge/operator, writes items in other repositories and posts the org Projects v2 status.
@@ -373,10 +396,14 @@ jobs:
       - name: Verify and stage artifact hand-back
         id: handback
         if: ${{ vars.SUPERVISOR_HANDBACK == 'artifact' }}
-        timeout-minutes: 2
+        # Up to RUN_PAGES of runs a window, and an artifact listing for each run in
+        # the lookback that was not skipped, up to the newest ledger: about
+        # a hundred a day when there is none.
+        timeout-minutes: 6
         env:
           GH_TOKEN: ${{ github.token }}
           NEEDS_LEDGER: ${{ vars.SUPERVISOR == 'apply' }}
+          BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HANDBACK_REPO: ${{ needs.agent.outputs.handback-repository }}
           HANDBACK_RUN: ${{ needs.agent.outputs.handback-run-id }}
@@ -386,13 +413,22 @@ jobs:
           REQUESTS_DIGEST: ${{ needs.agent.outputs.safe-outputs-artifact-digest }}
         run: |
           python3 - <<'PY'
-          import hashlib, io, json, os, re, subprocess, tempfile, zipfile
+          import hashlib, io, json, os, re, subprocess, tempfile, urllib.parse, zipfile
+          from datetime import datetime, timedelta, timezone
           from pathlib import Path
 
           env = os.environ
           repo, run, attempt = (env['GITHUB_' + k] for k in ('REPOSITORY', 'RUN_ID', 'RUN_ATTEMPT'))
           api = f'repos/{repo}/actions'
           mib = 1024 * 1024
+          # The ledger's retention-days below, and a day for runs that upload
+          # long after they start. Over 200 runs a day, mostly skipped
+          # comments; a filtered run listing returns at most 1000, so each
+          # window of the lookback is read separately. agent-board's own
+          # check of the runs refuses past about 330 a day.
+          LOOKBACK_DAYS = 3
+          WINDOW_HOURS = 12
+          RUN_PAGES = 10
 
           def require(condition, error):
               if not condition:
@@ -415,6 +451,31 @@ jobs:
           def jobs(run_id, run_attempt):
               return listed(f'runs/{run_id}/attempts/{run_attempt}/jobs?per_page=100', 'jobs')
 
+          # Newest first, a page at a time, of disjoint windows that end at
+          # this run's creation, so no run created while paging shifts their
+          # pages. A deleted one could hide an entry, so any change of count
+          # refuses. The caller stops at the first ledger; reading past a
+          # window's RUN_PAGES refuses, as absence cannot be proved there.
+          def runs(start, end):
+              stamp = lambda time: time.strftime('%Y-%m-%dT%H:%M:%SZ')
+              while end >= start:
+                  lower = max(start, end - timedelta(hours=WINDOW_HOURS))
+                  query = urllib.parse.urlencode({'branch': env['DEFAULT_BRANCH'], 'created': f'{stamp(lower)}..{stamp(end)}', 'per_page': 100})
+                  total, seen = None, set()
+                  for number in range(1, RUN_PAGES + 2):
+                      require(number <= RUN_PAGES, 'Too many supervisor runs to find the ledger')
+                      page = get(f'workflows/supervisor.yml/runs?{query}&page={number}')
+                      total = page['total_count'] if total is None else total
+                      require(page['total_count'] == total, 'Incomplete workflow_runs listing')
+                      for info in page['workflow_runs']:
+                          require(info['id'] not in seen, 'Incomplete workflow_runs listing')
+                          seen.add(info['id'])
+                          yield info
+                      if len(seen) >= total:
+                          break
+                      require(page['workflow_runs'], 'Incomplete workflow_runs listing')
+                  end = lower - timedelta(seconds=1)
+
           def stage(directory, artifact_id, run_id, digest, member, limit):
               require(isinstance(digest, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', digest), 'Invalid artifact digest')
               info = get(f'artifacts/{artifact_id}')
@@ -435,45 +496,74 @@ jobs:
                   require(len(matches) == 1 and matches[0].file_size <= limit, f'Missing, duplicate or oversized {member}')
                   (directory / member).write_bytes(archive.read(matches[0]))
 
+          # A bootstrap ran no agent, so it has no hand-back to verify.
+          bootstrap = env['BOOTSTRAP'] == 'true'
           # Partial reruns can report outputs from an earlier producer; bind
           # both the checked identity and the producer to this latest attempt.
-          require((env['HANDBACK_REPO'], env['HANDBACK_RUN'], env['HANDBACK_ATTEMPT']) == (repo, run, attempt),
+          require(bootstrap or (env['HANDBACK_REPO'], env['HANDBACK_RUN'], env['HANDBACK_ATTEMPT']) == (repo, run, attempt),
                   'Hand-back identity is not this repository, run and attempt')
           current = get(f'runs/{run}')
           require(own(current) and current['id'] == int(run) and current['run_attempt'] == int(attempt)
                   and current['head_sha'] == env['GITHUB_SHA'] and current['run_number'] == int(env['GITHUB_RUN_NUMBER']),
                   'Hand-back is not for the latest attempt of this supervisor run')
-          require(any(str(job['id']) == env['PRODUCER'] and job['run_attempt'] == int(attempt)
-                      and job['conclusion'] == 'success' for job in jobs(run, attempt)),
-                  'Hand-back producer is absent from this attempt or did not succeed')
-          require(re.fullmatch(r'[1-9][0-9]*', env['REQUESTS_ID']), 'Invalid hand-back artifact ID')
           directory = Path(tempfile.mkdtemp(prefix='supervisor-handback-', dir=env['RUNNER_TEMP']))
-          stage(directory, int(env['REQUESTS_ID']), int(run), 'sha256:' + env['REQUESTS_DIGEST'], 'outputs.jsonl', mib)
+          if bootstrap:
+              # The next run reads only a first attempt's ledger.
+              require(attempt == '1', 'A bootstrap writes its ledger only in its first attempt; dispatch another')
+          else:
+              require(any(str(job['id']) == env['PRODUCER'] and job['run_attempt'] == int(attempt)
+                          and job['conclusion'] == 'success' for job in jobs(run, attempt)),
+                      'Hand-back producer is absent from this attempt or did not succeed')
+              require(re.fullmatch(r'[1-9][0-9]*', env['REQUESTS_ID']), 'Invalid hand-back artifact ID')
+              stage(directory, int(env['REQUESTS_ID']), int(run), 'sha256:' + env['REQUESTS_DIGEST'], 'outputs.jsonl', mib)
 
           with open(env['GITHUB_OUTPUT'], 'a') as out:
               if env['NEEDS_LEDGER'] == 'true':
-                  # The name is only a discovery key. Do not take a different
-                  # workflow's artifact or fall back from an invalid ledger.
-                  # The locked agent has no artifact upload credential; the
-                  # wrapper's uploads use its own fixed dispatch prefix.
-                  candidates = []
-                  for artifact in listed('artifacts?name=supervisor-executor-ledger&per_page=100', 'artifacts'):
-                      run_id = artifact['workflow_run']['id']
-                      if run_id == int(run):
+                  # The ledger is the newest of this workflow's own runs that
+                  # has one; the name is only a key within that run. Do not
+                  # fall back from an ambiguous or invalid ledger. The locked
+                  # agent has no artifact upload credential; the wrapper's
+                  # uploads use its own fixed dispatch prefix. A bootstrap
+                  # reads none: its ledger replaces whatever survives.
+                  since = (datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)).replace(microsecond=0)
+                  created = datetime.strptime(current['created_at'], '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+                  ledger, last = None, current['run_number']
+                  for info in [] if bootstrap else runs(since, created):
+                      # A skipped first attempt ran no job, so uploaded nothing.
+                      skipped = info['conclusion'] == 'skipped' and info['run_attempt'] == 1
+                      if info['run_number'] >= current['run_number'] or not own(info) or skipped:
                           continue
-                      prior = get(f'runs/{run_id}')
-                      if own(prior) and prior['run_number'] < current['run_number']:
-                          candidates.append((prior['run_number'], run_id, artifact))
-                  require(candidates, 'No prior supervisor executor ledger')
-                  number, run_id, artifact = max(candidates, key=lambda candidate: candidate[0])
-                  require(sum(candidate[0] == number for candidate in candidates) == 1,
-                          'Ambiguous prior supervisor executor ledger')
-                  require(any(job['name'] == 'execute' and any(step['name'] == 'Upload executor ledger'
-                              and step['conclusion'] == 'success' for step in job['steps']) for job in jobs(run_id, 1)),
-                          'Prior run did not upload a ledger from its executor')
-                  stage(directory, artifact['id'], run_id, artifact['digest'], 'ledger.json', 2 * mib)
+                      require(info['run_number'] < last, 'Ambiguous or unordered prior supervisor runs')
+                      last = info['run_number']
+                      artifacts = listed(f'runs/{info["id"]}/artifacts?name=supervisor-executor-ledger&per_page=100', 'artifacts')
+                      if artifacts:
+                          require(len(artifacts) == 1, 'Ambiguous prior supervisor executor ledger')
+                          ledger = (info['id'], artifacts[0])
+                          break
+                  # An expired newest ledger is a lost one, as is none at all.
+                  if ledger and not ledger[1]['expired']:
+                      run_id, artifact = ledger
+                      # The executor refuses every attempt but the first before
+                      # it opens a ledger, so a rerun writes nothing and only
+                      # the first attempt can have uploaded one.
+                      require(any(job['name'] == 'execute' and any(step['name'] == 'Upload executor ledger'
+                                  and step['conclusion'] == 'success' for step in job['steps']) for job in jobs(run_id, 1)),
+                              'Prior run did not upload a ledger from its executor')
+                      stage(directory, artifact['id'], run_id, artifact['digest'], 'ledger.json', 2 * mib)
+                  else:
+                      require(bootstrap, 'No prior supervisor executor ledger; dispatch with bootstrap')
+                  # This step holds the executor lock, so no newer run can
+                  # upload until this one has. One that already did would
+                  # be the next run's ledger, which this run's writes or
+                  # bootstrap hold would then be missing from.
+                  for info in runs(created, datetime.now(timezone.utc).replace(microsecond=0)):
+                      skipped = info['conclusion'] == 'skipped' and info['run_attempt'] == 1
+                      if info['run_number'] > current['run_number'] and own(info) and not skipped:
+                          require(not listed(f'runs/{info["id"]}/artifacts?name=supervisor-executor-ledger&per_page=100', 'artifacts'),
+                                  'A newer supervisor run already uploaded a ledger')
+                  if (directory / 'ledger.json').exists():
+                      print(f'ledger-run={ledger[0]}', file=out)
                   (directory / 'next').mkdir()
-                  print(f'ledger-run={run_id}', file=out)
               print(f'directory={directory}', file=out)
           PY
       - name: Preview artifact requests without applying
@@ -496,16 +586,32 @@ jobs:
           PROFILE_COMMIT: ${{ needs.health.outputs.profile-commit }}
           REQUESTS_DIR: ${{ steps.handback.outputs.directory }}
           LEDGER_RUN: ${{ steps.handback.outputs.ledger-run }}
+          BOOTSTRAP: ${{ github.event_name == 'workflow_dispatch' && inputs.bootstrap }}
+        # A bootstrap runs no executor, whose census of recent runs could
+        # refuse before any ledger exists. The writes of a deleted run with a
+        # lost ledger are unknown, whether or not an older ledger survives,
+        # so its empty ledger blocks writes for the day and a half the
+        # executor blocks after a run it sees; the executor keeps only a
+        # day's entries, so none is lost.
         run: |
+          next=$REQUESTS_DIR/next/ledger.json
+          if [[ $BOOTSTRAP == true ]]; then
+            held=$(date -u -d '+36 hours' +%Y-%m-%dT%H:%M:%S.000Z)
+            jq -n --arg until "$held" --argjson run "$GITHUB_RUN_NUMBER" \
+              '{schema: "agent-board/supervisor-ledger/v1", runNumber: $run, blockedUntil: $until, entries: []}' > "$next.tmp"
+            mv "$next.tmp" "$next"
+            exit 0
+          fi
           "$RUNNER_TEMP/agent-board/bin/agent-board" supervise execute \
             --config .github/poll/agent-board.json --supervisor-config .github/supervisor/config.json \
             --pools .github/agentic-job/pools.json --requests "$REQUESTS_DIR/outputs.jsonl" \
             --ledger "$REQUESTS_DIR/ledger.json" --ledger-run "$LEDGER_RUN" \
-            --ledger-out "$REQUESTS_DIR/next/ledger.json" \
+            --ledger-out "$next" \
             ${PROFILE_COMMIT:+--profile-commit "$PROFILE_COMMIT"} \
             | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Upload executor ledger
         if: ${{ !cancelled() && (steps.execute-artifact.outcome == 'success' || steps.execute-artifact.outcome == 'failure') }}
+        timeout-minutes: 3
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: supervisor-executor-ledger

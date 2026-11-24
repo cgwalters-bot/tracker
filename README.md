@@ -1146,14 +1146,54 @@ since that gate runs before checkout; unset, they default to this one's.
 Leave `SUPERVISOR_HANDBACK` unset to use the comment path. The optional
 `artifact` value makes research return checked artifact identity instead of
 posting the agent's requests. Both preview and apply read the same-run
-requests artifact; only apply needs a prior trusted executor ledger. Apply
-refuses a missing ledger, including on the first run or after all ledgers
-expire. Before activation, separately review a bootstrap and recovery procedure
-that produces the initial ledger from this workflow's trusted executor, with
-write caps at zero. Do not seed it from agent output. The wrapper does not
-support interactive sessions in artifact mode. The trigger still shows
-comment-log usage as a hint; in artifact mode only the executor's ledger
-accounts for artifact-path writes.
+requests artifact; only apply needs a prior trusted executor ledger. The
+ledger is the `supervisor-executor-ledger` artifact of the newest of
+`supervisor.yml`'s own default-branch runs from the last three days, up to
+this run's creation, that has one, if its first attempt's execute job
+uploaded it: the executor refuses reruns before it opens a ledger. It reads
+the runs newest first in twelve-hour windows and stops at the first ledger.
+Apply refuses a changing run listing, a window with more runs than it can
+list before the ledger is found, two ledgers in one run and an invalid
+ledger, and does not fall back to an older one. It also refuses once a newer
+run has uploaded a ledger, which the next run would read in place of this
+one's. With no ledger, or
+only an expired one, apply refuses too, unless the operator dispatched the run
+with `bootstrap`. The input is rejected unless the operator dispatched it with
+both `SUPERVISOR=apply` and
+`SUPERVISOR_HANDBACK=artifact` set, and without a prompt or session:
+
+```sh
+gh workflow run supervisor.yml -R cgwalters-forge/tracker -f bootstrap=true
+```
+
+A bootstrap runs neither the agent nor `supervise execute`, so no request is
+performed. Once the health job admits it, the execute job reads no earlier
+ledger and uploads an empty one whose `blockedUntil` is a day and a half
+ahead, which every later ledger keeps: a lost ledger may have missed a
+deleted run's writes, and the executor keeps only a day of entries. It still
+refuses once a newer run has uploaded a ledger, and in a rerun. Expect a day
+and a half without writes after a bootstrap. The same dispatch recovers from
+a lost or expired ledger.
+
+To activate, set `SUPERVISOR=apply` and `SUPERVISOR_HANDBACK=artifact`, then
+dispatch the bootstrap soon: until its ledger is uploaded, every apply agent
+run fails with "No prior supervisor executor ledger". Collect hosted evidence
+of each of these, link it on the activation issue, and roll back as
+`supervisor.yml`'s header says if any is missing:
+
+1. Before the bootstrap, an apply run without `bootstrap` and without a
+   ledger refuses.
+2. A bootstrap run uploads `supervisor-executor-ledger` from its execute job,
+   performing no request, with `blockedUntil` a day and a half ahead.
+3. Two later apply runs each stage the previous run's ledger (`ledger-run`)
+   and upload the next one.
+4. An apply run whose write fails still uploads its ledger.
+5. The execute job downloads the requests artifact of its own run and
+   attempt, with matching digests.
+
+The wrapper does not support interactive sessions in artifact mode. The
+trigger still shows comment-log usage as a hint; in artifact mode only the
+executor's ledger accounts for artifact-path writes.
 
 ```sh
 gh workflow run supervisor.yml -R cgwalters-forge/tracker \
