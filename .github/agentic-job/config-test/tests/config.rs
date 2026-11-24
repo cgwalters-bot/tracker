@@ -3536,6 +3536,7 @@ fn the_broker_stays_followed_without_automatic_merging() {
 fn the_pass_preserves_read_budget_for_ready_work() {
     let pass = json_file("../pass.json");
     assert_eq!(pass["readFreeHolds"].as_bool(), Some(true));
+    assert_eq!(pass["reuseGraphqlItems"].as_bool(), Some(true));
 }
 
 #[test]
