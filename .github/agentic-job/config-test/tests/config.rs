@@ -2623,6 +2623,72 @@ fn recovery_triage_alone_may_close_and_file_on_our_own_repositories() {
     }
 }
 
+#[test]
+fn legacy_epic_idle_triage_hands_back_only_on_the_epic() {
+    // The same profile-step TASK input was logged in runs 42561654848 and 42561645145.
+    let legacy = "Epic with no startable child while pools are under pace: read the epic and its children, decide the next one or two slices that need no operator decision, and post fenced implement plans for them (one per comment, on the child issues; file a child issue first if none fits). Prefer slices that unblock the most.";
+    let compose = |kind, pull, task| {
+        let output = run_step(&step_script("Put the profile before the task"), &[
+            ("KIND", kind), ("PULL", pull), ("TASK", task), ("SKILLED", "true"),
+        ]).unwrap();
+        let (header, body) = output.split_once('\n').unwrap();
+        let delimiter = header.strip_prefix("task<<").unwrap();
+        body.strip_suffix(&format!("{delimiter}\n")).unwrap().to_owned()
+    };
+    let corrected = compose("triage", "false", legacy);
+    assert!(!corrected.contains(legacy));
+    assert!(!corrected.contains("on the child issues; file a child issue first"));
+    for phrase in ["exactly one comment on the fixed epic", "one agent-board-epic-plan", "existing epics controller",
+        "create_sub_issue with plan only for genuinely new work", "ordinary child-scoped triage",
+        "Do not post child comments, create issues directly, duplicate children, or use post_job_plan"] {
+        assert!(corrected.contains(phrase), "missing {phrase:?}: {corrected}");
+    }
+    let unrelated = "Triage this child for an implement job plan.";
+    let similar = format!("{legacy}\nAdditional context.");
+    for (kind, pull, task) in [("triage", "false", unrelated), ("triage", "false", similar.as_str()),
+        ("triage", "true", legacy), ("triage", "", legacy), ("research", "false", legacy)] {
+        assert_eq!(compose(kind, pull, task), format!("{}\n{task}\n", read(&format!("profiles/{kind}.md"))));
+    }
+    let pass: Value = serde_json::from_str(&read("../pass.json")).unwrap();
+    assert_ne!(pass["existingChildPlans"], true);
+
+    if !agentic_job_installed() {
+        return;
+    }
+    let repo = "cgwalters-forge/tracker";
+    let selected = run_step(&step_script("Resolve the bounds"), &[
+        ("KIND", "triage"), ("PULL", "false"), ("MIDSTREAM", "false"),
+    ]).unwrap();
+    assert_eq!(selected.lines().next(), Some("allow=.github/agentic-job/comment.toml"));
+    let policy = agentic_job_ok(&[
+        "policy", "--allow", &path_of("comment.toml"), "--repo", repo, "--clone-url", &format!("https://github.com/{repo}"),
+        "--base", "main", "--kind", "analysis", "--outputs", "add_comment,noop,missing_tool,missing_data",
+        "--max-outputs", "3", "--output-repo", repo,
+    ]);
+    let dir = temp_path("epic-idle-check");
+    let out = dir.join("out");
+    std::fs::create_dir_all(&out).unwrap();
+    let policy_path = dir.join("policy.json");
+    let collected = dir.join("collected.json");
+    std::fs::write(&policy_path, policy).unwrap();
+    let plan = json!({"schema": "agent-board/epic-plan/v1", "epic": format!("{repo}#1215"), "actions": []});
+    let body = format!("Route {repo}#1223 through ordinary child-scoped triage; no new slice is needed.\n\n```agent-board-epic-plan\n{plan}\n```");
+    for item in [1215, 1223] {
+        let output = json!({"type": "add_comment", "item_number": item, "body": body});
+        std::fs::write(out.join("outputs.jsonl"), format!("{output}\n")).unwrap();
+        let paths = ["--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(),
+            "--collected", collected.to_str().unwrap()];
+        agentic_job_ok(&[&["collect"], paths.as_slice()].concat());
+        let result = agentic_job(&[&["check"], paths.as_slice(), &["--comment-repo", repo, "--comment-target", "1215"]].concat());
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        assert_eq!(result.status.success(), item == 1215, "{item}: {stderr}");
+        if item == 1223 {
+            assert!(stderr.contains("an add_comment with item_number outside the caller's fixed item"), "{stderr}");
+        }
+    }
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
 // The policy and check jobs' own reading of recovery.toml with the wrapper's
 // `all` outputs: the obsolete and replan hand-backs pass, a wider one is
 // refused, and comment.toml gives an ordinary triage no closing or filing.

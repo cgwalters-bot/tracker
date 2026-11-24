@@ -397,6 +397,32 @@ key the recipe does not list fails the run instead of being left out.
 [docs/maintain-shadow-comparison.md](docs/maintain-shadow-comparison.md)
 compares the shadow's previews with the pass's steps for 7 to 18 November 2026.
 
+#### Legacy epic-idle triage
+
+Runs [42561654848](https://github.com/cgwalters-forge/tracker/actions/runs/42561654848)
+and [42561645145](https://github.com/cgwalters-forge/tracker/actions/runs/42561645145)
+received the same `workflow_dispatch` task at `38169f45`: comment on children
+or file one directly. Both were refused by fixed-item check. The bot account
+is recorded as actor, not as evidence of which process supplied the task.
+The [preceding pass](https://github.com/cgwalters-forge/tracker/actions/runs/42560740885)
+at pin `7448aaf` dispatched nothing, and the
+[next pass](https://github.com/cgwalters-forge/tracker/actions/runs/42561701723)
+only observed the runs in flight. The pinned controller's planning brief
+already asked for an epic comment; see the
+[controller investigation](https://github.com/cgwalters-forge/agent-board/blob/b2c631436b4057d2292b436fe6cfea1686118095/docs/epic-plans.md#format)
+for the revision trail. No live supplier was confirmed.
+
+Dispatch replaces only that exact task for confirmed issue triage. The epic
+comment carries one epic-plan block; the controller applies it under existing
+bounds. With `existingChildPlans` off, the comment names existing children
+needing ordinary triage rather than proposing direct writes or duplicates.
+The [later pass](https://github.com/cgwalters-forge/tracker/actions/runs/45325383327)
+at pin `75b14e2` recognized applied epic plans on both epics, not recovery of
+this legacy route. After merge, an authorized controller run must verify the
+composed task, admitted fixed-item comment and resulting epic-plan receipt.
+
+### Pull request follow-up
+
 A pull request labelled `needs-human` is not touched again until the label
 is removed. At admission, dispatch opts into `fix-comment` only on the bot's
 own open PRs in `cgwalters-forge`, when the selected fix bounds explicitly
