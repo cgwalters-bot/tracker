@@ -128,6 +128,8 @@ jobs:
           const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
           const RUN_ID = /^[1-9][0-9]{0,19}$/;
           const SHA256 = /^[0-9a-f]{64}$/;
+          // agent-board writes one digest, or two joined by ':' when a pass saves quiet waits.
+          const SCOPE = /^[0-9a-f]{64}(:[0-9a-f]{64})?$/;
           const MAPS = ['responses', 'pass_responses'];
           const cacheKey = (id, attempt) => RUN_ID.test(id) && RUN_ID.test(attempt) ? `pass-responses-${id}-${attempt}` : '';
           const NONCE_BYTES = 12;
@@ -192,7 +194,7 @@ jobs:
             const { response_scope, interval_seconds } = state;
             const handoff = { schema: SCHEMA,
               interval_seconds: Number.isInteger(interval_seconds) && interval_seconds >= 300 && interval_seconds <= 21600 ? interval_seconds : 300 };
-            if (typeof response_scope === 'string' && SHA256.test(response_scope)) handoff.response_scope = response_scope;
+            if (typeof response_scope === 'string' && SCOPE.test(response_scope)) handoff.response_scope = response_scope;
             for (const key of cursors) if (publicRepos.has(cursorRepo(state[key]))) handoff[key] = state[key];
             return handoff;
           }
