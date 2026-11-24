@@ -2586,19 +2586,32 @@ fn recovery_triage_alone_may_close_and_file_on_our_own_repositories() {
     );
     assert!(entries.iter().all(|(_, v)| *v == "{ max = 1 }"), "{entries:?}");
     assert!(!has_line_starting(&read("recovery.toml"), "[unprotected_files]"));
-    let workflow = dispatch();
-    assert!(has_line(&workflow, "        if: inputs.kind == 'triage' && inputs.issue_repo == ''"));
-    assert!(has_line(&workflow, "          PULL: ${{ steps.item.outputs.pull }}"));
+    assert!(has_line(&dispatch(), "          PULL: ${{ steps.item.outputs.pull }}"));
     let step = step_script("Resolve the bounds");
     for (kind, pull, midstream, allow) in [
         ("triage", "true", "false", "recovery.toml"), ("triage", "true", "true", "recovery.toml"),
         ("triage", "false", "false", "comment.toml"), ("triage", "", "false", "comment.toml"),
-        ("research", "true", "false", "comment.toml"), ("session", "true", "false", "session.toml"),
+        ("research", "false", "false", "comment.toml"), ("session", "true", "false", "session.toml"),
         ("implement", "true", "false", "dispatch.toml"), ("implement", "true", "true", "midstream.toml"),
     ] {
         let selected = run_step(&step, &[("KIND", kind), ("PULL", pull), ("MIDSTREAM", midstream)]).unwrap();
         assert!(selected.starts_with(&format!("allow=.github/agentic-job/{allow}\n")), "{kind} {pull} {midstream}: {selected}");
     }
+}
+
+#[test]
+fn dispatch_validates_research_and_triage_items_before_the_wrapper() {
+    let workflow = dispatch();
+    let step = workflow.split_once("      - name: Read whether the item is a pull request\n").unwrap().1.split_once("        run: |\n").unwrap().0;
+    for line in [
+        "        if: inputs.kind == 'research' || inputs.kind == 'triage'",
+        "          REPO: ${{ inputs.issue_repo || inputs.repo }}",
+        "          ISSUE_REPO: ${{ inputs.issue_repo }}",
+        "          KIND: ${{ inputs.kind }}",
+    ] {
+        assert!(has_line(step, line), "{line}");
+    }
+    assert!(workflow.contains("\n  run:\n    needs: profile\n"));
     // The item's kind as the forge says, through a stub gh that applies the
     // step's own --jq to a fixture, as gh does.
     let stub = temp_path("gh-item");
@@ -2611,16 +2624,35 @@ fn recovery_triage_alone_may_close_and_file_on_our_own_repositories() {
     let pull = json!({"number": 7, "pull_request": {"url": "https://api.github.com/repos/cgwalters-forge/tracker/pulls/7"}});
     let issue = json!({"number": 7, "pull_request": null});
     let moved = json!({"number": 8});
-    for (item, fixture, fail, expected) in [
-        ("7", &pull, "", Some("pull=true\n")), ("7", &issue, "", Some("pull=false\n")),
-        ("7", &moved, "", None), ("7", &pull, "1", None), ("7", &json!("not found"), "", None),
-        ("../7", &pull, "", None), ("07", &pull, "", None),
+    for (kind, source, item, fixture, fail, expected) in [
+        ("triage", "", "7", &pull, "", Ok("pull=true\n")),
+        ("triage", "", "7", &issue, "", Ok("pull=false\n")),
+        ("research", "", "7", &issue, "", Ok("pull=false\n")),
+        ("research", "", "7", &pull, "", Err("is a pull request")),
+        ("research", "example/source", "7", &issue, "", Ok("pull=false\n")),
+        ("research", "example/source", "7", &pull, "", Err("is a pull request")),
+        ("triage", "example/source", "7", &issue, "", Ok("pull=false\n")),
+        ("triage", "example/source", "7", &pull, "", Err("is a pull request")),
+        ("triage", "", "7", &moved, "", Err("cannot verify")),
+        ("research", "", "7", &issue, "1", Err("cannot verify")),
+        ("triage", "", "7", &json!("not found"), "", Err("cannot verify")),
+        ("triage", "", "../7", &pull, "", Err("not a positive issue number")),
+        ("triage", "", "07", &pull, "", Err("not a positive issue number")),
     ] {
+        let repo = if source.is_empty() { "cgwalters-forge/tracker" } else { source };
         let result = run_step(&read_item, &[
-            ("REPO", "cgwalters-forge/tracker"), ("ITEM", item), ("GH_FIXTURE", &fixture.to_string()), ("GH_FAIL", fail), ("PATH", &path),
+            ("REPO", repo), ("ISSUE_REPO", source), ("KIND", kind), ("ITEM", item),
+            ("GH_FIXTURE", &fixture.to_string()), ("GH_FAIL", fail), ("PATH", &path),
         ]);
-        assert_eq!(result.as_deref().ok(), expected, "{item} {fixture} {fail}: {result:?}");
+        match expected {
+            Ok(output) => assert_eq!(result.as_deref(), Ok(output)),
+            Err(reason) => {
+                let error = result.unwrap_err();
+                assert!(error.contains(&format!("{kind} dispatch:")) && error.contains(&format!("{repo}#{item}")) && error.contains(reason), "{error}");
+            }
+        }
     }
+    std::fs::remove_dir_all(stub).unwrap();
 }
 
 #[test]
