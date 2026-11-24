@@ -276,6 +276,28 @@ jobs:
       fix-allow: ${{ steps.bounds.outputs.fix-allow }}
       fix-comment: ${{ steps.fix-comment.outputs.enabled }}
     steps:
+      # Reject PRs before starting an issue-only wrapper run. Only triage
+      # without a source-repo override can select PR recovery bounds.
+      - name: Read whether the item is a pull request
+        id: item
+        if: inputs.kind == 'research' || inputs.kind == 'triage'
+        timeout-minutes: 1
+        env:
+          REPO: ${{ inputs.issue_repo || inputs.repo }}
+          ISSUE_REPO: ${{ inputs.issue_repo }}
+          KIND: ${{ inputs.kind }}
+          ITEM: ${{ inputs.item }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fail() { echo "::error::${KIND} dispatch: ${REPO}#${ITEM} $1" >&2; exit 1; }
+          [[ $ITEM =~ ^[1-9][0-9]*$ ]] || fail 'is not a positive issue number'
+          result=$(gh api "repos/${REPO}/issues/${ITEM}" --jq '"\(.number) \(.pull_request != null)"') || fail 'cannot verify item type'
+          read -r number pull <<< "$result"
+          [[ $number == "$ITEM" && ($pull == true || $pull == false) ]] || fail 'cannot verify item type'
+          if [[ $pull == true && ($KIND == research || -n $ISSUE_REPO) ]]; then
+            fail 'is a pull request; this dispatch requires an issue'
+          fi
+          echo "pull=${pull}" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -371,24 +393,8 @@ jobs:
                           and set(rule['topics']) <= set(target['topics']) for rule in rules)
           print(f'midstream={str(midstream).lower()}')
           PY
-      # A triage whose item is a pull request of the target is agent-board's
-      # PR recovery (pass.json's pr.agentRecovery): it gets recovery.toml,
-      # which may close that repository's pull requests and file an issue
-      # there. Any other triage has an issue as its item and keeps
-      # comment.toml. A failed or moved lookup stops the run.
-      - name: Read whether the item is a pull request
-        id: item
-        if: inputs.kind == 'triage' && inputs.issue_repo == ''
-        env:
-          REPO: ${{ inputs.repo }}
-          ITEM: ${{ inputs.item }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          [[ $ITEM =~ ^[1-9][0-9]*$ ]] || { echo "::error::item '${ITEM}' is not a number"; exit 1; }
-          read -r number pull < <(gh api "repos/${REPO}/issues/${ITEM}" --jq '"\(.number) \(.pull_request != null)"') || true
-          [[ $number == "$ITEM" && ($pull == true || $pull == false) ]] ||
-            { echo "::error::no issue or pull request ${REPO}#${ITEM}"; exit 1; }
-          echo "pull=${pull}" >> "$GITHUB_OUTPUT"
+      # PR recovery (pass.json's pr.agentRecovery) gets recovery.toml, which
+      # may close the target repository's PRs and file an issue there.
       - name: Resolve the bounds
         id: bounds
         env:
@@ -457,7 +463,7 @@ jobs:
           KIND: ${{ inputs.kind }}
           TASK: ${{ inputs.task }}
           SKILLED: ${{ steps.pool.outputs.skilled }}
-          PULL: ${{ steps.item.outputs.pull }}
+          PULL: ${{ inputs.issue_repo == '' && steps.item.outputs.pull || '' }}
         run: |
           profile=".github/agentic-job/profiles/${KIND}.md"
           [[ "$KIND" =~ ^[a-z]+$ && -s "$profile" ]] ||
@@ -472,7 +478,7 @@ jobs:
             profile="${profile%.md}-full.md"
           fi
           # The legacy task asks for child writes that fixed-item check refuses.
-          # Match the entire recorded input, and only on a confirmed issue.
+          # Match the entire recorded input, and only on a confirmed issue in repo.
           # This changes prompt text, not the fixed target or output policy.
           legacy='Epic with no startable child while pools are under pace: read the epic and its children, decide the next one or two slices that need no operator decision, and post fenced implement plans for them (one per comment, on the child issues; file a child issue first if none fits). Prefer slices that unblock the most.'
           if [[ "$KIND" == triage && "$PULL" == false && "$TASK" == "$legacy" ]]; then
