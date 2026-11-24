@@ -30,6 +30,9 @@ missing_data = { max = 1 }
 
 # The same reviewed, repository-scoped workflow admission as midstream.toml;
 # no protected filenames or other midstream repositories are exempted (#258).
+# midstream.toml's other gated forks stay out: apply refuses every push with
+# `.github` exempted to a head outside the bot's fork, so listing them would
+# break their source-only fixes on branches of the fork itself.
 [unprotected_files]
 repos = ["cgwalters-forge/gh-agentic-workflows"]
 dot_folders = [".github"]

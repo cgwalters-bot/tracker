@@ -33,10 +33,17 @@ noop = { max = 1 }
 missing_tool = { max = 1 }
 missing_data = { max = 1 }
 
-# Prevent unreviewed workflow edits from landing: this fork's effective main
+# Prevent unreviewed workflow edits from landing: each fork's effective main
 # rules require an approval and dismiss stale approvals on push (25084478,
-# rechecked 2026-11-05). check-review-gate monitors it. This admission itself
-# must receive tracker's required review before taking effect (#258).
+# rechecked 2026-11-24). check-review-gate monitors them. bootc and
+# composefs-rs are left out because their main has no such rule (their
+# default branch is `forge`), and cgwalters-devspace-sandbox because neither
+# does. Only `.github` is exempted, never protected filenames. This
+# admission itself must receive tracker's required review before taking
+# effect (#258).
 [unprotected_files]
-repos = ["cgwalters-forge/gh-agentic-workflows"]
+repos = ["cgwalters-forge/gh-agentic-workflows", "cgwalters-forge/bcvk", "cgwalters-forge/rpm-ostree", "cgwalters-forge/anaconda", "cgwalters-forge/ostree",
+  "cgwalters-forge/infra", "cgwalters-forge/bootc-dev-actions", "cgwalters-forge/bootupd", "cgwalters-forge/cargo-vendor-filterer",
+  "cgwalters-forge/containers-image-proxy-rs", "cgwalters-forge/rhel-bootc-examples", "cgwalters-forge/image-builder",
+  "cgwalters-forge/osbuild", "cgwalters-forge/dracut", "cgwalters-forge/tar-rs"]
 dot_folders = [".github"]
