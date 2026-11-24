@@ -3353,6 +3353,26 @@ fn review_wrapper_uses_the_release_pin() {
     assert!(pinned, "review.yml does not pin {pin}");
 }
 
+// Check the instructions the reviewer receives, not model compliance.
+#[test]
+fn review_task_keeps_verdict_short_and_blockers_actionable() {
+    let task = read("../../workflow/review.md");
+    let text = task.split_whitespace().collect::<Vec<_>>().join(" ");
+    for rule in [
+        "under about 250 words",
+        "one plain sentence per finding: trigger and wrong result, then file:line and the fix in one clause",
+        "compare decisions before and after the change. Show only changed lines; if none changed, write just `Decision diff: no change`",
+        "Opt-in status bears only on reachability",
+        "A change to an existing option, enabled or not, keeps the regression bar",
+        "still a blocker when it defeats the option's main purpose or is data loss, a security hole or a dependency-integrity failure",
+        "what this review verified that confirms it. A prior miss does not downgrade the finding",
+        "lists every blocker on a line of its own",
+        "first line starts with VERDICT: CHANGES only when there is at least one blocker, and VERDICT: APPROVE otherwise",
+    ] {
+        assert!(text.contains(rule), "missing review instruction: {rule}");
+    }
+}
+
 #[test]
 fn release_train_uses_the_configured_request_budget() {
     let train = json_file("../release-train/config.json");
