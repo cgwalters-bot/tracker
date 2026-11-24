@@ -958,7 +958,7 @@ jobs:
            assert.equal(publicState({ ...state, scan_cursor: 'owner/hidden' }, metadata).scan_cursor, undefined);
            assert.equal(calls.length, 4, 'one metadata check per distinct cursor repository');
            const ref = 'refs/heads/main';
-           const entry = { key: second.key, ref, size_in_bytes: 64 * 1024 * 1024 };
+           const entry = { key: second.key, ref, size_in_bytes: 1024 ** 3 };
            const check = result => checkCache({ ...env, RESPONSE_CACHE_KEY: second.key }, endpoint => {
              assert.equal(endpoint, `repos/owner/tracker/actions/caches?key=${second.key}&ref=refs%2Fheads%2Fmain&per_page=1`);
             return result;
@@ -996,7 +996,8 @@ jobs:
             assert.match(restore, /PASS_RESPONSE_CACHE_PAT: \$\{\{ steps\.responses\.outputs\.cache-hit == 'true' && secrets\.PASS_CACHE_KEY == '' && secrets\.CGWALTERS_BOT_PAT \|\| '' \}\}/);
           assert.doesNotMatch(restore, /restore-keys:/);
           assert.doesNotMatch(poll, /living-status/);
-          assert.doesNotMatch(poll.split('      - name: One pass\n')[1].split('        run: |\n')[0], /\n        if:/);
+           const [passStep, passCommand] = poll.split('      - name: One pass\n')[1].split('        run: |\n');
+           assert.doesNotMatch(passStep, /\n        if:/);
           const publish = poll.split('      - name: Prepare public pass state\n')[1].split('      # GitHub drops')[0];
           for (const text of ["github.event_name == 'schedule' && vars.PASS_APPLY == 'enabled'", "(steps.pass.outcome == 'success' || steps.pass.outcome == 'failure')",
             "github.event_name == 'workflow_dispatch' && inputs.apply", "steps.state.outcome == 'success'", 'run: just pass-state export']) assert.ok(publish.includes(text));
@@ -1024,8 +1025,16 @@ jobs:
               const badMode = spawnSync('just', ['pass-state', "bad'mode"], { encoding: 'utf8' });
               assert.ifError(badMode.error);
               assert.notEqual(badMode.status, 0);
-              assert.match(badMode.stderr, /expected validate, prepare, export, check-cache, or merge-cache/);
-              fs.writeFileSync(`${temp}/helper.cjs`, source);
+               assert.match(badMode.stderr, /expected validate, prepare, export, check-cache, or restore-cache/);
+               fs.writeFileSync(`${temp}/helper.cjs`, source);
+               fs.writeFileSync(`${temp}/board`, `#!${process.execPath}\nconsole.log(JSON.stringify(process.argv.slice(2)));\n`, { mode: 0o755 });
+               for (const enabled of ['false', 'true']) {
+                 const args = JSON.parse(execFileSync('bash', ['-eo', 'pipefail', '-c', passCommand.split('      #')[0]], {
+                   cwd: temp, env: { ...process.env, AGENT_BOARD: `${temp}/board`, RUNNER_TEMP: temp, APPLY: '--apply', PASS_RESPONSE_CACHE_ENABLED: enabled },
+                 }));
+                 assert.deepEqual(args.slice(0, args.indexOf('--fix-bounds')), ['pass', '--config', `${temp}/pass.json`, '--apply',
+                   ...(enabled === 'true' ? ['--cache', '.state/pass-responses.json', '--cache-bytes', '268435456'] : [])]);
+               }
              prepare('skipped');
              fs.writeFileSync(`${temp}/gh`, `#!${process.execPath}\nconst endpoint = process.argv[3];
           console.log(JSON.stringify(endpoint.includes('/actions/caches?') ? JSON.parse(process.env.LISTING) : (${metadata.toString()})(endpoint)));\n`, { mode: 0o755 });
@@ -1063,12 +1072,25 @@ jobs:
              }
                const pat = 'fixture PAT';
                const dedicated = 'fixture dedicated key';
-               const encrypted = 'pass-responses.enc';
-               const cacheFile = `${temp}/.state/${encrypted}`;
-               const save = (attempt, token, extra = {}) => cli('export', { PASS_RESPONSE_CACHE_ENABLED: 'true', GITHUB_RUN_ID: '41',
-                 GITHUB_RUN_ATTEMPT: attempt, PASS_RESPONSE_CACHE_PAT: token, ...extra });
-               write('pass.json', state);
-               assert.doesNotMatch(save('1', ''), /private review|unpublished review/);
+                const encrypted = 'pass-responses.enc';
+                const plaintext = 'pass-responses.json';
+                const cacheFile = `${temp}/.state/${encrypted}`;
+                const plainFile = `${temp}/.state/${plaintext}`;
+                const maxFileBytes = 268435456 + 256;
+                const save = (attempt, token, extra = {}) => cli('export', { PASS_RESPONSE_CACHE_ENABLED: 'true', GITHUB_RUN_ID: '41',
+                  GITHUB_RUN_ATTEMPT: attempt, PASS_RESPONSE_CACHE_PAT: token, ...extra });
+                write('pass.json', state);
+                save('1', pat);
+                assert.equal(fs.existsSync(cacheFile), false, 'do not export maps from state');
+                const firstFile = JSON.stringify({ scope: state.response_scope, responses, pass_responses });
+                write(plaintext, firstFile);
+                cli('export');
+                assert.equal(fs.existsSync(cacheFile), false, 'no ciphertext without opt-in even if the plaintext exists');
+                fs.truncateSync(plainFile, maxFileBytes + 1);
+                save('1', pat);
+                assert.equal(fs.existsSync(cacheFile), false, 'reject an oversized plaintext file');
+                write(plaintext, firstFile);
+                assert.doesNotMatch(save('1', ''), /private review|unpublished review/);
                assert.equal(fs.existsSync(cacheFile), false, 'no ciphertext without credentials');
                assert.deepEqual(JSON.parse(read('public/pass.json')), handoff, 'cursor export survives a missing key');
                save('1', pat, { GITHUB_OUTPUT: temp }); // A directory cannot receive cache-ready.
@@ -1077,7 +1099,6 @@ jobs:
                  'cursor export survives a cache-ready output failure');
                save('1', pat);
                const original = fs.readFileSync(cacheFile);
-               const revised = { ...pass_responses, [privateUrl]: { body: 'revised review' } };
                // agent-board cache::seal hashes compact serde_json with the digest field removed.
                // Keep these numeric lexemes and the UTF-8/escaped text in the authenticated payload.
                const body = String.raw`[{"id":9007199254740993,"text":"café, \"responses\": {}","value":1.0}]`;
@@ -1086,9 +1107,10 @@ jobs:
                const digest = sha256(entryBytes(body));
                const sealed = entryBytes(body).replace(',"etag":', `,"digest":"${digest}","etag":`);
                const sealedUrl = `${privateUrl}#agent-board-rest-v1`;
-               const rawState = JSON.stringify({ ...state, responses: { ...responses, [sealedUrl]: null }, pass_responses: revised }, null, 2)
-                 .replace(`${JSON.stringify(sealedUrl)}: null`, `${JSON.stringify(sealedUrl)}: ${sealed}`);
-               write('pass.json', rawState);
+                const rawCache = JSON.stringify({ scope: state.response_scope, responses: { [sealedUrl]: null }, pass_responses: {} }, null, 2)
+                  .replace(`${JSON.stringify(sealedUrl)}: null`, `${JSON.stringify(sealedUrl)}: ${sealed}`);
+                write('pass.json', handoff);
+                write(plaintext, rawCache);
                fs.writeFileSync(`${temp}/out`, '');
                assert.doesNotMatch(save('2', pat, { PASS_CACHE_KEY: dedicated }), /fixture PAT|fixture dedicated key|private review|revised review/);
               const exported = JSON.parse(read('public/pass.json'));
@@ -1107,7 +1129,7 @@ jobs:
               write('handoff/pass.json', exported);
               assert.equal(preflight('invalid API reply'), 'key=\n');
               assert.equal(preflight(JSON.stringify(listing)), `key=${second.key}\n`);
-               const merge = extra => cli('merge-cache', { CACHE_HIT: 'true', RESPONSE_CACHE_KEY: second.key,
+                const decrypt = extra => cli('restore-cache', { CACHE_HIT: 'true', RESPONSE_CACHE_KEY: second.key,
                  PASS_CACHE_KEY: dedicated, ...extra });
               prepare('success');
               // The cache action invokes tar with extraction into the checkout.
@@ -1127,40 +1149,69 @@ jobs:
               assert.equal(restored.status, 0, restored.stderr);
               assert.equal(fs.readFileSync(`${temp}/Justfile`, 'utf8'), 'trusted recipe');
               assert.deepEqual(fs.readFileSync(cacheFile), good, 'restore only the expected ciphertext');
-              merge({ CACHE_HIT: 'false' });
-              fs.truncateSync(`${temp}/archive/.state/${encrypted}`, 32 * 1024 * 1024 + 29);
+               decrypt({ CACHE_HIT: 'false' });
+               fs.truncateSync(`${temp}/archive/.state/${encrypted}`, maxFileBytes + 29);
               assert.equal(restoreTar().status, 1, 'cap writes from the selected member');
               assert.equal(fs.readdirSync(`${temp}/.state`).some(name => name.startsWith(encrypted)), false, 'discard partial ciphertext');
               const tampered = Buffer.from(good);
               tampered[12] ^= 1; // First byte of the authentication tag.
               for (const [file, extra] of [[good, { CACHE_HIT: 'false' }], [null, {}], [tampered, {}],
-                [good.subarray(0, 10), {}], [Buffer.alloc(32 * 1024 * 1024 + 29), {}],
+                 [good.subarray(0, 10), {}],
                  [original, { PASS_CACHE_KEY: '', PASS_RESPONSE_CACHE_PAT: pat }], [good, { PASS_CACHE_KEY: 'rotated' }],
                  [good, { PASS_CACHE_KEY: '', PASS_RESPONSE_CACHE_PAT: pat }], [good, { PASS_CACHE_KEY: '' }]]) {
                 if (file !== null) write(encrypted, file);
-                assert.doesNotMatch(merge(extra), /fixture PAT|private review|revised review/);
-                assert.deepEqual(JSON.parse(read('pass.json')), handoff, 'cache miss retains cursors');
-                assert.equal(fs.existsSync(cacheFile), false);
-              }
+                 assert.doesNotMatch(decrypt(extra), /fixture PAT|private review|revised review/);
+                 assert.deepEqual(JSON.parse(read('pass.json')), handoff, 'cache miss retains cursors');
+                 assert.equal(fs.existsSync(cacheFile), false);
+                 assert.equal(fs.existsSync(plainFile), false, 'no unauthenticated plaintext');
+               }
+               write(encrypted, good);
+               fs.truncateSync(cacheFile, maxFileBytes + 29);
+               decrypt();
+               assert.equal(fs.existsSync(plainFile), false, 'decryption independently rejects oversized ciphertext');
               const changedScope = { ...handoff, response_scope: 'c'.repeat(64) };
               write('pass.json', changedScope);
               write(encrypted, good);
-              merge();
-              assert.deepEqual(JSON.parse(read('pass.json')), changedScope, 'ignore a cache for a different scope');
-               prepare('success');
-               write(encrypted, good);
-               merge();
-               const restoredState = read('pass.json');
-               const restoredEntry = restoredState.match(/#agent-board-rest-v1": (\{[^\n]+\})\s*\n/)[1];
-               assert.equal(restoredEntry, sealed, 'restore the sealed entry byte for byte');
-               assert.equal(sha256(restoredEntry.replace(`,"digest":"${digest}"`, '')), digest, 'agent-board entry digest still verifies');
-               assert.deepEqual(JSON.parse(restoredState), { ...handoff,
-                 responses: { ...responses, [sealedUrl]: JSON.parse(sealed) }, pass_responses: revised });
-               write('handoff/pass.json', { ...handoff, response_cache_key: first.key });
-               prepare('success');
-               write(encrypted, original);
-               merge({ RESPONSE_CACHE_KEY: first.key, PASS_CACHE_KEY: '', PASS_RESPONSE_CACHE_PAT: pat });
-               assert.deepEqual(JSON.parse(read('pass.json')), { ...handoff, responses, pass_responses }, 'PAT fallback round trip');
+               decrypt();
+               assert.deepEqual(JSON.parse(read('pass.json')), changedScope, 'ignore a cache for a different scope');
+               assert.equal(fs.existsSync(plainFile), false);
+                prepare('success');
+                write(encrypted, good);
+                decrypt();
+                assert.equal(read(plaintext), rawCache, 'restore the sealed entry byte for byte');
+                assert.deepEqual(JSON.parse(read('pass.json')), handoff, 'restore never rewrites cursor state');
+                write('handoff/pass.json', { ...handoff, response_cache_key: first.key });
+                prepare('success');
+                write(encrypted, original);
+                decrypt({ RESPONSE_CACHE_KEY: first.key, PASS_CACHE_KEY: '', PASS_RESPONSE_CACHE_PAT: pat });
+                assert.equal(read(plaintext), firstFile, 'PAT fallback round trip');
+
+                // Both plaintext and the archive exceed 64 MiB. Keep the entries
+                // below agent-board's per-entry and count limits.
+                const largeEntry = entryBytes(JSON.stringify('x'.repeat(250 * 1024)));
+                const largeSealed = largeEntry.replace(',"etag":', `,"digest":"${sha256(largeEntry)}","etag":`);
+                write(plaintext, `{"scope":"${state.response_scope}","responses":{`);
+                for (let i = 0; i < 264; i++) {
+                  fs.appendFileSync(plainFile, `${i ? ',' : ''}${JSON.stringify(`${privateUrl}?page=${i + 1}#agent-board-rest-v1`)}:${largeSealed}`);
+                }
+                fs.appendFileSync(plainFile, '},"pass_responses":{}}');
+                const expected = sha256(fs.readFileSync(plainFile));
+                save('2', '', { PASS_CACHE_KEY: dedicated });
+                write('handoff/pass.json', JSON.parse(read('public/pass.json')));
+                prepare('success');
+                fs.renameSync(cacheFile, `${temp}/archive/.state/${encrypted}`);
+                // Use an uncompressed tar, as the ciphertext is incompressible.
+                const archive = `${temp}/large.tar`;
+                execFileSync('/usr/bin/tar', ['-cf', archive, '-C', `${temp}/archive`, `.state/${encrypted}`]);
+                const size_in_bytes = fs.statSync(archive).size;
+                assert.ok(size_in_bytes > 64 * 1024 * 1024);
+                assert.equal(preflight(JSON.stringify({ ...listing, actions_caches: [{ ...entry, size_in_bytes }] })), `key=${second.key}\n`);
+                execFileSync(`${fs.readFileSync(`${temp}/path`, 'utf8').trim().split('\n').at(-1)}/tar`, ['-xf', archive, '-P', '-C', temp], {
+                  env: { PATH: process.env.PATH, GITHUB_WORKSPACE: temp, PASS_CACHE_EXTRACT: '1' },
+                });
+                decrypt();
+                assert.equal(sha256(fs.readFileSync(plainFile)), expected, 'reuse the entire larger cache');
+                assert.deepEqual(JSON.parse(read('pass.json')), handoff);
            } finally { fs.rmSync(temp, { recursive: true, force: true }); }
            console.log('ok predecessor provenance, public cursor export and authenticated response cache');
       - run: just test

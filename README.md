@@ -304,11 +304,13 @@ Historical comment cleanup remains off pending review of preview candidates.
 
 To recover the bot rate-limit savings of authenticated 304s,
 set tracker's Actions variable `PASS_RESPONSE_CACHE` to `enabled`; unset is
-off. Applying passes cache encrypted response maps, including private responses.
+off. When enabled, poll keeps up to 256 MiB of responses in a separate file
+from its cursor state. Applying passes save that file encrypted; it can include
+private responses.
 Set the Actions secret `PASS_CACHE_KEY` to an independent, randomly generated
 secret before opting in. If it is unset, the cache key is derived from the bot
 PAT. Previews can restore but cannot save. The restore preflights the predecessor
-attempt's exact key and default-branch ref and skips listed archives over 64 MiB.
+attempt's exact key and default-branch ref and skips listed archives over 1 GiB.
 The restore step has a two-minute timeout and extracts only the expected ciphertext
 member, whose size is checked before decryption. A miss, authentication failure or
 key change leaves the cursors intact and reads cold.

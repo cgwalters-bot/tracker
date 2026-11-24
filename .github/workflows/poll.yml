@@ -32,7 +32,7 @@ permissions: {}
 # a revision reviewed here, never agent-board's moving branch: move it only
 # with a review of what that revision's `pass` does.
 env:
-  AGENT_BOARD_REV: 5f89e3a02f59c8b994c0a7ad714587f270573895
+  AGENT_BOARD_REV: 02a4bf61887561bc4ae81dc303c30f4aee9d6b63
   # Minutes from one applying pass's start to the next, for `next` and its
   # recovery alike; a pass makes about 2,000 of the bot's hourly requests.
   # The supervisor's usageStaleMinutes must stay above it, with slack.
@@ -121,21 +121,25 @@ jobs:
           const { createHmac, createCipheriv, createDecipheriv, randomBytes } = require('node:crypto');
 
           const STATE = '.state/pass.json';
+          const CACHE = '.state/pass-responses.json';
           const RESPONSES = '.state/pass-responses.enc';
           const HANDOFF = '.state/handoff/pass.json';
           const SCHEMA = 'agent-board/poll-state/v1';
           const MAX_BYTES = 32 * 1024 * 1024; // The pinned pass's state-file limit.
-          const MAX_ARCHIVE_BYTES = 64 * 1024 * 1024;
+          // The --cache-bytes budget covers entries; agent-board allows another
+          // 256 bytes for the scope and JSON framing (agent-board#1197).
+          const MAX_CACHE_FILE_BYTES = 256 * 1024 * 1024 + 256;
+          const MAX_ARCHIVE_BYTES = 1024 ** 3; // 1 GiB
           const RUN_ID = /^[1-9][0-9]{0,19}$/;
           const SHA256 = /^[0-9a-f]{64}$/;
           // agent-board writes one digest, or two joined by ':' when a pass saves quiet waits.
           const SCOPE = /^[0-9a-f]{64}(:[0-9a-f]{64})?$/;
-          const MAPS = ['responses', 'pass_responses'];
           const cacheKey = (id, attempt) => RUN_ID.test(id) && RUN_ID.test(attempt) ? `pass-responses-${id}-${attempt}` : '';
           const NONCE_BYTES = 12;
           const TAG_BYTES = 16;
-          const MAX_CIPHERTEXT_BYTES = MAX_BYTES + NONCE_BYTES + TAG_BYTES;
-           const cacheContext = (key, scope) => Buffer.from(`${key}\n${scope}`);
+          const MAX_CIPHERTEXT_BYTES = MAX_CACHE_FILE_BYTES + NONCE_BYTES + TAG_BYTES;
+          // Do not accept the old encrypted fragments of pass.json as a cache file.
+          const cacheContext = (key, scope) => Buffer.from(`pass-response-file-v1\n${key}\n${scope}`);
 
           function api(endpoint, timeout = 20000) {
             return JSON.parse(execFileSync('gh', ['api', endpoint], {
@@ -226,6 +230,7 @@ jobs:
 
           function prepareState(restored) {
             fs.mkdirSync('.state', { recursive: true });
+            fs.rmSync(CACHE, { force: true });
             if (restored !== 'success') return;
             try {
               const { responses, pass_responses, response_cache, response_cache_key, ...state } = parseState(readBounded(HANDOFF));
@@ -239,46 +244,17 @@ jobs:
             return createHmac('sha256', env.PASS_RESPONSE_CACHE_PAT).update('pass-response-cache-v1').digest();
           }
 
-          // The state was validated as JSON. Find its top-level response members
-          // without reserializing sealed entries; latin1 gives byte offsets even
-          // when strings contain multibyte UTF-8. Only these spans are encrypted.
-          function responseMembers(raw) {
-            const text = raw.toString('latin1');
-            const members = new Map();
-            let start, depth = 0;
-            for (let i = 0; i < text.length; i++) {
-              const c = text[i];
-              if (c === '"') {
-                while (text[++i] !== '"') if (text[i] === '\\') i++;
-              } else if (c === '{' || c === '[') {
-                if (depth++ === 0) start = i + 1;
-              } else {
-                if (depth === 1 && (c === ',' || c === '}')) {
-                  // The pinned serializer emits these field names literally.
-                  const name = /^\s*"(responses|pass_responses)"\s*:/.exec(text.slice(start, i))?.[1];
-                  if (name) members.set(name, raw.subarray(start, i));
-                  start = i + 1;
-                }
-                if (c === '}' || c === ']') depth--;
-              }
-            }
-            return [...members.values()];
-          }
-
-          function exportCache(raw, state, scope, env, key) {
-            if (!MAPS.some(map => Object.keys(state[map] ?? {}).length)) return;
-            const members = responseMembers(raw);
-            if (!members.length) return;
-
+          function exportCache(scope, env, key) {
             // Fork PR jobs can read default-branch caches but lack the secret.
             // Bind to the attempt and scope; store nonce | tag | ciphertext.
             const nonce = randomBytes(NONCE_BYTES);
             const cipher = createCipheriv('aes-256-gcm', encryptionKey(env), nonce);
             cipher.setAAD(cacheContext(key, scope));
-            const data = Buffer.concat(members.flatMap((member, i) => i === 0 ? [member] : [Buffer.from(','), member]));
-            const ciphertext = Buffer.concat([cipher.update(data), cipher.final()]);
-            fs.writeFileSync(RESPONSES, Buffer.concat([nonce, cipher.getAuthTag(), ciphertext]), { flag: 'wx', mode: 0o600 });
-            return true;
+            const ciphertext = cipher.update(readBounded(CACHE, MAX_CACHE_FILE_BYTES));
+            const end = cipher.final();
+            fs.writeFileSync(RESPONSES, Buffer.concat([nonce, cipher.getAuthTag()]), { flag: 'wx', mode: 0o600 });
+            fs.appendFileSync(RESPONSES, ciphertext);
+            fs.appendFileSync(RESPONSES, end);
           }
 
           function exportState(env) {
@@ -287,14 +263,16 @@ jobs:
             fs.rmSync(RESPONSES, { force: true });
             let handoff;
             try {
-              const raw = readBounded(STATE);
-              const state = parseState(raw);
-              handoff = publicState(state);
+              handoff = publicState(parseState(readBounded(STATE)));
               const key = cacheKey(env.GITHUB_RUN_ID, env.GITHUB_RUN_ATTEMPT);
-              if (env.PASS_RESPONSE_CACHE_ENABLED === 'true' && key && handoff.response_scope) {
+              if (env.PASS_RESPONSE_CACHE_ENABLED === 'true' && key && handoff.response_scope && fs.existsSync(CACHE)) {
                 try {
-                  if (exportCache(raw, state, handoff.response_scope, env, key)) handoff.response_cache_key = key;
-                } catch { console.log('Could not encrypt pass responses; the next pass reads cold'); }
+                  exportCache(handoff.response_scope, env, key);
+                  handoff.response_cache_key = key;
+                } catch {
+                  fs.rmSync(RESPONSES, { force: true });
+                  console.log('Could not encrypt pass responses; the next pass reads cold');
+                }
               }
               fs.mkdirSync(output);
               fs.writeFileSync(`${output}/pass.json`, JSON.stringify(handoff) + '\n');
@@ -336,7 +314,8 @@ jobs:
             if (!key) console.log('No eligible response cache; using cold reads');
           }
 
-          function mergeCache(env) {
+          function restoreCache(env) {
+            const pending = `${CACHE}.tmp`;
             try {
               if (env.CACHE_HIT !== 'true') return;
               const state = parseState(readBounded(STATE));
@@ -346,15 +325,17 @@ jobs:
               const decipher = createDecipheriv('aes-256-gcm', encryptionKey(env), data.subarray(0, NONCE_BYTES), { authTagLength: TAG_BYTES });
               decipher.setAAD(cacheContext(env.RESPONSE_CACHE_KEY, state.response_scope));
               decipher.setAuthTag(data.subarray(NONCE_BYTES, header));
-              // Only splice members after authentication succeeds.
-              const members = Buffer.concat([decipher.update(data.subarray(header)), decipher.final()]);
-              const cursors = Buffer.from(JSON.stringify(state));
-              const encoded = Buffer.concat([cursors.subarray(0, -1), Buffer.from(','), members, Buffer.from('}')]);
-              if (encoded.length > MAX_BYTES) throw new Error('merged state exceeds size limit');
-              fs.writeFileSync(`${STATE}.tmp`, encoded);
-              fs.renameSync(`${STATE}.tmp`, STATE);
+              // Do not write any plaintext before authentication succeeds.
+              const plaintext = decipher.update(data.subarray(header));
+              const end = decipher.final();
+              fs.writeFileSync(pending, plaintext, { flag: 'wx', mode: 0o600 });
+              fs.appendFileSync(pending, end);
+              fs.renameSync(pending, CACHE);
             } catch { console.log('Rejected response cache; using cold reads'); }
-            finally { fs.rmSync(RESPONSES, { force: true }); }
+            finally {
+              fs.rmSync(pending, { force: true });
+              fs.rmSync(RESPONSES, { force: true });
+            }
           }
 
           function main(mode, env = process.env) {
@@ -370,8 +351,8 @@ jobs:
               case 'prepare': prepareState(env.RESTORED); break;
               case 'export': exportState(env); break;
               case 'check-cache': prepareCache(env); break;
-              case 'merge-cache': mergeCache(env); break;
-              default: throw new Error('Unknown pass-state mode; expected validate, prepare, export, check-cache, or merge-cache');
+              case 'restore-cache': restoreCache(env); break;
+              default: throw new Error('Unknown pass-state mode; expected validate, prepare, export, check-cache, or restore-cache');
             }
           }
           if (require.main === module) main(process.argv[2] || 'validate');
@@ -422,7 +403,7 @@ jobs:
           RESPONSE_CACHE_KEY: ${{ steps.cache-check.outputs.key }}
           PASS_CACHE_KEY: ${{ steps.responses.outputs.cache-hit == 'true' && secrets.PASS_CACHE_KEY || '' }}
           PASS_RESPONSE_CACHE_PAT: ${{ steps.responses.outputs.cache-hit == 'true' && secrets.PASS_CACHE_KEY == '' && secrets.CGWALTERS_BOT_PAT || '' }}
-        run: just pass-state merge-cache
+        run: just pass-state restore-cache
       - name: One pass
         id: pass
         timeout-minutes: 18
@@ -442,11 +423,16 @@ jobs:
         # watched; stderr too, so that the summary says why a pass failed.
         # Dispatch picks one fix bounds file per target, so the pass needs both.
         run: |
+          cache=()
+          if [[ $PASS_RESPONSE_CACHE_ENABLED == true ]]; then
+            cache=(--cache .state/pass-responses.json --cache-bytes 268435456)
+          fi
           "$AGENT_BOARD" pass --config "$RUNNER_TEMP/pass.json" ${APPLY:+"$APPLY"} \
+            "${cache[@]}" \
             --fix-bounds .github/agentic-job/fix.toml \
             --fix-bounds .github/agentic-job/midstream-fix.toml \
             --max-dispatch 20 --max-writes 60 --max-status-changes 50 2>&1 | tee "$RUNNER_TEMP/pass.log"
-      # Threat: raw state includes private usage/holds comments and status records.
+      # Threat: raw state and responses can include private comments and records.
       # The artifact is readable outside this job; filter before publishing.
       - name: Prepare public pass state
         id: state

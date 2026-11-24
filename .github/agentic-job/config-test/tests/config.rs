@@ -49,6 +49,7 @@ fn agent_board_selection() {
     assert_eq!(accepted(select(&sha, vec![run.clone()], vec![artifact.clone()], false)), json!({"sha":sha,"run":42}));
     let calls = std::fs::read_to_string(dir.join("calls")).unwrap();
     assert!(calls.contains(&format!("head_sha={sha}")));
+    assert!(!calls.contains("status=success"), "the exact lookup checks the returned conclusion");
     assert!(!calls.contains("/commits?"), "exact install must not resolve a moving ref");
     assert_eq!(accepted(select(&newer, vec![run.clone()], vec![artifact.clone()], false)), Value::Null);
     for (key, value) in [("head_branch", "other"), ("event", "pull_request"), ("status", "in_progress"),
