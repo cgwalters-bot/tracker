@@ -73,6 +73,7 @@
 "noMerge": [{"org": "cgwalters-forge", "forks": true}, "cgwalters-bot/praxis-credential-broker"],
     "reviewWorkflow": "review.yml",
     "checkReruns": true,
+    "stopReasons": true,
     "ownerBranches": true,
     "fixPools": ["openai", "claude"],
     "mergeAuthors": ["dependabot[bot]"],
