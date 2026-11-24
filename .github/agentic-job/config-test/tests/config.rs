@@ -2164,29 +2164,40 @@ fn bcvk_and_ostree_are_midstream_targets_that_are_never_merged_into() {
     }
 }
 
+// Each midstream workflow exception is a named fork whose main passes
+// review-gate; bootc and composefs-rs gate only their `forge` branch.
 #[test]
-fn gh_agentic_workflows_has_the_only_midstream_workflow_exception_and_is_never_merged_into() {
-    let repo = "cgwalters-forge/gh-agentic-workflows";
-    for name in ["midstream.toml", "midstream-fix.toml", "comment.toml"] {
-        assert!(admits(name, known(repo)), "{name}");
-    }
+fn midstream_workflow_exceptions_are_named_gated_forks_that_are_never_merged_into() {
     assert!(!has_line_starting(&read("comment.toml"), "[unprotected_files]"));
+    let mut admitted = vec![];
     for name in ["midstream.toml", "midstream-fix.toml"] {
         let table = toml_file(name);
         let exception = table["unprotected_files"].as_table().expect("workflow exception");
         assert_eq!(exception.len(), 2, "{name}: no protected filename exceptions");
-        assert_eq!(strings(&exception["repos"], name), [repo]);
         assert_eq!(strings(&exception["dot_folders"], name), [".github"]);
-    }
-    for name in ["dispatch.toml", "fix.toml"] {
-        assert!(!admits(name, known(repo)), "{name}");
-        for list in lists(name) {
-            assert!(!list.iter().any(|r| r == repo), "{name}");
+        let listed = strings(&exception["repos"], name);
+        assert!(listed.contains(&"cgwalters-forge/gh-agentic-workflows".to_owned()), "{name}");
+        for repo in ["cgwalters-forge/bootc", "cgwalters-forge/composefs-rs", "cgwalters-forge/cgwalters-devspace-sandbox"] {
+            assert!(!listed.iter().any(|r| r == repo), "{name}: {repo}'s main has no review gate");
         }
+        admitted.push(listed);
     }
+    // Apply refuses a push with `.github` exempted to any head outside the
+    // bot's fork, so a fix exception would refuse the fork's own-branch fixes.
+    assert_eq!(admitted[1], ["cgwalters-forge/gh-agentic-workflows"], "midstream-fix.toml");
+    assert!(admitted[0].contains(&admitted[1][0]) && repos("midstream-fix.toml").contains(&admitted[1][0]));
     let pass = json_file("../pass.json");
-    for (list, no_merge) in [(&pass["follow"], false), (&pass["workRepositories"], false), (&pass["pr"]["noMerge"], true)] {
-        assert!(covers(list, known(repo), no_merge));
+    for repo in &admitted[0] {
+        // As live metadata describes each fork (rechecked 2026-11-24).
+        let fork = Repo { name: repo.clone().leak(), fork: true, topics: &["bot-midstream"], origin: "fork" };
+        assert!(admits("midstream.toml", &fork), "{repo}");
+        for name in ["dispatch.toml", "fix.toml"] {
+            assert!(!admits(name, &fork), "{repo} {name}");
+            for list in lists(name) {
+                assert!(!list.contains(repo), "{repo} {name}");
+            }
+        }
+        assert!(covers(&pass["pr"]["noMerge"], &fork, true), "{repo}");
     }
 }
 
@@ -2227,41 +2238,49 @@ fn agentic_job_policy_limits_midstream_workflow_edits_to_the_admitted_fork() {
         return;
     }
     let head = "0".repeat(40);
-    // midstream-fix.toml's names, each admitted by midstream.toml's rule on its live metadata.
-    for repo in repos("midstream-fix.toml") {
-        for (file, kind) in [("midstream.toml", "create_pull_request"), ("midstream-fix.toml", "push_to_pull_request_branch")] {
-            let clone_url = format!("https://github.com/{repo}");
-            let file_path = path_of(file);
-            let mut args = vec!["policy", "--allow", &file_path, "--repo", &repo, "--clone-url", &clone_url,
-                "--kind", "branch", "--outputs", kind, "--max-outputs", "3", "--base"];
-            if kind == "create_pull_request" {
-                args.push("main");
-            } else {
-                args.extend(["dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", &repo]);
-            }
-            let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).expect("policy JSON");
-            let bound = &policy["safe_outputs"][kind];
-            let expected = if repo == "cgwalters-forge/gh-agentic-workflows" { json!([".github"]) } else { Value::Null };
-            assert_eq!(bound["unprotected_dot_folders"], expected, "{repo} {file}: no other fork may edit protected dot folders");
-            assert_eq!(bound["protect_top_level_dot_folders"], true, "{repo} {file}");
-            assert_eq!(bound["protected_files_policy"], "blocked", "{repo} {file}");
-            let protected = bound["protected_files"].as_array().expect("protected filenames");
-            for path in ["AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
-                assert!(protected.contains(&json!(path)), "{repo} {file}: {path} must remain blocked");
-            }
-            if kind == "create_pull_request" {
-                assert_eq!(bound["draft"], true, "{repo} {file}");
-            }
-            assert_ne!(bound["ready_when_complete"], true, "{repo} {file}");
-            check_midstream_paths(&policy, &repo, kind, &head, false);
+    // midstream-fix.toml's names, each admitted by midstream.toml's rule on its
+    // live metadata, plus every implement exception, which fix need not admit.
+    let fix = repos("midstream-fix.toml");
+    let mut implement = fix.clone();
+    implement.extend(strings(&toml_file("midstream.toml")["unprotected_files"]["repos"], "midstream.toml"));
+    implement.sort();
+    implement.dedup();
+    let cases = implement.into_iter().map(|repo| (repo, "midstream.toml", "create_pull_request"))
+        .chain(fix.into_iter().map(|repo| (repo, "midstream-fix.toml", "push_to_pull_request_branch")));
+    for (repo, file, kind) in cases {
+        let clone_url = format!("https://github.com/{repo}");
+        let file_path = path_of(file);
+        let mut args = vec!["policy", "--allow", &file_path, "--repo", &repo, "--clone-url", &clone_url,
+            "--kind", "branch", "--outputs", kind, "--max-outputs", "3", "--base"];
+        if kind == "create_pull_request" {
+            args.push("main");
+        } else {
+            args.extend(["dispatch/x", "--pull-request", "1", "--head", &head, "--output-repo", &repo]);
         }
+        let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).expect("policy JSON");
+        let bound = &policy["safe_outputs"][kind];
+        let exempt = strings(&toml_file(file)["unprotected_files"]["repos"], file).contains(&repo);
+        let expected = if exempt { json!([".github"]) } else { Value::Null };
+        assert_eq!(bound["unprotected_dot_folders"], expected, "{repo} {file}: no other fork may edit protected dot folders");
+        assert_eq!(bound["protect_top_level_dot_folders"], true, "{repo} {file}");
+        assert_eq!(bound["protected_files_policy"], "blocked", "{repo} {file}");
+        let protected = bound["protected_files"].as_array().expect("protected filenames");
+        for path in ["AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
+            assert!(protected.contains(&json!(path)), "{repo} {file}: {path} must remain blocked");
+        }
+        if kind == "create_pull_request" {
+            assert_eq!(bound["draft"], true, "{repo} {file}");
+        }
+        assert_ne!(bound["ready_when_complete"], true, "{repo} {file}");
+        check_midstream_paths(&policy, &repo, kind, &head, exempt, false);
     }
 }
 
 /// Exercise the existing collector and independent patch checker, not a local
 /// approximation of protected-path matching. Only an ordinary source file and
-/// the admitted fork's or a listed first-party repository's workflow may pass.
-fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str, listed: bool) {
+/// a listed repository's workflow may pass, and a protected filename only
+/// where `files` says the repository's filename exemptions apply.
+fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str, workflows: bool, files: bool) {
     let dir = temp_path("path-check");
     let out = dir.join("out");
     std::fs::create_dir_all(&out).unwrap();
@@ -2278,13 +2297,13 @@ fn check_midstream_paths(policy: &Value, repo: &str, kind: &str, head: &str, lis
     let check = || agentic_job(&["check", "--policy", policy_path.to_str().unwrap(), "--outputs", out.to_str().unwrap(), "--collected", collected.to_str().unwrap()]);
     collect(&item);
     for path in ["src/test.txt", ".github/workflows/test.yml", ".github/agentic-job/runner-profiles.json", ".other/test.txt", "AGENTS.md", "CLAUDE.md", "CODEOWNERS", "package.json", "go.mod"] {
-        if listed && !path.contains('/') {
+        if files && !path.contains('/') {
             continue; // Listed repositories' filename exemptions are unchanged.
         }
         let patch = format!("From {} Mon Sep 17 00:00:00 2001\nX-GH-AW-Base-Commit: {head}\nFrom: Test <test@example.test>\nDate: Thu, 5 Nov 2026 00:00:00 +0000\nSubject: [PATCH] Test workflow admission\n\n---\ndiff --git a/{path} b/{path}\nnew file mode 100644\n--- /dev/null\n+++ b/{path}\n@@ -0,0 +1 @@\n+test\n", "1".repeat(40));
         std::fs::write(out.join("aw-dispatch-x.patch"), patch).unwrap();
         let result = check();
-        let accepted = path == "src/test.txt" || ((listed || repo == "cgwalters-forge/gh-agentic-workflows") && path == ".github/workflows/test.yml");
+        let accepted = path == "src/test.txt" || (workflows && path == ".github/workflows/test.yml");
         assert_eq!(result.status.success(), accepted, "{repo} {kind} {path}: {}\n{}", String::from_utf8_lossy(&result.stderr), String::from_utf8_lossy(&result.stdout));
         if repo == "cgwalters-forge/ostree" && path == "src/test.txt" && kind == "create_pull_request" {
             // The collector accepts the boolean, but check must refuse an
@@ -2326,7 +2345,7 @@ fn runner_map_edits_are_refused_even_with_first_party_workflow_exemption() {
             let policy: Value = serde_json::from_str(&agentic_job_ok(&args)).unwrap();
             assert_eq!(policy["safe_outputs"][kind]["protected_paths"], json!([".github/agentic-job/runner-profiles.json"]));
             // Reuse the real collector/checker, with a normal workflow positive control.
-            check_midstream_paths(&policy, repo, kind, &head, listed);
+            check_midstream_paths(&policy, repo, kind, &head, listed, listed);
         }
     }
 }
