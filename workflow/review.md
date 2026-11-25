@@ -90,27 +90,33 @@ blocker on a line of its own with its file and line and one-sentence claim:
 the automated fixer reads only the verdict.
 Report every finding you can see in this one pass, not only the first.
 Tag each finding with exactly one severity: blocker, important or nit; an
-untagged finding is not allowed. A blocker is a concrete failure to deliver
-the change's main purpose, including when a fix leaves the bug it targets in
-place. Even when the change delivers its main purpose, block on a concrete
-defect it introduces or makes reachable: a material regression in existing
-behavior, data loss, a security hole, or a confirmed dependency-integrity
-failure. State which input or event leads to what wrong result, such as
-which supported operation no longer works or what a weakened permission,
-gate, bound, pin, token placement or trigger now lets someone do. For a
-dependency-integrity failure, name the unintended or unpinned package or
-install script. Opt-in status bears only on reachability: a defect in an
-off-by-default option this PR adds, which nothing in it enables, regresses
-no existing behavior, but it is still a blocker when it defeats the
-option's main purpose or is data loss, a security hole or a
-dependency-integrity failure. A change to an existing option, enabled or
-not, keeps the regression bar.
-Speculative risks, unrelated pre-existing behavior the change does not make
-reachable, missing hardening the change does not remove, and incidental
-documentation or test gaps are important or nits with a suggested follow-up.
-An omission that defeats the main purpose of a documentation or test change
-is not incidental. Group findings with the same cause at the highest severity;
-name the root fix and list the instances together.
+untagged finding is not allowed. A blocker is a concrete defect this diff
+introduces or makes reachable that makes behavior worse than the base: a
+material regression in existing behavior, data loss, a security hole, or a
+confirmed dependency-integrity failure. State which input or event leads to
+what wrong result, such as which supported operation no longer works or what a
+weakened permission, gate, bound, pin, token placement or trigger now lets
+someone do. For a dependency-integrity failure, name the unintended or
+unpinned package or install script. No exemption below, whether a pin bump, a
+default-off option, a race or a pre-existing gap, ever covers a security hole,
+data loss or a confirmed dependency-integrity failure this diff introduces or
+makes reachable, even when the faulty code is unchanged; those always block.
+A dependency or pin bump that fixes something and regresses nothing is
+approved; other findings in the bumped code are follow-ups.
+The one exception to the rule that a change no worse than the base is
+approved: a change that does not do its main stated purpose at all, such as a
+fix that leaves the bug it targets in place, is also a blocker. Partial
+delivery is a follow-up, and a mismatch between the PR text and the code is
+fixed by rewording the text, not by blocking.
+Opt-in status bears only on reachability: edge cases in an off-by-default
+option this PR adds, which nothing in it enables, are follow-ups. A change to
+an existing option, enabled or not, keeps the regression bar.
+Everything else, unless it is one of the blockers above, is important or a
+nit, never a blocker: pre-existing gaps, races that need an outside change
+mid-run, hardening, privacy or robustness the base also lacks, an incomplete
+fix that is no worse than the base, speculative risks, and documentation or
+test gaps. Group findings with the same cause at the highest severity; name
+the root fix and list the instances together.
 The comment's first line starts with VERDICT: CHANGES only when there is at
 least one blocker, and VERDICT: APPROVE otherwise, also when important
 findings and nits remain, and may go on with a short reason. Keep that line
@@ -123,6 +129,7 @@ walkthroughs, praise, linter nits and `Verification:`. For changes to decision
 logic, compare decisions before and after the change. Show only changed lines;
 if none changed, write just `Decision diff: no change`.
 List findings most important first. In an approval, put important findings and
-nits under "Follow-ups". When blocked, the fixer may take those along too.
+nits under "Follow-ups" for the PR author to file as issues. When blocked,
+the fixer may take those along too.
 This verdict is only text, never a GitHub approval or merge authorization; an
 APPROVE sets the commit status `review` to success.
