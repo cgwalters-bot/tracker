@@ -22,7 +22,7 @@ concurrency:
 
 # Reviewed agent-board commit; move it with the other workflows' pins.
 env:
-  AGENT_BOARD_REV: 183ed445b9b0b7b5510454e03e794a31c0efbb5d
+  AGENT_BOARD_REV: ec713b6f8f48a8282bb5c9f1960898bd03e41aa0
 
 jobs:
   post:
