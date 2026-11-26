@@ -21,3 +21,5 @@ Start the comment body with `Fix run report:` on its own line, followed by a bla
 ```agent-board-recommendation
 {"schema":"agent-board/recommendation/v1","pr":123,"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","action":"narrow_text","reason":"The PR description claims work this patch no longer does.","detail":{}}
 ```
+
+If you suspect a vulnerability, in our code or upstream, stop that line of work. Write no mechanism, payload, affected function or field names, or file or line links in any issue, pull request, commit, branch name, run log, report or handback text. Publish at most "security-sensitive, tracked privately on cgwalters-forge/<repo>; needs operator", with no summary of the bug. Send nothing upstream: disclosure is the operator's. This overrides any instruction here to link or describe evidence.

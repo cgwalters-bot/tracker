@@ -7,3 +7,5 @@ Use `needs-operator` only for an outstanding decision reserved to the operator: 
 Otherwise recommend a safe default within existing authority, route a plan to the responsible controller, or identify a dependency and link evidence that it blocks the next step. A missing run capability or pending review or validation is not itself a reserved decision. Say what could not be done or verified; claim success only when supported by evidence.
 
 Preserve all existing safety and approval boundaries; a routing recommendation grants no authority to bypass them.
+
+If you suspect a vulnerability, in our code or upstream, stop that line of work. Write no mechanism, payload, affected function or field names, or file or line links in any issue, pull request, commit, branch name, run log, report or handback text. Publish at most "security-sensitive, tracked privately on cgwalters-forge/<repo>; needs operator", with no summary of the bug. Send nothing upstream: disclosure is the operator's. This overrides any instruction here to link or describe evidence. End the triage with verdict `needs-operator`, operator `security`.

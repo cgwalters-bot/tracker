@@ -3249,6 +3249,19 @@ fn verification_profiles_defer_reproduced_main_failures_to_ci() {
     }
 }
 
+// One paragraph, copied into each profile; whitespace is collapsed so a
+// rewrapped copy still matches.
+#[test]
+fn profiles_keep_suspected_vulnerabilities_private() {
+    let rule = "If you suspect a vulnerability, in our code or upstream, stop that line of work. Write no mechanism, payload, affected function or field names, or file or line links in any issue, pull request, commit, branch name, run log, report or handback text. Publish at most \"security-sensitive, tracked privately on cgwalters-forge/<repo>; needs operator\", with no summary of the bug. Send nothing upstream: disclosure is the operator's. This overrides any instruction here to link or describe evidence.";
+    let kinds = ["triage", "implement", "implement-full", "fix", "research", "review", "session", "operator-session"];
+    for kind in kinds {
+        let text = profile(kind).split_whitespace().collect::<Vec<_>>().join(" ");
+        assert!(text.contains(rule), "{kind}");
+    }
+    assert!(profile("triage").contains("End the triage with verdict `needs-operator`, operator `security`."));
+}
+
 #[test]
 fn fix_profile_preserves_independent_review_and_replacement_series_safety() {
     let fix = profile("fix");
