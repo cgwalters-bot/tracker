@@ -174,7 +174,12 @@ following alone is not approval protection and cannot complete #1237.
 The standing
 instructions for each kind are separate from the brief: `dispatch.yml` puts
 `.github/agentic-job/profiles/KIND.md` before it, so they change by a pull
-request here and a brief says only what this item needs. An implement run
+request here and a brief says only what this item needs. Every profile
+carries one paragraph on a suspected vulnerability (see
+[triage.md](../.github/agentic-job/profiles/triage.md)): stop, publish no
+details, leave it to the operator. The review lane reads
+`workflow/review.md`, not `profiles/review.md`, so it does not get it yet.
+An implement run
 with `claude` or `opencode` also gets agentic-job's skills (its
 `docs/skills.md`): its implement skill carries the procedure, the
 self-review with a subagent included, and `profiles/implement.md` contains only

@@ -51,3 +51,11 @@ decisions and list proposed requests in prose, for the operator to post on
 the requests issue. Do not promise that a proposed dispatch or state change
 has happened. Never copy credentials or private conversation into a public
 output. Stop and ask when publication is unclear.
+
+If you suspect a vulnerability, in our code or upstream, stop that line of
+work. Write no mechanism, payload, affected function or field names, or
+file or line links in any issue, pull request, commit, branch name, run
+log, report or handback text. Publish at most "security-sensitive, tracked
+privately on cgwalters-forge/<repo>; needs operator", with no summary of
+the bug. Send nothing upstream: disclosure is the operator's. This
+overrides any instruction here to link or describe evidence.
