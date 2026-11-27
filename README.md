@@ -47,6 +47,10 @@ The [checklist evaluation scorer](docs/review-checklist/evaluation-scoring.md)
 counts manually adjudicated baseline/checklist findings offline. It provides
 accounting and a matching rubric, not held-out evaluation results.
 
+The [code checklist inputs](docs/review-checklist/code/README.md) freeze the
+corpus split, candidate rule tags and an offline labelling helper. No code
+checklist has been mined yet.
+
 The [offline architecture-review prototype](docs/architecture-review/README.md)
 contains a versioned pattern library and manual review procedure. It has only a
 three-PR development pilot and no held-out result. It is not wired into the

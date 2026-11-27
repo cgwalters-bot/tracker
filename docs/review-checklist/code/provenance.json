@@ -1,0 +1,18 @@
+{
+  "schema": "review-checklist.split.v1",
+  "tag": "review-corpus-20261120-135903",
+  "cutoff": "2026-06-01T00:00:00Z",
+  "snapshot_sha256": {
+    "review-corpus.jsonl.zst": "7aec1f6e88f2fe1b72d6c29c1157c9369d00c561671452578442d3e6952f3df6",
+    "review-corpus-state.json": "59e5da6d542002bf89fa1e0cb561e793ac59bae36be026cae8c917752bd9a5b5",
+    "status.json": "f9697018ec414f0c4146283c9faba257a98af743586ab024b473c79112ad082a"
+  },
+  "training_sha256": "93102b18d5a95049fab6ff88fc5915cd00f2a7aa6c83e25ab6bdbfaca71c1590",
+  "holdout_sha256": "f9120c44370ea0ffe9fa645d5aaaf961f88ff6ec758add4a3cea407db61a0278",
+  "holdout_metadata_sha256": "3080fdbe0903e6a76395f0db3a03be88a1b3f314738cbb6f0cf88eb7a89086f0",
+  "records": 14645,
+  "training_records": 13279,
+  "heldout_records": 1366,
+  "training_prs": 4238,
+  "heldout_prs": 457
+}
