@@ -1,5 +1,5 @@
 {
-  "status": "blocked_at_inference_preflight",
+  "status": "blocked_at_inference_limits",
   "development_evidence": {
     "pilot": "https://github.com/cgwalters-forge/tracker/issues/1227",
     "v1": "https://github.com/cgwalters-forge/tracker/pull/1303",
@@ -24,6 +24,7 @@
     "checks": {"default": "9/9", "fixtures": "9/9", "e2e": "10/10"}
   },
   "preflight": {
+    "scope": "Historical preflight and retention evidence from before the 2026-11-27 follow-up below.",
     "retention": "No admitted path was shown to retain and retrieve a standalone evaluation archive with matching hashes. The dispatch run action uploads diagnostics, a transcript and untrusted proposals for a separate check. None of those uploads establishes admission or exact round-trip of evaluator files under this handback contract.",
     "retention_round_trip": {
       "path": "Files in this directory handed back as the pull request branch patch, then fetched through the GitHub contents API at the pushed head.",
@@ -45,10 +46,55 @@
     "inference_requests": {"sent": 5, "auth_errors": 1, "rate_limited": 4, "completed": 0},
     "controller_substituted": false
   },
+  "inference_followup": {
+    "date_utc": "2026-11-27",
+    "model": "gpt-6.2-sol",
+    "preflight": [
+      {"transport": "nonstreaming Responses", "http": 400, "request_id": null, "completed": false},
+      {"transport": "streaming Responses", "http": 200, "request_id": null, "completed": true}
+    ],
+    "context_isolation": {
+      "request_contract": "Two fresh Responses calls, each with only its own instructions and synthetic user input, with no tool definitions, conversation identifier or previous response identifier. Both requested store=false and had a 45-second client deadline and 64 KiB response cap. Neither response exposed an HTTP request ID.",
+      "reviewer": {
+        "response_id": "resp_096667cd40e0219c016b09ea7f698c87d294029cb00fa37e9c",
+        "http": 200,
+        "tools": [],
+        "previous_response_id": null,
+        "store": false,
+        "packet_marker_and_output": "857f6116-b46a-488a-9249-791445d861de",
+        "input_tokens": 46,
+        "output_tokens": 23
+      },
+      "scorer": {
+        "response_id": "resp_0238f8af59563d7b016b09ea80c2d887d2ac0e101044fc9ec6",
+        "http": 200,
+        "tools": [],
+        "previous_response_id": null,
+        "store": false,
+        "output": "ABSENT",
+        "input_tokens": 45,
+        "output_tokens": 6
+      },
+      "limit": "Both responses completed with text only. The scorer was asked for the reviewer marker only if it was visible and did not receive it in its request. This checks separation at the request boundary, not provider-side retention or training exposure. No historical packet or feedback was supplied. These are diagnostic probes, not proof of isolation under verified inference bounds."
+    },
+    "output_limit_probe": {
+      "http": 200,
+      "request_id": null,
+      "response_id": "resp_05a4bf092d76e186016b09ea9177e087d2839d37958c1f7f1d",
+      "requested_max_output_tokens": 16,
+      "reported_max_output_tokens": null,
+      "reported_output_tokens": 203,
+      "result": "The request to list the integers 1 through 100 completed rather than ending at the requested limit. The same configured service returned HTTP 404, with no request ID, for the Chat Completions limit probe. Client deadlines and wire byte caps do not establish a provider generation or spend limit. Remaining budget was not verified."
+    }
+  },
   "packet_tool": {
     "revision": "https://github.com/cgwalters-forge/misctool/commit/5c9eb7c4a78849d5b2b15946cf703517cd3f0913",
     "executed": false,
-    "discovery_mismatch": "The tool searches by submitted review date and permits up to 1,000 search results per repository. That does not enforce the merge-date window and five pages of twenty required for v4."
+    "discovery_mismatch": "That revision does not enforce the merged-at window and five pages of twenty required for v4.",
+    "main_source_inspection": {
+      "revision": "https://github.com/cgwalters-forge/misctool/commit/71d5bb6531ad1ff56b3125e7b00c46d8828bd844",
+      "limits": "Main exposes --merged-since, --merged-before, --max-pages and --page-size. Its date window is UTC and end-exclusive, so the v3 window maps to 2026-07-01 through (excluding) 2026-11-05. The search cap can be set to five pages of twenty. The required --since also filters by submitted review date; the v4 protocol still needs to specify a non-narrowing value and the metadata-only eligibility pass. The executable was not run."
+    }
   },
   "v4_protocol_frozen": false,
   "candidate_discovery_requests": 0,
@@ -57,5 +103,5 @@
   "review_runs": 0,
   "scoring_runs": 0,
   "scores": null,
-  "next": "Keep evidence as repository files within the handback limits unless a standalone archive is proven. Obtain a completed no-tools noncandidate inference request (the endpoint rate-limited two runs); verify remaining budget and enforceable per-run limits before proving fresh tool-less reviewer and separate scorer contexts using only environment-configured inference. Then freeze v4 prospectively, preserving v3's repository set, merge window and architecture eligibility. Resolve all prior exposure exclusions, use bounded metadata-only discovery, and prove each historical base before building or reviewing any selected packet."
+  "next": "Keep evidence as repository files within the handback limits unless a standalone archive is proven. Verify remaining budget and an enforceable per-run inference limit on the configured endpoint. Under those verified bounds, rerun the fresh tool-less reviewer and separate scorer probes even if using the same transport. Then freeze v4 prospectively, preserving v3's repository set, merge window and architecture eligibility. Resolve all prior exposure exclusions, use bounded metadata-only discovery, and prove each historical base before building or reviewing any selected packet."
 }
