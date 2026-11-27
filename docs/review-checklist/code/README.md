@@ -3,8 +3,8 @@
 > This text is LLM generated.
 
 This directory holds the inputs for mining the code style and nit checklist
-([#1231](https://github.com/cgwalters-forge/tracker/issues/1231)). It is not the
-checklist yet: no training PR has been labelled here.
+([#1231](https://github.com/cgwalters-forge/tracker/issues/1231)). Validated
+training labels accumulate in [labels/](labels/); they are not the checklist.
 
 - [provenance.json](provenance.json) is the splitter's record of the frozen split
   of [review-corpus-20261120-135903](https://github.com/cgwalters-forge/tracker/releases/tag/review-corpus-20261120-135903):
