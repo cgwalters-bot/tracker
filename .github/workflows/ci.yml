@@ -1953,6 +1953,135 @@ jobs:
               refuses(/decompression failed/);
             } finally { fs.rmSync(root, { recursive: true, force: true }); }
           });
+      # Offline synthetic tests of the labelling helper in docs/review-checklist/code/README.md.
+      # Keep new scripts inline: deployment scripts and Justfile may only shrink.
+      - name: Test review-checklist label shards
+        shell: node {0}
+        run: |
+          const assert = require('node:assert/strict');
+          const { createHash } = require('node:crypto');
+          const { spawnSync } = require('node:child_process');
+          const fs = require('node:fs');
+          const os = require('node:os');
+          const path = require('node:path');
+          const test = require('node:test');
+          const dir = 'docs/review-checklist/code';
+          const docs = fs.readFileSync(path.join(dir, 'README.md'), 'utf8');
+          const source = docs.split('```js label-shards\n')[1].split('\n```')[0];
+          const helper = new Function('require', source + '\nreturn { parseTaxonomy, readHoldout };')(require);
+          const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+          const taxonomy = helper.parseTaxonomy(fs.readFileSync(path.join(dir, 'taxonomy.md'), 'utf8'));
+          const pr = n => `https://github.com/example/project/pull/${n}`;
+          // Unsorted records, three per PR, so shards must regroup by canonical PR URL.
+          const records = [];
+          for (let n = 1001; n >= 1; n--) for (const id of [n * 3, n * 3 + 1, n * 3 + 2])
+            records.push({ schema_version: 1, kind: 'review-comment', repository: n % 2 ? 'Example/Project' : 'example/project',
+              pr_number: n, comment_id: id, url: `${pr(n)}#discussion_r${id}`, body: 'DO_NOT_ECHO' });
+          const training = records.map(r => JSON.stringify(r)).join('\n') + '\n';
+
+          test('committed split metadata is consistent', () => {
+            const provenance = JSON.parse(fs.readFileSync(path.join(dir, 'provenance.json')));
+            assert.equal(helper.readHoldout(path.join(dir, 'holdout.md'), provenance).size, provenance.heldout_prs);
+            assert.ok(taxonomy.has('rust-combinators') && taxonomy.size >= 10);
+          });
+
+          test('shards, samples and label validation', () => {
+            const root = fs.mkdtempSync(path.join(os.tmpdir(), 'label-shards-'));
+            try {
+              const file = name => path.join(root, name);
+              fs.writeFileSync(file('training.jsonl'), training);
+              const runner = /```sh\nnode -e '([^']+)' -- shard /.exec(docs)[1];
+              const cli = (...args) => spawnSync(process.execPath, ['-e', runner, '--', ...args], { encoding: 'utf8' });
+              const succeeds = result => { assert.equal(result.status, 0, result.stderr); return result.stdout; };
+              const refuses = (result, error) => {
+                assert.equal(result.status, 1, result.stderr);
+                assert.match(result.stderr, error);
+                assert.doesNotMatch(result.stdout + result.stderr, /DO_NOT_ECHO/);
+              };
+              const inputs = [file('provenance.json'), file('training.jsonl')];
+              const provenance = { schema: 'review-checklist.split.v1', training_sha256: hash(training), training_prs: 1001 };
+              const setHoldout = (url, updateProvenance = true) => {
+                const payload = `${url}\n`;
+                fs.writeFileSync(file('holdout.md'), '# Fixture\n\n```text holdout\n' + payload + '```\n');
+                if (updateProvenance) fs.writeFileSync(inputs[0], JSON.stringify({ ...provenance, holdout_sha256: hash(payload), heldout_prs: 1 }));
+              };
+              setHoldout(pr(1002));
+              assert.deepEqual(JSON.parse(succeeds(cli('shard', ...inputs, file('a')))).map(s => s.prs), [500, 500, 1]);
+              succeeds(cli('shard', ...inputs, file('b')));
+              for (const name of fs.readdirSync(file('a'))) assert.deepEqual(fs.readFileSync(path.join(file('a'), name)), fs.readFileSync(path.join(file('b'), name)));
+              refuses(cli('shard', ...inputs, file('a')), /output already exists/);
+              const manifest = JSON.parse(fs.readFileSync(path.join(file('a'), 'shards.json')));
+              const sorted = Array.from({ length: 1001 }, (_, i) => pr(i + 1)).sort();
+              assert.deepEqual(manifest.shards.map(s => [s.first, s.last]), [[sorted[0], sorted[499]], [sorted[500], sorted[999]], [sorted[1000], sorted[1000]]]);
+              const shard = fs.readFileSync(path.join(file('a'), 'shard-003.jsonl'));
+              assert.equal(manifest.shards[2].sha256, hash(shard));
+              assert.equal(shard.toString().split('\n').filter(Boolean).length, 3);
+              const sample = (...args) => cli('sample', ...inputs, ...args);
+              const sampled = succeeds(sample('seed', '400'));
+              assert.equal(new Set(sampled.trimEnd().split('\n')).size, 400);
+              assert.equal(succeeds(sample('seed', '400')), sampled);
+              assert.notEqual(succeeds(sample('other', '400')), sampled);
+              refuses(sample('seed', '401'), /sample size/);
+              refuses(sample('seed', '4e2'), /sample size/);
+              fs.appendFileSync(file('training.jsonl'), '\n');
+              refuses(sample('seed', '400'), /does not match provenance/);
+              fs.writeFileSync(file('training.jsonl'), training);
+
+              const good = sorted.slice(0, 500).map(url => ({ pr: url, tags: [], examples: {} }));
+              const example = `${pr(1)}#discussion_r3`;
+              good[0] = { pr: pr(1), tags: ['typo', 'add-tests'], examples: { typo: [example] } };
+              const shardFile = path.join(file('a'), 'shard-001.jsonl');
+              const labelArgs = ['validate', ...inputs, path.join(dir, 'taxonomy.md'), file('holdout.md'), shardFile, file('labels.jsonl')];
+              const encode = labels => labels.map(l => JSON.stringify(l)).join('\n') + '\n';
+              const validate = labels => {
+                fs.writeFileSync(file('labels.jsonl'), typeof labels === 'string' ? labels : encode(labels));
+                return cli(...labelArgs);
+              };
+              setHoldout(sorted[3], false);
+              refuses(validate(good), /holdout does not match provenance/);
+              setHoldout(sorted[3]);
+              refuses(validate(good), /line 4: pr is held out/);
+              setHoldout(pr(1002));
+              assert.deepEqual(JSON.parse(succeeds(validate(good))), { shard_sha256: manifest.shards[0].sha256,
+                prs: 500, tags: { 'add-tests': 1, typo: 1 } });
+              fs.appendFileSync(shardFile, '\n');
+              refuses(validate(good), /shard does not match the frozen training split/);
+              fs.copyFileSync(path.join(file('b'), 'shard-001.jsonl'), shardFile);
+              const refusals = [
+                [{ ...good[0], body: 'DO_NOT_ECHO' }, /exactly pr, tags and examples/],
+                [{ ...good[0], tags: ['not-a-tag'] }, /taxonomy ids/],
+                [{ ...good[0], tags: ['typo', 'typo'] }, /taxonomy ids/],
+                [{ ...good[0], examples: { typo: [`${pr(2)}#discussion_r6`] } }, /comment URLs of this PR/],
+                [{ ...good[0], examples: { typo: ['DO_NOT_ECHO'] } }, /comment URLs of this PR/],
+                [{ ...good[0], examples: { typo: [example, example] } }, /distinct comment URLs/],
+                [{ ...good[0], examples: { 'add-tests': [example], typo: [] } }, /comment URLs/],
+                [{ ...good[0], examples: { 'clear-naming': [example] } }, /not one of its tags/],
+                [{ ...good[0], pr: sorted[1000] }, /not a canonical PR URL in this shard/],
+                [{ ...good[0], pr: 'https://github.com/Example/Project/pull/1' }, /not a canonical PR URL/],
+              ];
+              for (const [label, error] of refusals) refuses(validate([label, ...good.slice(1)]), error);
+              for (const first of [JSON.stringify(good[0]).replace('{', '{"tags":["DO_NOT_ECHO"],'),
+                JSON.stringify(good[0]).replace('"typo":[', '"ty\\u0070o":["DO_NOT_ECHO"],"typo":[')]) {
+                refuses(validate(first + '\n' + encode(good.slice(1))), /without duplicate keys/);
+              }
+              refuses(validate([...good, good[1]]), /duplicate pr/);
+              refuses(validate(good.slice(1)), /cover 499 of 500/);
+              assert.throws(() => helper.parseTaxonomy('- `Bad_Tag`: no\n'), /lowercase ids/);
+
+              const denseTags = [...taxonomy].slice(0, 32);
+              const dense = encode(good.map(({ pr }) => {
+                const n = Number(pr.split('/').at(-1));
+                const urls = [0, 1, 2].map(i => `${pr}#discussion_r${n * 3 + i}`);
+                return { pr, tags: denseTags, examples: Object.fromEntries(denseTags.map(tag => [tag, urls])) };
+              }));
+              assert.ok(Buffer.byteLength(dense) > 1024 * 1024);
+              assert.equal(JSON.parse(succeeds(validate(dense))).prs, 500);
+              fs.writeFileSync(inputs[0], JSON.stringify({ ...provenance, training_prs: 1000 }));
+              refuses(sample('seed', '400'), /PR count does not match/);
+              assert.equal(cli('--help').status, 0);
+              assert.equal(cli().status, 1);
+            } finally { fs.rmSync(root, { recursive: true, force: true }); }
+          });
       # Exercise the trusted renderer/publisher with no tokens or API calls.
       # Keep new scripts inline: deployment scripts and Justfile may only shrink.
       - name: Test CI-health saved reports and publication
