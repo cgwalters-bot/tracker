@@ -1336,6 +1336,24 @@ jobs:
                 decrypt();
                 assert.equal(sha256(fs.readFileSync(plainFile)), expected, 'reuse the entire larger cache');
                 assert.deepEqual(JSON.parse(read('pass.json')), handoff);
+
+                // GitHub's empty listing for a missing key takes the no-cache path through to export.
+                write('handoff/pass.json', { ...handoff, response_cache_key: second.key });
+                prepare('success');
+                assert.equal(preflight(JSON.stringify({ total_count: 0, actions_caches: [] })), 'key=\n');
+                write(encrypted, good); // A stale ciphertext the skipped restore must not use.
+                // poll.yml's validation env when the cache restore step is skipped.
+                decrypt({ CACHE_HIT: 'false', RESPONSE_CACHE_KEY: '', PASS_CACHE_KEY: '' });
+                assert.deepEqual(JSON.parse(read('pass.json')), handoff, 'empty listing retains cursors');
+                assert.equal(fs.existsSync(plainFile), false, 'empty listing restores no responses');
+                assert.equal(fs.existsSync(cacheFile), false);
+                // The cold pass writes a fresh response file, which export seals under its own attempt.
+                write(plaintext, firstFile);
+                fs.writeFileSync(`${temp}/out`, '');
+                save('3', '', { PASS_CACHE_KEY: dedicated });
+                assert.deepEqual(JSON.parse(read('public/pass.json')), { ...handoff, response_cache_key: 'pass-responses-41-3' },
+                  'cold handoff exports cursors and the new attempt key');
+                assert.equal(fs.readFileSync(`${temp}/out`, 'utf8'), 'cache-ready=true\n');
            } finally { fs.rmSync(temp, { recursive: true, force: true }); }
            console.log('ok predecessor provenance, public cursor export and authenticated response cache');
       - run: just test

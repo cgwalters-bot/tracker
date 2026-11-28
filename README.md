@@ -319,6 +319,36 @@ The restore step has a two-minute timeout and extracts only the expected ciphert
 member, whose size is checked before decryption. A miss, authentication failure or
 key change leaves the cursors intact and reads cold.
 
+Three consecutive applying passes on 2026-11-24 give an observational cold/warm
+comparison. All three ran tracker 31c6cec and agent-board 02a4bf6. In
+[45427199205](https://github.com/cgwalters-forge/tracker/actions/runs/45427199205)
+the predecessor's archive downloaded but was rejected, so the pass read cold.
+[45435936395](https://github.com/cgwalters-forge/tracker/actions/runs/45435936395)
+and [45444642103](https://github.com/cgwalters-forge/tracker/actions/runs/45444642103)
+each restored the exact key of the attempt before them. Each also restored the
+predecessor's cursor artifact, so 45435936395 continued from the cursors of the
+refusal run. The pass summaries reported the following. Nothing was restored
+into the cold pass, so its hits are responses it cached itself earlier in the pass.
+
+| Run | Hits / misses | 304s | GraphQL reuses | Evicted | Network sends | Charged |
+|-----|---------------|------|----------------|---------|---------------|---------|
+| 45427199205 (cold) | 342 / 643 | 309 | 0 | 1 | 1426 | 1116 |
+| 45435936395 (warm) | 487 / 424 | 410 | 0 | 1 | 1731 | 1320 |
+| 45444642103 (warm) | 902 / 166 | 807 | 6 | 0 | 1905 | 1254 |
+
+Treat these as observations, not a controlled estimate of savings. Each pass
+job failed on the same maintain error (over 200 incoming pull requests). The
+workload also differed between passes: dispatches, fix rounds and the stage
+budget's stop points changed, and only the two warm passes held back requests
+for a start. Charged totals reflect that workload. The gap between sends and
+charged requests mixes retries, uncharged 304s and other effects, so it doesn't
+measure savings either. The third pass's summary line counts 650 304s against
+the cache line's 807; that difference is unexplained. The offline
+`just test-pass-state` fixture feeds an empty cache listing through restore and
+export. Cursors survive, no response file is restored, and the cold pass's new
+responses are saved under its own key. No hosted pass has yet hit a listing miss,
+as distinct from the refusal above.
+
 The one-day retention applies to the `pass-state` artifact, not the cache.
 Fork PR jobs can retain copies of the ciphertext. Someone with a copy and the
 secret used to encrypt it (the dedicated key, or the old PAT for a fallback
